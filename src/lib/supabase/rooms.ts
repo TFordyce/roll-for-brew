@@ -5,6 +5,7 @@ export type RosterEntry = {
   playerId: string;
   displayName: string | null;
   email: string;
+  avatarUrl: string | null;
   modifier: number;
 };
 
@@ -29,7 +30,7 @@ export async function getRoomRoster(
 ): Promise<RosterEntry[]> {
   const { data, error } = await supabase
     .from("room_players")
-    .select("player_id, modifier, players(display_name, email)")
+    .select("player_id, modifier, players(display_name, email, avatar_url)")
     .eq("room_id", roomId)
     .order("modifier", { ascending: false });
 
@@ -41,6 +42,7 @@ export async function getRoomRoster(
       playerId: row.player_id as string,
       displayName: player?.display_name ?? null,
       email: player?.email ?? "",
+      avatarUrl: player?.avatar_url ?? null,
       modifier: row.modifier as number,
     };
   });

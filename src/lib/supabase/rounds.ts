@@ -17,6 +17,7 @@ export type RoundParticipant = {
   playerId: string;
   displayName: string | null;
   email: string;
+  avatarUrl: string | null;
   declaredAt: string;
   excludedAt: string | null;
 };
@@ -138,7 +139,7 @@ export async function getRoundParticipants(
 ): Promise<RoundParticipant[]> {
   const { data, error } = await supabase
     .from("round_participants")
-    .select("player_id, declared_at, excluded_at, players(display_name, email)")
+    .select("player_id, declared_at, excluded_at, players(display_name, email, avatar_url)")
     .eq("round_id", roundId)
     .order("declared_at", { ascending: true });
 
@@ -150,6 +151,7 @@ export async function getRoundParticipants(
       playerId: row.player_id as string,
       displayName: player?.display_name ?? null,
       email: player?.email ?? "",
+      avatarUrl: player?.avatar_url ?? null,
       declaredAt: row.declared_at as string,
       excludedAt: row.excluded_at as string | null,
     };
