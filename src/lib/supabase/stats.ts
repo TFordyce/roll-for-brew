@@ -183,3 +183,23 @@ export async function getRoomRounds(
     brewerEmail: row.brewer_email as string,
   }));
 }
+
+/**
+ * Looks up avatar_url straight from `players` (not a stats view) for a set
+ * of player ids, so the restyled leaderboards/history rows (issue #79) can
+ * show avatars the same way the Room tab's roster does, without touching
+ * any stats view/query.
+ */
+export async function getPlayerAvatars(
+  supabase: SupabaseClient,
+  playerIds: string[],
+): Promise<Map<string, string | null>> {
+  const uniqueIds = [...new Set(playerIds)];
+  if (uniqueIds.length === 0) return new Map();
+
+  const { data, error } = await supabase.from("players").select("id, avatar_url").in("id", uniqueIds);
+
+  if (error) throw error;
+
+  return new Map((data ?? []).map((row) => [row.id as string, row.avatar_url as string | null]));
+}
