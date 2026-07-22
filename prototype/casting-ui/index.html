@@ -130,17 +130,17 @@
     border-color: var(--detriment); color: var(--detriment);
   }
   .die.mod-die.spinning { border-color: var(--detriment); }
-  .dice-group { display: flex; align-items: center; gap: 4px; }
-  .row.revealed-row { flex-direction: column; align-items: stretch; gap: 4px; }
+  .die.day-die {
+    width: 26px; height: 26px; font-size: 10px; border-radius: 4px;
+    border-color: var(--border); color: var(--muted); border-style: dashed;
+  }
+  .die.total-die {
+    width: 40px; height: 32px; font-size: 15px; font-weight: 700; border-radius: 6px;
+    border: 2px solid var(--accent); color: var(--accent); background: rgba(255,180,84,0.08);
+  }
+  .dice-group { display: flex; align-items: center; gap: 5px; }
+  .dice-group .eq { color: var(--muted); font-size: 12px; padding: 0 1px; }
   .row-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .row-breakdown {
-    font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace;
-    text-align: right; display: flex; align-items: baseline; justify-content: flex-end; gap: 5px;
-  }
-  .row-breakdown .step { white-space: nowrap; }
-  .row-breakdown .total {
-    color: var(--text); font-size: 15px; font-weight: 700; font-family: ui-monospace, monospace;
-  }
 
   /* held card widget, docked bottom-right of a device */
   .card-widget {
@@ -429,38 +429,31 @@
         </div>`;
     }
 
+    // One line, one point of truth: d20 -> spell modifier (only when a
+    // current/lasting effect applies to this player) -> standard day
+    // modifier -> total. No separate breakdown text duplicating these.
     const d20 = `<span class="die ${spinning ? "spinning" : "revealed"}">${spinning ? "" : dice[p.id]}</span>`;
     const hasModDie = !spinning && modDice[p.id] !== undefined;
-    const d4 = spinning
-      ? `<span class="die mod-die spinning"></span>`
+    const spellDie = spinning
+      ? `<span class="die mod-die spinning" title="spell modifier"></span>`
       : hasModDie
-        ? `<span class="die mod-die revealed" title="d4 malus">−${modDice[p.id]}</span>`
+        ? `<span class="die mod-die revealed" title="spell modifier (d4)">−${modDice[p.id]}</span>`
         : "";
-
-    let breakdown = "";
+    const dayDie = spinning
+      ? ""
+      : `<span class="die day-die" title="day modifier">${p.mod >= 0 ? "+" + p.mod : p.mod}</span>`;
+    let totalDie = "";
     if (!spinning) {
-      const raw = dice[p.id];
-      let total = raw + p.mod;
-      // Order matches the die layout: d20, then any active spell modifier
-      // (only shown when a current/lasting effect applies to this player),
-      // then the standing day modifier, then the total.
-      let parts = [`<span class="step">${raw} d20</span>`];
-      if (hasModDie) {
-        total -= modDice[p.id];
-        parts.push(`<span class="step" style="color: var(--detriment)">−${modDice[p.id]} spell</span>`);
-      }
-      parts.push(`<span class="step">${p.mod >= 0 ? "+" + p.mod : p.mod} day</span>`);
-      breakdown = `${parts.join(" · ")} <span class="step">=</span> <span class="total">${total}</span>`;
+      let total = dice[p.id] + p.mod - (hasModDie ? modDice[p.id] : 0);
+      totalDie = `<span class="eq">=</span><span class="die total-die" title="total">${total}</span>`;
     }
 
-    classes.push("revealed-row");
     return `
       <div class="${classes.join(" ")}" ${targeting ? `onclick="__pickTarget('${p.id}')"` : ""}>
         <div class="row-main">
           <span class="name">${p.name}${badgesFor(p.id)}</span>
-          <span class="dice-group">${d20}${d4}</span>
+          <span class="dice-group">${d20}${spellDie}${dayDie}${totalDie}</span>
         </div>
-        ${breakdown ? `<div class="row-breakdown">${breakdown}</div>` : ""}
       </div>`;
   }
 
