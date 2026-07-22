@@ -7,7 +7,7 @@ import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import { broadcastReactionWindowChanged, broadcastRoundClosed } from "@/lib/supabase/realtime";
 import { drawSpellCard, resolveCardSwap } from "@/lib/supabase/spellCards";
-import { castSpellCard, setSpellCastTarget } from "@/lib/supabase/spellCasts";
+import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 
 /**
@@ -196,6 +196,35 @@ export async function setSpellCastTargetAction(formData: FormData) {
   const supabase = await createClient();
   try {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
+
+  revalidatePath("/");
+}
+
+/**
+ * Ends another player's active effect early using the caller's currently-
+ * held dispel-kind card (Lesser Detox, issue #69) — targets an active
+ * effect id rather than a player, so it's a separate action from
+ * castSpellCardAction.
+ */
+export async function endActiveEffectAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  const effectId = formData.get("effectId");
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("endActiveEffectAction: missing roundId");
+  }
+  if (typeof effectId !== "string" || !effectId) {
+    throw new Error("endActiveEffectAction: missing effectId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await endActiveEffect(supabase, roundId, effectId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");

@@ -70,18 +70,27 @@ alter table public.spell_casts add column reaction_window_id uuid references pub
 alter table public.spell_casts add column negated boolean not null default false;
 alter table public.spell_casts add column seq bigint generated always as identity;
 
+-- Union of every effect_kind mapped so far: 0017/0019's original set, 0020's
+-- hidden_modifier/dispel (issue #69's persistent effects, already merged to
+-- master ahead of this ticket), and this migration's forced_reroll/
+-- contested_negate/redirect.
 alter table public.spell_cards drop constraint spell_cards_effect_kind_check;
 alter table public.spell_cards add constraint spell_cards_effect_kind_check
   check (effect_kind in (
     'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
-    'advantage', 'disadvantage', 'forced_reroll', 'contested_negate', 'redirect'
+    'advantage', 'disadvantage', 'hidden_modifier', 'dispel',
+    'forced_reroll', 'contested_negate', 'redirect'
   ));
 
+-- spell_casts had no effect_kind check constraint before this migration
+-- (0019 left it implicitly free-form); the same union applies here since
+-- 0020's dispel-kind casts already exist in the table by the time this runs.
 alter table public.spell_casts drop constraint if exists spell_casts_effect_kind_check;
 alter table public.spell_casts add constraint spell_casts_effect_kind_check
   check (effect_kind is null or effect_kind in (
     'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
-    'advantage', 'disadvantage', 'forced_reroll', 'contested_negate', 'redirect'
+    'advantage', 'disadvantage', 'hidden_modifier', 'dispel',
+    'forced_reroll', 'contested_negate', 'redirect'
   ));
 
 -- Maps a first Reaction/counterspell slice of the catalog onto the new
@@ -518,10 +527,17 @@ $$;
 revoke execute on function public.apply_forced_reroll(uuid, integer, text) from public, anon;
 grant execute on function public.apply_forced_reroll(uuid, integer, text) to authenticated;
 
--- Redefines get_round_modifier_effects (0019) to exclude a cast that a
--- successful contested_negate reaction has since negated — a negated cast's
--- modifier-bucket effect must never apply, whether it was a pre-roll Action
--- cast or a Reaction cast itself. Otherwise unchanged.
+-- Redefines get_round_modifier_effects (last redefined in 0020, issue #69,
+-- to union in the room's persistent spell_active_effects alongside this
+-- round's own resolved casts) to additionally exclude a cast that a
+-- successful contested_negate reaction has since negated from the
+-- spell_casts branch — a negated cast's modifier-bucket effect must never
+-- apply, whether it was a pre-roll Action cast or a Reaction cast itself.
+-- The spell_active_effects branch is untouched: a persistent effect that's
+-- already been promoted off its originating cast (record_active_effect_
+-- if_persistent, 0020) isn't itself negatable by this migration's
+-- contested_negate/redirect — no currently-mapped card needs that
+-- interaction, same documented scope limit as the header comment above.
 create or replace function public.get_round_modifier_effects(p_round_id uuid)
 returns table (target_player_id text, effect_kind text, effect_params jsonb, resolved_value numeric)
 language plpgsql
@@ -530,6 +546,7 @@ set search_path = public
 as $$
 declare
   v_player_id text;
+  v_room_id uuid;
 begin
   v_player_id := public.current_player_id();
 
@@ -540,13 +557,23 @@ begin
     raise exception 'get_round_modifier_effects: caller is not a participant in this round';
   end if;
 
+  select room_id into v_room_id from public.rounds where id = p_round_id;
+
   return query
     select casts.target_player_id, casts.effect_kind, casts.effect_params, casts.resolved_value
       from public.spell_casts casts
+      join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
+      join public.spell_cards sc on sc.id = sdi.card_id
      where casts.round_id = p_round_id
        and casts.target_pending = false
        and casts.negated = false
-       and casts.effect_kind in ('flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier');
+       and casts.effect_kind in ('flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier')
+       and sc.duration_rounds is null
+    union all
+    select sae.target_player_id, sae.effect_kind, sae.effect_params, null::numeric
+      from public.spell_active_effects sae
+     where sae.room_id = v_room_id
+       and sae.effect_kind in ('flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier');
 end;
 $$;
 

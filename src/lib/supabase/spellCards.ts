@@ -8,6 +8,7 @@ export type HeldSpellCard = {
   target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
   tier: "common" | "rare" | "epic";
   effectText: string;
+  effectKind: string | null;
 };
 
 /**
@@ -60,6 +61,7 @@ export async function getMySpellCards(supabase: SupabaseClient): Promise<HeldSpe
     target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
     tier: "common" | "rare" | "epic";
     effect_text: string;
+    effect_kind: string | null;
   }[]).map((row) => ({
     instanceId: row.instance_id,
     location: row.location,
@@ -68,5 +70,6 @@ export async function getMySpellCards(supabase: SupabaseClient): Promise<HeldSpe
     target: row.target,
     tier: row.tier,
     effectText: row.effect_text,
+    effectKind: row.effect_kind,
   }));
 }

@@ -1,15 +1,16 @@
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
-import type { PendingCast } from "@/lib/supabase/spellCasts";
+import type { DispellableEffect, PendingCast } from "@/lib/supabase/spellCasts";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import {
   castSpellCardAction,
+  endActiveEffectAction,
   resolveCardSwapAction,
   setSpellCastTargetAction,
 } from "@/app/rounds/actions";
 
 /**
  * The docked held-card widget + casting/targeting/swap forms (issues #66/
- * #67). Kept as one panel (rather than the prototype PR #60's animated
+ * #67/#69). Kept as one panel (rather than the prototype PR #60's animated
  * widget) since the roster/dice-reveal UI polish pass is a later child of
  * the spec map (#65) — this ticket only needs casting to be functionally
  * possible.
@@ -17,6 +18,7 @@ import {
 export function SpellCardPanel({
   heldCards,
   pendingCasts,
+  dispellableEffects,
   roundId,
   roundIsOpen,
   roundIsClosed,
@@ -25,6 +27,7 @@ export function SpellCardPanel({
 }: {
   heldCards: HeldSpellCard[];
   pendingCasts: PendingCast[];
+  dispellableEffects: DispellableEffect[];
   roundId: string | null;
   roundIsOpen: boolean;
   roundIsClosed: boolean;
@@ -71,7 +74,29 @@ export function SpellCardPanel({
           </p>
           <p>{held.effectText}</p>
 
-          {held.castingTime === "A" && roundId && roundIsOpen ? (
+          {held.castingTime === "A" && held.effectKind === "dispel" && roundId && roundIsOpen ? (
+            dispellableEffects.length > 0 ? (
+              <form action={endActiveEffectAction} className="mt-2">
+                <input type="hidden" name="roundId" value={roundId} />
+                <select
+                  name="effectId"
+                  required
+                  className="mb-2 w-full rounded border border-neutral-300 px-2 py-1"
+                >
+                  {dispellableEffects.map((effect) => (
+                    <option key={effect.effectId} value={effect.effectId}>
+                      {effect.cardName} on {effect.targetDisplayName} ({effect.tier})
+                    </option>
+                  ))}
+                </select>
+                <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-white">
+                  End effect with {held.cardName}
+                </button>
+              </form>
+            ) : (
+              <p className="mt-2 text-xs text-neutral-600">Nothing eligible to end right now.</p>
+            )
+          ) : held.castingTime === "A" && held.target !== "CARD" && roundId && roundIsOpen ? (
             <form action={castSpellCardAction} className="mt-2">
               <input type="hidden" name="roundId" value={roundId} />
               {held.target === "SELF" ? null : (

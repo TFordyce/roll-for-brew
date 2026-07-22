@@ -7,6 +7,23 @@ export type PendingCast = {
   target: "OPPONENT" | "PLAYER";
 };
 
+export type ActiveEffectBadge = {
+  effectId: string;
+  targetPlayerId: string;
+  cardName: string;
+  tier: "common" | "rare" | "epic";
+  polarity: "positive" | "negative" | null;
+  roundsRemaining: number;
+};
+
+export type DispellableEffect = {
+  effectId: string;
+  targetPlayerId: string;
+  targetDisplayName: string;
+  cardName: string;
+  tier: "common" | "rare" | "epic";
+};
+
 /**
  * Calls the cast_spell_card RPC (supabase/migrations/0019_spell_casts_pre_roll.sql):
  * casts the caller's currently-held Action card during a round's declare-in
@@ -95,6 +112,84 @@ export async function getMyPendingCasts(
   return ((data ?? []) as { cast_id: string; card_name: string; target: "OPPONENT" | "PLAYER" }[]).map(
     (row) => ({ castId: row.cast_id, cardName: row.card_name, target: row.target }),
   );
+}
+
+/**
+ * Calls the get_room_active_effects RPC: every currently-active persistent
+ * effect (spell_active_effects, 0020) in the room, for the roster's
+ * stackable effect badge (red for negative/gold for positive, issue #69).
+ * Visible to any room member — badges aren't a per-player secret the way a
+ * held card's identity is.
+ */
+export async function getRoomActiveEffects(
+  supabase: SupabaseClient,
+  roomId: string,
+): Promise<ActiveEffectBadge[]> {
+  const { data, error } = await supabase.rpc("get_room_active_effects", { p_room_id: roomId });
+  if (error) throw error;
+
+  return ((data ?? []) as {
+    effect_id: string;
+    target_player_id: string;
+    card_name: string;
+    tier: "common" | "rare" | "epic";
+    polarity: "positive" | "negative" | null;
+    rounds_remaining: number;
+  }[]).map((row) => ({
+    effectId: row.effect_id,
+    targetPlayerId: row.target_player_id,
+    cardName: row.card_name,
+    tier: row.tier,
+    polarity: row.polarity,
+    roundsRemaining: row.rounds_remaining,
+  }));
+}
+
+/**
+ * Calls the get_dispellable_active_effects RPC: the active effects the
+ * caller's currently-held card (a Lesser-Detox-style dispel card) can end
+ * early, scoped to the round's room and to the tiers the held card's text
+ * allows. Empty if the caller isn't holding a dispel-kind card.
+ */
+export async function getDispellableActiveEffects(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<DispellableEffect[]> {
+  const { data, error } = await supabase.rpc("get_dispellable_active_effects", {
+    p_round_id: roundId,
+  });
+  if (error) throw error;
+
+  return ((data ?? []) as {
+    effect_id: string;
+    target_player_id: string;
+    target_display_name: string;
+    card_name: string;
+    tier: "common" | "rare" | "epic";
+  }[]).map((row) => ({
+    effectId: row.effect_id,
+    targetPlayerId: row.target_player_id,
+    targetDisplayName: row.target_display_name,
+    cardName: row.card_name,
+    tier: row.tier,
+  }));
+}
+
+/**
+ * Calls the end_active_effect RPC: ends another player's active effect
+ * early using the caller's currently-held dispel-kind card (Lesser Detox),
+ * consuming that card the same way cast_spell_card does.
+ */
+export async function endActiveEffect(
+  supabase: SupabaseClient,
+  roundId: string,
+  effectId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("end_active_effect", {
+    p_round_id: roundId,
+    p_effect_id: effectId,
+  });
+  if (error) throw error;
 }
 
 function toModifierEffect(row: {
