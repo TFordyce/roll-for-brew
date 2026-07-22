@@ -4,7 +4,9 @@ import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   roomChannelName,
+  type LayerRollsRevealedPayload,
   type LayerTiedPayload,
+  type ReactionWindowChangedPayload,
   type RoundCancelledPayload,
   type RoundClosedPayload,
   type RoundRevealedPayload,
@@ -15,6 +17,8 @@ type RoomBroadcastPayloadMap = {
   "layer-tied": LayerTiedPayload;
   "round-cancelled": RoundCancelledPayload;
   "round-closed": RoundClosedPayload;
+  "layer-rolls-revealed": LayerRollsRevealedPayload;
+  "reaction-window-changed": ReactionWindowChangedPayload;
 };
 
 export type RoomChannelEventHandlers = {
