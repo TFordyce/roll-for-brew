@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useState } from "react";
 import { updateRollInputModeAction, type UpdateRollInputModeState } from "@/app/settings/actions";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
+import { SelectableOption } from "@/app/_components/SelectableOption";
 
 const ROLL_INPUT_MODE_OPTIONS = [
   {
@@ -38,33 +39,25 @@ export function SettingsForm({ rollInputMode }: { rollInputMode: RollInputMode }
   return (
     <form action={formAction} className="flex flex-col gap-3">
       {ROLL_INPUT_MODE_OPTIONS.map((option) => (
-        <label
+        <SelectableOption
           key={option.value}
-          className="flex items-start gap-3 rounded border border-neutral-200 px-3 py-2 text-sm"
-        >
-          <input
-            type="radio"
-            name="rollInputMode"
-            value={option.value}
-            defaultChecked={rollInputMode === option.value}
-            className="mt-1"
-          />
-          <span>
-            <span className="block font-medium">{option.label}</span>
-            <span className="block text-neutral-500">{option.description}</span>
-          </span>
-        </label>
+          name="rollInputMode"
+          value={option.value}
+          label={option.label}
+          description={option.description}
+          defaultChecked={rollInputMode === option.value}
+        />
       ))}
       <div className="flex items-center gap-3">
         <button
           type="submit"
           disabled={isPending}
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:opacity-50"
+          className="rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark"
         >
           {isPending ? "Saving…" : "Save"}
         </button>
         {showSaved ? (
-          <span role="status" className="text-sm text-emerald-600">
+          <span role="status" className="font-display text-sm uppercase tracking-wide text-gilt-bright">
             Saved
           </span>
         ) : null}

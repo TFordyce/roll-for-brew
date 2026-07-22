@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer } from "@/lib/supabase/players";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { SettingsForm } from "@/app/settings/SettingsForm";
+import { CardFrame } from "@/app/_components/CardFrame";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -16,15 +17,21 @@ export default async function SettingsPage() {
   const rollInputMode = await getRollInputMode(supabase, current.playerId);
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Settings</h1>
+    <main className="flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+      <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
+        Settings
+      </h1>
 
       <section className="w-full max-w-sm">
-        <h2 className="mb-2 text-lg font-medium">Roll input mode</h2>
-        <SettingsForm rollInputMode={rollInputMode} />
+        <CardFrame title="Roll Input Mode">
+          <SettingsForm rollInputMode={rollInputMode} />
+        </CardFrame>
       </section>
 
-      <Link href="/" className="text-sm underline">
+      <Link
+        href="/"
+        className="rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest text-tavern-panel underline hover:text-ember"
+      >
         Back
       </Link>
     </main>
