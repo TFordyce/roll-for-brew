@@ -91,7 +91,7 @@ export default async function HomePage() {
       <div className="rounded-md bg-parchment/90 px-3 py-1.5">
         <Nav active="room" />
       </div>
-      <p className="text-sm text-parchment-dim">
+      <p className="rounded-md bg-parchment/90 px-3 py-1.5 text-sm text-tavern-panel">
         Signed in as {player?.display_name ?? player?.email ?? user.email}
       </p>
 
@@ -205,15 +205,17 @@ export default async function HomePage() {
         </section>
       )}
 
-      <Link href="/settings" className="text-sm text-parchment-dim underline hover:text-parchment">
-        Settings
-      </Link>
+      <div className="flex flex-col items-center gap-2 rounded-md bg-parchment/90 px-4 py-2">
+        <Link href="/settings" className="text-sm text-tavern-panel underline hover:text-ember">
+          Settings
+        </Link>
 
-      <form action="/auth/signout" method="post">
-        <button type="submit" className="text-sm text-parchment-dim underline hover:text-parchment">
-          Sign out
-        </button>
-      </form>
+        <form action="/auth/signout" method="post">
+          <button type="submit" className="text-sm text-tavern-panel underline hover:text-ember">
+            Sign out
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
