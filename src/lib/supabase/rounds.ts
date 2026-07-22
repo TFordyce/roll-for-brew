@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { unwrapJoinedPlayer } from "./playerRow";
 
 export type RoundStatus = "open" | "closed" | "resolved" | "cancelled";
 
@@ -91,7 +92,7 @@ export async function getRoundParticipants(
   if (error) throw error;
 
   return (data ?? []).map((row) => {
-    const player = Array.isArray(row.players) ? row.players[0] : row.players;
+    const player = unwrapJoinedPlayer(row.players);
     return {
       playerId: row.player_id as string,
       displayName: player?.display_name ?? null,

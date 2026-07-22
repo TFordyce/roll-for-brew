@@ -56,6 +56,36 @@ create policy "round_participants are readable by authenticated users"
 -- the security definer functions below, which bypass RLS as the table
 -- owner — same pattern as rooms/room_players in 0003.
 
+-- Shared identity derivation for the functions below: the caller's player
+-- id, the same way the upsert_player_from_auth_user trigger derives it (see
+-- 0001) — the Google "sub" claim, falling back to the auth.users id. Raises
+-- if called with no authenticated caller, so every function below can just
+-- trust the returned value rather than re-checking for null.
+create or replace function public.current_player_id()
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_player_id text;
+begin
+  select coalesce(u.raw_user_meta_data ->> 'sub', u.id::text)
+    into v_player_id
+    from auth.users u
+   where u.id = auth.uid();
+
+  if v_player_id is null then
+    raise exception 'current_player_id: no authenticated user';
+  end if;
+
+  return v_player_id;
+end;
+$$;
+
+revoke execute on function public.current_player_id() from public, anon;
+grant execute on function public.current_player_id() to authenticated;
+
 -- Starts a new round in the caller's room for today (Europe/London),
 -- auto-enrolling the caller as its first round_participants row. The
 -- caller's player id is derived server-side from auth.users (never a
@@ -81,14 +111,7 @@ declare
   v_room_id uuid;
   v_round_id uuid;
 begin
-  select coalesce(u.raw_user_meta_data ->> 'sub', u.id::text)
-    into v_player_id
-    from auth.users u
-   where u.id = auth.uid();
-
-  if v_player_id is null then
-    raise exception 'start_round: no authenticated user';
-  end if;
+  v_player_id := public.current_player_id();
 
   v_date := (now() at time zone 'Europe/London')::date;
 
@@ -130,14 +153,7 @@ declare
   v_status text;
   v_room_id uuid;
 begin
-  select coalesce(u.raw_user_meta_data ->> 'sub', u.id::text)
-    into v_player_id
-    from auth.users u
-   where u.id = auth.uid();
-
-  if v_player_id is null then
-    raise exception 'declare_in: no authenticated user';
-  end if;
+  v_player_id := public.current_player_id();
 
   select status, room_id into v_status, v_room_id
     from public.rounds
@@ -184,14 +200,7 @@ declare
   v_started_by text;
   v_declared_count integer;
 begin
-  select coalesce(u.raw_user_meta_data ->> 'sub', u.id::text)
-    into v_player_id
-    from auth.users u
-   where u.id = auth.uid();
-
-  if v_player_id is null then
-    raise exception 'close_round: no authenticated user';
-  end if;
+  v_player_id := public.current_player_id();
 
   select status, started_by into v_status, v_started_by
     from public.rounds
