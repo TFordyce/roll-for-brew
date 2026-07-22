@@ -126,9 +126,7 @@ export default async function StatsPage({
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
       </h1>
-      <div className="rounded-md bg-parchment/90 px-3 py-1.5 font-display uppercase tracking-widest">
-        <Nav active="stats" />
-      </div>
+      <Nav active="stats" />
 
       <section className="w-full max-w-md">
         <CardFrame
