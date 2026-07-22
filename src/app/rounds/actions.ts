@@ -53,9 +53,29 @@ function isStaleRoundError(error: unknown): boolean {
   return code === "RFB01" || code === "RFB02" || code === "RFB03" || code === "RFB04";
 }
 
+/**
+ * True for start_round's own version of the same "moved on under you" race:
+ * the page only renders the Start Round button when it sees no active
+ * round, but two players can both hit that render and submit around the
+ * same time. The loser doesn't fail — someone already started the round
+ * they meant to start — so treat rounds_one_active_per_room's raw Postgres
+ * 23505 (unique_violation) the same way isStaleRoundError treats the RFB0x
+ * codes: refresh to current state instead of crashing.
+ */
+function isRoundAlreadyStartedError(error: unknown): boolean {
+  const code = (error as { code?: string } | null)?.code;
+  return code === "23505";
+}
+
 export async function startRoundAction() {
   const supabase = await createClient();
-  await startRound(supabase);
+  try {
+    await startRound(supabase);
+  } catch (error) {
+    if (!isRoundAlreadyStartedError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
   revalidatePath("/");
 }
 
