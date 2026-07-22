@@ -135,9 +135,12 @@
   .row-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .row-breakdown {
     font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace;
-    text-align: right;
+    text-align: right; display: flex; align-items: baseline; justify-content: flex-end; gap: 5px;
   }
-  .row-breakdown b { color: var(--text); }
+  .row-breakdown .step { white-space: nowrap; }
+  .row-breakdown .total {
+    color: var(--text); font-size: 15px; font-weight: 700; font-family: ui-monospace, monospace;
+  }
 
   /* held card widget, docked bottom-right of a device */
   .card-widget {
@@ -437,14 +440,17 @@
     let breakdown = "";
     if (!spinning) {
       const raw = dice[p.id];
-      const modText = `${p.mod >= 0 ? "+" + p.mod : p.mod} mod`;
       let total = raw + p.mod;
-      let parts = [`${raw} raw`, modText];
+      // Order matches the die layout: d20, then any active spell modifier
+      // (only shown when a current/lasting effect applies to this player),
+      // then the standing day modifier, then the total.
+      let parts = [`<span class="step">${raw} d20</span>`];
       if (hasModDie) {
         total -= modDice[p.id];
-        parts.push(`−${modDice[p.id]} (d4)`);
+        parts.push(`<span class="step" style="color: var(--detriment)">−${modDice[p.id]} spell</span>`);
       }
-      breakdown = `${parts.join("  ")}  =  <b>${total}</b> total`;
+      parts.push(`<span class="step">${p.mod >= 0 ? "+" + p.mod : p.mod} day</span>`);
+      breakdown = `${parts.join(" · ")} <span class="step">=</span> <span class="total">${total}</span>`;
     }
 
     classes.push("revealed-row");
