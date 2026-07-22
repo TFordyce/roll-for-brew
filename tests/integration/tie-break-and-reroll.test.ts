@@ -4,7 +4,7 @@ import { resolveLayer, type LayerEntry } from "../../src/lib/game/resolveLayer";
 import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
-// reroll-layer RPCs (supabase/migrations/0006_reroll_layers.sql) — submit_roll's
+// reroll-layer RPCs (supabase/migrations/0007_reroll_layers.sql) — submit_roll's
 // layer-generic behaviour, get_current_layer_rolls_if_complete,
 // advance_round_layer, and resolve_round off a non-zero layer — the same
 // way the app drives them via src/app/rounds/actions.ts:submitRollAction.

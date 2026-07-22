@@ -12,6 +12,7 @@ import {
 } from "@/app/rounds/actions";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { TieBanner } from "@/app/rounds/TieBanner";
+import { Nav } from "@/app/Nav";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -63,6 +64,7 @@ export default async function HomePage() {
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 p-8">
       <h1 className="text-2xl font-semibold">Roll for Brew</h1>
+      <Nav active="room" />
       <p className="text-sm text-neutral-500">
         Signed in as {player?.display_name ?? player?.email ?? user.email}
       </p>

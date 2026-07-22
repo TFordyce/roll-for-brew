@@ -12,7 +12,7 @@ export type CompletedLayer = {
 };
 
 /**
- * Calls the submit_roll RPC (supabase/migrations/0006_reroll_layers.sql):
+ * Calls the submit_roll RPC (supabase/migrations/0007_reroll_layers.sql):
  * submits the caller's own in-app roll for whichever layer the round is
  * currently on (rounds.current_layer — derived server-side, never a client
  * parameter). The die value is generated server-side, not passed in.

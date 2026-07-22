@@ -12,7 +12,7 @@ import {
 // Runs against a real, dedicated test Supabase project. Exercises the
 // submit_roll / get_current_layer_rolls_if_complete / resolve_round RPCs
 // (supabase/migrations/0005_rolls_and_resolution.sql, generalized off layer
-// 0 in 0006_reroll_layers.sql) through real signed-in sessions, the same
+// 0 in 0007_reroll_layers.sql) through real signed-in sessions, the same
 // way the app drives them via
 // src/app/rounds/actions.ts:submitRollAction — start -> declare -> roll ->
 // resolve -> modifier-increment, for a round that doesn't tie or hit a nat.
