@@ -84,18 +84,22 @@ export default async function HomePage() {
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Roll for Brew</h1>
-      <Nav active="room" />
-      <p className="text-sm text-neutral-500">
+    <main className="flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+      <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
+        Roll for Brew
+      </h1>
+      <div className="rounded-md bg-parchment/90 px-3 py-1.5">
+        <Nav active="room" />
+      </div>
+      <p className="text-sm text-parchment-dim">
         Signed in as {player?.display_name ?? player?.email ?? user.email}
       </p>
 
       {activeRound ? (
-        <section className="w-full max-w-sm">
+        <section className="w-full max-w-md">
           {activeRound.status === "closed" && isTiePhase ? (
             <>
-              <h2 className="mb-2 text-lg font-medium">Rolling</h2>
+              <h2 className="mb-2 text-lg font-medium text-parchment">Rolling</h2>
               <TieBanner
                 key={currentLayer}
                 roomId={roomId}
@@ -108,7 +112,7 @@ export default async function HomePage() {
             </>
           ) : activeRound.status === "closed" ? (
             <>
-              <h2 className="mb-2 text-lg font-medium">Rolling</h2>
+              <h2 className="mb-2 text-lg font-medium text-parchment">Rolling</h2>
               <RoundReveal
                 roomId={roomId}
                 roundId={activeRound.id}
@@ -123,10 +127,10 @@ export default async function HomePage() {
               />
             </>
           ) : (
-            <div className="rounded-lg bg-wood-planks p-4">
+            <div>
               <RoundOpenLive roomId={roomId} roundId={activeRound.id} />
               <CardFrame title="Who's In?">
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-3">
                   {roster.map((entry) => (
                     <PlayerTile
                       key={entry.playerId}
@@ -173,10 +177,10 @@ export default async function HomePage() {
           ) : null}
         </section>
       ) : (
-        <section className="w-full max-w-sm">
-          <div className="rounded-lg bg-wood-planks p-4">
+        <section className="w-full max-w-md">
+          <div>
             <CardFrame title="The Room">
-              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-3">
                 {roster.map((entry) => (
                   <PlayerTile
                     key={entry.playerId}
@@ -201,12 +205,12 @@ export default async function HomePage() {
         </section>
       )}
 
-      <Link href="/settings" className="text-sm underline">
+      <Link href="/settings" className="text-sm text-parchment-dim underline hover:text-parchment">
         Settings
       </Link>
 
       <form action="/auth/signout" method="post">
-        <button type="submit" className="text-sm underline">
+        <button type="submit" className="text-sm text-parchment-dim underline hover:text-parchment">
           Sign out
         </button>
       </form>
