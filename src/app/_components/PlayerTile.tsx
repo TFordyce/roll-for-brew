@@ -1,3 +1,5 @@
+import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
+
 /**
  * A single player's tile — avatar, name, modifier — inside its own small
  * frame (issue #64). Used both for the full daily roster and the "who's in"
@@ -22,7 +24,7 @@ export function PlayerTile({
   modifier: number;
   joined?: boolean;
   isStarter?: boolean;
-  effectBadges?: ("positive" | "negative")[];
+  effectBadges?: Exclude<ActiveEffectBadge["polarity"], null>[];
 }) {
   const name = displayName ?? email;
   const initial = name.trim().charAt(0).toUpperCase() || "?";

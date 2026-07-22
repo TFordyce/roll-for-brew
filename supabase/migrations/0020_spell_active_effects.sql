@@ -306,6 +306,14 @@ grant execute on function public.set_spell_cast_target(uuid, text) to authentica
 -- state into a spell_casts row each round, per the map's data-model note.
 -- hidden_modifier (Cloud of Cream) and dispel (never persistent) fall
 -- outside the effect_kind filter here, same as advantage/disadvantage.
+--
+-- The spell_casts branch excludes casts of persistent cards (sc.duration_
+-- rounds is not null) — record_active_effect_if_persistent already gave
+-- that same cast a spell_active_effects row covering this round onward, so
+-- reading both branches unfiltered would double-count it on the round it
+-- was cast (harmless for "set" kinds since composeModifier's set lookup is
+-- idempotent on duplicates, but wrong for flat/multiplier kinds, and wrong
+-- either way against this function's "no duplicated effect state" contract).
 create or replace function public.get_round_modifier_effects(p_round_id uuid)
 returns table (target_player_id text, effect_kind text, effect_params jsonb, resolved_value numeric)
 language plpgsql
@@ -330,9 +338,12 @@ begin
   return query
     select casts.target_player_id, casts.effect_kind, casts.effect_params, casts.resolved_value
       from public.spell_casts casts
+      join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
+      join public.spell_cards sc on sc.id = sdi.card_id
      where casts.round_id = p_round_id
        and casts.target_pending = false
        and casts.effect_kind in ('flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier')
+       and sc.duration_rounds is null
     union all
     select sae.target_player_id, sae.effect_kind, sae.effect_params, null::numeric
       from public.spell_active_effects sae
@@ -461,6 +472,28 @@ $$;
 revoke execute on function public.get_room_active_effects(uuid) from public, anon;
 grant execute on function public.get_room_active_effects(uuid) to authenticated;
 
+-- Shared by get_dispellable_active_effects and end_active_effect below (the
+-- two callers that need to know what dispel-relevant card, if any, the
+-- caller currently holds), factored out to avoid a third copy of the
+-- "held card joined with its catalog row" query already duplicated between
+-- cast_spell_card (carried over from 0019) and these two.
+create or replace function public.get_held_card_effect(p_player_id text)
+returns table (instance_id uuid, casting_time text, effect_kind text, effect_params jsonb)
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  return query
+    select sdi.id, sc.casting_time, sc.effect_kind, sc.effect_params
+      from public.spell_deck_instances sdi
+      join public.spell_cards sc on sc.id = sdi.card_id
+     where sdi.held_by_player = p_player_id and sdi.location = 'held';
+end;
+$$;
+
+revoke execute on function public.get_held_card_effect(text) from public, anon;
+
 -- The active effects the caller's currently-held card can end early (the
 -- Lesser Detox target picker), scoped to the given round's room and to the
 -- tiers the held card's effect_params.tiers lists. Returns nothing (not an
@@ -489,11 +522,9 @@ begin
     raise exception 'get_dispellable_active_effects: round not found';
   end if;
 
-  select sc.effect_kind, sc.effect_params
+  select gh.effect_kind, gh.effect_params
     into v_effect_kind, v_effect_params
-    from public.spell_deck_instances sdi
-    join public.spell_cards sc on sc.id = sdi.card_id
-   where sdi.held_by_player = v_player_id and sdi.location = 'held';
+    from public.get_held_card_effect(v_player_id) gh;
 
   if v_effect_kind is distinct from 'dispel' then
     return;
@@ -551,11 +582,9 @@ begin
       using errcode = 'RFB03';
   end if;
 
-  select sdi.id, sc.casting_time, sc.effect_kind, sc.effect_params
+  select gh.instance_id, gh.casting_time, gh.effect_kind, gh.effect_params
     into v_instance_id, v_casting_time, v_effect_kind, v_effect_params
-    from public.spell_deck_instances sdi
-    join public.spell_cards sc on sc.id = sdi.card_id
-   where sdi.held_by_player = v_player_id and sdi.location = 'held';
+    from public.get_held_card_effect(v_player_id) gh;
 
   if v_instance_id is null then
     raise exception 'end_active_effect: caller is not holding a card';
