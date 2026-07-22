@@ -84,16 +84,17 @@ export default async function HomePage() {
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+      <p className="absolute right-4 top-4 rounded-md bg-parchment/90 px-3 py-1.5 font-display text-xs uppercase tracking-widest text-tavern-panel">
+        {player?.display_name ?? player?.email ?? user.email}
+      </p>
+
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
       </h1>
       <div className="rounded-md bg-parchment/90 px-3 py-1.5 font-display uppercase tracking-widest">
         <Nav active="room" />
       </div>
-      <p className="rounded-md bg-parchment/90 px-3 py-1.5 text-sm text-tavern-panel">
-        Signed in as {player?.display_name ?? player?.email ?? user.email}
-      </p>
 
       {activeRound ? (
         <section className="w-full max-w-md">
