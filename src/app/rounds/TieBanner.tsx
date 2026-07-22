@@ -4,7 +4,9 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { roomChannelName } from "@/lib/supabase/realtime";
-import { submitRollAction } from "@/app/rounds/actions";
+import type { RollInputMode } from "@/lib/supabase/playerSettings";
+import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
+import { RollBothPicker } from "@/app/rounds/RollBothPicker";
 
 export type TiedParticipant = {
   playerId: string;
@@ -16,10 +18,12 @@ export type TiedParticipant = {
  * The tie phase view (issue #20): once a layer resolves to a tie, every
  * device — tied rerollers and spectators alike — swaps the roster for this
  * banner naming the tied players. Only a tied player's own device shows an
- * active Roll button (explicit tap, no auto-roll); everyone else purely
- * spectates. Listens for the room's Realtime Broadcast channel the same way
- * RoundReveal does, so a further tie or the eventual reveal refreshes every
- * device in lockstep regardless of how many reroll layers it takes.
+ * active roll input; everyone else purely spectates. Listens for the room's
+ * Realtime Broadcast channel the same way RoundReveal does, so a further tie
+ * or the eventual reveal refreshes every device in lockstep regardless of
+ * how many reroll layers it takes. Which input(s) a tied player is offered
+ * follows their roll_input_mode preference (#22), same as the plain
+ * layer-0 roll — a reroll is still "their turn to roll".
  */
 export function TieBanner({
   roomId,
@@ -27,12 +31,14 @@ export function TieBanner({
   tiedParticipants,
   selfPlayerId,
   ownRoll,
+  rollInputMode,
 }: {
   roomId: string;
   roundId: string;
   tiedParticipants: TiedParticipant[];
   selfPlayerId: string;
   ownRoll: number | null;
+  rollInputMode: RollInputMode | null;
 }) {
   const router = useRouter();
 
@@ -65,13 +71,12 @@ export function TieBanner({
     <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
       <p className="font-medium">Tied: {names} — rerolling</p>
 
-      {isTied && ownRoll === null ? (
-        <form action={submitRollAction} className="mt-3">
-          <input type="hidden" name="roundId" value={roundId} />
-          <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
-            Roll
-          </button>
-        </form>
+      {isTied && ownRoll === null && rollInputMode === "in_app_only" ? (
+        <InAppRollForm roundId={roundId} />
+      ) : isTied && ownRoll === null && rollInputMode === "manual_only" ? (
+        <ManualRollForm roundId={roundId} />
+      ) : isTied && ownRoll === null && rollInputMode === "both" ? (
+        <RollBothPicker roundId={roundId} />
       ) : isTied ? (
         <p className="mt-2 text-neutral-500">Waiting on the other tied player{tiedParticipants.length > 2 ? "s" : ""}&hellip;</p>
       ) : (

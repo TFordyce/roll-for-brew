@@ -1,30 +1,27 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { googlePlayerId } from "@/lib/supabase/players";
+import { getCurrentPlayer } from "@/lib/supabase/players";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
-import {
-  closeRoundAction,
-  declareInAction,
-  startRoundAction,
-  submitRollAction,
-} from "@/app/rounds/actions";
+import { getRollInputMode } from "@/lib/supabase/playerSettings";
+import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
+import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
+import { RollBothPicker } from "@/app/rounds/RollBothPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { Nav } from "@/app/Nav";
 
 export default async function HomePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const current = await getCurrentPlayer(supabase);
 
-  if (!user) {
+  if (!current) {
     redirect("/login");
   }
 
-  const playerId = googlePlayerId(user);
+  const { playerId, user } = current;
 
   const { data: player } = await supabase
     .from("players")
@@ -61,6 +58,16 @@ export default async function HomePage() {
         ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
         : null;
 
+  // Whether it's this player's turn to submit a roll right now — either the
+  // round's plain layer-0 declaration (hasDeclared) or, during a tie's
+  // reroll layer, being one of the tied rerollers (isTied). Either way the
+  // player's roll_input_mode preference (#22) decides which input method(s)
+  // they're offered.
+  const isPlayersTurnToRoll =
+    activeRound?.status === "closed" && ownRoll === null && (isTiePhase ? isTied : hasDeclared);
+  const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
+  const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
+
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 p-8">
       <h1 className="text-2xl font-semibold">Roll for Brew</h1>
@@ -76,11 +83,13 @@ export default async function HomePage() {
           </h2>
           {activeRound.status === "closed" && isTiePhase ? (
             <TieBanner
+              key={currentLayer}
               roomId={roomId}
               roundId={activeRound.id}
               selfPlayerId={playerId}
               ownRoll={ownRoll}
               tiedParticipants={tiedParticipants}
+              rollInputMode={rollInputMode}
             />
           ) : activeRound.status === "closed" ? (
             <RoundReveal
@@ -139,16 +148,16 @@ export default async function HomePage() {
             </form>
           ) : null}
 
-          {activeRound.status === "closed" && !isTiePhase && hasDeclared && ownRoll === null ? (
-            <form action={submitRollAction} className="mt-3">
-              <input type="hidden" name="roundId" value={activeRound.id} />
-              <button
-                type="submit"
-                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
-              >
-                Roll
-              </button>
-            </form>
+          {needsRollInput && rollInputMode === "in_app_only" ? (
+            <InAppRollForm roundId={activeRound.id} />
+          ) : null}
+
+          {needsRollInput && rollInputMode === "manual_only" ? (
+            <ManualRollForm roundId={activeRound.id} />
+          ) : null}
+
+          {needsRollInput && rollInputMode === "both" ? (
+            <RollBothPicker key={activeRound.id} roundId={activeRound.id} />
           ) : null}
         </section>
       ) : (
@@ -176,6 +185,10 @@ export default async function HomePage() {
           </form>
         </section>
       )}
+
+      <Link href="/settings" className="text-sm underline">
+        Settings
+      </Link>
 
       <form action="/auth/signout" method="post">
         <button type="submit" className="text-sm underline">

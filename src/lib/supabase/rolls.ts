@@ -23,6 +23,26 @@ export async function submitRoll(supabase: SupabaseClient, roundId: string): Pro
 }
 
 /**
+ * Calls the submit_manual_roll RPC (supabase/migrations/
+ * 0008_player_settings_and_manual_rolls.sql): submits the caller's own
+ * manually-entered roll for whichever layer the round is currently on
+ * (rounds.current_layer — derived server-side, same as submit_roll). The
+ * value is client-supplied and trusted with no verification beyond the 1-20
+ * range.
+ */
+export async function submitManualRoll(
+  supabase: SupabaseClient,
+  roundId: string,
+  value: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("submit_manual_roll", {
+    p_round_id: roundId,
+    p_value: value,
+  });
+  if (error) throw error;
+}
+
+/**
  * Calls the get_current_layer_rolls_if_complete RPC. Returns the round's
  * current layer number and every expected roller's roll for it once
  * everyone has rolled, or null if the round is still waiting on someone.
