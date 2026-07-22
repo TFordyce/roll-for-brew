@@ -7,12 +7,14 @@ import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from 
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
+import { getOwnSpellCardState } from "@/lib/supabase/spellCards";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
+import { HeldCardWidget } from "@/app/rounds/HeldCardWidget";
 import { Nav } from "@/app/Nav";
 
 export default async function HomePage() {
@@ -33,6 +35,7 @@ export default async function HomePage() {
 
   const roomId = await enterTodaysRoom(supabase);
   const roster = await getRoomRoster(supabase, roomId);
+  const spellCardState = await getOwnSpellCardState(supabase);
 
   let activeRound = await getActiveRound(supabase, roomId);
   if (activeRound) {
@@ -88,6 +91,8 @@ export default async function HomePage() {
       <p className="text-sm text-neutral-500">
         Signed in as {player?.display_name ?? player?.email ?? user.email}
       </p>
+
+      <HeldCardWidget state={spellCardState} />
 
       {activeRound ? (
         <section className="w-full max-w-sm">

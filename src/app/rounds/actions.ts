@@ -6,6 +6,7 @@ import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabas
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import { broadcastRoundClosed } from "@/lib/supabase/realtime";
+import { resolveSpellCardSwap } from "@/lib/supabase/spellCards";
 
 /**
  * True for the two submit_roll/submit_manual_roll rejections that mean "the
@@ -23,10 +24,14 @@ import { broadcastRoundClosed } from "@/lib/supabase/realtime";
  * 0013_stale_round_error_codes.sql), not the exception message text — a
  * cosmetic wording change to a `raise exception` string can't silently
  * break this check now.
+ *
+ * Also covers RFB03 (supabase/migrations/0018_spell_deck_instances_and_draws.sql):
+ * resolve_spell_card_swap's "no matching pending swap decision" race — the
+ * same "state moved on, refresh rather than crash" shape as RFB01/RFB02.
  */
 function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  return code === "RFB01" || code === "RFB02";
+  return code === "RFB01" || code === "RFB02" || code === "RFB03";
 }
 
 export async function startRoundAction() {
@@ -108,5 +113,26 @@ export async function submitManualRollAction(formData: FormData) {
   }
   await resolveCompletedLayerIfAny(supabase, roundId);
 
+  revalidatePath("/");
+}
+
+/**
+ * Resolves a held-card keep-or-swap decision (issue #66, US6): the
+ * non-kept instance is reshuffled back into the shared deck.
+ */
+export async function resolveSpellCardSwapAction(formData: FormData) {
+  const drawId = formData.get("drawId");
+  const keepNew = formData.get("keepNew");
+
+  if (typeof drawId !== "string" || !drawId) {
+    throw new Error("resolveSpellCardSwapAction: missing drawId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await resolveSpellCardSwap(supabase, drawId, keepNew === "true");
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+  }
   revalidatePath("/");
 }
