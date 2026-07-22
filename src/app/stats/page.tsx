@@ -20,19 +20,29 @@ function windowFromParam(value: string | undefined): StatsWindow {
   return value === "last_30_days" ? "last_30_days" : "all_time";
 }
 
-function WindowToggle({ window, roomId }: { window: StatsWindow; roomId: string | null }) {
+function WindowToggle({
+  window,
+  roomId,
+}: {
+  window: StatsWindow;
+  roomId: string | null;
+}) {
   const roomQuery = roomId ? `&room=${roomId}` : "";
   return (
     <div className="flex gap-3 font-display text-xs uppercase tracking-widest">
       <Link
         href={`/stats?window=all_time${roomQuery}`}
-        className={window === "all_time" ? "text-gilt-bright" : "text-parchment-dim"}
+        className={
+          window === "all_time" ? "text-gilt-bright" : "text-parchment-dim"
+        }
       >
         All-time
       </Link>
       <Link
         href={`/stats?window=last_30_days${roomQuery}`}
-        className={window === "last_30_days" ? "text-gilt-bright" : "text-parchment-dim"}
+        className={
+          window === "last_30_days" ? "text-gilt-bright" : "text-parchment-dim"
+        }
       >
         Last 30 days
       </Link>
@@ -40,17 +50,20 @@ function WindowToggle({ window, roomId }: { window: StatsWindow; roomId: string 
   );
 }
 
+/**
+ * One divider-separated leaderboard inside the Leaderboards `CardFrame`
+ * (issue #79) — a heading plus its `RankRow` list, or the shared empty
+ * state when a leaderboard has no entries yet.
+ */
 function LeaderboardSection({
   title,
   children,
   isEmpty,
-  emptyLabel,
   first = false,
 }: {
   title: string;
   children: ReactNode;
   isEmpty: boolean;
-  emptyLabel: string;
   first?: boolean;
 }) {
   return (
@@ -59,7 +72,11 @@ function LeaderboardSection({
         {title}
       </h3>
       <div className="divide-y divide-gilt-dark/40">
-        {isEmpty ? <p className="py-2 text-sm text-parchment-dim">{emptyLabel}</p> : children}
+        {isEmpty ? (
+          <p className="py-2 text-sm text-parchment-dim">No rounds yet.</p>
+        ) : (
+          children
+        )}
       </div>
     </div>
   );
@@ -83,15 +100,18 @@ export default async function StatsPage({
   const window = windowFromParam(params.window);
   const selectedRoomId = params.room ?? null;
 
-  const [cupsMade, roundsLost, lossPercentage, modifierPeak, roomHistory] = await Promise.all([
-    getCupsMadeLeaderboard(supabase, window),
-    getRoundsLostLeaderboard(supabase, window),
-    getLossPercentageLeaderboard(supabase, window),
-    getModifierPeakLeaderboard(supabase, window),
-    getRoomHistory(supabase),
-  ]);
+  const [cupsMade, roundsLost, lossPercentage, modifierPeak, roomHistory] =
+    await Promise.all([
+      getCupsMadeLeaderboard(supabase, window),
+      getRoundsLostLeaderboard(supabase, window),
+      getLossPercentageLeaderboard(supabase, window),
+      getModifierPeakLeaderboard(supabase, window),
+      getRoomHistory(supabase),
+    ]);
 
-  const roomRounds = selectedRoomId ? await getRoomRounds(supabase, selectedRoomId) : [];
+  const roomRounds = selectedRoomId
+    ? await getRoomRounds(supabase, selectedRoomId)
+    : [];
 
   const avatarsByPlayerId = await getPlayerAvatars(supabase, [
     ...cupsMade.map((e) => e.playerId),
@@ -121,7 +141,11 @@ export default async function StatsPage({
             </div>
           }
         >
-          <LeaderboardSection title="Most cups made" isEmpty={cupsMade.length === 0} emptyLabel="No rounds yet." first>
+          <LeaderboardSection
+            title="Most cups made"
+            isEmpty={cupsMade.length === 0}
+            first
+          >
             {cupsMade.map((entry, i) => (
               <RankRow
                 key={entry.playerId}
@@ -137,7 +161,6 @@ export default async function StatsPage({
           <LeaderboardSection
             title="Luckiest (fewest rounds lost)"
             isEmpty={roundsLost.length === 0}
-            emptyLabel="No rounds yet."
           >
             {roundsLost.map((entry, i) => (
               <RankRow
@@ -154,7 +177,6 @@ export default async function StatsPage({
           <LeaderboardSection
             title="Loss percentage"
             isEmpty={lossPercentage.length === 0}
-            emptyLabel="No rounds yet."
           >
             {lossPercentage.map((entry, i) => (
               <RankRow
@@ -171,7 +193,6 @@ export default async function StatsPage({
           <LeaderboardSection
             title="Highest modifier ever reached"
             isEmpty={modifierPeak.length === 0}
-            emptyLabel="No rounds yet."
           >
             {modifierPeak.map((entry, i) => (
               <RankRow
@@ -195,14 +216,20 @@ export default async function StatsPage({
                 key={room.roomId}
                 href={`/stats?window=${window}&room=${room.roomId}`}
                 className={`flex items-center justify-between py-2 text-sm ${
-                  selectedRoomId === room.roomId ? "text-gilt-bright" : "text-parchment"
+                  selectedRoomId === room.roomId
+                    ? "text-gilt-bright"
+                    : "text-parchment"
                 }`}
               >
                 <span>{room.date}</span>
-                <span className="font-mono text-parchment-dim">{room.resolvedRoundCount} rounds</span>
+                <span className="font-mono text-parchment-dim">
+                  {room.resolvedRoundCount} rounds
+                </span>
               </Link>
             ))}
-            {roomHistory.length === 0 ? <p className="py-2 text-sm text-parchment-dim">No rooms yet.</p> : null}
+            {roomHistory.length === 0 ? (
+              <p className="py-2 text-sm text-parchment-dim">No rooms yet.</p>
+            ) : null}
           </div>
 
           {selectedRoomId ? (
@@ -221,7 +248,9 @@ export default async function StatsPage({
                 </div>
               ))}
               {roomRounds.length === 0 ? (
-                <p className="py-2 text-sm text-parchment-dim">No resolved rounds that day.</p>
+                <p className="py-2 text-sm text-parchment-dim">
+                  No resolved rounds that day.
+                </p>
               ) : null}
             </div>
           ) : null}
