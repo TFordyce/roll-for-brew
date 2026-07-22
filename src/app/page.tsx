@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { googlePlayerId } from "@/lib/supabase/players";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
-import { getActiveRound, getRoundParticipants } from "@/lib/supabase/rounds";
+import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import {
   closeRoundAction,
@@ -11,6 +11,7 @@ import {
   submitRollAction,
 } from "@/app/rounds/actions";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
+import { TieBanner } from "@/app/rounds/TieBanner";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -41,10 +42,23 @@ export default async function HomePage() {
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
-  const ownRoll =
-    activeRound?.status === "closed" && hasDeclared
-      ? await getOwnRoll(supabase, activeRound.id, playerId)
-      : null;
+  const currentLayer = activeRound?.currentLayer ?? 0;
+  const isTiePhase = activeRound?.status === "closed" && currentLayer > 0;
+  const tiedParticipants =
+    activeRound && isTiePhase
+      ? await getRoundLayerParticipants(supabase, activeRound.id, currentLayer)
+      : [];
+  const isTied = tiedParticipants.some((p) => p.playerId === playerId);
+
+  const ownRoll = !activeRound
+    ? null
+    : isTiePhase
+      ? isTied
+        ? await getOwnRoll(supabase, activeRound.id, playerId, currentLayer)
+        : null
+      : activeRound.status === "closed" && hasDeclared
+        ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
+        : null;
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 p-8">
@@ -58,7 +72,15 @@ export default async function HomePage() {
           <h2 className="mb-2 text-lg font-medium">
             {activeRound.status === "open" ? "Round open — declared in" : "Declarations closed"}
           </h2>
-          {activeRound.status === "closed" ? (
+          {activeRound.status === "closed" && isTiePhase ? (
+            <TieBanner
+              roomId={roomId}
+              roundId={activeRound.id}
+              selfPlayerId={playerId}
+              ownRoll={ownRoll}
+              tiedParticipants={tiedParticipants}
+            />
+          ) : activeRound.status === "closed" ? (
             <RoundReveal
               roomId={roomId}
               roundId={activeRound.id}
@@ -115,7 +137,7 @@ export default async function HomePage() {
             </form>
           ) : null}
 
-          {activeRound.status === "closed" && hasDeclared && ownRoll === null ? (
+          {activeRound.status === "closed" && !isTiePhase && hasDeclared && ownRoll === null ? (
             <form action={submitRollAction} className="mt-3">
               <input type="hidden" name="roundId" value={activeRound.id} />
               <button

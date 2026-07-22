@@ -13,14 +13,16 @@ export type RoundRevealParticipant = {
 };
 
 /**
- * The closed-round dice view (prototype Variant A:
+ * The layer-0 dice view (prototype Variant A:
  * prototype/roll-reveal-ui/index.html). Every participant's die spins until
  * one of two things happens: the caller personally submits their own roll
  * (that one die flips immediately — "hidden from everyone but not from
  * yourself once you've rolled"), or the room's Realtime Broadcast channel
  * delivers the round-revealed event (every die flips at once, in lockstep,
  * on every connected device — the server-authoritative synchronized
- * reveal).
+ * reveal). Also listens for layer-tied (issue #20): if layer 0 itself ties,
+ * every device needs to swap this roster for the tie banner, so it
+ * refreshes just like a reveal does.
  */
 export function RoundReveal({
   roomId,
@@ -50,6 +52,11 @@ export function RoundReveal({
         if (revealedPayload.roundId !== roundId) return;
         setRevealed(revealedPayload);
         setTimeout(() => router.refresh(), 1600);
+      })
+      .on("broadcast", { event: "layer-tied" }, ({ payload }) => {
+        const tiedPayload = payload as { roundId: string };
+        if (tiedPayload.roundId !== roundId) return;
+        router.refresh();
       })
       .subscribe();
 

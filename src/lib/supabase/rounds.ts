@@ -9,6 +9,7 @@ export type ActiveRound = {
   startedBy: string;
   status: RoundStatus;
   startedAt: string;
+  currentLayer: number;
 };
 
 export type RoundParticipant = {
@@ -58,7 +59,7 @@ export async function getActiveRound(
 ): Promise<ActiveRound | null> {
   const { data, error } = await supabase
     .from("rounds")
-    .select("id, room_id, started_by, status, started_at")
+    .select("id, room_id, started_by, status, started_at, current_layer")
     .eq("room_id", roomId)
     .in("status", ["open", "closed"])
     .maybeSingle();
@@ -72,6 +73,7 @@ export async function getActiveRound(
     startedBy: data.started_by as string,
     status: data.status as RoundStatus,
     startedAt: data.started_at as string,
+    currentLayer: data.current_layer as number,
   };
 }
 
@@ -114,6 +116,41 @@ export async function getRoundParticipants(
       displayName: player?.display_name ?? null,
       email: player?.email ?? "",
       declaredAt: row.declared_at as string,
+    };
+  });
+}
+
+export type RoundLayerParticipant = {
+  playerId: string;
+  displayName: string | null;
+  email: string;
+};
+
+/**
+ * The tied subset rerolling a round's given reroll layer (layer > 0 — layer
+ * 0's expected rollers are getRoundParticipants, since round_participants
+ * already covers it). Used for the "banner naming the tied players" and
+ * "only tied players' devices show an active Roll button" UI (issue #20).
+ */
+export async function getRoundLayerParticipants(
+  supabase: SupabaseClient,
+  roundId: string,
+  layer: number,
+): Promise<RoundLayerParticipant[]> {
+  const { data, error } = await supabase
+    .from("round_layer_participants")
+    .select("player_id, players(display_name, email)")
+    .eq("round_id", roundId)
+    .eq("layer", layer);
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => {
+    const player = unwrapJoinedPlayer(row.players);
+    return {
+      playerId: row.player_id as string,
+      displayName: player?.display_name ?? null,
+      email: player?.email ?? "",
     };
   });
 }
