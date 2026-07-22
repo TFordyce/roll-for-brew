@@ -11,6 +11,12 @@ export type RoundRevealedPayload = {
   rolls: { playerId: string; value: number }[];
 };
 
+export type LayerTiedPayload = {
+  roundId: string;
+  layer: number;
+  tiedPlayerIds: string[];
+};
+
 /**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
@@ -27,6 +33,28 @@ export async function broadcastRoundRevealed(
     const result = await channel.httpSend("round-revealed", payload);
     if (!result.success) {
       throw new Error(`broadcastRoundRevealed: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a tie transition (issue #20) once advance_round_layer has
+ * committed, so every device — tied rerollers and pure spectators alike —
+ * swaps the roster for the tie banner in lockstep, the same way
+ * broadcastRoundRevealed does for the final reveal.
+ */
+export async function broadcastLayerTied(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: LayerTiedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("layer-tied", payload);
+    if (!result.success) {
+      throw new Error(`broadcastLayerTied: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);
