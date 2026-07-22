@@ -6,6 +6,26 @@ import { closeRound, declareIn, startRound } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 
+/**
+ * True for the two submit_roll/submit_manual_roll rejections that mean "the
+ * round moved on under you" rather than a real failure — the stall-timeout
+ * checker (enforceStallTimeout, src/app/rounds/stallEnforcement.ts) runs
+ * lazily on every render, so it can cancel a round or exclude this player
+ * from the current layer between the page rendering the roll form and the
+ * form actually being submitted. Surfacing that race as a crash (the prior
+ * behaviour: throw straight through, no error boundary anywhere in
+ * src/app) sent the stalled player to a raw error page for a state change
+ * that was correct and expected; refreshing to the room's current state is
+ * the right response instead.
+ */
+function isStaleRoundError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : "";
+  return (
+    message.endsWith("round is not closed for rolling") ||
+    message.endsWith("caller is not expected to roll in the current layer")
+  );
+}
+
 export async function startRoundAction() {
   const supabase = await createClient();
   await startRound(supabase);
@@ -42,7 +62,13 @@ export async function submitRollAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  await submitRoll(supabase, roundId);
+  try {
+    await submitRoll(supabase, roundId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidatePath("/");
@@ -66,7 +92,13 @@ export async function submitManualRollAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  await submitManualRoll(supabase, roundId, value);
+  try {
+    await submitManualRoll(supabase, roundId, value);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidatePath("/");
