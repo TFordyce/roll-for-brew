@@ -4,11 +4,15 @@ import { useRouter } from "next/navigation";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
+import { CardFrame } from "@/app/_components/CardFrame";
+import { PlayerTile } from "@/app/_components/PlayerTile";
 
 export type TiedParticipant = {
   playerId: string;
   displayName: string | null;
   email: string;
+  avatarUrl: string | null;
+  modifier: number;
   excludedAt: string | null;
 };
 
@@ -47,19 +51,31 @@ export function TieBanner({
   });
 
   const isTied = tiedParticipants.some((p) => p.playerId === selfPlayerId && !p.excludedAt);
-  const names = tiedParticipants.map((p) => p.displayName ?? p.email).join(", ");
 
   return (
-    <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
-      <p className="font-medium">Tied: {names} — rerolling</p>
+    <CardFrame title="Tied — Rerolling">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-3">
+        {tiedParticipants.map((p) => (
+          <PlayerTile
+            key={p.playerId}
+            displayName={p.displayName}
+            email={p.email}
+            avatarUrl={p.avatarUrl}
+            modifier={p.modifier}
+            joined
+          />
+        ))}
+      </div>
 
       {isTied && ownRoll === null && rollInputMode ? (
         <RollInputPicker mode={rollInputMode} roundId={roundId} />
       ) : isTied ? (
-        <p className="mt-2 text-neutral-500">Waiting on the other tied player{tiedParticipants.length > 2 ? "s" : ""}&hellip;</p>
+        <p className="mt-3 font-body text-sm text-parchment-dim">
+          Waiting on the other tied player{tiedParticipants.length > 2 ? "s" : ""}&hellip;
+        </p>
       ) : (
-        <p className="mt-2 text-neutral-500">Spectating &mdash; waiting for the reroll&hellip;</p>
+        <p className="mt-3 font-body text-sm text-parchment-dim">Spectating &mdash; waiting for the reroll&hellip;</p>
       )}
-    </div>
+    </CardFrame>
   );
 }

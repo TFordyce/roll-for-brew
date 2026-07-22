@@ -18,14 +18,14 @@ export function RollBothPicker({ roundId }: { roundId: string }) {
         <button
           type="button"
           onClick={() => setChoice("in_app")}
-          className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
+          className="flex-1 rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
         >
           Roll in-app
         </button>
         <button
           type="button"
           onClick={() => setChoice("manual")}
-          className="rounded border border-neutral-900 px-3 py-1.5 text-sm text-neutral-900"
+          className="flex-1 rounded-md border-2 border-gilt px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
         >
           Enter manually
         </button>
