@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer } from "@/lib/supabase/players";
 import { ROLL_INPUT_MODES, setRollInputMode, type RollInputMode } from "@/lib/supabase/playerSettings";
 
-export async function updateRollInputModeAction(formData: FormData) {
+export type UpdateRollInputModeState = { status: "idle" } | { status: "saved" };
+
+export async function updateRollInputModeAction(
+  _prevState: UpdateRollInputModeState,
+  formData: FormData,
+): Promise<UpdateRollInputModeState> {
   const mode = formData.get("rollInputMode");
   if (typeof mode !== "string" || !ROLL_INPUT_MODES.includes(mode as RollInputMode)) {
     throw new Error("updateRollInputModeAction: invalid rollInputMode");
@@ -19,4 +24,5 @@ export async function updateRollInputModeAction(formData: FormData) {
 
   await setRollInputMode(supabase, current.playerId, mode as RollInputMode);
   revalidatePath("/settings");
+  return { status: "saved" };
 }
