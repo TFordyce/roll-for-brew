@@ -46,11 +46,21 @@ async function maybeDrawSpellCard(
  * (supabase/migrations/0020_spell_reaction_window.sql) extends it again to
  * castReactionSpellCardAction/passReactionWindowAction: reacting or passing
  * against a window that's already closed (someone else's pass just closed
- * it) is the same race, one layer up.
+ * it) is the same race, one layer up. RFB05
+ * (supabase/migrations/0023_declare_in_stale_round_error_code.sql) extends
+ * it once more to declareInAction: declaring in against a round that
+ * close_round already closed between render and submit is the same race,
+ * one phase earlier than RFB01.
  */
 function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  return code === "RFB01" || code === "RFB02" || code === "RFB03" || code === "RFB04";
+  return (
+    code === "RFB01" ||
+    code === "RFB02" ||
+    code === "RFB03" ||
+    code === "RFB04" ||
+    code === "RFB05"
+  );
 }
 
 /**
@@ -86,7 +96,13 @@ export async function declareInAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  await declareIn(supabase, roundId);
+  try {
+    await declareIn(supabase, roundId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
   revalidatePath("/");
 }
 
