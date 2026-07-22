@@ -234,7 +234,7 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
     expect(inAppError).toBeNull();
 
     const { data: complete, error: completeError } = await starter.client.rpc(
-      "get_layer0_rolls_if_complete",
+      "get_current_layer_rolls_if_complete",
       { p_round_id: roundId },
     );
     expect(completeError).toBeNull();
