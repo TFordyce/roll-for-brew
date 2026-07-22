@@ -75,21 +75,9 @@ export function SpellCardPanel({
             <form action={castSpellCardAction} className="mt-2">
               <input type="hidden" name="roundId" value={roundId} />
               {held.target === "SELF" ? null : (
-                <select
-                  name="targetPlayerId"
-                  defaultValue=""
-                  className="mb-2 w-full rounded border border-neutral-300 px-2 py-1"
-                >
-                  <option value="">Decide target once declare-in closes</option>
-                  {(held.target === "PLAYER"
-                    ? participants
-                    : otherParticipants
-                  ).map((p) => (
-                    <option key={p.playerId} value={p.playerId}>
-                      {p.displayName ?? p.email}
-                    </option>
-                  ))}
-                </select>
+                <p className="mb-2 text-xs text-neutral-600">
+                  Target is chosen once declare-in closes and the roster is final.
+                </p>
               )}
               <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-white">
                 Cast {held.cardName}

@@ -133,7 +133,12 @@ begin
      set location = 'in_deck', held_by_player = null
    where id = v_instance_id;
 
-  if v_effect_kind = 'dice_modifier' and not v_target_pending then
+  -- Resolved here regardless of v_target_pending: the die roll is a fixed
+  -- magnitude decided at cast time, independent of who it'll end up
+  -- applying to — deferring it to set_spell_cast_target would mean an
+  -- armed-before-close dice-modifier card silently never rolls its dice
+  -- (target_pending flips to false there without recomputing this).
+  if v_effect_kind = 'dice_modifier' then
     v_dice_count := (regexp_match(v_effect_params ->> 'dice', '^(\d+)d(\d+)$'))[1]::integer;
     v_dice_sides := (regexp_match(v_effect_params ->> 'dice', '^(\d+)d(\d+)$'))[2]::integer;
     v_dice_sign := coalesce((v_effect_params ->> 'sign')::integer, 1);
