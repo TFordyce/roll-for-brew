@@ -29,7 +29,16 @@ export type RoundRevealParticipant = {
  * no timeout of its own. Also listens for layer-tied (issue #20): if layer 0
  * itself ties, every device needs to swap this roster for the tie banner, so
  * it refreshes just like a reveal does.
+ *
+ * On round-revealed, a full-screen "Get the kettle on" modal covers the
+ * result until dismissed (a deliberate exception to the no-full-screen-modal
+ * precedent set for the reaction banner — this one's a one-off reveal beat,
+ * not a recurring interruption). Dismissing it starts a 5-minute idle timer
+ * that refreshes the page back to the normal room state, so a room nobody
+ * dismisses/acts on doesn't sit on the results screen indefinitely.
  */
+const RESULTS_TIMEOUT_MS = 5 * 60 * 1000;
+
 export function RoundReveal({
   roomId,
   roundId,
@@ -46,10 +55,12 @@ export function RoundReveal({
   const router = useRouter();
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
+  const [showKettleModal, setShowKettleModal] = useState(false);
 
   useEffect(() => {
     setRolls(null);
     setBrewerId(null);
+    setShowKettleModal(false);
   }, [roomId, roundId]);
 
   useRoomChannel(roomId, roundId, {
@@ -59,35 +70,60 @@ export function RoundReveal({
     "round-revealed": (payload: RoundRevealedPayload) => {
       setRolls(payload.rolls);
       setBrewerId(payload.brewerId);
-      setTimeout(() => router.refresh(), 1600);
+      setShowKettleModal(true);
     },
     "layer-tied": () => router.refresh(),
     "round-cancelled": () => router.refresh(),
   });
 
+  function dismissKettleModal() {
+    setShowKettleModal(false);
+    setTimeout(() => router.refresh(), RESULTS_TIMEOUT_MS);
+  }
+
   const revealedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.value]) ?? []);
+  const brewer = participants.find((p) => p.playerId === brewerId);
 
   return (
-    <ul className="mt-3 divide-y divide-neutral-200 rounded border border-neutral-200">
-      {participants.map((p) => {
-        const revealedValue = revealedValueByPlayerId.get(p.playerId);
-        const value = revealedValue ?? (p.playerId === selfPlayerId ? ownRoll : null);
-        const isBrewer = brewerId === p.playerId;
-
-        return (
-          <li key={p.playerId} className="flex items-center justify-between px-3 py-2 text-sm">
-            <span className="font-mono text-xs text-neutral-500">{p.modifier}</span>
-            <span>{p.displayName ?? p.email}</span>
-            <span
-              className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-mono ${
-                value === null ? "animate-spin border-neutral-400" : "border-neutral-900"
-              } ${isBrewer ? "bg-neutral-900 text-white" : ""}`}
+    <>
+      {showKettleModal && brewer ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="rounded-lg border-4 border-gilt bg-tavern-panel p-6 text-center shadow-[0_0_0_1px_theme(colors.gilt.dark),0_8px_24px_rgb(0_0_0_/_0.5)]">
+            <p className="font-display text-xl font-semibold uppercase tracking-widest text-gilt-bright">
+              Get the kettle on, {brewer.displayName ?? brewer.email}
+            </p>
+            <button
+              type="button"
+              onClick={dismissKettleModal}
+              className="mt-5 w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
             >
-              {value ?? "?"}
-            </span>
-          </li>
-        );
-      })}
-    </ul>
+              Show results
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      <ul className="mt-3 divide-y divide-neutral-200 rounded border border-neutral-200">
+        {participants.map((p) => {
+          const revealedValue = revealedValueByPlayerId.get(p.playerId);
+          const value = revealedValue ?? (p.playerId === selfPlayerId ? ownRoll : null);
+          const isBrewer = brewerId === p.playerId;
+
+          return (
+            <li key={p.playerId} className="flex items-center justify-between px-3 py-2 text-sm">
+              <span className="font-mono text-xs text-neutral-500">{p.modifier}</span>
+              <span>{p.displayName ?? p.email}</span>
+              <span
+                className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-mono ${
+                  value === null ? "animate-spin border-neutral-400" : "border-neutral-900"
+                } ${isBrewer ? "bg-neutral-900 text-white" : ""}`}
+              >
+                {value ?? "?"}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+    </>
   );
 }
