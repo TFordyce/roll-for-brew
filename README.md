@@ -76,4 +76,18 @@ npm run typecheck
 npm test
 ```
 
-The integration tests in `tests/integration/` exercise the whitelist gate, the players upsert, and room auto-creation/roster against a **real, dedicated Supabase test project** (never production) — set `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` in `.env.test` (see `.env.example`). The suite is skipped automatically if those aren't set. The test project needs the same migration and Auth Hook configuration as above (the revocation test signs in with a password to drive the real token-issuance path the Custom Access Token hook runs on — Google's own OAuth handshake can't be automated in a test).
+The integration tests in `tests/integration/` exercise the whitelist gate, the players upsert, and room auto-creation/roster against a real Supabase stack. Two ways to run them:
+
+**Local (Docker) — preferred, no cloud project needed:**
+
+```
+npm run test:integration:local
+```
+
+This uses the [Supabase CLI](https://supabase.com/docs/guides/local-development) to run a full local Postgres + Auth + Realtime stack in Docker containers — nothing leaves your machine, and there's no disposable cloud project to provision or accidentally point at prod. Requires [Docker Desktop](https://www.docker.com/products/docker-desktop/) installed and running. The script starts the stack (`supabase start`, which auto-applies `supabase/migrations/` and the Auth Hooks in `supabase/config.toml` — the same hooks the hosted project needs configuring manually for, see step 3 above), reads the generated local URL/keys, and runs `vitest run tests/integration` against them. The stack is left running afterwards for fast repeat runs; stop it with `npm run supabase:stop` when done, or reset its data with `npm run supabase:reset`. Supabase Studio for poking at the local DB is at `http://127.0.0.1:54323` while the stack is up.
+
+**Remote (dedicated cloud test project) — the original setup:**
+
+Set `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` in `.env.test` (see `.env.example`), then run `npm test`. Use a disposable/dedicated Supabase project, never production. The suite is skipped automatically if those aren't set. The test project needs the same migration and Auth Hook configuration as above.
+
+Either way, the revocation test signs in with a password to drive the real token-issuance path the Custom Access Token hook runs on — Google's own OAuth handshake can't be automated in a test.
