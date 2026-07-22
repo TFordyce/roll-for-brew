@@ -10,9 +10,10 @@ import {
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
-// submit_roll / get_layer0_rolls_if_complete / resolve_round RPCs
-// (supabase/migrations/0005_rolls_and_resolution.sql) through real signed-in
-// sessions, the same way the app drives them via
+// submit_roll / get_current_layer_rolls_if_complete / resolve_round RPCs
+// (supabase/migrations/0005_rolls_and_resolution.sql, generalized off layer
+// 0 in 0006_reroll_layers.sql) through real signed-in sessions, the same
+// way the app drives them via
 // src/app/rounds/actions.ts:submitRollAction — start -> declare -> roll ->
 // resolve -> modifier-increment, for a round that doesn't tie or hit a nat.
 describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
@@ -85,7 +86,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     expect(ownRoll!.value).toBeLessThanOrEqual(20);
 
     // Round isn't complete yet — resolution read returns nothing.
-    const { data: incomplete } = await starter.client.rpc("get_layer0_rolls_if_complete", {
+    const { data: incomplete } = await starter.client.rpc("get_current_layer_rolls_if_complete", {
       p_round_id: roundId,
     });
     expect(incomplete).toEqual([]);
@@ -96,15 +97,15 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     expect(otherRollErr).toBeNull();
 
     // Now that everyone has rolled, the complete layer is readable — but
-    // only to a participant of this round (get_layer0_rolls_if_complete
+    // only to a participant of this round (get_current_layer_rolls_if_complete
     // guards against a side door around the "hidden until revealed" rule).
     const { error: nonParticipantReadError } = await (
       await signUp("roll-nonparticipant")
-    ).client.rpc("get_layer0_rolls_if_complete", { p_round_id: roundId });
+    ).client.rpc("get_current_layer_rolls_if_complete", { p_round_id: roundId });
     expect(nonParticipantReadError).not.toBeNull();
 
     const { data: complete, error: completeError } = await starter.client.rpc(
-      "get_layer0_rolls_if_complete",
+      "get_current_layer_rolls_if_complete",
       { p_round_id: roundId },
     );
     expect(completeError).toBeNull();
@@ -220,7 +221,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     await starter.client.rpc("submit_roll", { p_round_id: roundId });
     await other.client.rpc("submit_roll", { p_round_id: roundId });
 
-    const { data: rows } = await starter.client.rpc("get_layer0_rolls_if_complete", {
+    const { data: rows } = await starter.client.rpc("get_current_layer_rolls_if_complete", {
       p_round_id: roundId,
     });
     const complete = rows as LayerZeroRow[];

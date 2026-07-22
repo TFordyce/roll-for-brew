@@ -2,7 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabase/rounds";
+import {
+  closeRound,
+  declareIn,
+  getRoundParticipants,
+  getRoundRoomId,
+  startRound,
+} from "@/lib/supabase/rounds";
 import {
   advanceRoundLayer,
   getCurrentLayerRollsIfComplete,
@@ -73,12 +79,19 @@ export async function submitRollAction(formData: FormData) {
     const roomId = await getRoundRoomId(supabase, roundId);
 
     if (outcome.outcome === "brewer") {
-      await resolveRound(supabase, roundId, outcome.playerId, rolls.length);
+      // cups_made is the number of cups the brewer owes everyone who
+      // played this round — the round's original participant count, not
+      // the (possibly much narrower) tied subset that rolled the final
+      // layer.
+      const participants = await getRoundParticipants(supabase, roundId);
+      const cupsMade = participants.length;
+
+      await resolveRound(supabase, roundId, outcome.playerId, cupsMade);
 
       await broadcastRoundRevealed(supabase, roomId, {
         roundId,
         brewerId: outcome.playerId,
-        cupsMade: rolls.length,
+        cupsMade,
         rolls: rolls.map((r) => ({ playerId: r.playerId, value: r.value })),
       });
     } else {
