@@ -27,6 +27,54 @@ export async function getLayerEnteredAt(
 }
 
 /**
+ * The ids of players currently expected to roll a round's given layer —
+ * i.e. declared/tied and not yet excluded (issue #21's excluded_at rule).
+ * Calls the get_expected_layer_roller_ids RPC (supabase/migrations/
+ * 0014_consolidate_expected_layer_roller.sql), the single source of truth
+ * also backing is_expected_layer_roller and count_expected_layer_rollers, so
+ * callers here (stallEnforcement.ts) never have to re-derive the excluded_at
+ * rule themselves from raw participant rows.
+ */
+export async function getExpectedLayerRollerIds(
+  supabase: SupabaseClient,
+  roundId: string,
+  layer: number,
+): Promise<Set<string>> {
+  const { data, error } = await supabase.rpc("get_expected_layer_roller_ids", {
+    p_round_id: roundId,
+    p_layer: layer,
+  });
+  if (error) throw error;
+
+  const rows = (data ?? []) as { player_id: string }[];
+  return new Set(rows.map((row) => row.player_id));
+}
+
+/**
+ * Whether a given player is currently expected to roll a round's given
+ * layer — declared/tied for it and not excluded. Calls the
+ * is_expected_layer_roller RPC (supabase/migrations/0007_reroll_layers.sql,
+ * redefined atop get_expected_layer_roller_ids by 0014), the same predicate
+ * submit_roll/submit_manual_roll gate on, so page.tsx's "is it this player's
+ * turn to roll" check reads SQL's answer instead of re-deriving it from
+ * hasDeclared/isTied/excludedAt locally.
+ */
+export async function isExpectedLayerRoller(
+  supabase: SupabaseClient,
+  roundId: string,
+  playerId: string,
+  layer: number,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("is_expected_layer_roller", {
+    p_round_id: roundId,
+    p_player_id: playerId,
+    p_layer: layer,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
  * The ids of players who've already rolled the round's current layer —
  * values withheld (rolls stay hidden until reveal per rolls' own RLS
  * policy). Calls the get_current_layer_roller_ids RPC

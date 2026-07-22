@@ -6,6 +6,7 @@ import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
+import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
@@ -55,9 +56,6 @@ export default async function HomePage() {
       ? await getRoundLayerParticipants(supabase, activeRound.id, currentLayer)
       : [];
   const isTied = tiedParticipants.some((p) => p.playerId === playerId);
-  const isExcluded = isTiePhase
-    ? tiedParticipants.some((p) => p.playerId === playerId && p.excludedAt)
-    : participants.some((p) => p.playerId === playerId && p.excludedAt);
 
   const ownRoll = !activeRound
     ? null
@@ -69,17 +67,18 @@ export default async function HomePage() {
         ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
         : null;
 
-  // Whether it's this player's turn to submit a roll right now — either the
-  // round's plain layer-0 declaration (hasDeclared) or, during a tie's
-  // reroll layer, being one of the tied rerollers (isTied) — and not someone
-  // stall-timeout enforcement has already excluded from this layer (#21).
-  // Either way the player's roll_input_mode preference (#22) decides which
-  // input method(s) they're offered.
-  const isPlayersTurnToRoll =
-    activeRound?.status === "closed" &&
-    ownRoll === null &&
-    !isExcluded &&
-    (isTiePhase ? isTied : hasDeclared);
+  // Whether it's this player's turn to submit a roll right now: they're
+  // expected to roll the round's current layer (is_expected_layer_roller,
+  // issue #40 — the same SQL predicate submit_roll/submit_manual_roll gate
+  // on, so this reads its answer rather than re-deriving hasDeclared/isTied/
+  // excludedAt locally) and haven't already rolled it. The player's
+  // roll_input_mode preference (#22) then decides which input method(s)
+  // they're offered.
+  const isExpectedToRoll =
+    activeRound?.status === "closed"
+      ? await isExpectedLayerRoller(supabase, activeRound.id, playerId, currentLayer)
+      : false;
+  const isPlayersTurnToRoll = isExpectedToRoll && ownRoll === null;
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 

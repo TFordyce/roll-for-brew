@@ -1,11 +1,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hasStalled } from "@/lib/game/stallTimeout";
-import { getRoundById, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
+import { getRoundById } from "@/lib/supabase/rounds";
 import {
   cancelRound,
   excludeRoundParticipant,
   getCompletedLayerRollsForStallResolution,
   getCurrentLayerRollerIds,
+  getExpectedLayerRollerIds,
   getLayerEnteredAt,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
@@ -57,16 +58,10 @@ export async function enforceStallTimeout(
   const layerStartedAt = layer === 0 ? round.closedAt : await getLayerEnteredAt(supabase, roundId, layer);
   if (!layerStartedAt || !hasStalled(layerStartedAt, nowDate)) return { action: "none" };
 
-  const expected =
-    layer === 0
-      ? await getRoundParticipants(supabase, roundId)
-      : await getRoundLayerParticipants(supabase, roundId, layer);
-  const active = expected.filter((p) => !p.excludedAt);
+  const expectedPlayerIds = await getExpectedLayerRollerIds(supabase, roundId, layer);
 
   const rolledPlayerIds = await getCurrentLayerRollerIds(supabase, roundId);
-  const stalledPlayerIds = active
-    .map((p) => p.playerId)
-    .filter((playerId) => !rolledPlayerIds.has(playerId));
+  const stalledPlayerIds = [...expectedPlayerIds].filter((playerId) => !rolledPlayerIds.has(playerId));
 
   if (stalledPlayerIds.length === 0) return { action: "none" };
 
@@ -74,7 +69,7 @@ export async function enforceStallTimeout(
     await excludeRoundParticipant(supabase, roundId, playerId, layer);
   }
 
-  const remainingActiveCount = active.length - stalledPlayerIds.length;
+  const remainingActiveCount = expectedPlayerIds.size - stalledPlayerIds.length;
   if (remainingActiveCount < 2) {
     await cancelRound(supabase, roundId);
     await broadcastRoundCancelled(supabase, round.roomId, { roundId });
