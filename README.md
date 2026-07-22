@@ -28,6 +28,19 @@ How it's wired (see `supabase/migrations/0003_rooms_and_room_players.sql`):
 - `public.enter_todays_room()` — a `security definer` Postgres function, callable via RPC by any `authenticated` user. It derives the caller's player id server-side from their own `auth.users` row (never from a client-supplied parameter, so a client can only ever enter a room as themselves), computes "today" as `(now() at time zone 'Europe/London')::date`, and idempotently upserts the day's `rooms` row and the caller's `room_players` row (`on conflict do nothing`, so a repeat login the same day joins the existing room without duplicating it or resetting an in-progress modifier).
 - The home page (`src/app/page.tsx`, via `src/lib/supabase/rooms.ts`) calls `enter_todays_room()` on every load, then renders the roster by joining `room_players` to `players`, ordered by modifier descending.
 
+## Round lifecycle: start / declare-in / close gating
+
+Any player can start a Round from their own device (auto-enrolling themselves); other present players explicitly declare "I'm in"; only the starter can close declarations, gated on at least 2 declared players. Only one active Round (open or closed, i.e. not yet resolved/cancelled) per Room at a time. This ticket stops at the gated close — no rolling/resolution logic yet (that's a later ticket).
+
+How it's wired (see `supabase/migrations/0004_round_lifecycle.sql`):
+
+- `public.rounds(id, room_id, started_by, status, started_at, resolved_at, brewer_id, cups_made)` — `status` is one of `open | closed | resolved | cancelled` (only `open`/`closed` are reachable so far). A partial unique index on `room_id` where `status in ('open', 'closed')` enforces one active round per room; a second `start_round()` while one is active fails cleanly with a `23505` unique violation.
+- `public.round_participants(round_id, player_id, declared_at)` — the declare-in ("I'm in") phase, append-only.
+- `public.start_round()` — `security definer` RPC. Opens a round in the caller's room for today and auto-enrolls the caller as its first participant. Caller identity is always derived server-side from `auth.users`, never a client parameter.
+- `public.declare_in(p_round_id)` — `security definer` RPC. Idempotently declares the caller in, but only while the round is still `open` and only if the caller already has a `room_players` row in that round's room (i.e. they logged in before or during the round being open) — a player who logs in mid-day is never retroactively added to a round that was already open.
+- `public.close_round(p_round_id)` — `security definer` RPC. Only succeeds for the round's `started_by` player, and only once at least 2 players have declared in; otherwise raises an exception.
+- The home page (`src/app/page.tsx`, via `src/lib/supabase/rounds.ts`) shows the day's full roster with a "Start round" button when there's no active round, and switches to a live declared-in list — distinct from the full roster — with "I'm in" / "Close declarations" actions once a round is active.
+
 ### Local/project setup
 
 1. Create a Supabase project.

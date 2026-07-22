@@ -67,6 +67,7 @@ export function createTestCleanup(admin: SupabaseClient) {
   const whitelistedEmails: string[] = [];
   const playerIds: string[] = [];
   const roomIds: string[] = [];
+  const roundIds: string[] = [];
 
   return {
     trackUser(userId: string) {
@@ -92,7 +93,19 @@ export function createTestCleanup(admin: SupabaseClient) {
     trackRoom(roomId: string) {
       roomIds.push(roomId);
     },
+    /**
+     * Tracks a public.rounds.id created via start_round/direct seeding.
+     * Rounds created against *today's* shared room can't be cleaned up by
+     * deleting the room (other tests/real usage share it), so they need
+     * their own teardown; round_participants cascade off the round.
+     */
+    trackRound(roundId: string) {
+      roundIds.push(roundId);
+    },
     async run() {
+      for (const roundId of roundIds.splice(0)) {
+        await admin.from("rounds").delete().eq("id", roundId);
+      }
       for (const roomId of roomIds.splice(0)) {
         await admin.from("room_players").delete().eq("room_id", roomId);
         await admin.from("rooms").delete().eq("id", roomId);
