@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
@@ -30,12 +30,17 @@ export type RoundRevealParticipant = {
  * itself ties, every device needs to swap this roster for the tie banner, so
  * it refreshes just like a reveal does.
  *
- * On round-revealed, a full-screen "Get the kettle on" modal covers the
- * result until dismissed (a deliberate exception to the no-full-screen-modal
- * precedent set for the reaction banner — this one's a one-off reveal beat,
- * not a recurring interruption). Dismissing it starts a 5-minute idle timer
- * that refreshes the page back to the normal room state, so a room nobody
- * dismisses/acts on doesn't sit on the results screen indefinitely.
+ * On round-revealed, the losing player (the brewer) gets a full-screen
+ * "Get the kettle on" modal covering the result until they dismiss it (a
+ * deliberate exception to the no-full-screen-modal precedent set for the
+ * reaction banner — this one's a one-off reveal beat aimed only at the
+ * brewer, not a recurring interruption for everyone). Everyone else sees the
+ * results immediately, no modal. Once results are visible to a given
+ * player — immediately for non-brewers, on dismiss for the brewer — a
+ * 5-minute idle timer refreshes the page back to the normal room state, so a
+ * room nobody navigates away from doesn't sit on the results screen
+ * indefinitely. The timer is cleared on unmount so navigating away cancels
+ * it rather than firing late.
  */
 const RESULTS_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -56,11 +61,27 @@ export function RoundReveal({
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
   const [showKettleModal, setShowKettleModal] = useState(false);
+  const resultsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function clearResultsTimeout() {
+    if (resultsTimeoutRef.current !== null) {
+      clearTimeout(resultsTimeoutRef.current);
+      resultsTimeoutRef.current = null;
+    }
+  }
+
+  function startResultsTimeout() {
+    clearResultsTimeout();
+    resultsTimeoutRef.current = setTimeout(() => router.refresh(), RESULTS_TIMEOUT_MS);
+  }
 
   useEffect(() => {
     setRolls(null);
     setBrewerId(null);
     setShowKettleModal(false);
+    clearResultsTimeout();
+    return clearResultsTimeout;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, roundId]);
 
   useRoomChannel(roomId, roundId, {
@@ -70,7 +91,11 @@ export function RoundReveal({
     "round-revealed": (payload: RoundRevealedPayload) => {
       setRolls(payload.rolls);
       setBrewerId(payload.brewerId);
-      setShowKettleModal(true);
+      if (payload.brewerId === selfPlayerId) {
+        setShowKettleModal(true);
+      } else {
+        startResultsTimeout();
+      }
     },
     "layer-tied": () => router.refresh(),
     "round-cancelled": () => router.refresh(),
@@ -78,7 +103,7 @@ export function RoundReveal({
 
   function dismissKettleModal() {
     setShowKettleModal(false);
-    setTimeout(() => router.refresh(), RESULTS_TIMEOUT_MS);
+    startResultsTimeout();
   }
 
   const revealedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.value]) ?? []);
