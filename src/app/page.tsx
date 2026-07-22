@@ -14,6 +14,9 @@ import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { Nav } from "@/app/Nav";
+import { CardFrame } from "@/app/_components/CardFrame";
+import { PlayerTile } from "@/app/_components/PlayerTile";
+import { SignOutBadge } from "@/app/_components/SignOutBadge";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -82,127 +85,131 @@ export default async function HomePage() {
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 p-8">
-      <h1 className="text-2xl font-semibold">Roll for Brew</h1>
-      <Nav active="room" />
-      <p className="text-sm text-neutral-500">
-        Signed in as {player?.display_name ?? player?.email ?? user.email}
-      </p>
+    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+      <SignOutBadge name={player?.display_name ?? player?.email ?? user.email ?? ""} />
+
+      <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
+        Roll for Brew
+      </h1>
+      <div className="rounded-md bg-parchment/90 px-3 py-1.5 font-display uppercase tracking-widest">
+        <Nav active="room" />
+      </div>
 
       {activeRound ? (
-        <section className="w-full max-w-sm">
-          <h2 className="mb-2 text-lg font-medium">
-            {activeRound.status === "open" ? "Round open — declared in" : "Declarations closed"}
-          </h2>
+        <section className="w-full max-w-md">
           {activeRound.status === "closed" && isTiePhase ? (
-            <TieBanner
-              key={currentLayer}
-              roomId={roomId}
-              roundId={activeRound.id}
-              selfPlayerId={playerId}
-              ownRoll={ownRoll}
-              tiedParticipants={tiedParticipants}
-              rollInputMode={rollInputMode}
-            />
-          ) : activeRound.status === "closed" ? (
-            <RoundReveal
-              roomId={roomId}
-              roundId={activeRound.id}
-              selfPlayerId={playerId}
-              ownRoll={ownRoll}
-              participants={participants.map((entry) => ({
-                playerId: entry.playerId,
-                displayName: entry.displayName,
-                email: entry.email,
-                modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
-              }))}
-            />
-          ) : (
             <>
-              <RoundOpenLive roomId={roomId} roundId={activeRound.id} />
-              <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">
-                {participants.map((entry) => (
-                  <li
-                    key={entry.playerId}
-                    className="flex items-center justify-between px-3 py-2 text-sm"
-                  >
-                    <span>
-                      {entry.displayName ?? entry.email}
-                      {entry.playerId === activeRound.startedBy ? " (starter)" : ""}
-                    </span>
-                    <span className="font-mono">
-                      {modifierByPlayerId.get(entry.playerId) ?? 0}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+              <h2 className="mb-2 text-lg font-medium text-parchment">Rolling</h2>
+              <TieBanner
+                key={currentLayer}
+                roomId={roomId}
+                roundId={activeRound.id}
+                selfPlayerId={playerId}
+                ownRoll={ownRoll}
+                tiedParticipants={tiedParticipants}
+                rollInputMode={rollInputMode}
+              />
             </>
+          ) : activeRound.status === "closed" ? (
+            <>
+              <h2 className="mb-2 text-lg font-medium text-parchment">Rolling</h2>
+              <RoundReveal
+                roomId={roomId}
+                roundId={activeRound.id}
+                selfPlayerId={playerId}
+                ownRoll={ownRoll}
+                participants={participants.map((entry) => ({
+                  playerId: entry.playerId,
+                  displayName: entry.displayName,
+                  email: entry.email,
+                  modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
+                }))}
+              />
+            </>
+          ) : (
+            <div>
+              <RoundOpenLive roomId={roomId} roundId={activeRound.id} />
+              <CardFrame title="Who's In?">
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-3">
+                  {roster.map((entry) => (
+                    <PlayerTile
+                      key={entry.playerId}
+                      displayName={entry.displayName}
+                      email={entry.email}
+                      avatarUrl={entry.avatarUrl}
+                      modifier={entry.modifier}
+                      joined={participants.some((p) => p.playerId === entry.playerId)}
+                      isStarter={entry.playerId === activeRound.startedBy}
+                    />
+                  ))}
+                </div>
+
+                {!hasDeclared ? (
+                  <form action={declareInAction} className="mt-4">
+                    <input type="hidden" name="roundId" value={activeRound.id} />
+                    <button
+                      type="submit"
+                      className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
+                    >
+                      I&rsquo;m in
+                    </button>
+                  </form>
+                ) : null}
+
+                {isStarter ? (
+                  <form action={closeRoundAction} className="mt-3">
+                    <input type="hidden" name="roundId" value={activeRound.id} />
+                    <button
+                      type="submit"
+                      disabled={!canClose}
+                      className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark"
+                    >
+                      {canClose ? "Let's roll" : `Need ${2 - participants.length} more to roll`}
+                    </button>
+                  </form>
+                ) : null}
+              </CardFrame>
+            </div>
           )}
-
-          {activeRound.status === "open" && !hasDeclared ? (
-            <form action={declareInAction} className="mt-3">
-              <input type="hidden" name="roundId" value={activeRound.id} />
-              <button
-                type="submit"
-                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
-              >
-                I&rsquo;m in
-              </button>
-            </form>
-          ) : null}
-
-          {isStarter && activeRound.status === "open" ? (
-            <form action={closeRoundAction} className="mt-3">
-              <input type="hidden" name="roundId" value={activeRound.id} />
-              <button
-                type="submit"
-                disabled={!canClose}
-                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                Close declarations{canClose ? "" : ` (need ${2 - participants.length} more)`}
-              </button>
-            </form>
-          ) : null}
 
           {needsRollInput && rollInputMode ? (
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
         </section>
       ) : (
-        <section className="w-full max-w-sm">
-          <h2 className="mb-2 text-lg font-medium">Room</h2>
-          <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">
-            {roster.map((entry) => (
-              <li
-                key={entry.playerId}
-                className="flex items-center justify-between px-3 py-2 text-sm"
-              >
-                <span>{entry.displayName ?? entry.email}</span>
-                <span className="font-mono">{entry.modifier}</span>
-              </li>
-            ))}
-          </ul>
+        <section className="w-full max-w-md">
+          <div>
+            <CardFrame title="The Room">
+              <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-3">
+                {roster.map((entry) => (
+                  <PlayerTile
+                    key={entry.playerId}
+                    displayName={entry.displayName}
+                    email={entry.email}
+                    avatarUrl={entry.avatarUrl}
+                    modifier={entry.modifier}
+                  />
+                ))}
+              </div>
 
-          <form action={startRoundAction} className="mt-3">
-            <button
-              type="submit"
-              className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
-            >
-              Start round
-            </button>
-          </form>
+              <form action={startRoundAction} className="mt-4">
+                <button
+                  type="submit"
+                  className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
+                >
+                  Start Round
+                </button>
+              </form>
+            </CardFrame>
+          </div>
         </section>
       )}
 
-      <Link href="/settings" className="text-sm underline">
-        Settings
-      </Link>
-
-      <form action="/auth/signout" method="post">
-        <button type="submit" className="text-sm underline">
-          Sign out
-        </button>
-      </form>
+      <div className="rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
+        <Link href="/settings" className="text-tavern-panel underline hover:text-ember">
+          Settings
+        </Link>
+      </div>
     </main>
   );
 }

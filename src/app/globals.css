@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer utilities {
+  /*
+   * Tiled wood-plank backdrop (issue #64) — the pixel-art texture supplied
+   * during grilling as an explicit "for now" placeholder for a fuller
+   * illustrated tavern scene (later pass). Tiled at its native 256x256 with
+   * pixelated rendering so it stays crisp rather than blurring when scaled.
+   */
+  .bg-wood-planks {
+    background-color: theme("colors.tavern.plank");
+    background-image: url("/wood-planks.png");
+    background-repeat: repeat;
+    background-size: 256px 256px;
+    image-rendering: pixelated;
+  }
+}
