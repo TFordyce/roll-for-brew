@@ -2,10 +2,10 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
-  createTestAnonClient,
   createTestCleanup,
   hasAnonTestEnv,
   hasTestEnv,
+  signUpSignInAndEnterRoom,
   uniqueTestEmail,
 } from "./setup";
 
@@ -24,35 +24,12 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
 
   afterEach(() => cleanup.run());
 
-  async function signUpSignInAndEnterRoom(label: string) {
-    const email = uniqueTestEmail(label);
-    const password = `Test-password-${Math.random().toString(36).slice(2)}!`;
-    const googleSub = `google-sub-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    cleanup.trackWhitelistedEmail(email);
-    cleanup.trackPlayerId(googleSub);
-
-    await admin.from("whitelist").insert({ email: email.toLowerCase() });
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      user_metadata: { sub: googleSub, name: `Player ${label}` },
-    });
-    expect(error).toBeNull();
-    cleanup.trackUser(data.user!.id);
-
-    const client = createTestAnonClient();
-    const { error: signInError } = await client.auth.signInWithPassword({ email, password });
-    expect(signInError).toBeNull();
-
-    const { data: roomId, error: roomError } = await client.rpc("enter_todays_room");
-    expect(roomError).toBeNull();
-
-    return { client, googleSub, roomId: roomId as string };
+  function signUpSignInAndEnter(label: string) {
+    return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
   it("starting a round auto-enrolls the starter as its first participant", async () => {
-    const { client, googleSub, roomId } = await signUpSignInAndEnterRoom("starter");
+    const { client, googleSub, roomId } = await signUpSignInAndEnter("starter");
 
     const { data: roundId, error } = await client.rpc("start_round");
     expect(error).toBeNull();
@@ -76,7 +53,7 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("rejects a second start attempt while a round is already open in the same room", async () => {
-    const { client } = await signUpSignInAndEnterRoom("double-start");
+    const { client } = await signUpSignInAndEnter("double-start");
 
     const { data: roundId, error: firstError } = await client.rpc("start_round");
     expect(firstError).toBeNull();
@@ -88,9 +65,9 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
 
   it("lets another present player declare in while the round is open", async () => {
     const { client: starterClient, googleSub: starterSub } =
-      await signUpSignInAndEnterRoom("declare-starter");
+      await signUpSignInAndEnter("declare-starter");
     const { client: otherClient, googleSub: otherSub } =
-      await signUpSignInAndEnterRoom("declare-other");
+      await signUpSignInAndEnter("declare-other");
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -111,8 +88,8 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("rejects a close attempt from anyone other than the round's starter", async () => {
-    const { client: starterClient } = await signUpSignInAndEnterRoom("close-auth-starter");
-    const { client: otherClient } = await signUpSignInAndEnterRoom("close-auth-other");
+    const { client: starterClient } = await signUpSignInAndEnter("close-auth-starter");
+    const { client: otherClient } = await signUpSignInAndEnter("close-auth-other");
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -128,7 +105,7 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("blocks close until at least 2 players have declared in", async () => {
-    const { client: starterClient } = await signUpSignInAndEnterRoom("gate-starter");
+    const { client: starterClient } = await signUpSignInAndEnter("gate-starter");
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -143,8 +120,8 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("lets the starter close once at least 2 players have declared in", async () => {
-    const { client: starterClient } = await signUpSignInAndEnterRoom("gate-pass-starter");
-    const { client: otherClient } = await signUpSignInAndEnterRoom("gate-pass-other");
+    const { client: starterClient } = await signUpSignInAndEnter("gate-pass-starter");
+    const { client: otherClient } = await signUpSignInAndEnter("gate-pass-other");
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -160,8 +137,8 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("does not retroactively add a player who logs in mid-day to an already-open round", async () => {
-    const { client: starterClient } = await signUpSignInAndEnterRoom("mid-day-starter");
-    const { googleSub: lateSub } = await signUpSignInAndEnterRoom("mid-day-late");
+    const { client: starterClient } = await signUpSignInAndEnter("mid-day-starter");
+    const { googleSub: lateSub } = await signUpSignInAndEnter("mid-day-late");
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);

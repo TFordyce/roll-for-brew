@@ -76,6 +76,22 @@ export async function getActiveRound(
 }
 
 /**
+ * The room a round belongs to — needed after a round has resolved (and so
+ * no longer shows up via getActiveRound) to address its room's Realtime
+ * broadcast channel.
+ */
+export async function getRoundRoomId(supabase: SupabaseClient, roundId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("rounds")
+    .select("room_id")
+    .eq("id", roundId)
+    .single();
+
+  if (error) throw error;
+  return data.room_id as string;
+}
+
+/**
  * The round's live declared-in list, for the Room tab's "who's actually
  * playing this round" view — distinct from the day's full roster.
  */

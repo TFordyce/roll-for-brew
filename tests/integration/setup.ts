@@ -59,6 +59,43 @@ export async function removeFromWhitelist(admin: SupabaseClient, email: string) 
 }
 
 /**
+ * Signs up a whitelisted test user, signs them in via the anon client (the
+ * only way to drive GoTrue's real token-issuance path, same as
+ * createTestAnonClient's docs above), and enters today's room — the common
+ * setup every RPC-level integration test in this suite starts from.
+ */
+export async function signUpSignInAndEnterRoom(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+  label: string,
+) {
+  const email = uniqueTestEmail(label);
+  const password = `Test-password-${Math.random().toString(36).slice(2)}!`;
+  const googleSub = `google-sub-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  cleanup.trackWhitelistedEmail(email);
+  cleanup.trackPlayerId(googleSub);
+
+  await admin.from("whitelist").insert({ email: email.toLowerCase() });
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { sub: googleSub, name: `Player ${label}` },
+  });
+  if (error) throw error;
+  cleanup.trackUser(data.user!.id);
+
+  const client = createTestAnonClient();
+  const { error: signInError } = await client.auth.signInWithPassword({ email, password });
+  if (signInError) throw signInError;
+
+  const { data: roomId, error: roomError } = await client.rpc("enter_todays_room");
+  if (roomError) throw roomError;
+
+  return { client, googleSub, roomId: roomId as string };
+}
+
+/**
  * Tracks entities created during a test so they can be torn down in one
  * afterEach, instead of every test file hand-rolling the same arrays.
  */
