@@ -28,21 +28,28 @@ describe.skipIf(!hasTestEnv)("whitelist gate (auth hooks)", () => {
 
   afterEach(() => cleanup.run());
 
-  it("rejects a non-whitelisted identity outright — no user, no session", async () => {
-    const email = uniqueTestEmail("rejected");
+  // Uses the anon client's self-serve signUp rather than the Admin API: the
+  // Admin API (admin.createUser) is a privileged bypass in GoTrue that never
+  // invokes the "before user created" hook, so it would always succeed
+  // regardless of the whitelist. signUp goes through the real GoTrue signup
+  // path, which does call the hook — the same path an OAuth sign-in takes.
+  it.skipIf(!hasAnonTestEnv)(
+    "rejects a non-whitelisted identity outright — no user, no session",
+    async () => {
+      const email = uniqueTestEmail("rejected");
+      const password = `Test-password-${Math.random().toString(36).slice(2)}!`;
 
-    const { data, error } = await admin.auth.admin.createUser({
-      email,
-      email_confirm: true,
-      user_metadata: { sub: "fake-google-sub-rejected", name: "Rejected Person" },
-    });
+      const anon = createTestAnonClient();
+      const { data, error } = await anon.auth.signUp({ email, password });
 
-    expect(error).not.toBeNull();
-    expect(data.user).toBeNull();
+      expect(error).not.toBeNull();
+      expect(data.user).toBeNull();
+      expect(data.session).toBeNull();
 
-    const { data: lookup } = await admin.auth.admin.listUsers();
-    expect(lookup.users.some((u) => u.email === email)).toBe(false);
-  });
+      const { data: lookup } = await admin.auth.admin.listUsers();
+      expect(lookup.users.some((u) => u.email === email)).toBe(false);
+    },
+  );
 
   it("accepts a whitelisted identity and reaches a created user", async () => {
     const email = uniqueTestEmail("accepted");
