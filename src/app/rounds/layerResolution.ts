@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getRoundParticipants, getRoundRoomId } from "@/lib/supabase/rounds";
 import { advanceRoundLayer, getCurrentLayerRollsIfComplete, resolveRound, type CompletedLayer } from "@/lib/supabase/rolls";
 import { broadcastLayerTied, broadcastRoundRevealed } from "@/lib/supabase/realtime";
+import { getRoundModifierEffects } from "@/lib/supabase/spellCasts";
 import { resolveLayer } from "@/lib/game/resolveLayer";
+import { composeModifier } from "@/lib/game/modifierBucket";
 
 /**
  * applyLayerOutcome's persistence/broadcast calls, factored out as an
@@ -14,6 +16,7 @@ import { resolveLayer } from "@/lib/game/resolveLayer";
 export type ApplyLayerOutcomeDeps = {
   getRoundRoomId: typeof getRoundRoomId;
   getRoundParticipants: typeof getRoundParticipants;
+  getRoundModifierEffects: typeof getRoundModifierEffects;
   resolveRound: typeof resolveRound;
   advanceRoundLayer: typeof advanceRoundLayer;
   broadcastRoundRevealed: typeof broadcastRoundRevealed;
@@ -23,6 +26,7 @@ export type ApplyLayerOutcomeDeps = {
 const defaultDeps: ApplyLayerOutcomeDeps = {
   getRoundRoomId,
   getRoundParticipants,
+  getRoundModifierEffects,
   resolveRound,
   advanceRoundLayer,
   broadcastRoundRevealed,
@@ -44,8 +48,13 @@ export async function applyLayerOutcome(
   deps: ApplyLayerOutcomeDeps = defaultDeps,
 ): Promise<void> {
   const { rolls } = completedLayer;
+  const effectsByPlayer = await deps.getRoundModifierEffects(supabase, roundId);
   const outcome = resolveLayer(
-    rolls.map((r) => ({ playerId: r.playerId, roll: r.value, modifier: r.modifierSnapshot })),
+    rolls.map((r) => ({
+      playerId: r.playerId,
+      roll: r.value,
+      modifier: composeModifier(r.modifierSnapshot, effectsByPlayer.get(r.playerId) ?? []),
+    })),
   );
 
   const roomId = await deps.getRoundRoomId(supabase, roundId);

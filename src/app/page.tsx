@@ -13,6 +13,9 @@ import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
+import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
+import { getMySpellCards } from "@/lib/supabase/spellCards";
+import { getMyPendingCasts } from "@/lib/supabase/spellCasts";
 import { Nav } from "@/app/Nav";
 
 export default async function HomePage() {
@@ -47,6 +50,12 @@ export default async function HomePage() {
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
+
+  const heldSpellCards = await getMySpellCards(supabase);
+  const pendingSpellCasts =
+    activeRound && activeRound.status === "closed"
+      ? await getMyPendingCasts(supabase, activeRound.id)
+      : [];
 
   const currentLayer = activeRound?.currentLayer ?? 0;
   const isTiePhase = activeRound?.status === "closed" && currentLayer > 0;
@@ -88,6 +97,16 @@ export default async function HomePage() {
       <p className="text-sm text-neutral-500">
         Signed in as {player?.display_name ?? player?.email ?? user.email}
       </p>
+
+      <SpellCardPanel
+        heldCards={heldSpellCards}
+        pendingCasts={pendingSpellCasts}
+        roundId={activeRound?.id ?? null}
+        roundIsOpen={activeRound?.status === "open"}
+        roundIsClosed={activeRound?.status === "closed"}
+        participants={participants}
+        selfPlayerId={playerId}
+      />
 
       {activeRound ? (
         <section className="w-full max-w-sm">

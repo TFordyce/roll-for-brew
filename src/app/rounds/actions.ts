@@ -6,6 +6,22 @@ import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabas
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import { broadcastRoundClosed } from "@/lib/supabase/realtime";
+import { drawSpellCard, resolveCardSwap } from "@/lib/supabase/spellCards";
+import { castSpellCard, setSpellCastTarget } from "@/lib/supabase/spellCasts";
+
+/**
+ * Draws a spell card if the just-submitted value is a natural 1 or 20
+ * (issue #66) — scoped here, at the main round roll's submission, so a
+ * card's own resolution roll (e.g. a future counterspell DC check) never
+ * triggers a draw (user story 32).
+ */
+async function maybeDrawSpellCard(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  value: number,
+) {
+  if (value === 1) await drawSpellCard(supabase, "nat1");
+  else if (value === 20) await drawSpellCard(supabase, "nat20");
+}
 
 /**
  * True for the two submit_roll/submit_manual_roll rejections that mean "the
@@ -22,11 +38,14 @@ import { broadcastRoundClosed } from "@/lib/supabase/realtime";
  * Keyed off the RFB01/RFB02 Postgres error codes (supabase/migrations/
  * 0013_stale_round_error_codes.sql), not the exception message text — a
  * cosmetic wording change to a `raise exception` string can't silently
- * break this check now.
+ * break this check now. RFB03 (supabase/migrations/0019_spell_casts_pre_roll.sql)
+ * extends the same convention to castSpellCardAction/setSpellCastTargetAction:
+ * casting/targeting racing against declare-in closing is exactly the same
+ * "round moved on under you" shape as a stale roll.
  */
 function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  return code === "RFB01" || code === "RFB02";
+  return code === "RFB01" || code === "RFB02" || code === "RFB03";
 }
 
 export async function startRoundAction() {
@@ -69,13 +88,15 @@ export async function submitRollAction(formData: FormData) {
   }
 
   const supabase = await createClient();
+  let value: number;
   try {
-    await submitRoll(supabase, roundId);
+    value = await submitRoll(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
     return;
   }
+  await maybeDrawSpellCard(supabase, value);
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidatePath("/");
@@ -106,7 +127,75 @@ export async function submitManualRollAction(formData: FormData) {
     revalidatePath("/");
     return;
   }
+  await maybeDrawSpellCard(supabase, value);
   await resolveCompletedLayerIfAny(supabase, roundId);
+
+  revalidatePath("/");
+}
+
+/**
+ * Resolves a pending keep-or-swap decision (issue #66, user story 6):
+ * keeps either the newly-drawn card or the one already held.
+ */
+export async function resolveCardSwapAction(formData: FormData) {
+  const keepNew = formData.get("keepNew") === "true";
+
+  const supabase = await createClient();
+  await resolveCardSwap(supabase, keepNew);
+  revalidatePath("/");
+}
+
+/**
+ * Casts the caller's held Action card for the given round's declare-in
+ * window (issue #67). targetPlayerId is omitted to arm an OPPONENT/PLAYER
+ * card before the participant roster is final; setSpellCastTargetAction
+ * fills it in once declare-in closes.
+ */
+export async function castSpellCardAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  const rawTarget = formData.get("targetPlayerId");
+  const targetPlayerId = typeof rawTarget === "string" && rawTarget ? rawTarget : undefined;
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("castSpellCardAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await castSpellCard(supabase, roundId, targetPlayerId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
+
+  revalidatePath("/");
+}
+
+/**
+ * Fills in the deferred target for a card armed before declare-in closed
+ * (issue #67, user story 23) — only valid once the round has closed and the
+ * roster is final.
+ */
+export async function setSpellCastTargetAction(formData: FormData) {
+  const castId = formData.get("castId");
+  const targetPlayerId = formData.get("targetPlayerId");
+
+  if (typeof castId !== "string" || !castId) {
+    throw new Error("setSpellCastTargetAction: missing castId");
+  }
+  if (typeof targetPlayerId !== "string" || !targetPlayerId) {
+    throw new Error("setSpellCastTargetAction: missing targetPlayerId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await setSpellCastTarget(supabase, castId, targetPlayerId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
 
   revalidatePath("/");
 }
