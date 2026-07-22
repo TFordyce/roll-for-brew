@@ -18,7 +18,15 @@
 -- contest roll as soon as it's cast already gives the LIFO ordering the map
 -- calls for (the newest cast's fate-deciding roll always happens before the
 -- older cast it targets is ever read for its own modifier-bucket effect,
--- which only happens later at layer-finalize time).
+-- which only happens later at layer-finalize time). Known limit of this
+-- simplification: it doesn't unwind a side effect an already-resolved cast
+-- already applied. A reaction targeting a cast that itself already flipped
+-- another cast's negated/redirected state (a counter-counterspell) only
+-- flips *that* cast's own negated flag going forward — it doesn't retroactively
+-- undo the earlier flip. True full-stack-walk-at-close semantics would
+-- handle that, but no card in the currently-mapped slice (Tannin Tantrum,
+-- Mug Mirror) can produce that chain, so it's deferred rather than built
+-- speculatively ahead of a card that needs it.
 create table public.spell_reaction_windows (
   id uuid primary key default gen_random_uuid(),
   round_id uuid not null references public.rounds (id) on delete cascade,
@@ -104,13 +112,10 @@ security definer
 set search_path = public
 as $$
 declare
-  v_room_id uuid;
   v_window_id uuid;
   v_eligible_count integer;
 begin
-  select room_id into v_room_id from public.rounds where id = p_round_id;
-
-  if v_room_id is null then
+  if not exists (select 1 from public.rounds where id = p_round_id) then
     raise exception 'open_reaction_window: round not found';
   end if;
 
@@ -118,11 +123,17 @@ begin
   values (p_round_id, p_layer)
   returning id into v_window_id;
 
+  -- Eligibility is scoped to this round's declared-in participants (not
+  -- every room member), so a room member who never declared in can't hold
+  -- the reaction window open for a round they aren't part of. Still "any
+  -- holder of a Reaction card", not just the roll's/cast's own target — the
+  -- map's user story 19 is about widening past the target, not past the
+  -- round's roster.
   select count(*) into v_eligible_count
     from public.spell_deck_instances sdi
     join public.spell_cards sc on sc.id = sdi.card_id
-    join public.room_players rp on rp.player_id = sdi.held_by_player
-   where sdi.location = 'held' and sc.casting_time = 'R' and rp.room_id = v_room_id;
+    join public.round_participants rp on rp.player_id = sdi.held_by_player
+   where sdi.location = 'held' and sc.casting_time = 'R' and rp.round_id = p_round_id;
 
   if v_eligible_count = 0 then
     update public.spell_reaction_windows set status = 'closed', closed_at = now()
@@ -159,6 +170,10 @@ begin
         select 1 from public.spell_deck_instances sdi
         join public.spell_cards sc on sc.id = sdi.card_id
        where sdi.held_by_player = v_player_id and sdi.location = 'held' and sc.casting_time = 'R'
+         and exists (
+           select 1 from public.round_participants rp
+            where rp.round_id = p_round_id and rp.player_id = v_player_id
+         )
       ),
       exists (
         select 1 from public.spell_reaction_passes p
@@ -181,7 +196,7 @@ grant execute on function public.get_open_reaction_window(uuid) to authenticated
 create or replace function public.get_reaction_stack(p_round_id uuid)
 returns table (
   cast_id uuid, card_name text, caster_id text, caster_name text,
-  target_stamp text, negated boolean, parent_cast_id uuid
+  target_stamp text, negated boolean, parent_cast_id uuid, seq bigint
 )
 language plpgsql
 security definer
@@ -190,7 +205,7 @@ as $$
 begin
   return query
     select casts.id, sc.name, casts.caster_id, coalesce(p.display_name, p.email),
-      sc.target, casts.negated, casts.parent_cast_id
+      sc.target, casts.negated, casts.parent_cast_id, casts.seq
       from public.spell_casts casts
       join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
       join public.spell_cards sc on sc.id = sdi.card_id
@@ -258,6 +273,17 @@ begin
   if v_window_id is null then
     raise exception 'cast_reaction_spell_card: no open reaction window for this round'
       using errcode = 'RFB04';
+  end if;
+
+  -- Only this round's own declared-in participants can react into its
+  -- window — same round_participants scoping as the eligibility counts in
+  -- open_reaction_window/pass_reaction_window, so a room member who never
+  -- declared in can't cast into a round they aren't part of.
+  if not exists (
+    select 1 from public.round_participants
+     where round_id = p_round_id and player_id = v_player_id
+  ) then
+    raise exception 'cast_reaction_spell_card: caller is not a participant in this round';
   end if;
 
   select sdi.id, sc.id, sc.casting_time, sc.target, sc.effect_kind, sc.effect_params
@@ -381,7 +407,6 @@ set search_path = public
 as $$
 declare
   v_player_id text;
-  v_room_id uuid;
   v_window_id uuid;
   v_poll_round integer;
   v_eligible_count integer;
@@ -389,8 +414,6 @@ declare
   v_closed boolean := false;
 begin
   v_player_id := public.current_player_id();
-
-  select room_id into v_room_id from public.rounds where id = p_round_id;
 
   select id, poll_round into v_window_id, v_poll_round
     from public.spell_reaction_windows
@@ -408,19 +431,21 @@ begin
   values (v_window_id, v_poll_round, v_player_id)
   on conflict (window_id, poll_round, player_id) do nothing;
 
+  -- Same round_participants scoping as open_reaction_window: eligibility is
+  -- recomputed fresh against this round's roster, not the room at large.
   select count(*) into v_eligible_count
     from public.spell_deck_instances sdi
     join public.spell_cards sc on sc.id = sdi.card_id
-    join public.room_players rp on rp.player_id = sdi.held_by_player
-   where sdi.location = 'held' and sc.casting_time = 'R' and rp.room_id = v_room_id;
+    join public.round_participants rp on rp.player_id = sdi.held_by_player
+   where sdi.location = 'held' and sc.casting_time = 'R' and rp.round_id = p_round_id;
 
   select count(*) into v_passed_count
     from public.spell_reaction_passes p
     join public.spell_deck_instances sdi on sdi.held_by_player = p.player_id
     join public.spell_cards sc on sc.id = sdi.card_id
-    join public.room_players rp on rp.player_id = sdi.held_by_player
+    join public.round_participants rp on rp.player_id = sdi.held_by_player
    where p.window_id = v_window_id and p.poll_round = v_poll_round
-     and sdi.location = 'held' and sc.casting_time = 'R' and rp.room_id = v_room_id;
+     and sdi.location = 'held' and sc.casting_time = 'R' and rp.round_id = p_round_id;
 
   if v_passed_count >= v_eligible_count then
     update public.spell_reaction_windows set status = 'closed', closed_at = now()

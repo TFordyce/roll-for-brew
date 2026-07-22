@@ -6,6 +6,7 @@ import { castReactionSpellCardAction, passReactionWindowAction } from "@/app/rou
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { ReactionStackEntry } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
+import { orderStackForResolution } from "@/lib/game/reactionStack";
 
 /**
  * The reaction window's ribbon banner (issue #68): a bottom bar over the
@@ -45,7 +46,10 @@ export function ReactionBanner({
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
   // A CARD-target reaction (contested_negate/redirect) can only target a
   // stack entry that hasn't already been negated by an earlier reaction.
-  const negatableStack = stack.filter((entry) => !entry.negated);
+  // Ordered LIFO (most recently cast first, src/lib/game/reactionStack.ts)
+  // so the picker offers the top of the stack first — the entry a further
+  // reaction would most naturally be responding to.
+  const negatableStack = orderStackForResolution(stack.filter((entry) => !entry.negated));
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t-2 border-purple-400 bg-purple-950/95 p-3 text-sm text-white shadow-lg">

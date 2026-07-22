@@ -16,6 +16,7 @@ export type ReactionStackEntry = {
   targetStamp: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
   negated: boolean;
   parentCastId: string | null;
+  seq: number;
 };
 
 /**
@@ -90,6 +91,7 @@ export async function getReactionStack(
     target_stamp: ReactionStackEntry["targetStamp"];
     negated: boolean;
     parent_cast_id: string | null;
+    seq: number;
   }[]).map((row) => ({
     castId: row.cast_id,
     cardName: row.card_name,
@@ -98,6 +100,7 @@ export async function getReactionStack(
     targetStamp: row.target_stamp,
     negated: row.negated,
     parentCastId: row.parent_cast_id,
+    seq: row.seq,
   }));
 }
 
