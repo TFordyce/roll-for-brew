@@ -12,14 +12,19 @@ export type CompletedLayer = {
 };
 
 /**
- * Calls the submit_roll RPC (supabase/migrations/0007_reroll_layers.sql):
+ * Calls the submit_roll RPC (supabase/migrations/0007_reroll_layers.sql,
+ * return type changed to integer in 0019_spell_casts_pre_roll.sql):
  * submits the caller's own in-app roll for whichever layer the round is
  * currently on (rounds.current_layer — derived server-side, never a client
  * parameter). The die value is generated server-side, not passed in.
+ * Returns the final kept raw d20 value (after any advantage/disadvantage
+ * roll-twice resolution) so the caller can detect a nat-1/nat-20 for the
+ * spell-card draw trigger (issue #66) without a second round trip.
  */
-export async function submitRoll(supabase: SupabaseClient, roundId: string): Promise<void> {
-  const { error } = await supabase.rpc("submit_roll", { p_round_id: roundId });
+export async function submitRoll(supabase: SupabaseClient, roundId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("submit_roll", { p_round_id: roundId });
   if (error) throw error;
+  return data as number;
 }
 
 /**
