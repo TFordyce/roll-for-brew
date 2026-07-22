@@ -641,7 +641,11 @@ grant execute on function public.end_active_effect(uuid, uuid) to authenticated;
 -- client can distinguish a dispel-kind held card (which needs the
 -- get_dispellable_active_effects target picker, not the plain cast form)
 -- without guessing from casting_time/target alone.
-create or replace function public.get_my_spell_cards()
+-- Adding effect_kind changes the function's OUT-parameter row type, which
+-- create-or-replace can't do in place (42P13) — drop it first.
+drop function if exists public.get_my_spell_cards();
+
+create function public.get_my_spell_cards()
 returns table (
   instance_id uuid,
   location text,
