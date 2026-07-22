@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { googlePlayerId } from "@/lib/supabase/players";
+import { getCurrentPlayer } from "@/lib/supabase/players";
 import { ROLL_INPUT_MODES, setRollInputMode, type RollInputMode } from "@/lib/supabase/playerSettings";
 
 export async function updateRollInputModeAction(formData: FormData) {
@@ -12,13 +12,11 @@ export async function updateRollInputModeAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
+  const current = await getCurrentPlayer(supabase);
+  if (!current) {
     throw new Error("updateRollInputModeAction: not authenticated");
   }
 
-  await setRollInputMode(supabase, googlePlayerId(user), mode as RollInputMode);
+  await setRollInputMode(supabase, current.playerId, mode as RollInputMode);
   revalidatePath("/settings");
 }

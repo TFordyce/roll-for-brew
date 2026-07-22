@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { submitManualRollAction, submitRollAction } from "@/app/rounds/actions";
+import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 
 /**
  * The roll_input_mode = 'both' experience (issue #22): no locked-in mode, so
@@ -33,31 +33,9 @@ export function RollBothPicker({ roundId }: { roundId: string }) {
     );
   }
 
-  if (choice === "in_app") {
-    return (
-      <form action={submitRollAction} className="mt-3">
-        <input type="hidden" name="roundId" value={roundId} />
-        <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
-          Roll
-        </button>
-      </form>
-    );
-  }
-
-  return (
-    <form action={submitManualRollAction} className="mt-3 flex items-center gap-2">
-      <input type="hidden" name="roundId" value={roundId} />
-      <input
-        type="number"
-        name="value"
-        min={1}
-        max={20}
-        required
-        className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm"
-      />
-      <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
-        Submit
-      </button>
-    </form>
+  return choice === "in_app" ? (
+    <InAppRollForm roundId={roundId} />
+  ) : (
+    <ManualRollForm roundId={roundId} />
   );
 }

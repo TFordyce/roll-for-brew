@@ -171,18 +171,58 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
     expect(error).not.toBeNull();
   });
 
+  // Covers the acceptance criterion "Integration test covering manual roll
+  // submission and input_mode recording for all three preference settings"
+  // directly: for each of in_app_only / manual_only / both, a player who has
+  // set that preference submits a roll and rolls.input_mode records the
+  // actual input method used — not the preference itself, since (per the
+  // spec) 'both' has no locked-in mode and the preference never gates which
+  // RPC a caller may invoke server-side.
+  it.each([
+    { preference: "in_app_only", submittedVia: "in_app" as const },
+    { preference: "manual_only", submittedVia: "manual" as const },
+    { preference: "both", submittedVia: "in_app" as const },
+    { preference: "both", submittedVia: "manual" as const },
+  ] as const)(
+    "records input_mode='$submittedVia' for a player whose preference is '$preference'",
+    async ({ preference, submittedVia }) => {
+      const { starter, other, roundId } = await startCloseAndDeclare(
+        `pref-${preference}-${submittedVia}-starter`,
+        `pref-${preference}-${submittedVia}-other`,
+      );
+
+      const { error: settingsError } = await starter.client
+        .from("player_settings")
+        .upsert({ player_id: starter.googleSub, roll_input_mode: preference });
+      expect(settingsError).toBeNull();
+
+      const { error: submitError } =
+        submittedVia === "manual"
+          ? await starter.client.rpc("submit_manual_roll", { p_round_id: roundId, p_value: 13 })
+          : await starter.client.rpc("submit_roll", { p_round_id: roundId });
+      expect(submitError).toBeNull();
+
+      const { error: otherSubmitError } = await other.client.rpc("submit_roll", {
+        p_round_id: roundId,
+      });
+      expect(otherSubmitError).toBeNull();
+
+      const { data: row, error: rowError } = await admin
+        .from("rolls")
+        .select("input_mode")
+        .eq("round_id", roundId)
+        .eq("player_id", starter.googleSub)
+        .single();
+      expect(rowError).toBeNull();
+      expect(row!.input_mode).toBe(submittedVia);
+    },
+  );
+
   it("allows a mix of in-app and manual rolls to complete the same layer regardless of each player's preference", async () => {
     const { starter, other, roundId } = await startCloseAndDeclare(
       "mixed-input-starter",
       "mixed-input-other",
     );
-
-    await starter.client
-      .from("player_settings")
-      .upsert({ player_id: starter.googleSub, roll_input_mode: "both" });
-    await other.client
-      .from("player_settings")
-      .upsert({ player_id: other.googleSub, roll_input_mode: "manual_only" });
 
     const { error: manualError } = await starter.client.rpc("submit_manual_roll", {
       p_round_id: roundId,

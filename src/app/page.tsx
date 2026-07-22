@@ -1,32 +1,25 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { googlePlayerId } from "@/lib/supabase/players";
+import { getCurrentPlayer } from "@/lib/supabase/players";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
-import {
-  closeRoundAction,
-  declareInAction,
-  startRoundAction,
-  submitManualRollAction,
-  submitRollAction,
-} from "@/app/rounds/actions";
+import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
+import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 import { RollBothPicker } from "@/app/rounds/RollBothPicker";
 
 export default async function HomePage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const current = await getCurrentPlayer(supabase);
 
-  if (!user) {
+  if (!current) {
     redirect("/login");
   }
 
-  const playerId = googlePlayerId(user);
+  const { playerId, user } = current;
 
   const { data: player } = await supabase
     .from("players")
@@ -123,35 +116,11 @@ export default async function HomePage() {
           ) : null}
 
           {needsRollInput && rollInputMode === "in_app_only" ? (
-            <form action={submitRollAction} className="mt-3">
-              <input type="hidden" name="roundId" value={activeRound.id} />
-              <button
-                type="submit"
-                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
-              >
-                Roll
-              </button>
-            </form>
+            <InAppRollForm roundId={activeRound.id} />
           ) : null}
 
           {needsRollInput && rollInputMode === "manual_only" ? (
-            <form action={submitManualRollAction} className="mt-3 flex items-center gap-2">
-              <input type="hidden" name="roundId" value={activeRound.id} />
-              <input
-                type="number"
-                name="value"
-                min={1}
-                max={20}
-                required
-                className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm"
-              />
-              <button
-                type="submit"
-                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
-              >
-                Submit
-              </button>
-            </form>
+            <ManualRollForm roundId={activeRound.id} />
           ) : null}
 
           {needsRollInput && rollInputMode === "both" ? (

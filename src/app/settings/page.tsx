@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { googlePlayerId } from "@/lib/supabase/players";
+import { getCurrentPlayer } from "@/lib/supabase/players";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { updateRollInputModeAction } from "@/app/settings/actions";
 
@@ -25,16 +25,13 @@ const ROLL_INPUT_MODE_OPTIONS = [
 
 export default async function SettingsPage() {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const current = await getCurrentPlayer(supabase);
 
-  if (!user) {
+  if (!current) {
     redirect("/login");
   }
 
-  const playerId = googlePlayerId(user);
-  const rollInputMode = await getRollInputMode(supabase, playerId);
+  const rollInputMode = await getRollInputMode(supabase, current.playerId);
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 p-8">
