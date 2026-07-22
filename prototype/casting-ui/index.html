@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PROTOTYPE — Casting UI/animation (issue #57)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /*
+    THROWAWAY PROTOTYPE — answers wayfinder ticket #57 (Casting UI/animation
+    prototype), a child of the Spell Cards spec map (#51):
+    https://github.com/TFordyce/roll-for-brew/issues/57
+
+    Walks one linear demo script across 3 simulated "devices" (Alice, Bob,
+    Carl — same convention as prototype/roll-reveal-ui/index.html for #7):
+    holding an armed spell card -> declare-in closes -> post-close target
+    picker (targets aren't knowable until participants lock) -> synchronized
+    dice reveal -> effect badges on the roster -> a reaction-phase prompt
+    overlaid on the already-revealed dice. The reaction-phase overlay has two
+    switchable treatments (?variant=A|B) since that's the one open design
+    question — everything else here reflects decisions already made on the
+    map. Not wired to any backend; driven by the "Next" demo button plus a
+    couple of explicit in-flow actions (open card, enable, pick target,
+    react yes/no).
+  */
+  :root {
+    color-scheme: dark;
+    --bg: #14161c;
+    --panel: #1d2029;
+    --panel-2: #262b38;
+    --border: #343b4d;
+    --text: #e8e9ee;
+    --muted: #8b93a7;
+    --accent: #ffb454;
+    --detriment: #ff6767;
+    --boon: #ffd23f;
+    --armed: #6ee7b7;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 120px;
+  }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; max-width: 720px; }
+  .controls {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 24px;
+  }
+  .controls button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .controls button:hover { border-color: var(--accent); }
+  .controls button:disabled { opacity: 0.35; cursor: not-allowed; }
+  .controls .phase { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .variant-pill {
+    display: flex; align-items: center; gap: 6px; background: var(--panel-2);
+    border: 1px solid var(--border); border-radius: 999px; padding: 4px 6px 4px 12px;
+    font-size: 12px; color: var(--muted);
+  }
+  .variant-pill button {
+    padding: 4px 10px; border-radius: 999px; font-size: 12px;
+  }
+  .variant-pill button.active { background: var(--accent); color: #1a1200; border-color: var(--accent); }
+
+  .devices {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 20px;
+    max-width: 1040px;
+  }
+  .device {
+    position: relative;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 16px;
+    min-height: 420px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .device-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    color: var(--muted); margin-bottom: 10px; text-align: center;
+  }
+  .device-label b { color: var(--text); }
+
+  .roster { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    background: var(--panel-2); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+    transition: background 0.15s, outline 0.15s;
+  }
+  .row .name { display: flex; align-items: center; gap: 6px; }
+  .row .mod { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 16px; height: 16px; padding: 0 4px; border-radius: 999px;
+    font-size: 9px; font-weight: 700; line-height: 1;
+  }
+  .badge.detriment { background: var(--detriment); color: #2a0000; }
+  .badge.boon { background: var(--boon); color: #2a1e00; }
+
+  /* targeting mode */
+  .row.targetable { cursor: pointer; outline: 1px dashed transparent; }
+  .row.targetable:hover { outline-color: var(--accent); }
+  .row.targeted { outline: 2px solid var(--accent); background: #33281a; }
+  .targeting-banner {
+    font-size: 12px; color: var(--accent); background: #2a2210; border: 1px solid #4d3a12;
+    border-radius: 8px; padding: 6px 10px; margin-bottom: 10px;
+  }
+
+  /* dice reveal */
+  .die {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; border-radius: 6px; border: 1px solid var(--border);
+    font-size: 13px; font-family: ui-monospace, monospace;
+  }
+  .die.spinning { border-color: var(--muted); animation: spin 0.6s linear infinite; }
+  .die.revealed { border-color: var(--text); }
+  .die.brewer { background: var(--text); color: #14161c; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+  /* held card widget, docked bottom-right of a device */
+  .card-widget {
+    position: absolute;
+    bottom: 14px; right: 14px;
+    width: 54px; height: 76px;
+    border-radius: 8px;
+    background: linear-gradient(160deg, #2c2440, #1a1626);
+    border: 2px solid #4a3d70;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 4px; text-align: center; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  }
+  .card-widget:hover { transform: translateY(-2px); }
+  .card-widget .icon { font-size: 18px; }
+  .card-widget .name { font-size: 8px; color: var(--muted); margin-top: 2px; line-height: 1.1; }
+  .card-widget.armed {
+    border-color: var(--armed);
+    box-shadow: 0 0 0 2px rgba(110,231,183,0.35), 0 4px 14px rgba(0,0,0,0.5);
+  }
+  .card-widget.armed::after {
+    content: "ARMED"; position: absolute; top: -8px; font-size: 7px; letter-spacing: 0.05em;
+    background: var(--armed); color: #062018; padding: 1px 5px; border-radius: 999px; font-weight: 700;
+  }
+
+  /* modal */
+  .modal-backdrop {
+    position: fixed; inset: 0; background: rgba(10,10,14,0.72);
+    display: flex; align-items: center; justify-content: center; z-index: 40;
+  }
+  .modal-backdrop.hidden { display: none; }
+  .card-modal {
+    width: 260px; background: linear-gradient(160deg, #2c2440, #1a1626);
+    border: 2px solid #4a3d70; border-radius: 16px; padding: 18px;
+    text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+  .card-modal .art {
+    width: 100%; height: 130px; border-radius: 10px; margin-bottom: 12px;
+    background: repeating-linear-gradient(45deg, #3a2f5c, #3a2f5c 10px, #33294f 10px, #33294f 20px);
+    display: flex; align-items: center; justify-content: center; font-size: 40px;
+  }
+  .card-modal h3 { margin: 0 0 6px; font-size: 15px; }
+  .card-modal .tag {
+    display: inline-block; font-size: 10px; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 2px 8px; margin-bottom: 8px;
+  }
+  .card-modal p { font-size: 12px; color: var(--muted); margin: 0 0 14px; }
+  .card-modal .actions { display: flex; gap: 8px; justify-content: center; }
+  .card-modal button {
+    background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px;
+  }
+  .card-modal button.enable { background: var(--armed); color: #062018; border-color: var(--armed); font-weight: 600; }
+
+  /* reaction overlays */
+  .reaction-overlay { position: absolute; inset: 0; z-index: 10; }
+  /* A: banner/ribbon across the frozen reveal */
+  .reaction-overlay.variant-a {
+    display: flex; flex-direction: column; justify-content: flex-end;
+  }
+  .ribbon {
+    background: linear-gradient(90deg, #4a1f1f, #2a1010);
+    border-top: 2px solid var(--detriment);
+    padding: 10px 12px; font-size: 12px;
+  }
+  .ribbon .title { color: var(--detriment); font-weight: 700; letter-spacing: 0.03em; font-size: 11px; margin-bottom: 4px; }
+  .ribbon .row-actions { display: flex; gap: 8px; margin-top: 8px; }
+  .ribbon button {
+    flex: 1; padding: 6px 0; border-radius: 6px; font-size: 12px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); cursor: pointer;
+  }
+  .ribbon button.yes { background: var(--detriment); color: #2a0000; border-color: var(--detriment); font-weight: 600; }
+
+  /* B: dimmed backdrop with modal-style prompt */
+  .reaction-overlay.variant-b {
+    background: rgba(8,6,10,0.82);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .reaction-modal {
+    width: 88%; background: var(--panel); border: 1px solid var(--detriment);
+    border-radius: 14px; padding: 16px; text-align: center;
+    box-shadow: 0 0 0 1px rgba(255,103,103,0.15), 0 20px 50px rgba(0,0,0,0.6);
+  }
+  .reaction-modal .icon { font-size: 26px; margin-bottom: 6px; }
+  .reaction-modal .title { font-size: 13px; font-weight: 700; color: var(--detriment); margin-bottom: 4px; }
+  .reaction-modal p { font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+  .reaction-modal .row-actions { display: flex; gap: 8px; }
+  .reaction-modal button {
+    flex: 1; padding: 8px 0; border-radius: 8px; font-size: 12px; border: 1px solid var(--border);
+    background: var(--panel-2); color: var(--text); cursor: pointer;
+  }
+  .reaction-modal button.yes { background: var(--detriment); color: #2a0000; border-color: var(--detriment); font-weight: 600; }
+
+  .toast {
+    position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%);
+    background: var(--panel-2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 14px; font-size: 12px; color: var(--text); z-index: 60;
+    opacity: 0; transition: opacity 0.25s;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<h1>PROTOTYPE — Casting UI/animation</h1>
+<p class="sub">
+  Answers <a href="https://github.com/TFordyce/roll-for-brew/issues/57" style="color: var(--accent)">issue #57</a>,
+  child of the <a href="https://github.com/TFordyce/roll-for-brew/issues/51" style="color: var(--accent)">Spell Cards spec map</a>.
+  Alice holds an armed, opponent-targeting card (Hex of the Broken Biscuit); Bob holds a self-buff (Two Sugars);
+  Carl holds a reaction card (Milky Brew). Everything except the reaction-phase overlay reflects decisions already
+  made on the map — the overlay has two candidate treatments, switchable below.
+</p>
+
+<div class="controls">
+  <button id="btn-next">Next ▸</button>
+  <button id="btn-reset">Reset</button>
+  <div class="variant-pill">
+    Reaction overlay:
+    <button id="variant-a-btn">A — ribbon</button>
+    <button id="variant-b-btn">B — dimmed modal</button>
+  </div>
+  <div class="phase" id="phase-label">Phase: room</div>
+</div>
+
+<div class="devices" id="devices"></div>
+
+<div id="modal-root"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  let variant = params.get("variant") === "B" ? "B" : "A";
+
+  const players = [
+    { id: "alice", name: "Alice", mod: 2 },
+    { id: "bob",   name: "Bob",   mod: -1 },
+    { id: "carl",  name: "Carl",  mod: 0 },
+  ];
+
+  const PHASES = ["room", "declare", "targeting", "revealing", "revealed", "reaction", "done"];
+  let phaseIndex = 0;
+
+  // per-player transient state
+  let aliceCardOpen = false;
+  let aliceCardArmed = false;
+  let aliceTarget = null;       // player id Hex is aimed at
+  let bobCardArmed = false;     // Two Sugars auto-arms when opened+enabled too, but pre-armed for brevity
+  let dice = { alice: null, bob: null, carl: null };
+  let spinning = false;
+  let reactionResolved = false;
+
+  const devicesEl = document.getElementById("devices");
+  const phaseLabel = document.getElementById("phase-label");
+  const modalRoot = document.getElementById("modal-root");
+  const toastEl = document.getElementById("toast");
+  const nextBtn = document.getElementById("btn-next");
+
+  function toast(msg) {
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    setTimeout(() => toastEl.classList.remove("show"), 1800);
+  }
+
+  function setVariant(v) {
+    variant = v;
+    const url = new URL(location.href);
+    url.searchParams.set("variant", v);
+    history.replaceState(null, "", url);
+    document.getElementById("variant-a-btn").classList.toggle("active", v === "A");
+    document.getElementById("variant-b-btn").classList.toggle("active", v === "B");
+    render();
+  }
+
+  document.getElementById("variant-a-btn").addEventListener("click", () => setVariant("A"));
+  document.getElementById("variant-b-btn").addEventListener("click", () => setVariant("B"));
+
+  function phase() { return PHASES[phaseIndex]; }
+
+  function openAliceCard() {
+    aliceCardOpen = true;
+    render();
+  }
+  function closeAliceCard() {
+    aliceCardOpen = false;
+    render();
+  }
+  function enableAliceCard() {
+    aliceCardArmed = true;
+    aliceCardOpen = false;
+    toast("Hex of the Broken Biscuit armed — target locked in once declarations close.");
+    render();
+  }
+
+  function pickTarget(playerId) {
+    if (phase() !== "targeting" || playerId === "alice") return;
+    aliceTarget = playerId;
+    toast(`Alice targets ${players.find(p => p.id === playerId).name} with Hex of the Broken Biscuit.`);
+    render();
+  }
+
+  function rollDice() {
+    spinning = true;
+    render();
+    setTimeout(() => {
+      dice = { alice: 14, bob: 3, carl: 17 };
+      spinning = false;
+      phaseIndex = PHASES.indexOf("revealed");
+      render();
+    }, 1200);
+  }
+
+  function reactToPrompt(said_yes) {
+    reactionResolved = true;
+    if (said_yes) {
+      toast("Carl casts Milky Brew on Alice — she must reroll. (Effect resolution is out of scope for this prototype.)");
+    } else {
+      toast("Carl declines. No reaction-eligible cards remain — reaction phase ends, round proceeds.");
+    }
+    phaseIndex = PHASES.indexOf("done");
+    render();
+  }
+
+  function next() {
+    if (phase() === "room") {
+      if (!aliceCardArmed) { toast("Tip: open Alice's card and Enable it first, or she'll just get the pre-roll prompt instead."); }
+      phaseIndex = PHASES.indexOf("declare");
+    } else if (phase() === "declare") {
+      phaseIndex = aliceCardArmed && aliceTarget === null
+        ? PHASES.indexOf("targeting")
+        : PHASES.indexOf("revealing");
+      if (phase() === "revealing") rollDice();
+    } else if (phase() === "targeting") {
+      if (aliceTarget === null) { toast("Pick a target for Alice's Hex first."); return; }
+      phaseIndex = PHASES.indexOf("revealing");
+      rollDice();
+    } else if (phase() === "revealed") {
+      phaseIndex = PHASES.indexOf("reaction");
+    } else if (phase() === "reaction") {
+      // handled by the yes/no buttons
+      return;
+    } else if (phase() === "done") {
+      return;
+    }
+    render();
+  }
+
+  document.getElementById("btn-next").addEventListener("click", next);
+  document.getElementById("btn-reset").addEventListener("click", () => {
+    phaseIndex = 0;
+    aliceCardOpen = false;
+    aliceCardArmed = false;
+    aliceTarget = null;
+    dice = { alice: null, bob: null, carl: null };
+    spinning = false;
+    reactionResolved = false;
+    render();
+  });
+
+  function badgesFor(playerId) {
+    const badges = [];
+    if (phase() === "revealed" || phase() === "reaction" || phase() === "done") {
+      if (aliceTarget === playerId) badges.push(`<span class="badge detriment" title="Hex of the Broken Biscuit (-1d4 until Monday)">−</span>`);
+      if (playerId === "bob" && bobCardArmed) badges.push(`<span class="badge boon" title="Two Sugars (advantage this round)">+</span>`);
+    }
+    return badges.join("");
+  }
+
+  function rosterRow(p) {
+    const targeting = phase() === "targeting" && p.id !== "alice";
+    const targeted = aliceTarget === p.id;
+    const classes = ["row"];
+    if (targeting) classes.push("targetable");
+    if (targeted) classes.push("targeted");
+    const die = dice[p.id] !== null || spinning
+      ? `<span class="die ${spinning ? "spinning" : "revealed"} ${!spinning && p.id === "alice" && false ? "brewer" : ""}">${spinning ? "" : dice[p.id]}</span>`
+      : "";
+    return `
+      <div class="${classes.join(" ")}" ${targeting ? `onclick="__pickTarget('${p.id}')"` : ""}>
+        <span class="name">${p.name}${badgesFor(p.id)}</span>
+        <span style="display:flex; align-items:center; gap:8px;">
+          <span class="mod">${p.mod >= 0 ? "+" + p.mod : p.mod}</span>
+          ${die}
+        </span>
+      </div>`;
+  }
+
+  function aliceCardWidget() {
+    return `
+      <div class="card-widget ${aliceCardArmed ? "armed" : ""}" onclick="__openAliceCard()">
+        <div class="icon">🩸</div>
+        <div class="name">Hex of the<br/>Broken Biscuit</div>
+      </div>`;
+  }
+
+  function bobCardWidget() {
+    // Bob's self-buff: shown armed by default to demonstrate the boon badge
+    // coexisting with Alice's detriment badge on a different player's row.
+    return `
+      <div class="card-widget armed">
+        <div class="icon">🍯</div>
+        <div class="name">Two Sugars</div>
+      </div>`;
+  }
+
+  function aliceModal() {
+    if (!aliceCardOpen) return "";
+    return `
+      <div class="modal-backdrop" onclick="if(event.target===this) __closeAliceCard()">
+        <div class="card-modal">
+          <div class="art">🩸</div>
+          <span class="tag">Action · targets an opponent</span>
+          <h3>Hex of the Broken Biscuit</h3>
+          <p>Until the following Monday, subtract 1d4 from the target's roll each round.</p>
+          <div class="actions">
+            <button onclick="__closeAliceCard()">Close</button>
+            ${aliceCardArmed
+              ? `<button disabled class="enable">Armed ✓</button>`
+              : `<button class="enable" onclick="__enableAliceCard()">Enable</button>`}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function targetingBanner() {
+    if (phase() !== "targeting") return "";
+    return `<div class="targeting-banner">Declarations closed — Alice, choose who to Hex.</div>`;
+  }
+
+  function reactionOverlay(deviceId) {
+    if (phase() !== "reaction" || deviceId !== "carl" || reactionResolved) return "";
+    if (variant === "A") {
+      return `
+        <div class="reaction-overlay variant-a">
+          <div class="ribbon">
+            <div class="title">REACTION PHASE — Carl may respond</div>
+            Cast Milky Brew on Alice? (forces her to reroll)
+            <div class="row-actions">
+              <button onclick="__react(false)">No</button>
+              <button class="yes" onclick="__react(true)">Cast it</button>
+            </div>
+          </div>
+        </div>`;
+    }
+    return `
+      <div class="reaction-overlay variant-b">
+        <div class="reaction-modal">
+          <div class="icon">⚡</div>
+          <div class="title">Reaction phase</div>
+          <p>Carl, cast Milky Brew on Alice? She'll reroll and take the new result.</p>
+          <div class="row-actions">
+            <button onclick="__react(false)">No</button>
+            <button class="yes" onclick="__react(true)">Cast it</button>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function render() {
+    phaseLabel.textContent = "Phase: " + phase();
+    nextBtn.disabled = phase() === "reaction" || phase() === "done";
+
+    devicesEl.innerHTML = `
+      <div class="device">
+        <div class="device-label"><b>Alice</b> — holds Hex of the Broken Biscuit</div>
+        <div class="roster">${players.map(rosterRow).join("")}</div>
+        ${targetingBanner()}
+        ${aliceCardWidget()}
+        ${reactionOverlay("alice")}
+      </div>
+      <div class="device">
+        <div class="device-label"><b>Bob</b> — holds Two Sugars (self-buff, pre-armed)</div>
+        <div class="roster">${players.map(rosterRow).join("")}</div>
+        ${bobCardWidget()}
+        ${reactionOverlay("bob")}
+      </div>
+      <div class="device">
+        <div class="device-label"><b>Carl</b> — holds Milky Brew (reaction)</div>
+        <div class="roster">${players.map(rosterRow).join("")}</div>
+        ${reactionOverlay("carl")}
+      </div>
+    `;
+
+    modalRoot.innerHTML = aliceModal();
+  }
+
+  window.__openAliceCard = openAliceCard;
+  window.__closeAliceCard = closeAliceCard;
+  window.__enableAliceCard = enableAliceCard;
+  window.__pickTarget = pickTarget;
+  window.__react = reactToPrompt;
+
+  bobCardArmed = true; // Two Sugars starts pre-armed for the badge demo
+  setVariant(variant);
+})();
+</script>
+
+</body>
+</html>
