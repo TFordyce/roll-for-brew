@@ -17,6 +17,17 @@ How it's wired (see `supabase/migrations/000{1,2}_*.sql` and `supabase/config.to
 - `public.enforce_whitelist_on_access_token(event jsonb)` — a Postgres function wired up as Supabase Auth's **Custom Access Token** hook. Unlike the hook above, this one runs on *every* token issuance (every sign-in, every token refresh), so removing someone from the whitelist actually locks them out on their next login, not just at their very first one.
 - `public.players(id, email, display_name, avatar_url)` — kept in sync by an `AFTER INSERT OR UPDATE` trigger on `auth.users` that upserts from the Google profile (`sub`, `email`, `name`, `avatar_url`/`picture`). `id` is the Google `sub`, not the Supabase-generated `auth.users.id`.
 
+## Rooms: auto-creation + roster
+
+There's no manual room creation, code, or link. The first whitelisted login of a calendar day (Europe/London) creates that day's room; every whitelisted login that same day joins the same shared room. The Room tab shows a persistent roster of everyone present that day — name and current modifier, ordered by modifier descending.
+
+How it's wired (see `supabase/migrations/0003_rooms_and_room_players.sql`):
+
+- `public.rooms(id, date unique, created_at)` — one row per calendar day.
+- `public.room_players(room_id, player_id, modifier default 0)` — one row per player present in a room, created at room-entry (login), independent of whether they've played a round yet.
+- `public.enter_todays_room()` — a `security definer` Postgres function, callable via RPC by any `authenticated` user. It derives the caller's player id server-side from their own `auth.users` row (never from a client-supplied parameter, so a client can only ever enter a room as themselves), computes "today" as `(now() at time zone 'Europe/London')::date`, and idempotently upserts the day's `rooms` row and the caller's `room_players` row (`on conflict do nothing`, so a repeat login the same day joins the existing room without duplicating it or resetting an in-progress modifier).
+- The home page (`src/app/page.tsx`, via `src/lib/supabase/rooms.ts`) calls `enter_todays_room()` on every load, then renders the roster by joining `room_players` to `players`, ordered by modifier descending.
+
 ### Local/project setup
 
 1. Create a Supabase project.
@@ -41,4 +52,4 @@ npm run typecheck
 npm test
 ```
 
-The integration tests in `tests/integration/` exercise the whitelist gate and the players upsert against a **real, dedicated Supabase test project** (never production) — set `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` in `.env.test` (see `.env.example`). The suite is skipped automatically if those aren't set. The test project needs the same migration and Auth Hook configuration as above (the revocation test signs in with a password to drive the real token-issuance path the Custom Access Token hook runs on — Google's own OAuth handshake can't be automated in a test).
+The integration tests in `tests/integration/` exercise the whitelist gate, the players upsert, and room auto-creation/roster against a **real, dedicated Supabase test project** (never production) — set `SUPABASE_TEST_URL`, `SUPABASE_TEST_ANON_KEY` and `SUPABASE_TEST_SERVICE_ROLE_KEY` in `.env.test` (see `.env.example`). The suite is skipped automatically if those aren't set. The test project needs the same migration and Auth Hook configuration as above (the revocation test signs in with a password to drive the real token-issuance path the Custom Access Token hook runs on — Google's own OAuth handshake can't be automated in a test).

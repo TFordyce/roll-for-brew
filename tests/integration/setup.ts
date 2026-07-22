@@ -59,12 +59,14 @@ export async function removeFromWhitelist(admin: SupabaseClient, email: string) 
 }
 
 /**
- * Tracks users/emails created during a test so they can be torn down in one
- * afterEach, instead of every test file hand-rolling the same two arrays.
+ * Tracks entities created during a test so they can be torn down in one
+ * afterEach, instead of every test file hand-rolling the same arrays.
  */
 export function createTestCleanup(admin: SupabaseClient) {
   const userIds: string[] = [];
   const whitelistedEmails: string[] = [];
+  const playerIds: string[] = [];
+  const roomIds: string[] = [];
 
   return {
     trackUser(userId: string) {
@@ -73,7 +75,31 @@ export function createTestCleanup(admin: SupabaseClient) {
     trackWhitelistedEmail(email: string) {
       whitelistedEmails.push(email.toLowerCase());
     },
+    /**
+     * Tracks a public.players.id (the Google sub, not the auth.users id —
+     * see googlePlayerId) created directly (not via trackUser's auth-user
+     * path) so its row, and its room_players rows via cascade, get cleaned
+     * up too.
+     */
+    trackPlayerId(playerId: string) {
+      playerIds.push(playerId);
+    },
+    /**
+     * Tracks a public.rooms.id created directly for a test (e.g. seeded
+     * with an explicit past date), so both it and its room_players rows
+     * get torn down.
+     */
+    trackRoom(roomId: string) {
+      roomIds.push(roomId);
+    },
     async run() {
+      for (const roomId of roomIds.splice(0)) {
+        await admin.from("room_players").delete().eq("room_id", roomId);
+        await admin.from("rooms").delete().eq("id", roomId);
+      }
+      for (const playerId of playerIds.splice(0)) {
+        await admin.from("players").delete().eq("id", playerId);
+      }
       for (const id of userIds.splice(0)) {
         await admin.from("players").delete().eq("id", id);
         await deleteTestUser(admin, id);
