@@ -16,6 +16,7 @@ import { TieBanner } from "@/app/rounds/TieBanner";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
+import { SignOutBadge } from "@/app/_components/SignOutBadge";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -85,9 +86,7 @@ export default async function HomePage() {
 
   return (
     <main className="relative flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
-      <p className="absolute right-4 top-4 rounded-md bg-parchment/90 px-3 py-1.5 font-display text-xs uppercase tracking-widest text-tavern-panel">
-        {player?.display_name ?? player?.email ?? user.email}
-      </p>
+      <SignOutBadge name={player?.display_name ?? player?.email ?? user.email ?? ""} />
 
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
@@ -206,16 +205,10 @@ export default async function HomePage() {
         </section>
       )}
 
-      <div className="flex flex-col items-center gap-2 rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
+      <div className="rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
         <Link href="/settings" className="text-tavern-panel underline hover:text-ember">
           Settings
         </Link>
-
-        <form action="/auth/signout" method="post">
-          <button type="submit" className="text-tavern-panel underline hover:text-ember">
-            Sign out
-          </button>
-        </form>
       </div>
     </main>
   );
