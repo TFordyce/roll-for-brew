@@ -125,6 +125,20 @@
   .die.brewer { background: var(--text); color: #14161c; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+  .die.mod-die {
+    width: 22px; height: 22px; font-size: 10px; border-radius: 50%;
+    border-color: var(--detriment); color: var(--detriment);
+  }
+  .die.mod-die.spinning { border-color: var(--detriment); }
+  .dice-group { display: flex; align-items: center; gap: 4px; }
+  .row.revealed-row { flex-direction: column; align-items: stretch; gap: 4px; }
+  .row-main { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .row-breakdown {
+    font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace;
+    text-align: right;
+  }
+  .row-breakdown b { color: var(--text); }
+
   /* held card widget, docked bottom-right of a device */
   .card-widget {
     position: absolute;
@@ -274,6 +288,7 @@
   let aliceTarget = null;       // player id Hex is aimed at
   let bobCardArmed = false;     // Two Sugars auto-arms when opened+enabled too, but pre-armed for brevity
   let dice = { alice: null, bob: null, carl: null };
+  let modDice = {};             // playerId -> rolled d4 malus value (Hex only, for now)
   let spinning = false;
   let reactionResolved = false;
 
@@ -331,6 +346,7 @@
     render();
     setTimeout(() => {
       dice = { alice: 14, bob: 3, carl: 17 };
+      modDice = aliceTarget ? { [aliceTarget]: 3 } : {};
       spinning = false;
       phaseIndex = PHASES.indexOf("revealed");
       render();
@@ -379,6 +395,7 @@
     aliceCardArmed = false;
     aliceTarget = null;
     dice = { alice: null, bob: null, carl: null };
+    modDice = {};
     spinning = false;
     reactionResolved = false;
     render();
@@ -399,16 +416,45 @@
     const classes = ["row"];
     if (targeting) classes.push("targetable");
     if (targeted) classes.push("targeted");
-    const die = dice[p.id] !== null || spinning
-      ? `<span class="die ${spinning ? "spinning" : "revealed"} ${!spinning && p.id === "alice" && false ? "brewer" : ""}">${spinning ? "" : dice[p.id]}</span>`
-      : "";
+
+    const hasDice = dice[p.id] !== null || spinning;
+    if (!hasDice) {
+      return `
+        <div class="${classes.join(" ")}" ${targeting ? `onclick="__pickTarget('${p.id}')"` : ""}>
+          <span class="name">${p.name}${badgesFor(p.id)}</span>
+          <span class="mod">${p.mod >= 0 ? "+" + p.mod : p.mod}</span>
+        </div>`;
+    }
+
+    const d20 = `<span class="die ${spinning ? "spinning" : "revealed"}">${spinning ? "" : dice[p.id]}</span>`;
+    const hasModDie = !spinning && modDice[p.id] !== undefined;
+    const d4 = spinning
+      ? `<span class="die mod-die spinning"></span>`
+      : hasModDie
+        ? `<span class="die mod-die revealed" title="d4 malus">−${modDice[p.id]}</span>`
+        : "";
+
+    let breakdown = "";
+    if (!spinning) {
+      const raw = dice[p.id];
+      const modText = `${p.mod >= 0 ? "+" + p.mod : p.mod} mod`;
+      let total = raw + p.mod;
+      let parts = [`${raw} raw`, modText];
+      if (hasModDie) {
+        total -= modDice[p.id];
+        parts.push(`−${modDice[p.id]} (d4)`);
+      }
+      breakdown = `${parts.join("  ")}  =  <b>${total}</b> total`;
+    }
+
+    classes.push("revealed-row");
     return `
       <div class="${classes.join(" ")}" ${targeting ? `onclick="__pickTarget('${p.id}')"` : ""}>
-        <span class="name">${p.name}${badgesFor(p.id)}</span>
-        <span style="display:flex; align-items:center; gap:8px;">
-          <span class="mod">${p.mod >= 0 ? "+" + p.mod : p.mod}</span>
-          ${die}
-        </span>
+        <div class="row-main">
+          <span class="name">${p.name}${badgesFor(p.id)}</span>
+          <span class="dice-group">${d20}${d4}</span>
+        </div>
+        ${breakdown ? `<div class="row-breakdown">${breakdown}</div>` : ""}
       </div>`;
   }
 
