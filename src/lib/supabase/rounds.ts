@@ -9,6 +9,7 @@ export type ActiveRound = {
   startedBy: string;
   status: RoundStatus;
   startedAt: string;
+  closedAt: string | null;
   currentLayer: number;
 };
 
@@ -17,6 +18,7 @@ export type RoundParticipant = {
   displayName: string | null;
   email: string;
   declaredAt: string;
+  excludedAt: string | null;
 };
 
 /**
@@ -59,7 +61,7 @@ export async function getActiveRound(
 ): Promise<ActiveRound | null> {
   const { data, error } = await supabase
     .from("rounds")
-    .select("id, room_id, started_by, status, started_at, current_layer")
+    .select("id, room_id, started_by, status, started_at, closed_at, current_layer")
     .eq("room_id", roomId)
     .in("status", ["open", "closed"])
     .maybeSingle();
@@ -73,6 +75,39 @@ export async function getActiveRound(
     startedBy: data.started_by as string,
     status: data.status as RoundStatus,
     startedAt: data.started_at as string,
+    closedAt: data.closed_at as string | null,
+    currentLayer: data.current_layer as number,
+  };
+}
+
+/**
+ * Same round shape as getActiveRound, but looked up directly by id rather
+ * than "the room's active round" — used by stall-timeout enforcement
+ * (issue #21), which already has a round id in hand and needs to re-read it
+ * regardless of whether it's still active (a round it's about to cancel is,
+ * by definition, still 'open' or 'closed' at the moment of the check, but
+ * addressing by id rather than room avoids relying on that being true).
+ */
+export async function getRoundById(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<ActiveRound | null> {
+  const { data, error } = await supabase
+    .from("rounds")
+    .select("id, room_id, started_by, status, started_at, closed_at, current_layer")
+    .eq("id", roundId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id as string,
+    roomId: data.room_id as string,
+    startedBy: data.started_by as string,
+    status: data.status as RoundStatus,
+    startedAt: data.started_at as string,
+    closedAt: data.closed_at as string | null,
     currentLayer: data.current_layer as number,
   };
 }
@@ -103,7 +138,7 @@ export async function getRoundParticipants(
 ): Promise<RoundParticipant[]> {
   const { data, error } = await supabase
     .from("round_participants")
-    .select("player_id, declared_at, players(display_name, email)")
+    .select("player_id, declared_at, excluded_at, players(display_name, email)")
     .eq("round_id", roundId)
     .order("declared_at", { ascending: true });
 
@@ -116,6 +151,7 @@ export async function getRoundParticipants(
       displayName: player?.display_name ?? null,
       email: player?.email ?? "",
       declaredAt: row.declared_at as string,
+      excludedAt: row.excluded_at as string | null,
     };
   });
 }
@@ -124,6 +160,7 @@ export type RoundLayerParticipant = {
   playerId: string;
   displayName: string | null;
   email: string;
+  excludedAt: string | null;
 };
 
 /**
@@ -139,7 +176,7 @@ export async function getRoundLayerParticipants(
 ): Promise<RoundLayerParticipant[]> {
   const { data, error } = await supabase
     .from("round_layer_participants")
-    .select("player_id, players(display_name, email)")
+    .select("player_id, excluded_at, players(display_name, email)")
     .eq("round_id", roundId)
     .eq("layer", layer);
 
@@ -151,6 +188,7 @@ export async function getRoundLayerParticipants(
       playerId: row.player_id as string,
       displayName: player?.display_name ?? null,
       email: player?.email ?? "",
+      excludedAt: row.excluded_at as string | null,
     };
   });
 }
