@@ -15,7 +15,7 @@ import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { getMySpellCards } from "@/lib/supabase/spellCards";
-import { getMyPendingCasts } from "@/lib/supabase/spellCasts";
+import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
@@ -59,6 +59,19 @@ export default async function HomePage() {
     activeRound && activeRound.status === "closed"
       ? await getMyPendingCasts(supabase, activeRound.id)
       : [];
+  const dispellableEffects =
+    activeRound && activeRound.status === "open"
+      ? await getDispellableActiveEffects(supabase, activeRound.id)
+      : [];
+
+  const activeEffects = await getRoomActiveEffects(supabase, roomId);
+  const effectBadgesByPlayerId = new Map<string, ("positive" | "negative")[]>();
+  for (const effect of activeEffects) {
+    if (effect.polarity === null) continue;
+    const existing = effectBadgesByPlayerId.get(effect.targetPlayerId) ?? [];
+    existing.push(effect.polarity);
+    effectBadgesByPlayerId.set(effect.targetPlayerId, existing);
+  }
 
   const currentLayer = activeRound?.currentLayer ?? 0;
   const isTiePhase = activeRound?.status === "closed" && currentLayer > 0;
@@ -107,6 +120,7 @@ export default async function HomePage() {
       <SpellCardPanel
         heldCards={heldSpellCards}
         pendingCasts={pendingSpellCasts}
+        dispellableEffects={dispellableEffects}
         roundId={activeRound?.id ?? null}
         roundIsOpen={activeRound?.status === "open"}
         roundIsClosed={activeRound?.status === "closed"}
@@ -159,6 +173,7 @@ export default async function HomePage() {
                       modifier={entry.modifier}
                       joined={participants.some((p) => p.playerId === entry.playerId)}
                       isStarter={entry.playerId === activeRound.startedBy}
+                      effectBadges={effectBadgesByPlayerId.get(entry.playerId) ?? []}
                     />
                   ))}
                 </div>
@@ -207,6 +222,7 @@ export default async function HomePage() {
                     email={entry.email}
                     avatarUrl={entry.avatarUrl}
                     modifier={entry.modifier}
+                    effectBadges={effectBadgesByPlayerId.get(entry.playerId) ?? []}
                   />
                 ))}
               </div>

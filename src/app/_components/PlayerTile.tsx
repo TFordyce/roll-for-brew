@@ -2,7 +2,10 @@
  * A single player's tile — avatar, name, modifier — inside its own small
  * frame (issue #64). Used both for the full daily roster and the "who's in"
  * open-round grid; `joined` lights the tile up to distinguish participants
- * from the rest of the roster in that second view.
+ * from the rest of the roster in that second view. `effectBadges` (issue
+ * #69) renders one dot per active spell-card effect currently on this
+ * player — red for negative/debuff, gold for positive/buff — so the roster
+ * doubles as an at-a-glance "who's under what effect" view.
  */
 export function PlayerTile({
   displayName,
@@ -11,6 +14,7 @@ export function PlayerTile({
   modifier,
   joined = false,
   isStarter = false,
+  effectBadges = [],
 }: {
   displayName: string | null;
   email: string;
@@ -18,6 +22,7 @@ export function PlayerTile({
   modifier: number;
   joined?: boolean;
   isStarter?: boolean;
+  effectBadges?: ("positive" | "negative")[];
 }) {
   const name = displayName ?? email;
   const initial = name.trim().charAt(0).toUpperCase() || "?";
@@ -45,6 +50,18 @@ export function PlayerTile({
         {isStarter ? <span className="text-gilt"> ★</span> : null}
       </span>
       <span className="font-mono text-xs text-parchment-dim">{modifier >= 0 ? `+${modifier}` : modifier}</span>
+      {effectBadges.length > 0 ? (
+        <div className="flex flex-wrap justify-center gap-1" aria-label="active effects">
+          {effectBadges.map((polarity, index) => (
+            <span
+              key={index}
+              className={`h-2.5 w-2.5 rounded-full ${
+                polarity === "negative" ? "bg-red-600" : "bg-gilt-bright"
+              }`}
+            />
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
