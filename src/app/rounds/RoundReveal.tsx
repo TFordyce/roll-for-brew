@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
+import { CardFrame } from "@/app/_components/CardFrame";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -103,27 +104,35 @@ export function RoundReveal({
         </div>
       ) : null}
 
-      <ul className="mt-3 divide-y divide-neutral-200 rounded border border-neutral-200">
-        {participants.map((p) => {
-          const revealedValue = revealedValueByPlayerId.get(p.playerId);
-          const value = revealedValue ?? (p.playerId === selfPlayerId ? ownRoll : null);
-          const isBrewer = brewerId === p.playerId;
+      <CardFrame title="Rolling">
+        <ul className="divide-y divide-gilt-dark/40">
+          {participants.map((p) => {
+            const revealedValue = revealedValueByPlayerId.get(p.playerId);
+            const value = revealedValue ?? (p.playerId === selfPlayerId ? ownRoll : null);
+            const isBrewer = brewerId === p.playerId;
 
-          return (
-            <li key={p.playerId} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span className="font-mono text-xs text-neutral-500">{p.modifier}</span>
-              <span>{p.displayName ?? p.email}</span>
-              <span
-                className={`flex h-8 w-8 items-center justify-center rounded border text-sm font-mono ${
-                  value === null ? "animate-spin border-neutral-400" : "border-neutral-900"
-                } ${isBrewer ? "bg-neutral-900 text-white" : ""}`}
-              >
-                {value ?? "?"}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+            return (
+              <li key={p.playerId} className="flex items-center justify-between gap-3 py-2">
+                <span className="font-mono text-xs text-parchment-dim">
+                  {p.modifier >= 0 ? `+${p.modifier}` : p.modifier}
+                </span>
+                <span className="font-body text-sm text-parchment">{p.displayName ?? p.email}</span>
+                <span
+                  className={`flex h-9 w-9 items-center justify-center rounded-md border-2 font-display text-sm ${
+                    value === null
+                      ? "animate-spin border-gilt-dark text-parchment-dim"
+                      : isBrewer
+                        ? "border-gilt-bright bg-ember text-parchment shadow-[0_0_10px_theme(colors.gilt.DEFAULT)]"
+                        : "border-gilt bg-tavern-panel-dark text-parchment"
+                  }`}
+                >
+                  {value ?? "?"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+      </CardFrame>
     </>
   );
 }

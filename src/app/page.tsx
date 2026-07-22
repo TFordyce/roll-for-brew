@@ -142,34 +142,31 @@ export default async function HomePage() {
       {activeRound ? (
         <section className="w-full max-w-md">
           {activeRound.status === "closed" && isTiePhase ? (
-            <>
-              <h2 className="mb-2 text-lg font-medium text-parchment">Rolling</h2>
-              <TieBanner
-                key={currentLayer}
-                roomId={roomId}
-                roundId={activeRound.id}
-                selfPlayerId={playerId}
-                ownRoll={ownRoll}
-                tiedParticipants={tiedParticipants}
-                rollInputMode={rollInputMode}
-              />
-            </>
+            <TieBanner
+              key={currentLayer}
+              roomId={roomId}
+              roundId={activeRound.id}
+              selfPlayerId={playerId}
+              ownRoll={ownRoll}
+              tiedParticipants={tiedParticipants.map((entry) => ({
+                ...entry,
+                modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
+              }))}
+              rollInputMode={rollInputMode}
+            />
           ) : activeRound.status === "closed" ? (
-            <>
-              <h2 className="mb-2 text-lg font-medium text-parchment">Rolling</h2>
-              <RoundReveal
-                roomId={roomId}
-                roundId={activeRound.id}
-                selfPlayerId={playerId}
-                ownRoll={ownRoll}
-                participants={participants.map((entry) => ({
-                  playerId: entry.playerId,
-                  displayName: entry.displayName,
-                  email: entry.email,
-                  modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
-                }))}
-              />
-            </>
+            <RoundReveal
+              roomId={roomId}
+              roundId={activeRound.id}
+              selfPlayerId={playerId}
+              ownRoll={ownRoll}
+              participants={participants.map((entry) => ({
+                playerId: entry.playerId,
+                displayName: entry.displayName,
+                email: entry.email,
+                modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
+              }))}
+            />
           ) : (
             <div>
               <RoundOpenLive roomId={roomId} roundId={activeRound.id} />

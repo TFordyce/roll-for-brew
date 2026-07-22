@@ -52,17 +52,17 @@ export function ReactionBanner({
   const negatableStack = orderStackForResolution(stack.filter((entry) => !entry.negated));
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-20 border-t-2 border-purple-400 bg-purple-950/95 p-3 text-sm text-white shadow-lg">
-      <p className="mb-2 font-medium">
+    <div className="fixed inset-x-0 bottom-0 z-20 border-t-4 border-gilt bg-tavern-panel p-3 shadow-[0_-8px_24px_rgb(0_0_0_/_0.5)]">
+      <p className="mb-2 font-display text-sm uppercase tracking-widest text-gilt-bright">
         Reaction window open
         {stack.length > 0 ? ` — ${stack.length} card${stack.length > 1 ? "s" : ""} on the stack` : ""}
       </p>
 
       {stack.length > 0 ? (
-        <ul className="mb-2 space-y-0.5 text-xs text-purple-200">
+        <ul className="mb-2 space-y-0.5 font-body text-xs text-parchment-dim">
           {stack.map((entry) => (
             <li key={entry.castId}>
-              {entry.casterName} cast <strong>{entry.cardName}</strong>
+              {entry.casterName} cast <strong className="text-parchment">{entry.cardName}</strong>
               {entry.negated ? " (negated)" : ""}
             </li>
           ))}
@@ -72,15 +72,15 @@ export function ReactionBanner({
       {eligible && heldReactionCard && !alreadyPassed ? (
         <form action={castReactionSpellCardAction} className="mb-2 flex flex-wrap items-center gap-2">
           <input type="hidden" name="roundId" value={roundId} />
-          <span>
-            React with <strong>{heldReactionCard.cardName}</strong>?
+          <span className="font-body text-sm text-parchment">
+            React with <strong className="text-gilt-bright">{heldReactionCard.cardName}</strong>?
           </span>
 
           {heldReactionCard.target === "OPPONENT" || heldReactionCard.target === "PLAYER" ? (
             <select
               name="targetPlayerId"
               required
-              className="rounded border border-purple-300 bg-purple-900 px-2 py-1 text-white"
+              className="rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1 text-sm text-parchment focus:border-gilt focus:outline-none"
             >
               {(heldReactionCard.target === "PLAYER" ? participants : otherParticipants).map((p) => (
                 <option key={p.playerId} value={p.playerId}>
@@ -94,7 +94,7 @@ export function ReactionBanner({
             <select
               name="targetCastId"
               required
-              className="rounded border border-purple-300 bg-purple-900 px-2 py-1 text-white"
+              className="rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1 text-sm text-parchment focus:border-gilt focus:outline-none"
             >
               {negatableStack.map((entry) => (
                 <option key={entry.castId} value={entry.castId}>
@@ -107,7 +107,7 @@ export function ReactionBanner({
           <button
             type="submit"
             disabled={heldReactionCard.target === "CARD" && negatableStack.length === 0}
-            className="rounded bg-white px-3 py-1.5 font-medium text-purple-900 disabled:opacity-50"
+            className="rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark"
           >
             Cast
           </button>
@@ -117,14 +117,17 @@ export function ReactionBanner({
       {eligible && !alreadyPassed ? (
         <form action={passReactionWindowAction}>
           <input type="hidden" name="roundId" value={roundId} />
-          <button type="submit" className="rounded border border-purple-300 px-3 py-1.5 text-purple-100">
+          <button
+            type="submit"
+            className="rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
+          >
             Pass
           </button>
         </form>
       ) : eligible ? (
-        <p className="text-purple-300">Waiting on other players&hellip;</p>
+        <p className="font-body text-sm text-parchment-dim">Waiting on other players&hellip;</p>
       ) : (
-        <p className="text-purple-300">Waiting for reactions&hellip;</p>
+        <p className="font-body text-sm text-parchment-dim">Waiting for reactions&hellip;</p>
       )}
     </div>
   );

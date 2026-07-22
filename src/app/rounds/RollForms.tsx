@@ -5,7 +5,10 @@ export function InAppRollForm({ roundId }: { roundId: string }) {
   return (
     <form action={submitRollAction} className="mt-3">
       <input type="hidden" name="roundId" value={roundId} />
-      <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
+      <button
+        type="submit"
+        className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
+      >
         Roll
       </button>
     </form>
@@ -23,9 +26,12 @@ export function ManualRollForm({ roundId }: { roundId: string }) {
         min={1}
         max={20}
         required
-        className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm"
+        className="w-16 rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 font-mono text-sm text-parchment focus:border-gilt focus:outline-none"
       />
-      <button type="submit" className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white">
+      <button
+        type="submit"
+        className="flex-1 rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
+      >
         Submit
       </button>
     </form>

@@ -162,6 +162,7 @@ export type RoundLayerParticipant = {
   playerId: string;
   displayName: string | null;
   email: string;
+  avatarUrl: string | null;
   excludedAt: string | null;
 };
 
@@ -170,6 +171,8 @@ export type RoundLayerParticipant = {
  * 0's expected rollers are getRoundParticipants, since round_participants
  * already covers it). Used for the "banner naming the tied players" and
  * "only tied players' devices show an active Roll button" UI (issue #20).
+ * Carries avatarUrl so the tie-phase view (issue #81) can render tied
+ * players with PlayerTile, matching the roster grid elsewhere.
  */
 export async function getRoundLayerParticipants(
   supabase: SupabaseClient,
@@ -178,7 +181,7 @@ export async function getRoundLayerParticipants(
 ): Promise<RoundLayerParticipant[]> {
   const { data, error } = await supabase
     .from("round_layer_participants")
-    .select("player_id, excluded_at, players(display_name, email)")
+    .select("player_id, excluded_at, players(display_name, email, avatar_url)")
     .eq("round_id", roundId)
     .eq("layer", layer);
 
@@ -190,6 +193,7 @@ export async function getRoundLayerParticipants(
       playerId: row.player_id as string,
       displayName: player?.display_name ?? null,
       email: player?.email ?? "",
+      avatarUrl: player?.avatar_url ?? null,
       excludedAt: row.excluded_at as string | null,
     };
   });
