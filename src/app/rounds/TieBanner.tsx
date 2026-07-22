@@ -3,8 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
-import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
-import { RollBothPicker } from "@/app/rounds/RollBothPicker";
+import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 
 export type TiedParticipant = {
   playerId: string;
@@ -54,12 +53,8 @@ export function TieBanner({
     <div className="mt-3 rounded border border-amber-300 bg-amber-50 p-3 text-sm">
       <p className="font-medium">Tied: {names} — rerolling</p>
 
-      {isTied && ownRoll === null && rollInputMode === "in_app_only" ? (
-        <InAppRollForm roundId={roundId} />
-      ) : isTied && ownRoll === null && rollInputMode === "manual_only" ? (
-        <ManualRollForm roundId={roundId} />
-      ) : isTied && ownRoll === null && rollInputMode === "both" ? (
-        <RollBothPicker roundId={roundId} />
+      {isTied && ownRoll === null && rollInputMode ? (
+        <RollInputPicker mode={rollInputMode} roundId={roundId} />
       ) : isTied ? (
         <p className="mt-2 text-neutral-500">Waiting on the other tied player{tiedParticipants.length > 2 ? "s" : ""}&hellip;</p>
       ) : (

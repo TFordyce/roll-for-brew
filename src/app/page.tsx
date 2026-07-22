@@ -11,8 +11,7 @@ import { closeRoundAction, declareInAction, startRoundAction } from "@/app/round
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
-import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
-import { RollBothPicker } from "@/app/rounds/RollBothPicker";
+import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { Nav } from "@/app/Nav";
 
@@ -165,16 +164,8 @@ export default async function HomePage() {
             </form>
           ) : null}
 
-          {needsRollInput && rollInputMode === "in_app_only" ? (
-            <InAppRollForm roundId={activeRound.id} />
-          ) : null}
-
-          {needsRollInput && rollInputMode === "manual_only" ? (
-            <ManualRollForm roundId={activeRound.id} />
-          ) : null}
-
-          {needsRollInput && rollInputMode === "both" ? (
-            <RollBothPicker key={activeRound.id} roundId={activeRound.id} />
+          {needsRollInput && rollInputMode ? (
+            <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
         </section>
       ) : (
