@@ -69,8 +69,14 @@ export async function enforceStallTimeout(
     await excludeRoundParticipant(supabase, roundId, playerId, layer);
   }
 
+  // Layer 0 needs at least 2 active participants to resolve a round at all
+  // (mirrors close_round's own >=2 gate). A reroll layer (layer > 0) is
+  // already a tied subset of those same participants, so shrinking it to a
+  // single remaining roller isn't a failure to resolve — resolveLayer
+  // treats that lone roller as the outright winner of the tie, same as if
+  // everyone else had simply lost the reroll outright.
   const remainingActiveCount = expectedPlayerIds.size - stalledPlayerIds.length;
-  if (remainingActiveCount < 2) {
+  if (layer === 0 && remainingActiveCount < 2) {
     await cancelRound(supabase, roundId);
     await broadcastRoundCancelled(supabase, round.roomId, { roundId });
     return { action: "cancelled" };
