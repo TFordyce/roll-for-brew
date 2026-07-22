@@ -5,6 +5,31 @@ import { broadcastLayerTied, broadcastRoundRevealed } from "@/lib/supabase/realt
 import { resolveLayer } from "@/lib/game/resolveLayer";
 
 /**
+ * applyLayerOutcome's persistence/broadcast calls, factored out as an
+ * injectable seam: production callers get defaultDeps (the real
+ * supabase-backed functions below), while applyLayerOutcome.test.ts passes
+ * fakes so it can assert on the brewer/tie branches without a live Supabase
+ * client.
+ */
+export type ApplyLayerOutcomeDeps = {
+  getRoundRoomId: typeof getRoundRoomId;
+  getRoundParticipants: typeof getRoundParticipants;
+  resolveRound: typeof resolveRound;
+  advanceRoundLayer: typeof advanceRoundLayer;
+  broadcastRoundRevealed: typeof broadcastRoundRevealed;
+  broadcastLayerTied: typeof broadcastLayerTied;
+};
+
+const defaultDeps: ApplyLayerOutcomeDeps = {
+  getRoundRoomId,
+  getRoundParticipants,
+  resolveRound,
+  advanceRoundLayer,
+  broadcastRoundRevealed,
+  broadcastLayerTied,
+};
+
+/**
  * Runs the resolution engine over a layer that's already known to be
  * complete and persists/broadcasts whichever outcome it computes — a single
  * brewer, or the next reroll layer. Split out from the "is it complete"
@@ -16,33 +41,34 @@ export async function applyLayerOutcome(
   supabase: SupabaseClient,
   roundId: string,
   completedLayer: CompletedLayer,
+  deps: ApplyLayerOutcomeDeps = defaultDeps,
 ): Promise<void> {
   const { rolls } = completedLayer;
   const outcome = resolveLayer(
     rolls.map((r) => ({ playerId: r.playerId, roll: r.value, modifier: r.modifierSnapshot })),
   );
 
-  const roomId = await getRoundRoomId(supabase, roundId);
+  const roomId = await deps.getRoundRoomId(supabase, roundId);
 
   if (outcome.outcome === "brewer") {
     // cups_made is the number of cups the brewer owes everyone who played
     // this round — the round's original participant count, not the
     // (possibly much narrower) tied subset that rolled the final layer.
-    const participants = await getRoundParticipants(supabase, roundId);
+    const participants = await deps.getRoundParticipants(supabase, roundId);
     const cupsMade = participants.length;
 
-    await resolveRound(supabase, roundId, outcome.playerId, cupsMade);
+    await deps.resolveRound(supabase, roundId, outcome.playerId, cupsMade);
 
-    await broadcastRoundRevealed(supabase, roomId, {
+    await deps.broadcastRoundRevealed(supabase, roomId, {
       roundId,
       brewerId: outcome.playerId,
       cupsMade,
       rolls: rolls.map((r) => ({ playerId: r.playerId, value: r.value })),
     });
   } else {
-    const nextLayer = await advanceRoundLayer(supabase, roundId, outcome.tiedPlayerIds);
+    const nextLayer = await deps.advanceRoundLayer(supabase, roundId, outcome.tiedPlayerIds);
 
-    await broadcastLayerTied(supabase, roomId, {
+    await deps.broadcastLayerTied(supabase, roomId, {
       roundId,
       layer: nextLayer,
       tiedPlayerIds: outcome.tiedPlayerIds,
