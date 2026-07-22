@@ -4,10 +4,11 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
-import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
-import { broadcastRoundClosed } from "@/lib/supabase/realtime";
+import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { broadcastReactionWindowChanged, broadcastRoundClosed } from "@/lib/supabase/realtime";
 import { drawSpellCard, resolveCardSwap } from "@/lib/supabase/spellCards";
 import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
+import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 
 /**
  * Draws a spell card if the just-submitted value is a natural 1 or 20
@@ -41,11 +42,15 @@ async function maybeDrawSpellCard(
  * break this check now. RFB03 (supabase/migrations/0019_spell_casts_pre_roll.sql)
  * extends the same convention to castSpellCardAction/setSpellCastTargetAction:
  * casting/targeting racing against declare-in closing is exactly the same
- * "round moved on under you" shape as a stale roll.
+ * "round moved on under you" shape as a stale roll. RFB04
+ * (supabase/migrations/0020_spell_reaction_window.sql) extends it again to
+ * castReactionSpellCardAction/passReactionWindowAction: reacting or passing
+ * against a window that's already closed (someone else's pass just closed
+ * it) is the same race, one layer up.
  */
 function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  return code === "RFB01" || code === "RFB02" || code === "RFB03";
+  return code === "RFB01" || code === "RFB02" || code === "RFB03" || code === "RFB04";
 }
 
 export async function startRoundAction() {
@@ -225,6 +230,75 @@ export async function endActiveEffectAction(formData: FormData) {
     revalidatePath("/");
     return;
   }
+
+  revalidatePath("/");
+}
+
+/**
+ * Casts the caller's held Reaction card into the round's currently-open
+ * reaction window (issue #68) — either reacting to the roll outcome itself
+ * (targetCastId omitted) or to another cast on the stack (CARD-target
+ * cards). Broadcasts reaction-window-changed so every other device's ribbon
+ * banner (ReactionBanner.tsx) re-fetches the reopened poll immediately,
+ * rather than waiting for its own next unrelated refresh.
+ */
+export async function castReactionSpellCardAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  const rawTargetPlayer = formData.get("targetPlayerId");
+  const targetPlayerId = typeof rawTargetPlayer === "string" && rawTargetPlayer ? rawTargetPlayer : undefined;
+  const rawTargetCast = formData.get("targetCastId");
+  const targetCastId = typeof rawTargetCast === "string" && rawTargetCast ? rawTargetCast : undefined;
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("castReactionSpellCardAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await castReactionSpellCard(supabase, roundId, { targetPlayerId, targetCastId });
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+
+  revalidatePath("/");
+}
+
+/**
+ * Passes on the round's currently-open reaction window (issue #68). If this
+ * pass closes the window (every currently-eligible Reaction-card holder has
+ * now passed in the same poll round), finalizes the layer — applying any
+ * active forced-reroll-in-place effects and running the resolution engine —
+ * in the same request, then broadcasts the change either way so every
+ * device's ribbon banner and dice-reveal screen update in lockstep.
+ */
+export async function passReactionWindowAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("passReactionWindowAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  let closed: boolean;
+  try {
+    closed = await passReactionWindow(supabase, roundId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidatePath("/");
+    return;
+  }
+
+  if (closed) {
+    await finalizeReactionWindow(supabase, roundId);
+  }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
 
   revalidatePath("/");
 }

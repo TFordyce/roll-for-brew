@@ -14,8 +14,10 @@ import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
+import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getMySpellCards } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
+import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
@@ -59,6 +61,15 @@ export default async function HomePage() {
     activeRound && activeRound.status === "closed"
       ? await getMyPendingCasts(supabase, activeRound.id)
       : [];
+  const heldReactionCard = heldSpellCards.find((c) => c.location === "held" && c.castingTime === "R") ?? null;
+
+  const openReactionWindow =
+    activeRound && activeRound.status === "closed"
+      ? await getOpenReactionWindow(supabase, activeRound.id)
+      : null;
+  const reactionStack =
+    openReactionWindow && activeRound ? await getReactionStack(supabase, activeRound.id) : [];
+
   const dispellableEffects =
     activeRound && activeRound.status === "open"
       ? await getDispellableActiveEffects(supabase, activeRound.id)
@@ -210,7 +221,22 @@ export default async function HomePage() {
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
         </section>
-      ) : (
+      ) : null}
+
+      {activeRound && openReactionWindow ? (
+        <ReactionBanner
+          roomId={roomId}
+          roundId={activeRound.id}
+          selfPlayerId={playerId}
+          eligible={openReactionWindow.eligible}
+          alreadyPassed={openReactionWindow.alreadyPassed}
+          heldReactionCard={heldReactionCard}
+          stack={reactionStack}
+          participants={participants}
+        />
+      ) : null}
+
+      {!activeRound ? (
         <section className="w-full max-w-md">
           <div>
             <CardFrame title="The Room">
@@ -238,7 +264,7 @@ export default async function HomePage() {
             </CardFrame>
           </div>
         </section>
-      )}
+      ) : null}
 
       <div className="rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
         <Link href="/settings" className="text-tavern-panel underline hover:text-ember">

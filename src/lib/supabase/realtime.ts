@@ -25,6 +25,16 @@ export type RoundClosedPayload = {
   roundId: string;
 };
 
+export type LayerRollsRevealedPayload = {
+  roundId: string;
+  layer: number;
+  rolls: { playerId: string; value: number }[];
+};
+
+export type ReactionWindowChangedPayload = {
+  roundId: string;
+};
+
 /**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
@@ -86,6 +96,55 @@ export async function broadcastRoundClosed(
     const result = await channel.httpSend("round-closed", payload);
     if (!result.success) {
       throw new Error(`broadcastRoundClosed: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a layer's raw rolls the instant they're known — before the
+ * reaction window that follows (issue #68) has been opened, let alone
+ * closed — so every device flips its dice to the actual values while a
+ * reaction is still possible, rather than waiting on round-revealed/
+ * layer-tied (which now only fire once the reaction window has closed and
+ * any forced-reroll-in-place effects have already been folded in). Carries
+ * no brewer/tied-subset yet, since that isn't decided until finalize.
+ */
+export async function broadcastLayerRollsRevealed(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: LayerRollsRevealedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("layer-rolls-revealed", payload);
+    if (!result.success) {
+      throw new Error(`broadcastLayerRollsRevealed: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts that the round's reaction-window state changed (opened, a new
+ * reaction was cast into it, or it closed) — the ribbon banner
+ * (ReactionBanner.tsx) listens for this to refresh its own state. One event
+ * name covers all three: the banner just re-fetches get_open_reaction_window/
+ * get_reaction_stack rather than trying to reconstruct state from the
+ * broadcast payload, since it needs a fresh read either way.
+ */
+export async function broadcastReactionWindowChanged(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: ReactionWindowChangedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("reaction-window-changed", payload);
+    if (!result.success) {
+      throw new Error(`broadcastReactionWindowChanged: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);
