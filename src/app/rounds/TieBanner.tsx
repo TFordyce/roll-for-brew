@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { roomChannelName } from "@/lib/supabase/realtime";
+import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
 import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 import { RollBothPicker } from "@/app/rounds/RollBothPicker";
@@ -43,32 +41,11 @@ export function TieBanner({
 }) {
   const router = useRouter();
 
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase.channel(roomChannelName(roomId));
-
-    channel
-      .on("broadcast", { event: "round-revealed" }, ({ payload }) => {
-        const revealedPayload = payload as { roundId: string };
-        if (revealedPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .on("broadcast", { event: "layer-tied" }, ({ payload }) => {
-        const tiedPayload = payload as { roundId: string };
-        if (tiedPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .on("broadcast", { event: "round-cancelled" }, ({ payload }) => {
-        const cancelledPayload = payload as { roundId: string };
-        if (cancelledPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [roomId, roundId, router]);
+  useRoomChannel(roomId, roundId, {
+    "round-revealed": () => router.refresh(),
+    "layer-tied": () => router.refresh(),
+    "round-cancelled": () => router.refresh(),
+  });
 
   const isTied = tiedParticipants.some((p) => p.playerId === selfPlayerId && !p.excludedAt);
   const names = tiedParticipants.map((p) => p.displayName ?? p.email).join(", ");

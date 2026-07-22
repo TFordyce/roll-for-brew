@@ -1,9 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { roomChannelName } from "@/lib/supabase/realtime";
+import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 
 /**
  * Realtime listener for the round's "open" (declaring-in) phase — unlike the
@@ -16,27 +14,10 @@ import { roomChannelName } from "@/lib/supabase/realtime";
 export function RoundOpenLive({ roomId, roundId }: { roomId: string; roundId: string }) {
   const router = useRouter();
 
-  useEffect(() => {
-    const supabase = createClient();
-    const channel = supabase.channel(roomChannelName(roomId));
-
-    channel
-      .on("broadcast", { event: "round-closed" }, ({ payload }) => {
-        const closedPayload = payload as { roundId: string };
-        if (closedPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .on("broadcast", { event: "round-cancelled" }, ({ payload }) => {
-        const cancelledPayload = payload as { roundId: string };
-        if (cancelledPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [roomId, roundId, router]);
+  useRoomChannel(roomId, roundId, {
+    "round-closed": () => router.refresh(),
+    "round-cancelled": () => router.refresh(),
+  });
 
   return null;
 }

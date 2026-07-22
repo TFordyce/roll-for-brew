@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
-import { roomChannelName, type RoundRevealedPayload } from "@/lib/supabase/realtime";
+import { type RoundRevealedPayload } from "@/lib/supabase/realtime";
+import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -42,33 +42,16 @@ export function RoundReveal({
 
   useEffect(() => {
     setRevealed(null);
+  }, [roomId, roundId]);
 
-    const supabase = createClient();
-    const channel = supabase.channel(roomChannelName(roomId));
-
-    channel
-      .on("broadcast", { event: "round-revealed" }, ({ payload }) => {
-        const revealedPayload = payload as RoundRevealedPayload;
-        if (revealedPayload.roundId !== roundId) return;
-        setRevealed(revealedPayload);
-        setTimeout(() => router.refresh(), 1600);
-      })
-      .on("broadcast", { event: "layer-tied" }, ({ payload }) => {
-        const tiedPayload = payload as { roundId: string };
-        if (tiedPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .on("broadcast", { event: "round-cancelled" }, ({ payload }) => {
-        const cancelledPayload = payload as { roundId: string };
-        if (cancelledPayload.roundId !== roundId) return;
-        router.refresh();
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [roomId, roundId, router]);
+  useRoomChannel(roomId, roundId, {
+    "round-revealed": (payload) => {
+      setRevealed(payload);
+      setTimeout(() => router.refresh(), 1600);
+    },
+    "layer-tied": () => router.refresh(),
+    "round-cancelled": () => router.refresh(),
+  });
 
   const revealedValueByPlayerId = new Map(revealed?.rolls.map((r) => [r.playerId, r.value]) ?? []);
 
