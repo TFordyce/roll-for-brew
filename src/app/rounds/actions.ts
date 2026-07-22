@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { closeRound, declareIn, startRound } from "@/lib/supabase/rounds";
+import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { broadcastRoundClosed } from "@/lib/supabase/realtime";
 
 /**
  * True for the two submit_roll/submit_manual_roll rejections that mean "the
@@ -51,6 +52,10 @@ export async function closeRoundAction(formData: FormData) {
 
   const supabase = await createClient();
   await closeRound(supabase, roundId);
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastRoundClosed(supabase, roomId, { roundId });
+
   revalidatePath("/");
 }
 

@@ -8,6 +8,7 @@ import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
+import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 import { RollBothPicker } from "@/app/rounds/RollBothPicker";
@@ -119,22 +120,25 @@ export default async function HomePage() {
               }))}
             />
           ) : (
-            <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">
-              {participants.map((entry) => (
-                <li
-                  key={entry.playerId}
-                  className="flex items-center justify-between px-3 py-2 text-sm"
-                >
-                  <span>
-                    {entry.displayName ?? entry.email}
-                    {entry.playerId === activeRound.startedBy ? " (starter)" : ""}
-                  </span>
-                  <span className="font-mono">
-                    {modifierByPlayerId.get(entry.playerId) ?? 0}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <>
+              <RoundOpenLive roomId={roomId} roundId={activeRound.id} />
+              <ul className="divide-y divide-neutral-200 rounded border border-neutral-200">
+                {participants.map((entry) => (
+                  <li
+                    key={entry.playerId}
+                    className="flex items-center justify-between px-3 py-2 text-sm"
+                  >
+                    <span>
+                      {entry.displayName ?? entry.email}
+                      {entry.playerId === activeRound.startedBy ? " (starter)" : ""}
+                    </span>
+                    <span className="font-mono">
+                      {modifierByPlayerId.get(entry.playerId) ?? 0}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
 
           {activeRound.status === "open" && !hasDeclared ? (
