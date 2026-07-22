@@ -1,16 +1,20 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { googlePlayerId } from "@/lib/supabase/players";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
+import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import {
   closeRoundAction,
   declareInAction,
   startRoundAction,
+  submitManualRollAction,
   submitRollAction,
 } from "@/app/rounds/actions";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
+import { RollBothPicker } from "@/app/rounds/RollBothPicker";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -45,6 +49,9 @@ export default async function HomePage() {
     activeRound?.status === "closed" && hasDeclared
       ? await getOwnRoll(supabase, activeRound.id, playerId)
       : null;
+
+  const needsRollInput = activeRound?.status === "closed" && hasDeclared && ownRoll === null;
+  const rollInputMode = needsRollInput ? await getRollInputMode(supabase, playerId) : null;
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 p-8">
@@ -115,7 +122,7 @@ export default async function HomePage() {
             </form>
           ) : null}
 
-          {activeRound.status === "closed" && hasDeclared && ownRoll === null ? (
+          {needsRollInput && rollInputMode === "in_app_only" ? (
             <form action={submitRollAction} className="mt-3">
               <input type="hidden" name="roundId" value={activeRound.id} />
               <button
@@ -125,6 +132,30 @@ export default async function HomePage() {
                 Roll
               </button>
             </form>
+          ) : null}
+
+          {needsRollInput && rollInputMode === "manual_only" ? (
+            <form action={submitManualRollAction} className="mt-3 flex items-center gap-2">
+              <input type="hidden" name="roundId" value={activeRound.id} />
+              <input
+                type="number"
+                name="value"
+                min={1}
+                max={20}
+                required
+                className="w-16 rounded border border-neutral-300 px-2 py-1 text-sm"
+              />
+              <button
+                type="submit"
+                className="rounded bg-neutral-900 px-3 py-1.5 text-sm text-white"
+              >
+                Submit
+              </button>
+            </form>
+          ) : null}
+
+          {needsRollInput && rollInputMode === "both" ? (
+            <RollBothPicker key={activeRound.id} roundId={activeRound.id} />
           ) : null}
         </section>
       ) : (
@@ -152,6 +183,10 @@ export default async function HomePage() {
           </form>
         </section>
       )}
+
+      <Link href="/settings" className="text-sm underline">
+        Settings
+      </Link>
 
       <form action="/auth/signout" method="post">
         <button type="submit" className="text-sm underline">

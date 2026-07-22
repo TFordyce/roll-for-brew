@@ -17,6 +17,24 @@ export async function submitRoll(supabase: SupabaseClient, roundId: string): Pro
 }
 
 /**
+ * Calls the submit_manual_roll RPC (supabase/migrations/
+ * 0006_player_settings_and_manual_rolls.sql): submits the caller's own
+ * manually-entered layer-0 roll for a closed round. The value is
+ * client-supplied and trusted with no verification beyond the 1-20 range.
+ */
+export async function submitManualRoll(
+  supabase: SupabaseClient,
+  roundId: string,
+  value: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("submit_manual_roll", {
+    p_round_id: roundId,
+    p_value: value,
+  });
+  if (error) throw error;
+}
+
+/**
  * Calls the get_layer0_rolls_if_complete RPC. Returns every participant's
  * layer-0 roll once everyone has rolled, or an empty array if the round is
  * still waiting on someone.
