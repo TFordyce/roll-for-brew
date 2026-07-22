@@ -12,6 +12,7 @@ export type TiedParticipant = {
   playerId: string;
   displayName: string | null;
   email: string;
+  excludedAt: string | null;
 };
 
 /**
@@ -57,6 +58,11 @@ export function TieBanner({
         if (tiedPayload.roundId !== roundId) return;
         router.refresh();
       })
+      .on("broadcast", { event: "round-cancelled" }, ({ payload }) => {
+        const cancelledPayload = payload as { roundId: string };
+        if (cancelledPayload.roundId !== roundId) return;
+        router.refresh();
+      })
       .subscribe();
 
     return () => {
@@ -64,7 +70,7 @@ export function TieBanner({
     };
   }, [roomId, roundId, router]);
 
-  const isTied = tiedParticipants.some((p) => p.playerId === selfPlayerId);
+  const isTied = tiedParticipants.some((p) => p.playerId === selfPlayerId && !p.excludedAt);
   const names = tiedParticipants.map((p) => p.displayName ?? p.email).join(", ");
 
   return (

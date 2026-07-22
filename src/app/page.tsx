@@ -7,6 +7,7 @@ import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from 
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
+import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 import { RollBothPicker } from "@/app/rounds/RollBothPicker";
@@ -32,7 +33,13 @@ export default async function HomePage() {
   const roomId = await enterTodaysRoom(supabase);
   const roster = await getRoomRoster(supabase, roomId);
 
-  const activeRound = await getActiveRound(supabase, roomId);
+  let activeRound = await getActiveRound(supabase, roomId);
+  if (activeRound) {
+    const stallOutcome = await enforceStallTimeout(supabase, activeRound.id);
+    if (stallOutcome.action !== "none") {
+      activeRound = await getActiveRound(supabase, roomId);
+    }
+  }
   const participants = activeRound ? await getRoundParticipants(supabase, activeRound.id) : [];
   const hasDeclared = participants.some((p) => p.playerId === playerId);
   const isStarter = activeRound?.startedBy === playerId;
@@ -47,6 +54,9 @@ export default async function HomePage() {
       ? await getRoundLayerParticipants(supabase, activeRound.id, currentLayer)
       : [];
   const isTied = tiedParticipants.some((p) => p.playerId === playerId);
+  const isExcluded = isTiePhase
+    ? tiedParticipants.some((p) => p.playerId === playerId && p.excludedAt)
+    : participants.some((p) => p.playerId === playerId && p.excludedAt);
 
   const ownRoll = !activeRound
     ? null
@@ -60,11 +70,15 @@ export default async function HomePage() {
 
   // Whether it's this player's turn to submit a roll right now — either the
   // round's plain layer-0 declaration (hasDeclared) or, during a tie's
-  // reroll layer, being one of the tied rerollers (isTied). Either way the
-  // player's roll_input_mode preference (#22) decides which input method(s)
-  // they're offered.
+  // reroll layer, being one of the tied rerollers (isTied) — and not someone
+  // stall-timeout enforcement has already excluded from this layer (#21).
+  // Either way the player's roll_input_mode preference (#22) decides which
+  // input method(s) they're offered.
   const isPlayersTurnToRoll =
-    activeRound?.status === "closed" && ownRoll === null && (isTiePhase ? isTied : hasDeclared);
+    activeRound?.status === "closed" &&
+    ownRoll === null &&
+    !isExcluded &&
+    (isTiePhase ? isTied : hasDeclared);
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 

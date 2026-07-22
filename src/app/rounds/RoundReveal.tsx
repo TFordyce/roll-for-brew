@@ -58,6 +58,11 @@ export function RoundReveal({
         if (tiedPayload.roundId !== roundId) return;
         router.refresh();
       })
+      .on("broadcast", { event: "round-cancelled" }, ({ payload }) => {
+        const cancelledPayload = payload as { roundId: string };
+        if (cancelledPayload.roundId !== roundId) return;
+        router.refresh();
+      })
       .subscribe();
 
     return () => {
