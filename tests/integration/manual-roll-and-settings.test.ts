@@ -4,7 +4,7 @@ import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInA
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // player_settings table and the submit_manual_roll RPC (supabase/migrations/
-// 0006_player_settings_and_manual_rolls.sql) through real signed-in sessions,
+// 0008_player_settings_and_manual_rolls.sql) through real signed-in sessions,
 // covering the acceptance criteria of issue #22: manual roll submission and
 // rolls.input_mode recording, for each of the three roll_input_mode
 // preferences (in_app_only / manual_only / both — the preference itself

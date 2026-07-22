@@ -3,13 +3,15 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer } from "@/lib/supabase/players";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
-import { getActiveRound, getRoundParticipants } from "@/lib/supabase/rounds";
+import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 import { RollBothPicker } from "@/app/rounds/RollBothPicker";
+import { TieBanner } from "@/app/rounds/TieBanner";
+import { Nav } from "@/app/Nav";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -38,17 +40,38 @@ export default async function HomePage() {
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
-  const ownRoll =
-    activeRound?.status === "closed" && hasDeclared
-      ? await getOwnRoll(supabase, activeRound.id, playerId)
-      : null;
+  const currentLayer = activeRound?.currentLayer ?? 0;
+  const isTiePhase = activeRound?.status === "closed" && currentLayer > 0;
+  const tiedParticipants =
+    activeRound && isTiePhase
+      ? await getRoundLayerParticipants(supabase, activeRound.id, currentLayer)
+      : [];
+  const isTied = tiedParticipants.some((p) => p.playerId === playerId);
 
-  const needsRollInput = activeRound?.status === "closed" && hasDeclared && ownRoll === null;
-  const rollInputMode = needsRollInput ? await getRollInputMode(supabase, playerId) : null;
+  const ownRoll = !activeRound
+    ? null
+    : isTiePhase
+      ? isTied
+        ? await getOwnRoll(supabase, activeRound.id, playerId, currentLayer)
+        : null
+      : activeRound.status === "closed" && hasDeclared
+        ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
+        : null;
+
+  // Whether it's this player's turn to submit a roll right now — either the
+  // round's plain layer-0 declaration (hasDeclared) or, during a tie's
+  // reroll layer, being one of the tied rerollers (isTied). Either way the
+  // player's roll_input_mode preference (#22) decides which input method(s)
+  // they're offered.
+  const isPlayersTurnToRoll =
+    activeRound?.status === "closed" && ownRoll === null && (isTiePhase ? isTied : hasDeclared);
+  const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
+  const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
   return (
     <main className="flex min-h-screen flex-col items-center gap-6 p-8">
       <h1 className="text-2xl font-semibold">Roll for Brew</h1>
+      <Nav active="room" />
       <p className="text-sm text-neutral-500">
         Signed in as {player?.display_name ?? player?.email ?? user.email}
       </p>
@@ -58,7 +81,17 @@ export default async function HomePage() {
           <h2 className="mb-2 text-lg font-medium">
             {activeRound.status === "open" ? "Round open — declared in" : "Declarations closed"}
           </h2>
-          {activeRound.status === "closed" ? (
+          {activeRound.status === "closed" && isTiePhase ? (
+            <TieBanner
+              key={currentLayer}
+              roomId={roomId}
+              roundId={activeRound.id}
+              selfPlayerId={playerId}
+              ownRoll={ownRoll}
+              tiedParticipants={tiedParticipants}
+              rollInputMode={rollInputMode}
+            />
+          ) : activeRound.status === "closed" ? (
             <RoundReveal
               roomId={roomId}
               roundId={activeRound.id}

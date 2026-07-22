@@ -8,7 +8,7 @@ const DEFAULT_ROLL_INPUT_MODE: RollInputMode = "in_app_only";
 
 /**
  * The caller's own roll_input_mode preference (supabase/migrations/
- * 0006_player_settings_and_manual_rolls.sql), defaulting to 'in_app_only'
+ * 0008_player_settings_and_manual_rolls.sql), defaulting to 'in_app_only'
  * for a player who has never visited Settings and so has no row yet.
  */
 export async function getRollInputMode(

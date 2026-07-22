@@ -1,15 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type LayerZeroRoll = {
+export type LayerRoll = {
   playerId: string;
   value: number;
   modifierSnapshot: number;
 };
 
+export type CompletedLayer = {
+  layer: number;
+  rolls: LayerRoll[];
+};
+
 /**
- * Calls the submit_roll RPC (supabase/migrations/0005_rolls_and_resolution.sql):
- * submits the caller's own in-app layer-0 roll for a closed round. The die
- * value is generated server-side, not passed in.
+ * Calls the submit_roll RPC (supabase/migrations/0007_reroll_layers.sql):
+ * submits the caller's own in-app roll for whichever layer the round is
+ * currently on (rounds.current_layer — derived server-side, never a client
+ * parameter). The die value is generated server-side, not passed in.
  */
 export async function submitRoll(supabase: SupabaseClient, roundId: string): Promise<void> {
   const { error } = await supabase.rpc("submit_roll", { p_round_id: roundId });
@@ -18,9 +24,11 @@ export async function submitRoll(supabase: SupabaseClient, roundId: string): Pro
 
 /**
  * Calls the submit_manual_roll RPC (supabase/migrations/
- * 0006_player_settings_and_manual_rolls.sql): submits the caller's own
- * manually-entered layer-0 roll for a closed round. The value is
- * client-supplied and trusted with no verification beyond the 1-20 range.
+ * 0008_player_settings_and_manual_rolls.sql): submits the caller's own
+ * manually-entered roll for whichever layer the round is currently on
+ * (rounds.current_layer — derived server-side, same as submit_roll). The
+ * value is client-supplied and trusted with no verification beyond the 1-20
+ * range.
  */
 export async function submitManualRoll(
   supabase: SupabaseClient,
@@ -35,29 +43,59 @@ export async function submitManualRoll(
 }
 
 /**
- * Calls the get_layer0_rolls_if_complete RPC. Returns every participant's
- * layer-0 roll once everyone has rolled, or an empty array if the round is
- * still waiting on someone.
+ * Calls the get_current_layer_rolls_if_complete RPC. Returns the round's
+ * current layer number and every expected roller's roll for it once
+ * everyone has rolled, or null if the round is still waiting on someone.
  */
-export async function getLayerZeroRollsIfComplete(
+export async function getCurrentLayerRollsIfComplete(
   supabase: SupabaseClient,
   roundId: string,
-): Promise<LayerZeroRoll[]> {
-  const { data, error } = await supabase.rpc("get_layer0_rolls_if_complete", {
+): Promise<CompletedLayer | null> {
+  const { data, error } = await supabase.rpc("get_current_layer_rolls_if_complete", {
     p_round_id: roundId,
   });
   if (error) throw error;
 
-  return (data ?? []).map((row: { player_id: string; value: number; modifier_snapshot: number }) => ({
-    playerId: row.player_id,
-    value: row.value,
-    modifierSnapshot: row.modifier_snapshot,
-  }));
+  const rows = (data ?? []) as {
+    layer: number;
+    player_id: string;
+    value: number;
+    modifier_snapshot: number;
+  }[];
+  const [first] = rows;
+  if (!first) return null;
+
+  return {
+    layer: first.layer,
+    rolls: rows.map((row) => ({
+      playerId: row.player_id,
+      value: row.value,
+      modifierSnapshot: row.modifier_snapshot,
+    })),
+  };
 }
 
 /**
- * The caller's own layer-0 roll for a round, or null if they haven't
- * rolled yet. Relies on the "roller can read their own row" RLS policy —
+ * Calls the advance_round_layer RPC: persists a tie outcome the caller
+ * already computed via resolveLayer, moving the round on to a new reroll
+ * layer for just the tied subset. Returns the new layer number.
+ */
+export async function advanceRoundLayer(
+  supabase: SupabaseClient,
+  roundId: string,
+  tiedPlayerIds: string[],
+): Promise<number> {
+  const { data, error } = await supabase.rpc("advance_round_layer", {
+    p_round_id: roundId,
+    p_tied_player_ids: tiedPlayerIds,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
+ * The caller's own roll for a round's given layer, or null if they haven't
+ * rolled it yet. Relies on the "roller can read their own row" RLS policy —
  * this is the "reveal to myself the instant I've personally submitted"
  * behaviour, distinct from seeing anyone else's roll before resolution.
  */
@@ -65,13 +103,14 @@ export async function getOwnRoll(
   supabase: SupabaseClient,
   roundId: string,
   playerId: string,
+  layer: number,
 ): Promise<number | null> {
   const { data, error } = await supabase
     .from("rolls")
     .select("value")
     .eq("round_id", roundId)
     .eq("player_id", playerId)
-    .eq("layer", 0)
+    .eq("layer", layer)
     .maybeSingle();
 
   if (error) throw error;

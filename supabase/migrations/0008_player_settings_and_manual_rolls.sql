@@ -29,16 +29,20 @@ create policy "player_settings are updatable by their own player"
   using (player_id = public.current_player_id())
   with check (player_id = public.current_player_id());
 
--- Submits the caller's own manually-entered layer-0 roll for a closed round —
--- the "manual" counterpart to submit_roll (0005). The value is client-supplied
--- and trusted with no verification beyond the 1-20 range check (the spec's
--- "no verification beyond range"; the table's own check constraint would
--- catch an out-of-range value too, but this gives a clearer error). Every
--- other gate (round closed, caller declared in, one roll per round via the
--- (round_id, player_id, layer) primary key) matches submit_roll exactly, so
--- the two land in the same rolls table under the same hidden-until-
--- personally-submitted RLS policy regardless of which input mode produced
--- the row.
+-- Submits the caller's own manually-entered roll for whichever layer the
+-- round is currently on (rounds.current_layer, derived server-side — same
+-- as submit_roll post-#20, never a client parameter) — the "manual"
+-- counterpart to submit_roll (0005, generalized to layers by 0007). The
+-- value is client-supplied and trusted with no verification beyond the
+-- 1-20 range check (the spec's "no verification beyond range"; the table's
+-- own check constraint would catch an out-of-range value too, but this
+-- gives a clearer error). Every other gate (round closed, caller expected
+-- to roll this layer via is_expected_layer_roller, one roll per round+layer
+-- via the (round_id, player_id, layer) primary key) matches submit_roll
+-- exactly, so the two land in the same rolls table under the same
+-- hidden-until-personally-submitted RLS policy regardless of which input
+-- mode produced the row — including during a tie's reroll layer, since
+-- is_expected_layer_roller already covers round_layer_participants there.
 create or replace function public.submit_manual_roll(p_round_id uuid, p_value integer)
 returns void
 language plpgsql
@@ -49,6 +53,7 @@ declare
   v_player_id text;
   v_status text;
   v_room_id uuid;
+  v_layer integer;
   v_modifier integer;
 begin
   if p_value is null or p_value < 1 or p_value > 20 then
@@ -57,7 +62,7 @@ begin
 
   v_player_id := public.current_player_id();
 
-  select status, room_id into v_status, v_room_id
+  select status, room_id, current_layer into v_status, v_room_id, v_layer
     from public.rounds
    where id = p_round_id;
 
@@ -69,11 +74,8 @@ begin
     raise exception 'submit_manual_roll: round is not closed for rolling';
   end if;
 
-  if not exists (
-    select 1 from public.round_participants
-     where round_id = p_round_id and player_id = v_player_id
-  ) then
-    raise exception 'submit_manual_roll: caller did not declare in for this round';
+  if not public.is_expected_layer_roller(p_round_id, v_player_id, v_layer) then
+    raise exception 'submit_manual_roll: caller is not expected to roll in the current layer';
   end if;
 
   select modifier into v_modifier
@@ -81,7 +83,7 @@ begin
    where room_id = v_room_id and player_id = v_player_id;
 
   insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot)
-  values (p_round_id, v_player_id, 0, p_value, 'manual', v_modifier);
+  values (p_round_id, v_player_id, v_layer, p_value, 'manual', v_modifier);
 end;
 $$;
 

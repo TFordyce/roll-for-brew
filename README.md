@@ -41,6 +41,17 @@ How it's wired (see `supabase/migrations/0004_round_lifecycle.sql`):
 - `public.close_round(p_round_id)` — `security definer` RPC. Only succeeds for the round's `started_by` player, and only once at least 2 players have declared in; otherwise raises an exception.
 - The home page (`src/app/page.tsx`, via `src/lib/supabase/rounds.ts`) shows the day's full roster with a "Start round" button when there's no active round, and switches to a live declared-in list — distinct from the full roster — with "I'm in" / "Close declarations" actions once a round is active.
 
+## Stats & leaderboard tab
+
+A top-level Stats tab, alongside Room, with four ranked leaderboards — most cups made, fewest rounds lost ("luckiest"), loss percentage, and highest modifier ever reached — each toggleable between all-time and the last 30 days, plus a per-room history drill-down.
+
+How it's wired (see `supabase/migrations/0006_stats_leaderboards.sql`):
+
+- Every leaderboard is a pair of plain SQL views (`stats_cups_made_all_time` / `_last_30_days`, and similarly for `stats_rounds_lost_*`, `stats_loss_percentage_*`, `stats_modifier_peak_*`), computed live over `rounds`/`round_participants`/`players` — there is no maintained summary table, so the numbers can never drift from the rounds that actually happened. "Lost a round" means being `rounds.brewer_id` on a `resolved` round; "highest modifier ever reached" has no dedicated column (`room_players.modifier` resets to 0 every new room), so it's derived as the running sum of a brewer's `cups_made` across their resolved rounds within one room, ordered by `resolved_at`.
+- `stats_room_history` (one row per room/day, resolved-round count) and `stats_room_rounds` (that day's resolved rounds — starter, brewer, cups_made) back the per-room history drill-down.
+- All underlying tables are already readable by any authenticated user, so these views need no security-definer wrapper — just `grant select ... to authenticated`.
+- `src/app/stats/page.tsx` (via `src/lib/supabase/stats.ts`) renders the four leaderboards and the room drill-down, with the all-time/last-30-days toggle and the room picker driven by the `?window=` / `?room=` query params. `src/app/Nav.tsx` adds the Room/Stats top-level tabs to both pages.
+
 ### Local/project setup
 
 1. Create a Supabase project.
