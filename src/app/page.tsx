@@ -88,7 +88,7 @@ export default async function HomePage() {
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
       </h1>
-      <div className="rounded-md bg-parchment/90 px-3 py-1.5">
+      <div className="rounded-md bg-parchment/90 px-3 py-1.5 font-display uppercase tracking-widest">
         <Nav active="room" />
       </div>
       <p className="rounded-md bg-parchment/90 px-3 py-1.5 text-sm text-tavern-panel">
@@ -205,13 +205,13 @@ export default async function HomePage() {
         </section>
       )}
 
-      <div className="flex flex-col items-center gap-2 rounded-md bg-parchment/90 px-4 py-2">
-        <Link href="/settings" className="text-sm text-tavern-panel underline hover:text-ember">
+      <div className="flex flex-col items-center gap-2 rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
+        <Link href="/settings" className="text-tavern-panel underline hover:text-ember">
           Settings
         </Link>
 
         <form action="/auth/signout" method="post">
-          <button type="submit" className="text-sm text-tavern-panel underline hover:text-ember">
+          <button type="submit" className="text-tavern-panel underline hover:text-ember">
             Sign out
           </button>
         </form>
