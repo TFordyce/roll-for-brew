@@ -1,33 +1,34 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
-  deleteTestUser,
+  createTestAnonClient,
+  createTestCleanup,
+  hasAnonTestEnv,
   hasTestEnv,
-  removeFromWhitelist,
   uniqueTestEmail,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project (see .env.example).
-// Exercises the actual "before user created" Postgres auth hook
-// (supabase/migrations/0001_auth_whitelist_and_players.sql) through the
-// same GoTrue user-creation path a real OAuth sign-in goes through, rather
-// than calling the SQL function directly — the function's execute grant is
-// deliberately restricted to supabase_auth_admin, so the hook can only be
+// Exercises the actual auth hooks
+// (supabase/migrations/0001_auth_whitelist_and_players.sql,
+// 0002_enforce_whitelist_on_every_login.sql) through the same GoTrue
+// user-creation/token-issuance paths a real OAuth sign-in goes through,
+// rather than calling the SQL functions directly — their execute grants are
+// deliberately restricted to supabase_auth_admin, so they can only be
 // exercised end-to-end, which is also the more faithful test.
-describe.skipIf(!hasTestEnv)("whitelist gate (before-user-created hook)", () => {
-  const createdUserIds: string[] = [];
-  const seededEmails: string[] = [];
+describe.skipIf(!hasTestEnv)("whitelist gate (auth hooks)", () => {
+  let admin: SupabaseClient;
+  let cleanup: ReturnType<typeof createTestCleanup>;
 
-  afterEach(async () => {
-    const admin = createTestAdminClient();
-    await Promise.all(createdUserIds.splice(0).map((id) => deleteTestUser(admin, id)));
-    await Promise.all(
-      seededEmails.splice(0).map((email) => removeFromWhitelist(admin, email)),
-    );
+  beforeAll(() => {
+    admin = createTestAdminClient();
+    cleanup = createTestCleanup(admin);
   });
 
+  afterEach(() => cleanup.run());
+
   it("rejects a non-whitelisted identity outright — no user, no session", async () => {
-    const admin = createTestAdminClient();
     const email = uniqueTestEmail("rejected");
 
     const { data, error } = await admin.auth.admin.createUser({
@@ -44,9 +45,8 @@ describe.skipIf(!hasTestEnv)("whitelist gate (before-user-created hook)", () => 
   });
 
   it("accepts a whitelisted identity and reaches a created user", async () => {
-    const admin = createTestAdminClient();
     const email = uniqueTestEmail("accepted");
-    seededEmails.push(email);
+    cleanup.trackWhitelistedEmail(email);
 
     const { error: seedError } = await admin
       .from("whitelist")
@@ -61,14 +61,13 @@ describe.skipIf(!hasTestEnv)("whitelist gate (before-user-created hook)", () => 
 
     expect(error).toBeNull();
     expect(data.user).not.toBeNull();
-    if (data.user) createdUserIds.push(data.user.id);
+    if (data.user) cleanup.trackUser(data.user.id);
     expect(data.user?.email).toBe(email);
   });
 
   it("whitelist matching is case-insensitive on email", async () => {
-    const admin = createTestAdminClient();
     const email = uniqueTestEmail("MixedCase");
-    seededEmails.push(email.toLowerCase());
+    cleanup.trackWhitelistedEmail(email);
 
     await admin.from("whitelist").insert({ email: email.toLowerCase() });
 
@@ -80,6 +79,43 @@ describe.skipIf(!hasTestEnv)("whitelist gate (before-user-created hook)", () => 
 
     expect(error).toBeNull();
     expect(data.user).not.toBeNull();
-    if (data.user) createdUserIds.push(data.user.id);
+    if (data.user) cleanup.trackUser(data.user.id);
+  });
+
+  describe.skipIf(!hasAnonTestEnv)("revocation on later login", () => {
+    it("locks out an identity removed from the whitelist after its account was created", async () => {
+      const email = uniqueTestEmail("revoked");
+      const password = `Test-password-${Math.random().toString(36).slice(2)}!`;
+      cleanup.trackWhitelistedEmail(email);
+
+      await admin.from("whitelist").insert({ email: email.toLowerCase() });
+      const { data: created, error: createError } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { sub: `fake-google-sub-revoked-${Date.now()}` },
+      });
+      expect(createError).toBeNull();
+      if (created.user) cleanup.trackUser(created.user.id);
+
+      // First login succeeds — still whitelisted, and this exercises the
+      // real token-issuance path the Custom Access Token hook runs on.
+      const firstLogin = createTestAnonClient();
+      const { data: firstSession, error: firstError } =
+        await firstLogin.auth.signInWithPassword({ email, password });
+      expect(firstError).toBeNull();
+      expect(firstSession.session).not.toBeNull();
+
+      // Remove from the whitelist without touching the account itself.
+      await admin.from("whitelist").delete().eq("email", email.toLowerCase());
+
+      // A later login attempt must now be rejected outright.
+      const secondLogin = createTestAnonClient();
+      const { data: secondSession, error: secondError } =
+        await secondLogin.auth.signInWithPassword({ email, password });
+
+      expect(secondError).not.toBeNull();
+      expect(secondSession.session).toBeNull();
+    });
   });
 });

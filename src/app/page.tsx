@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { googlePlayerId } from "@/lib/supabase/players";
 
-export default async function RoomPage() {
+export default async function HomePage() {
   const supabase = await createClient();
   const {
     data: { user },
@@ -14,7 +15,7 @@ export default async function RoomPage() {
   const { data: player } = await supabase
     .from("players")
     .select("display_name, email, avatar_url")
-    .eq("id", user.user_metadata.sub ?? user.id)
+    .eq("id", googlePlayerId(user))
     .maybeSingle();
 
   return (

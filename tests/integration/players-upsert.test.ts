@@ -1,35 +1,25 @@
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  createTestAdminClient,
-  deleteTestUser,
-  hasTestEnv,
-  removeFromWhitelist,
-  uniqueTestEmail,
-} from "./setup";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createTestAdminClient, createTestCleanup, hasTestEnv, uniqueTestEmail } from "./setup";
 
 // Verifies the on_auth_user_upsert_player trigger
 // (supabase/migrations/0001_auth_whitelist_and_players.sql) populates and
 // keeps public.players in sync with the Google identity, for a whitelisted
 // user only.
 describe.skipIf(!hasTestEnv)("players table upsert from Google identity", () => {
-  const createdUserIds: string[] = [];
-  const seededEmails: string[] = [];
+  let admin: SupabaseClient;
+  let cleanup: ReturnType<typeof createTestCleanup>;
 
-  afterEach(async () => {
-    const admin = createTestAdminClient();
-    for (const id of createdUserIds.splice(0)) {
-      await admin.from("players").delete().eq("id", id);
-      await deleteTestUser(admin, id);
-    }
-    await Promise.all(
-      seededEmails.splice(0).map((email) => removeFromWhitelist(admin, email)),
-    );
+  beforeAll(() => {
+    admin = createTestAdminClient();
+    cleanup = createTestCleanup(admin);
   });
 
+  afterEach(() => cleanup.run());
+
   it("creates a players row keyed by Google sub on first login", async () => {
-    const admin = createTestAdminClient();
     const email = uniqueTestEmail("first-login");
-    seededEmails.push(email.toLowerCase());
+    cleanup.trackWhitelistedEmail(email);
     await admin.from("whitelist").insert({ email: email.toLowerCase() });
 
     const googleSub = `google-sub-${Date.now()}`;
@@ -43,7 +33,7 @@ describe.skipIf(!hasTestEnv)("players table upsert from Google identity", () => 
       },
     });
     expect(error).toBeNull();
-    if (data.user) createdUserIds.push(data.user.id);
+    if (data.user) cleanup.trackUser(data.user.id);
 
     const { data: player, error: playerError } = await admin
       .from("players")
@@ -61,9 +51,8 @@ describe.skipIf(!hasTestEnv)("players table upsert from Google identity", () => 
   });
 
   it("upserts (not duplicates) the players row when the Google profile changes on a later login", async () => {
-    const admin = createTestAdminClient();
     const email = uniqueTestEmail("returning");
-    seededEmails.push(email.toLowerCase());
+    cleanup.trackWhitelistedEmail(email);
     await admin.from("whitelist").insert({ email: email.toLowerCase() });
 
     const googleSub = `google-sub-returning-${Date.now()}`;
@@ -74,7 +63,7 @@ describe.skipIf(!hasTestEnv)("players table upsert from Google identity", () => 
     });
     expect(error).toBeNull();
     const userId = data.user!.id;
-    createdUserIds.push(userId);
+    cleanup.trackUser(userId);
 
     await admin.auth.admin.updateUserById(userId, {
       user_metadata: {

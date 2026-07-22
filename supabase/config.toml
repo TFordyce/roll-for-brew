@@ -1,3 +1,7 @@
 [auth.hook.before_user_created]
 enabled = true
 uri = "pg-functions://postgres/public/check_whitelist_before_user_created"
+
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/enforce_whitelist_on_access_token"

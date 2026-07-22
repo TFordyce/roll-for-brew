@@ -29,7 +29,7 @@ export default function LoginPage() {
     <main className="flex min-h-screen flex-col items-center justify-center gap-6 p-8">
       <h1 className="text-2xl font-semibold">Roll for Brew</h1>
       <p className="text-sm text-neutral-500">
-        Sign in with your Google account to join today&apos;s room.
+        Sign in with your Google account.
       </p>
       <button
         type="button"
