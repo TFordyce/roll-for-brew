@@ -286,4 +286,90 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       .single();
     expect(detoxInstance).toEqual({ location: "in_deck", held_by_player: null });
   });
+
+  it("Greater Detox (issue #70) ends a Rare-tier active effect early, but is rejected against a Common one", async () => {
+    const cloudCaster = await signUp("greater-detox-cloud-caster");
+    const crashCaster = await signUp("greater-detox-crash-caster");
+    const crashTarget = await signUp("greater-detox-crash-target");
+    const detoxer = await signUp("greater-detox-detoxer");
+
+    await forceHold(cloudCaster.googleSub, "Cloud of Cream");
+    await forceHold(crashCaster.googleSub, "Caffeine Crash");
+
+    const { data: roundId } = await cloudCaster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await crashCaster.client.rpc("declare_in", { p_round_id: roundId });
+    await crashTarget.client.rpc("declare_in", { p_round_id: roundId });
+    await detoxer.client.rpc("declare_in", { p_round_id: roundId });
+
+    const { error: cloudCastError } = await cloudCaster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: cloudCaster.googleSub,
+    });
+    expect(cloudCastError).toBeNull();
+
+    const { error: crashCastError } = await crashCaster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: crashTarget.googleSub,
+    });
+    expect(crashCastError).toBeNull();
+
+    const { data: commonEffect } = await admin
+      .from("spell_active_effects")
+      .select("id")
+      .eq("target_player_id", cloudCaster.googleSub)
+      .single();
+
+    const detoxInstanceId = await forceHold(detoxer.googleSub, "Greater Detox");
+
+    const { data: dispellable, error: dispellableError } = await detoxer.client.rpc(
+      "get_dispellable_active_effects",
+      { p_round_id: roundId },
+    );
+    expect(dispellableError).toBeNull();
+    expect(dispellable).toEqual([
+      {
+        effect_id: expect.any(String),
+        target_player_id: crashTarget.googleSub,
+        target_display_name: expect.any(String),
+        card_name: "Caffeine Crash",
+        tier: "rare",
+      },
+    ]);
+
+    // Rejected: Cloud of Cream's active effect is Common, out of Greater
+    // Detox's Rare/Epic-only scope.
+    const { error: rejectError } = await detoxer.client.rpc("end_active_effect", {
+      p_round_id: roundId,
+      p_effect_id: commonEffect!.id,
+    });
+    expect(rejectError).not.toBeNull();
+
+    const { data: commonStillThere } = await admin
+      .from("spell_active_effects")
+      .select("id")
+      .eq("id", commonEffect!.id);
+    expect(commonStillThere).toHaveLength(1);
+
+    // Accepted: Caffeine Crash is Rare-tier.
+    const rareEffectId = (dispellable as { effect_id: string }[])[0]!.effect_id;
+    const { error: endError } = await detoxer.client.rpc("end_active_effect", {
+      p_round_id: roundId,
+      p_effect_id: rareEffectId,
+    });
+    expect(endError).toBeNull();
+
+    const { data: rareGone } = await admin
+      .from("spell_active_effects")
+      .select("id")
+      .eq("id", rareEffectId);
+    expect(rareGone).toEqual([]);
+
+    const { data: detoxInstance } = await admin
+      .from("spell_deck_instances")
+      .select("location, held_by_player")
+      .eq("id", detoxInstanceId)
+      .single();
+    expect(detoxInstance).toEqual({ location: "in_deck", held_by_player: null });
+  });
 });
