@@ -18,13 +18,15 @@ import { broadcastRoundClosed } from "@/lib/supabase/realtime";
  * src/app) sent the stalled player to a raw error page for a state change
  * that was correct and expected; refreshing to the room's current state is
  * the right response instead.
+ *
+ * Keyed off the RFB01/RFB02 Postgres error codes (supabase/migrations/
+ * 0013_stale_round_error_codes.sql), not the exception message text — a
+ * cosmetic wording change to a `raise exception` string can't silently
+ * break this check now.
  */
 function isStaleRoundError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : "";
-  return (
-    message.endsWith("round is not closed for rolling") ||
-    message.endsWith("caller is not expected to roll in the current layer")
-  );
+  const code = (error as { code?: string } | null)?.code;
+  return code === "RFB01" || code === "RFB02";
 }
 
 export async function startRoundAction() {
