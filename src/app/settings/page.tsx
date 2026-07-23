@@ -5,6 +5,7 @@ import { getCurrentPlayer } from "@/lib/supabase/players";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { SettingsForm } from "@/app/settings/SettingsForm";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 
 export default async function SettingsPage() {
   const supabase = await createClient();
@@ -17,7 +18,8 @@ export default async function SettingsPage() {
   const rollInputMode = await getRollInputMode(supabase, current.playerId);
 
   return (
-    <main className="flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+      <ParallaxBackdrop playerId={current.playerId} />
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Settings
       </h1>
