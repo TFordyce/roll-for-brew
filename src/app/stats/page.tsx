@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { createClient } from "@/lib/supabase/server";
+import { googlePlayerId } from "@/lib/supabase/players";
 import {
   getCupsMadeLeaderboard,
   getLossPercentageLeaderboard,
@@ -14,6 +15,7 @@ import {
 } from "@/lib/supabase/stats";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { RankRow } from "@/app/_components/RankRow";
 
 function windowFromParam(value: string | undefined): StatsWindow {
@@ -122,7 +124,8 @@ export default async function StatsPage({
   ]);
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+      <ParallaxBackdrop playerId={googlePlayerId(user)} />
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
       </h1>

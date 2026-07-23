@@ -20,6 +20,7 @@ import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } 
 import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 import { SignOutBadge } from "@/app/_components/SignOutBadge";
 
@@ -118,7 +119,8 @@ export default async function HomePage() {
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-wood-planks p-8">
+    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+      <ParallaxBackdrop playerId={playerId} />
       <SignOutBadge name={player?.display_name ?? player?.email ?? user.email ?? ""} />
 
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
