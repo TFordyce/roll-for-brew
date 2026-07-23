@@ -119,7 +119,7 @@ export default async function HomePage() {
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+    <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={playerId} />
       <SignOutBadge name={player?.display_name ?? player?.email ?? user.email ?? ""} />
 

@@ -124,7 +124,7 @@ export default async function StatsPage({
   ]);
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+    <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={googlePlayerId(user)} />
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
