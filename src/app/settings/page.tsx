@@ -18,7 +18,7 @@ export default async function SettingsPage() {
   const rollInputMode = await getRollInputMode(supabase, current.playerId);
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+    <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={current.playerId} />
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Settings
