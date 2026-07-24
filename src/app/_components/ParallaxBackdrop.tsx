@@ -41,9 +41,9 @@ const PROP_ASPECT: Record<PropKey, number> = {
 // footprint matches the rest of the row rather than tightening the slot
 // spacing to compensate.
 const PROP_SCALE: Record<PropKey, number> = {
-  kettle: 0.82,
+  kettle: 1.1,
   teapot: 1,
-  sugarBowl: 1,
+  sugarBowl: 0.85,
   milkCarton: 1,
   coffeeJar: 1,
   saucerStack: 0.8,
@@ -67,8 +67,8 @@ const SLOT_ANCHORS: SlotAnchor[] = [
   { x: 0.12 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
   { x: 0.235 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
   { x: 0.35 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
-  { x: 0.3 * SCENE_WIDTH, y: 0.295 * SCENE_HEIGHT, heightPx: 58 },
-  { x: 0.7 * SCENE_WIDTH, y: 0.295 * SCENE_HEIGHT, heightPx: 58 },
+  { x: 0.295 * SCENE_WIDTH, y: 0.302 * SCENE_HEIGHT, heightPx: 58 },
+  { x: 0.74 * SCENE_WIDTH, y: 0.309 * SCENE_HEIGHT, heightPx: 58 },
   { x: 0.65 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
   { x: 0.765 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
   { x: 0.88 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
