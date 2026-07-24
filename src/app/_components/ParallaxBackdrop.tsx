@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
 
 const PROP_IMAGES: Record<PropKey, string> = {
@@ -10,8 +10,6 @@ const PROP_IMAGES: Record<PropKey, string> = {
   sugarBowl: "/backdrop/props/sugar-bowl.png",
   milkCarton: "/backdrop/props/milk-carton.png",
   coffeeJar: "/backdrop/props/coffee-jar.png",
-  teaTowel: "/backdrop/props/tea-towel.png",
-  saucerStack: "/backdrop/props/saucer-stack.png",
 };
 
 // Natural pixel dimensions of each sprite (public/backdrop/props/*.png),
@@ -24,23 +22,32 @@ const PROP_ASPECT: Record<PropKey, number> = {
   sugarBowl: 227 / 190,
   milkCarton: 170 / 253,
   coffeeJar: 194 / 304,
-  teaTowel: 322 / 269,
-  saucerStack: 259 / 173,
 };
 
-// 8 evenly-spaced slot x-anchors (% of the counter width) and the shared
-// counter-top y-anchor (% from the top of back-layer.png), picked by eye
-// against the counter surface in that image.
-const SLOT_X_PERCENT = [8, 20.5, 33, 45.5, 58, 70.5, 83, 92];
-const COUNTER_TOP_PERCENT = 61;
+// Per-slot anchor: x-position (% of scene width), y-anchor (% from top of
+// back-layer.png), and a size class. Slot indices 3 and 4 used to sit on the
+// counter directly behind the centered "Room" card, so they're relocated up
+// onto the back shelf (one either side of the middle support post) instead —
+// smaller, since the shelf reads as further from the viewer than the
+// counter-top. The rest keep their original counter positions; skipping the
+// two central ones leaves the counter row deliberately unevenly spaced.
+type SlotAnchor = { xPercent: number; topPercent: number; sizeClass: string };
+
+const SLOT_ANCHORS: SlotAnchor[] = [
+  { xPercent: 8, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+  { xPercent: 20.5, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+  { xPercent: 33, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+  { xPercent: 18, topPercent: 30, sizeClass: "h-[5.5vw] max-h-[75px] min-h-[38px]" },
+  { xPercent: 82, topPercent: 30, sizeClass: "h-[5.5vw] max-h-[75px] min-h-[38px]" },
+  { xPercent: 70.5, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+  { xPercent: 83, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+  { xPercent: 92, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+];
 
 const STEAM_FRAMES = [1, 2, 3, 4, 5].map((n) => `/backdrop/steam/steam-${n}.png`);
 const STEAM_FRAME_MS = 500;
 const STEAM_MIN_DELAY_MS = 45_000;
 const STEAM_MAX_DELAY_MS = 90_000;
-
-const BACK_LAYER_SHIFT_PX = 6;
-const FOREGROUND_SHIFT_PX = 18;
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -54,37 +61,6 @@ function useReducedMotion(): boolean {
   }, []);
 
   return reduced;
-}
-
-function useParallaxOffset(reducedMotion: boolean): { x: number; y: number } {
-  const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const frame = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (reducedMotion) {
-      setOffset({ x: 0, y: 0 });
-      return;
-    }
-
-    function handleMove(event: MouseEvent) {
-      if (frame.current !== null) return;
-      frame.current = requestAnimationFrame(() => {
-        frame.current = null;
-        setOffset({
-          x: (event.clientX / window.innerWidth) * 2 - 1,
-          y: (event.clientY / window.innerHeight) * 2 - 1,
-        });
-      });
-    }
-
-    window.addEventListener("mousemove", handleMove);
-    return () => {
-      window.removeEventListener("mousemove", handleMove);
-      if (frame.current !== null) cancelAnimationFrame(frame.current);
-    };
-  }, [reducedMotion]);
-
-  return offset;
 }
 
 /** Cycles the kettle through an infrequent steam puff; null while idle. */
@@ -131,57 +107,53 @@ function useKettleSteamFrame(reducedMotion: boolean): number | null {
 }
 
 /**
- * Two-layer parallax tavern-counter backdrop (issue #82), replacing the
+ * Fixed (non-parallax) tavern-counter backdrop (issue #82), replacing the
  * tiled wood-plank placeholder from issue #64. Prop-to-slot assignment is
  * shuffled once per player per day (see backdropShuffle.ts) so the counter
  * looks different day to day without shifting mid-session.
  */
 export function ParallaxBackdrop({ playerId }: { playerId: string }) {
   const reducedMotion = useReducedMotion();
-  const offset = useParallaxOffset(reducedMotion);
   const steamFrameIndex = useKettleSteamFrame(reducedMotion);
   const slots = useMemo(() => getSlotAssignments(playerId), [playerId]);
   const kettleSlotIndex = slots.indexOf("kettle");
-
-  const backX = offset.x * BACK_LAYER_SHIFT_PX;
-  const backY = offset.y * BACK_LAYER_SHIFT_PX;
-  const foreX = offset.x * FOREGROUND_SHIFT_PX;
-  const foreY = offset.y * FOREGROUND_SHIFT_PX;
+  const kettleAnchor = kettleSlotIndex !== -1 ? SLOT_ANCHORS[kettleSlotIndex] : null;
 
   return (
     <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <div
         className="absolute -inset-8 bg-cover bg-center [image-rendering:pixelated]"
-        style={{
-          backgroundImage: "url(/backdrop/back-layer.png)",
-          transform: `translate3d(${backX}px, ${backY}px, 0)`,
-        }}
+        style={{ backgroundImage: "url(/backdrop/back-layer.png)" }}
       />
 
-      <div className="absolute inset-0" style={{ transform: `translate3d(${foreX}px, ${foreY}px, 0)` }}>
-        {slots.map((propKey, slotIndex) => (
-          <img
-            key={propKey}
-            src={PROP_IMAGES[propKey]}
-            alt=""
-            className="absolute h-[8vw] max-h-[110px] min-h-[56px] w-auto [image-rendering:pixelated]"
-            style={{
-              left: `${SLOT_X_PERCENT[slotIndex]}%`,
-              top: `${COUNTER_TOP_PERCENT}%`,
-              aspectRatio: PROP_ASPECT[propKey],
-              transform: "translate(-50%, -100%)",
-            }}
-          />
-        ))}
+      <div className="absolute inset-0">
+        {slots.map((propKey, slotIndex) => {
+          if (!propKey) return null;
+          const anchor = SLOT_ANCHORS[slotIndex]!;
+          return (
+            <img
+              key={slotIndex}
+              src={PROP_IMAGES[propKey]}
+              alt=""
+              className={`absolute w-auto [image-rendering:pixelated] ${anchor.sizeClass}`}
+              style={{
+                left: `${anchor.xPercent}%`,
+                top: `${anchor.topPercent}%`,
+                aspectRatio: PROP_ASPECT[propKey],
+                transform: "translate(-50%, -100%)",
+              }}
+            />
+          );
+        })}
 
-        {steamFrameIndex !== null && kettleSlotIndex !== -1 ? (
+        {steamFrameIndex !== null && kettleAnchor ? (
           <img
             src={STEAM_FRAMES[steamFrameIndex]}
             alt=""
             className="absolute h-[13vw] max-h-[170px] w-auto [image-rendering:pixelated]"
             style={{
-              left: `${SLOT_X_PERCENT[kettleSlotIndex]}%`,
-              top: `${COUNTER_TOP_PERCENT}%`,
+              left: `${kettleAnchor.xPercent}%`,
+              top: `${kettleAnchor.topPercent}%`,
               transform: "translate(-50%, -145%)",
             }}
           />

@@ -12,11 +12,15 @@ export const PROP_KEYS = [
   "sugarBowl",
   "milkCarton",
   "coffeeJar",
-  "teaTowel",
-  "saucerStack",
 ] as const;
 
 export type PropKey = (typeof PROP_KEYS)[number];
+
+// There are more anchor slots (SLOT_COUNT, see ParallaxBackdrop) than props,
+// so the shuffle also decides which slots sit empty that day — that's what
+// keeps the layout looking unevenly spaced rather than a fixed row filling
+// every anchor.
+export const SLOT_COUNT = 8;
 
 function hashString(input: string): number {
   let hash = 2166136261;
@@ -42,13 +46,18 @@ function dateKey(date: Date): string {
 }
 
 /**
- * Returns the 8 prop keys in slot order (index = slot position) for a given
- * player on a given day.
+ * Returns SLOT_COUNT entries in slot order (index = slot position) for a
+ * given player on a given day — one per prop, padded with `null`s (empty
+ * slots) up to SLOT_COUNT, then shuffled together so it's a different subset
+ * of slots left empty each day.
  */
-export function getSlotAssignments(playerId: string, date: Date = new Date()): PropKey[] {
+export function getSlotAssignments(playerId: string, date: Date = new Date()): (PropKey | null)[] {
   const seed = hashString(`${playerId}-${dateKey(date)}`);
   const random = mulberry32(seed);
-  const slots: PropKey[] = [...PROP_KEYS];
+  const slots: (PropKey | null)[] = [
+    ...PROP_KEYS,
+    ...Array(SLOT_COUNT - PROP_KEYS.length).fill(null),
+  ];
   for (let i = slots.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1));
     const temp = slots[i]!;
