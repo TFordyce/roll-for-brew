@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { getSlotAssignments, PROP_KEYS } from "./backdropShuffle";
+import { getSlotAssignments, PROP_KEYS, SLOT_COUNT } from "./backdropShuffle";
 
 describe("getSlotAssignments", () => {
-  it("returns all 8 prop keys exactly once", () => {
+  it("returns SLOT_COUNT entries, each prop key exactly once, rest empty", () => {
     const slots = getSlotAssignments("player-1", new Date("2026-07-23T12:00:00Z"));
-    expect(slots).toHaveLength(PROP_KEYS.length);
-    expect(new Set(slots)).toEqual(new Set(PROP_KEYS));
+    expect(slots).toHaveLength(SLOT_COUNT);
+    const filled = slots.filter((slot) => slot !== null);
+    expect(new Set(filled)).toEqual(new Set(PROP_KEYS));
+    expect(filled).toHaveLength(PROP_KEYS.length);
   });
 
   it("is stable for the same player and calendar day", () => {

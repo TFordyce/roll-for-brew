@@ -8,4 +8,5 @@ node_modules/
 next-env.d.ts
 supabase/.temp/
 supabase/.branches/
+.claude/launch.json
 .claude/

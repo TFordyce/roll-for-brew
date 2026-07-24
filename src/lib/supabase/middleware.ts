@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireSupabaseEnv, type CookieToSet } from "./cookies";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/auth-code-error"];
+const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/auth-code-error", "/preview"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(
