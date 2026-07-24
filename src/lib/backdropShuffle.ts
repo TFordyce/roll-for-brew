@@ -8,10 +8,10 @@
 export const PROP_KEYS = [
   "kettle",
   "teapot",
-  "mugRack",
   "sugarBowl",
   "milkCarton",
   "coffeeJar",
+  "saucerStack",
 ] as const;
 
 export type PropKey = (typeof PROP_KEYS)[number];

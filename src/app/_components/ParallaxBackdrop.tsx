@@ -6,10 +6,10 @@ import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
 const PROP_IMAGES: Record<PropKey, string> = {
   kettle: "/backdrop/props/kettle.png",
   teapot: "/backdrop/props/teapot.png",
-  mugRack: "/backdrop/props/mug-rack.png",
   sugarBowl: "/backdrop/props/sugar-bowl.png",
   milkCarton: "/backdrop/props/milk-carton.png",
   coffeeJar: "/backdrop/props/coffee-jar.png",
+  saucerStack: "/backdrop/props/saucer-stack.png",
 };
 
 // Natural pixel dimensions of each sprite (public/backdrop/props/*.png),
@@ -18,10 +18,10 @@ const PROP_IMAGES: Record<PropKey, string> = {
 const PROP_ASPECT: Record<PropKey, number> = {
   kettle: 252 / 243,
   teapot: 302 / 209,
-  mugRack: 366 / 160,
   sugarBowl: 227 / 190,
   milkCarton: 170 / 253,
   coffeeJar: 194 / 304,
+  saucerStack: 259 / 173,
 };
 
 // Per-slot anchor: x-position (% of scene width), y-anchor (% from top of
