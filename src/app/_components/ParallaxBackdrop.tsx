@@ -1,7 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
+
+// Native pixel size of back-layer.png. The whole scene (background + props)
+// is laid out at this fixed resolution, then scaled as one rigid unit to
+// cover the viewport (see useCoverScale) — so props stay glued to the same
+// spot on the art at every width, instead of redistributing themselves
+// across a percentage grid. Below the resolution the scene needs to cover
+// the viewport, the outer edges (the outermost counter props) get cropped
+// off by the container's overflow:hidden, exactly like a `background-size:
+// cover` image would.
+const SCENE_WIDTH = 1376;
+const SCENE_HEIGHT = 768;
 
 const PROP_IMAGES: Record<PropKey, string> = {
   kettle: "/backdrop/props/kettle.png",
@@ -24,30 +35,64 @@ const PROP_ASPECT: Record<PropKey, number> = {
   saucerStack: 259 / 173,
 };
 
-// Per-slot anchor: x-position (% of scene width), y-anchor (% from top of
-// back-layer.png), and a size class. Slot indices 3 and 4 used to sit on the
-// counter directly behind the centered "Room" card, so they're relocated up
-// onto the back shelf (one either side of the middle support post) instead —
-// smaller, since the shelf reads as further from the viewer than the
-// counter-top. The rest keep their original counter positions; skipping the
-// two central ones leaves the counter row deliberately unevenly spaced.
-type SlotAnchor = { xPercent: number; topPercent: number; sizeClass: string };
+// Per-slot anchor: x/y position in px within the fixed SCENE_WIDTH x
+// SCENE_HEIGHT canvas, and a pixel height (the whole canvas is scaled as one
+// unit, so these are fixed art-native sizes, not viewport-relative). Slot
+// indices 3 and 4 used to sit on the counter directly behind the centered
+// "Room" card, so they're relocated up onto the back shelf (one either side
+// of the middle support post) instead — smaller, since the shelf reads as
+// further from the viewer than the counter-top. The rest keep their
+// original counter positions; skipping the two central ones leaves the
+// counter row deliberately unevenly spaced.
+type SlotAnchor = { x: number; y: number; heightPx: number };
 
 const SLOT_ANCHORS: SlotAnchor[] = [
-  { xPercent: 8, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
-  { xPercent: 20.5, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
-  { xPercent: 33, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
-  { xPercent: 18, topPercent: 30, sizeClass: "h-[5.5vw] max-h-[75px] min-h-[38px]" },
-  { xPercent: 82, topPercent: 30, sizeClass: "h-[5.5vw] max-h-[75px] min-h-[38px]" },
-  { xPercent: 70.5, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
-  { xPercent: 83, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
-  { xPercent: 92, topPercent: 61, sizeClass: "h-[8vw] max-h-[110px] min-h-[56px]" },
+  { x: 0.08 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
+  { x: 0.205 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
+  { x: 0.33 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
+  { x: 0.18 * SCENE_WIDTH, y: 0.3 * SCENE_HEIGHT, heightPx: 62 },
+  { x: 0.82 * SCENE_WIDTH, y: 0.3 * SCENE_HEIGHT, heightPx: 62 },
+  { x: 0.705 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
+  { x: 0.83 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
+  { x: 0.92 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
 ];
 
 const STEAM_FRAMES = [1, 2, 3, 4, 5].map((n) => `/backdrop/steam/steam-${n}.png`);
 const STEAM_FRAME_MS = 500;
 const STEAM_MIN_DELAY_MS = 45_000;
 const STEAM_MAX_DELAY_MS = 90_000;
+
+/**
+ * Scale factor to make a SCENE_WIDTH x SCENE_HEIGHT box cover its container
+ * (same math as CSS `background-size: cover`), recomputed on resize via
+ * ResizeObserver. Keeps the background and every prop moving as one rigid,
+ * fixed scene — cropped by the container's overflow:hidden at the edges
+ * instead of redistributing across the available width.
+ */
+function useCoverScale(containerRef: RefObject<HTMLDivElement | null>): number {
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+
+    function updateScale(width: number, height: number) {
+      setScale(Math.max(width / SCENE_WIDTH, height / SCENE_HEIGHT));
+    }
+
+    updateScale(node.clientWidth, node.clientHeight);
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      updateScale(width, height);
+    });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [containerRef]);
+
+  return scale;
+}
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -119,14 +164,26 @@ export function ParallaxBackdrop({ playerId }: { playerId: string }) {
   const kettleSlotIndex = slots.indexOf("kettle");
   const kettleAnchor = kettleSlotIndex !== -1 ? SLOT_ANCHORS[kettleSlotIndex] : null;
 
-  return (
-    <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
-      <div
-        className="absolute -inset-8 bg-cover bg-center [image-rendering:pixelated]"
-        style={{ backgroundImage: "url(/backdrop/back-layer.png)" }}
-      />
+  const containerRef = useRef<HTMLDivElement>(null);
+  const scale = useCoverScale(containerRef);
 
-      <div className="absolute inset-0">
+  return (
+    <div ref={containerRef} className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+      <div
+        className="absolute left-1/2 top-1/2"
+        style={{
+          width: SCENE_WIDTH,
+          height: SCENE_HEIGHT,
+          transform: `translate(-50%, -50%) scale(${scale})`,
+          transformOrigin: "center",
+        }}
+      >
+        <img
+          src="/backdrop/back-layer.png"
+          alt=""
+          className="absolute inset-0 h-full w-full [image-rendering:pixelated]"
+        />
+
         {slots.map((propKey, slotIndex) => {
           if (!propKey) return null;
           const anchor = SLOT_ANCHORS[slotIndex]!;
@@ -135,10 +192,11 @@ export function ParallaxBackdrop({ playerId }: { playerId: string }) {
               key={slotIndex}
               src={PROP_IMAGES[propKey]}
               alt=""
-              className={`absolute w-auto [image-rendering:pixelated] ${anchor.sizeClass}`}
+              className="absolute w-auto [image-rendering:pixelated]"
               style={{
-                left: `${anchor.xPercent}%`,
-                top: `${anchor.topPercent}%`,
+                left: anchor.x,
+                top: anchor.y,
+                height: anchor.heightPx,
                 aspectRatio: PROP_ASPECT[propKey],
                 transform: "translate(-50%, -100%)",
               }}
@@ -150,10 +208,11 @@ export function ParallaxBackdrop({ playerId }: { playerId: string }) {
           <img
             src={STEAM_FRAMES[steamFrameIndex]}
             alt=""
-            className="absolute h-[13vw] max-h-[170px] w-auto [image-rendering:pixelated]"
+            className="absolute w-auto [image-rendering:pixelated]"
             style={{
-              left: `${kettleAnchor.xPercent}%`,
-              top: `${kettleAnchor.topPercent}%`,
+              left: kettleAnchor.x,
+              top: kettleAnchor.y,
+              height: kettleAnchor.heightPx * 1.6,
               transform: "translate(-50%, -145%)",
             }}
           />
