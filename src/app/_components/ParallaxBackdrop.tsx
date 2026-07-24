@@ -35,26 +35,43 @@ const PROP_ASPECT: Record<PropKey, number> = {
   saucerStack: 259 / 173,
 };
 
+// Kettle and saucer-stack are both wide-relative-to-tall sprites (near-1:1
+// and 3:2 aspect ratios respectively), so at the shared slot height they
+// read visibly wider than the others — scaled down a bit here so their
+// footprint matches the rest of the row rather than tightening the slot
+// spacing to compensate.
+const PROP_SCALE: Record<PropKey, number> = {
+  kettle: 0.82,
+  teapot: 1,
+  sugarBowl: 1,
+  milkCarton: 1,
+  coffeeJar: 1,
+  saucerStack: 0.8,
+};
+
 // Per-slot anchor: x/y position in px within the fixed SCENE_WIDTH x
 // SCENE_HEIGHT canvas, and a pixel height (the whole canvas is scaled as one
 // unit, so these are fixed art-native sizes, not viewport-relative). Slot
 // indices 3 and 4 used to sit on the counter directly behind the centered
-// "Room" card, so they're relocated up onto the back shelf (one either side
-// of the middle support post) instead — smaller, since the shelf reads as
-// further from the viewer than the counter-top. The rest keep their
-// original counter positions; skipping the two central ones leaves the
-// counter row deliberately unevenly spaced.
+// "Room" card, so they're relocated up onto the back shelf instead —
+// smaller, since the shelf reads as further from the viewer than the
+// counter-top. Their x stays well inboard of the shelf's support brackets
+// (~19%/81% of scene width) and clear of the middle post (~46-48%), so they
+// actually rest on the shelf's surface rather than floating past its edge.
+// The counter anchors likewise sit a few points in from the counter's own
+// edges rather than running right up to them, and skip the two central
+// positions (behind the "Room" card) for a deliberately uneven row.
 type SlotAnchor = { x: number; y: number; heightPx: number };
 
 const SLOT_ANCHORS: SlotAnchor[] = [
-  { x: 0.08 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
-  { x: 0.205 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
-  { x: 0.33 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
-  { x: 0.18 * SCENE_WIDTH, y: 0.3 * SCENE_HEIGHT, heightPx: 62 },
-  { x: 0.82 * SCENE_WIDTH, y: 0.3 * SCENE_HEIGHT, heightPx: 62 },
-  { x: 0.705 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
-  { x: 0.83 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
-  { x: 0.92 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 92 },
+  { x: 0.12 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
+  { x: 0.235 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
+  { x: 0.35 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
+  { x: 0.3 * SCENE_WIDTH, y: 0.295 * SCENE_HEIGHT, heightPx: 58 },
+  { x: 0.7 * SCENE_WIDTH, y: 0.295 * SCENE_HEIGHT, heightPx: 58 },
+  { x: 0.65 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
+  { x: 0.765 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
+  { x: 0.88 * SCENE_WIDTH, y: 0.61 * SCENE_HEIGHT, heightPx: 88 },
 ];
 
 const STEAM_FRAMES = [1, 2, 3, 4, 5].map((n) => `/backdrop/steam/steam-${n}.png`);
@@ -196,7 +213,7 @@ export function ParallaxBackdrop({ playerId }: { playerId: string }) {
               style={{
                 left: anchor.x,
                 top: anchor.y,
-                height: anchor.heightPx,
+                height: anchor.heightPx * PROP_SCALE[propKey],
                 aspectRatio: PROP_ASPECT[propKey],
                 transform: "translate(-50%, -100%)",
               }}
