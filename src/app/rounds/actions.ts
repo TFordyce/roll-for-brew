@@ -5,7 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
-import { broadcastReactionWindowChanged, broadcastRoundClosed } from "@/lib/supabase/realtime";
+import {
+  broadcastPlayerDeclaredIn,
+  broadcastReactionWindowChanged,
+  broadcastRoundClosed,
+  broadcastRoundStarted,
+} from "@/lib/supabase/realtime";
 import { drawSpellCard, resolveCardSwap } from "@/lib/supabase/spellCards";
 import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
@@ -79,13 +84,18 @@ function isRoundAlreadyStartedError(error: unknown): boolean {
 
 export async function startRoundAction() {
   const supabase = await createClient();
+  let roundId: string;
   try {
-    await startRound(supabase);
+    roundId = await startRound(supabase);
   } catch (error) {
     if (!isRoundAlreadyStartedError(error)) throw error;
     revalidatePath("/");
     return;
   }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastRoundStarted(supabase, roomId, { roundId });
+
   revalidatePath("/");
 }
 
@@ -103,6 +113,10 @@ export async function declareInAction(formData: FormData) {
     revalidatePath("/");
     return;
   }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
+
   revalidatePath("/");
 }
 

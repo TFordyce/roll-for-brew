@@ -17,6 +17,7 @@ export function RoundOpenLive({ roomId, roundId }: { roomId: string; roundId: st
   useRoomChannel(roomId, roundId, {
     "round-closed": () => router.refresh(),
     "round-cancelled": () => router.refresh(),
+    "player-declared-in": () => router.refresh(),
   });
 
   return null;

@@ -46,6 +46,18 @@ describe("subscribeToRoomChannel", () => {
     expect(onRevealed).toHaveBeenCalledTimes(1);
   });
 
+  it("passes every event through unfiltered when roundId is null", () => {
+    const { supabase, listeners } = fakeSupabase();
+    const onStarted = vi.fn();
+
+    subscribeToRoomChannel(supabase, "room-1", null, {
+      "round-started": onStarted,
+    });
+
+    listeners["round-started"]({ payload: { roundId: "round-1" } });
+    expect(onStarted).toHaveBeenCalledTimes(1);
+  });
+
   it("subscribes the channel and removes it on cleanup", () => {
     const { supabase, channel } = fakeSupabase();
 

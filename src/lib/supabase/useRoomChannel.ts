@@ -6,10 +6,12 @@ import {
   roomChannelName,
   type LayerRollsRevealedPayload,
   type LayerTiedPayload,
+  type PlayerDeclaredInPayload,
   type ReactionWindowChangedPayload,
   type RoundCancelledPayload,
   type RoundClosedPayload,
   type RoundRevealedPayload,
+  type RoundStartedPayload,
 } from "@/lib/supabase/realtime";
 
 type RoomBroadcastPayloadMap = {
@@ -19,6 +21,8 @@ type RoomBroadcastPayloadMap = {
   "round-closed": RoundClosedPayload;
   "layer-rolls-revealed": LayerRollsRevealedPayload;
   "reaction-window-changed": ReactionWindowChangedPayload;
+  "player-declared-in": PlayerDeclaredInPayload;
+  "round-started": RoundStartedPayload;
 };
 
 export type RoomChannelEventHandlers = {
@@ -44,11 +48,15 @@ type ChannelClient<T extends SubscribableChannel = SubscribableChannel> = {
  * roundId before handing the payload to its handler, and returns the
  * cleanup function. Split out from useRoomChannel so the subscribe/filter
  * wiring is a plain function testable without rendering a component.
+ *
+ * roundId is nullable for the idle "no active round yet" view (issue #98):
+ * that view has no roundId to filter on, so a null roundId skips the filter
+ * and every event on the room's channel is passed straight through.
  */
 export function subscribeToRoomChannel<T extends SubscribableChannel>(
   supabase: ChannelClient<T>,
   roomId: string,
-  roundId: string,
+  roundId: string | null,
   handlers: RoomChannelEventHandlers,
 ): () => void {
   const channel = supabase.channel(roomChannelName(roomId));
@@ -58,7 +66,7 @@ export function subscribeToRoomChannel<T extends SubscribableChannel>(
     if (!handler) continue;
     channel.on("broadcast", { event }, ({ payload }) => {
       const typedPayload = payload as { roundId: string };
-      if (typedPayload.roundId !== roundId) return;
+      if (roundId !== null && typedPayload.roundId !== roundId) return;
       handler(typedPayload);
     });
   }
@@ -82,7 +90,7 @@ export function subscribeToRoomChannel<T extends SubscribableChannel>(
  */
 export function useRoomChannel(
   roomId: string,
-  roundId: string,
+  roundId: string | null,
   handlers: RoomChannelEventHandlers,
 ): void {
   const handlersRef = useRef(handlers);

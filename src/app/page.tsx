@@ -9,6 +9,7 @@ import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
+import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
@@ -236,6 +237,7 @@ export default async function HomePage() {
       {!activeRound ? (
         <section className="w-full max-w-md">
           <div>
+            <RoomIdleLive roomId={roomId} />
             <CardFrame title="The Room">
               <div className="grid grid-cols-[repeat(auto-fit,minmax(96px,1fr))] gap-3">
                 {roster.map((entry) => (
