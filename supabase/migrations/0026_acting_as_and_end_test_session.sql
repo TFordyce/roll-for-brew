@@ -24,7 +24,14 @@ alter table public.admin_acting_as enable row level security;
 -- caller is a flagged admin with a non-null pointer. p_round_id is resolved
 -- to its room internally so callers only ever need to pass whichever one
 -- they already have in hand.
-drop function if exists public.current_player_id();
+-- cascade: current_player_id() is depended on by five existing RLS
+-- policies (rolls select; player_settings select/insert/update;
+-- spell_deck_instances select; spell_draws select). The rolls policy is
+-- recreated further down (now passing round context through); the other
+-- four are recreated immediately below, unchanged, since they have no
+-- round/room in scope and keep resolving to the real caller exactly as
+-- before.
+drop function if exists public.current_player_id() cascade;
 
 create function public.current_player_id(p_round_id uuid default null, p_room_id uuid default null)
 returns text
@@ -71,6 +78,35 @@ $$;
 
 revoke execute on function public.current_player_id(uuid, uuid) from public, anon;
 grant execute on function public.current_player_id(uuid, uuid) to authenticated;
+
+-- Recreate the four policies dropped by the cascade above (0008, 0018),
+-- unchanged — none of these have a round/room in scope, so they keep
+-- resolving to the real caller exactly as before.
+create policy "player_settings are readable by their own player"
+  on public.player_settings for select
+  to authenticated
+  using (player_id = public.current_player_id());
+
+create policy "player_settings are insertable by their own player"
+  on public.player_settings for insert
+  to authenticated
+  with check (player_id = public.current_player_id());
+
+create policy "player_settings are updatable by their own player"
+  on public.player_settings for update
+  to authenticated
+  using (player_id = public.current_player_id())
+  with check (player_id = public.current_player_id());
+
+create policy "spell_deck_instances are readable only by their holder"
+  on public.spell_deck_instances for select
+  to authenticated
+  using (held_by_player = public.current_player_id());
+
+create policy "spell_draws are readable by the drawing player"
+  on public.spell_draws for select
+  to authenticated
+  using (player_id = public.current_player_id());
 
 -- Sets/clears the caller's Acting As pointer. Admin-only; picking your own
 -- real id clears the pointer (acting as self), same as never having set one.
