@@ -195,6 +195,7 @@ export default async function TestRoomPage() {
               key={currentLayer}
               roomId={roomId}
               roundId={activeRound.id}
+              layer={currentLayer}
               selfPlayerId={playerId}
               ownRoll={ownRoll}
               tiedParticipants={tiedParticipants.map((entry) => ({
