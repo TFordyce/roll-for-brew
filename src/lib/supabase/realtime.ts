@@ -35,6 +35,14 @@ export type ReactionWindowChangedPayload = {
   roundId: string;
 };
 
+export type PlayerDeclaredInPayload = {
+  roundId: string;
+};
+
+export type RoundStartedPayload = {
+  roundId: string;
+};
+
 /**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
@@ -166,6 +174,51 @@ export async function broadcastRoundCancelled(
     const result = await channel.httpSend("round-cancelled", payload);
     if (!result.success) {
       throw new Error(`broadcastRoundCancelled: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a declaration once declare_in has committed (issue #98), so
+ * every device still sitting on the "open"/"Who's In?" view — which already
+ * listens via RoundOpenLive — sees the updated roster and "Need N more to
+ * roll" count without a manual reload, the same way broadcastRoundClosed
+ * covers the next transition on that same view.
+ */
+export async function broadcastPlayerDeclaredIn(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: PlayerDeclaredInPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("player-declared-in", payload);
+    if (!result.success) {
+      throw new Error(`broadcastPlayerDeclaredIn: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a round starting once start_round has committed (issue #98), so
+ * every device sitting on the idle "Start Round" view — which previously had
+ * no realtime listener at all — picks up the new round without a manual
+ * reload.
+ */
+export async function broadcastRoundStarted(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: RoundStartedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("round-started", payload);
+    if (!result.success) {
+      throw new Error(`broadcastRoundStarted: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);
