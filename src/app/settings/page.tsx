@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentPlayer } from "@/lib/supabase/players";
+import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
+import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
 import { SettingsForm } from "@/app/settings/SettingsForm";
+import { AdminModeToggle } from "@/app/settings/AdminModeToggle";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 
@@ -16,6 +18,8 @@ export default async function SettingsPage() {
   }
 
   const rollInputMode = await getRollInputMode(supabase, current.playerId);
+  const isAdmin = await getIsAdmin(supabase, current.playerId);
+  const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
 
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
@@ -29,6 +33,14 @@ export default async function SettingsPage() {
           <SettingsForm rollInputMode={rollInputMode} />
         </CardFrame>
       </section>
+
+      {isAdmin ? (
+        <section className="w-full max-w-sm">
+          <CardFrame title="Admin">
+            <AdminModeToggle enabled={adminModeEnabled} />
+          </CardFrame>
+        </section>
+      ) : null}
 
       <Link
         href="/"
