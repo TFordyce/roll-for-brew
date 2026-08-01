@@ -156,6 +156,7 @@ export default async function HomePage() {
               key={currentLayer}
               roomId={roomId}
               roundId={activeRound.id}
+              layer={currentLayer}
               selfPlayerId={playerId}
               ownRoll={ownRoll}
               tiedParticipants={tiedParticipants.map((entry) => ({
