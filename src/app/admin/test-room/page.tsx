@@ -9,7 +9,7 @@ import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from 
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
-import { getActingAsPlayerId } from "@/lib/supabase/actingAs";
+import { getEffectiveTestRoomPlayerId } from "@/lib/supabase/actingAs";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
@@ -75,8 +75,7 @@ export default async function TestRoomPage() {
   }
 
   const roster = await getRoomRoster(supabase, roomId);
-  const actingAsPlayerId = await getActingAsPlayerId(supabase);
-  const playerId = actingAsPlayerId ?? realPlayerId;
+  const playerId = await getEffectiveTestRoomPlayerId(supabase, realPlayerId);
 
   const { data: realPlayer } = await supabase
     .from("players")

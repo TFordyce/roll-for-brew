@@ -16,6 +16,17 @@ import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supaba
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 
 /**
+ * Every action here can be triggered from either real gameplay's "/" or,
+ * for an admin puppeting a Test Player (issue #102), "/admin/test-room" —
+ * revalidate both unconditionally rather than threading "which page called
+ * this" through every action just to pick one.
+ */
+function revalidateRoundSurfaces() {
+  revalidatePath("/");
+  revalidatePath("/admin/test-room");
+}
+
+/**
  * Draws a spell card if the just-submitted value is a natural 1 or 20
  * (issue #66) — scoped here, at the main round roll's submission, so a
  * card's own resolution roll (e.g. a future counterspell DC check) never
@@ -100,16 +111,14 @@ export async function startRoundAction(formData: FormData) {
     roundId = await startRound(supabase, targetRoomId);
   } catch (error) {
     if (!isRoundAlreadyStartedError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastRoundStarted(supabase, roomId, { roundId });
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 export async function declareInAction(formData: FormData) {
@@ -123,16 +132,14 @@ export async function declareInAction(formData: FormData) {
     await declareIn(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 export async function closeRoundAction(formData: FormData) {
@@ -147,8 +154,7 @@ export async function closeRoundAction(formData: FormData) {
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastRoundClosed(supabase, roomId, { roundId });
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /** Submits the caller's in-app (server-generated) roll for the round's current layer. */
@@ -164,15 +170,13 @@ export async function submitRollAction(formData: FormData) {
     value = await submitRoll(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
   await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
   await resolveCompletedLayerIfAny(supabase, roundId);
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -197,15 +201,13 @@ export async function submitManualRollAction(formData: FormData) {
     await submitManualRoll(supabase, roundId, value);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
   await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
   await resolveCompletedLayerIfAny(supabase, roundId);
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -219,8 +221,7 @@ export async function resolveCardSwapAction(formData: FormData) {
 
   const supabase = await createClient();
   await resolveCardSwap(supabase, keepNew, roomId);
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -243,13 +244,11 @@ export async function castSpellCardAction(formData: FormData) {
     await castSpellCard(supabase, roundId, targetPlayerId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -273,13 +272,11 @@ export async function setSpellCastTargetAction(formData: FormData) {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -304,13 +301,11 @@ export async function endActiveEffectAction(formData: FormData) {
     await endActiveEffect(supabase, roundId, effectId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -337,16 +332,14 @@ export async function castReactionSpellCardAction(formData: FormData) {
     await castReactionSpellCard(supabase, roundId, { targetPlayerId, targetCastId });
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
 
 /**
@@ -370,8 +363,7 @@ export async function passReactionWindowAction(formData: FormData) {
     closed = await passReactionWindow(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidatePath("/");
-    revalidatePath("/admin/test-room");
+    revalidateRoundSurfaces();
     return;
   }
 
@@ -382,6 +374,5 @@ export async function passReactionWindowAction(formData: FormData) {
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
 
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
+  revalidateRoundSurfaces();
 }
