@@ -4,13 +4,21 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
 
 // Native pixel size of back-layer.png. The whole scene (background + props)
-// is laid out at this fixed resolution, then scaled as one rigid unit to
-// cover the viewport (see useCoverScale) — so props stay glued to the same
-// spot on the art at every width, instead of redistributing themselves
-// across a percentage grid. Below the resolution the scene needs to cover
-// the viewport, the outer edges (the outermost counter props) get cropped
-// off by the container's overflow:hidden, exactly like a `background-size:
-// cover` image would.
+// is laid out at this fixed resolution, then scaled as one rigid unit and
+// anchored to the bottom of the viewport (see computeSceneScale / the
+// bottom-anchored scene wrapper below) — so props stay glued to the same
+// spot on the art at every width, and the counter surface never gets pushed
+// above the fold on tall/narrow viewports (issue #95).
+//
+// The scale is derived from container *width* only, never height. A
+// height-inclusive "cover" scale (the previous approach) forces the scene to
+// grow tall enough to cover portrait viewports, which crops most of its
+// width away — on a typical phone that crop window ends up entirely between
+// the leftmost and rightmost prop slots, i.e. every prop disappears. Fitting
+// to width guarantees the full width (every slot) stays visible; any excess
+// scene height above the container is simply cropped from the top (the
+// bottom-anchored counter/shelf row stays put) instead of redistributing the
+// crop across both edges.
 const SCENE_WIDTH = 1376;
 const SCENE_HEIGHT = 768;
 
@@ -80,29 +88,33 @@ const STEAM_MIN_DELAY_MS = 45_000;
 const STEAM_MAX_DELAY_MS = 90_000;
 
 /**
- * Scale factor to make a SCENE_WIDTH x SCENE_HEIGHT box cover its container
- * (same math as CSS `background-size: cover`), recomputed on resize via
- * ResizeObserver. Keeps the background and every prop moving as one rigid,
- * fixed scene — cropped by the container's overflow:hidden at the edges
- * instead of redistributing across the available width.
+ * Scale factor to make a SCENE_WIDTH-wide box fit its container's width
+ * exactly — width only, deliberately never height (see the SCENE_WIDTH
+ * comment above for why: a height-inclusive scale crops the horizontal
+ * extent that every prop slot lives in on tall/narrow viewports).
  */
-function useCoverScale(containerRef: RefObject<HTMLDivElement | null>): number {
+export function computeSceneScale(containerWidth: number): number {
+  if (containerWidth <= 0) return 1;
+  return containerWidth / SCENE_WIDTH;
+}
+
+/** Recomputes computeSceneScale on resize via ResizeObserver. */
+function useSceneScale(containerRef: RefObject<HTMLDivElement | null>): number {
   const [scale, setScale] = useState(1);
 
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
 
-    function updateScale(width: number, height: number) {
-      setScale(Math.max(width / SCENE_WIDTH, height / SCENE_HEIGHT));
+    function updateScale(width: number) {
+      setScale(computeSceneScale(width));
     }
 
-    updateScale(node.clientWidth, node.clientHeight);
+    updateScale(node.clientWidth);
 
     const observer = new ResizeObserver(([entry]) => {
       if (!entry) return;
-      const { width, height } = entry.contentRect;
-      updateScale(width, height);
+      updateScale(entry.contentRect.width);
     });
     observer.observe(node);
     return () => observer.disconnect();
@@ -182,17 +194,17 @@ export function ParallaxBackdrop({ playerId }: { playerId: string }) {
   const kettleAnchor = kettleSlotIndex !== -1 ? SLOT_ANCHORS[kettleSlotIndex] : null;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const scale = useCoverScale(containerRef);
+  const scale = useSceneScale(containerRef);
 
   return (
     <div ref={containerRef} className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <div
-        className="absolute left-1/2 top-1/2"
+        className="absolute bottom-0 left-1/2"
         style={{
           width: SCENE_WIDTH,
           height: SCENE_HEIGHT,
-          transform: `translate(-50%, -50%) scale(${scale})`,
-          transformOrigin: "center",
+          transform: `translate(-50%, 0) scale(${scale})`,
+          transformOrigin: "bottom center",
         }}
       >
         <img
