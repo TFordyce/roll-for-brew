@@ -24,11 +24,15 @@ export type RoundParticipant = {
 
 /**
  * Calls the start_round RPC (supabase/migrations/0004_round_lifecycle.sql),
- * which opens a new round in the caller's room for today and auto-enrolls
- * the caller as its first participant. Returns the new round's id.
+ * which opens a new round and auto-enrolls the caller as its first
+ * participant. With no roomId, opens a round in the caller's room for
+ * today (unchanged real-gameplay behavior). Passing roomId targets that
+ * room directly instead — the only way to start a round in the dateless
+ * Test Room (issue #102), which today's-date lookup can never find.
+ * Returns the new round's id.
  */
-export async function startRound(supabase: SupabaseClient): Promise<string> {
-  const { data, error } = await supabase.rpc("start_round");
+export async function startRound(supabase: SupabaseClient, roomId?: string): Promise<string> {
+  const { data, error } = await supabase.rpc("start_round", { p_room_id: roomId ?? null });
   if (error) throw error;
   return data as string;
 }

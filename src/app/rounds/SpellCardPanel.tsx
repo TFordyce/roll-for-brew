@@ -25,6 +25,7 @@ export function SpellCardPanel({
   roundIsClosed,
   participants,
   selfPlayerId,
+  roomId,
 }: {
   heldCards: HeldSpellCard[];
   pendingCasts: PendingCast[];
@@ -34,6 +35,7 @@ export function SpellCardPanel({
   roundIsClosed: boolean;
   participants: RoundParticipant[];
   selfPlayerId: string;
+  roomId: string;
 }) {
   const held = heldCards.find((c) => c.location === "held");
   const pendingSwap = heldCards.find((c) => c.location === "pending_swap");
@@ -54,6 +56,7 @@ export function SpellCardPanel({
             <div className="mt-3 flex gap-2">
               <form action={resolveCardSwapAction} className="flex-1">
                 <input type="hidden" name="keepNew" value="true" />
+                <input type="hidden" name="roomId" value={roomId} />
                 <button
                   type="submit"
                   className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
@@ -63,6 +66,7 @@ export function SpellCardPanel({
               </form>
               <form action={resolveCardSwapAction} className="flex-1">
                 <input type="hidden" name="keepNew" value="false" />
+                <input type="hidden" name="roomId" value={roomId} />
                 <button
                   type="submit"
                   className="w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
