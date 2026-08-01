@@ -24,9 +24,10 @@ import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reacti
 async function maybeDrawSpellCard(
   supabase: Awaited<ReturnType<typeof createClient>>,
   value: number,
+  roomId: string,
 ) {
-  if (value === 1) await drawSpellCard(supabase, "nat1");
-  else if (value === 20) await drawSpellCard(supabase, "nat20");
+  if (value === 1) await drawSpellCard(supabase, "nat1", roomId);
+  else if (value === 20) await drawSpellCard(supabase, "nat20", roomId);
 }
 
 /**
@@ -82,14 +83,25 @@ function isRoundAlreadyStartedError(error: unknown): boolean {
   return code === "23505";
 }
 
-export async function startRoundAction() {
+/**
+ * roomId is only ever set from the Test Room page's Start Round form
+ * (issue #102) — the dateless Test Room can't be found by start_round's
+ * default today's-date lookup, so that form passes its id explicitly.
+ * Real gameplay's form has no such hidden field, so this stays undefined
+ * there and today's room is resolved exactly as before.
+ */
+export async function startRoundAction(formData: FormData) {
+  const rawRoomId = formData.get("roomId");
+  const targetRoomId = typeof rawRoomId === "string" && rawRoomId ? rawRoomId : undefined;
+
   const supabase = await createClient();
   let roundId: string;
   try {
-    roundId = await startRound(supabase);
+    roundId = await startRound(supabase, targetRoomId);
   } catch (error) {
     if (!isRoundAlreadyStartedError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
@@ -97,6 +109,7 @@ export async function startRoundAction() {
   await broadcastRoundStarted(supabase, roomId, { roundId });
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 export async function declareInAction(formData: FormData) {
@@ -111,6 +124,7 @@ export async function declareInAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
@@ -118,6 +132,7 @@ export async function declareInAction(formData: FormData) {
   await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 export async function closeRoundAction(formData: FormData) {
@@ -133,6 +148,7 @@ export async function closeRoundAction(formData: FormData) {
   await broadcastRoundClosed(supabase, roomId, { roundId });
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /** Submits the caller's in-app (server-generated) roll for the round's current layer. */
@@ -149,12 +165,14 @@ export async function submitRollAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
-  await maybeDrawSpellCard(supabase, value);
+  await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -180,12 +198,14 @@ export async function submitManualRollAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
-  await maybeDrawSpellCard(supabase, value);
+  await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -194,10 +214,13 @@ export async function submitManualRollAction(formData: FormData) {
  */
 export async function resolveCardSwapAction(formData: FormData) {
   const keepNew = formData.get("keepNew") === "true";
+  const rawRoomId = formData.get("roomId");
+  const roomId = typeof rawRoomId === "string" && rawRoomId ? rawRoomId : undefined;
 
   const supabase = await createClient();
-  await resolveCardSwap(supabase, keepNew);
+  await resolveCardSwap(supabase, keepNew, roomId);
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -221,10 +244,12 @@ export async function castSpellCardAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -249,10 +274,12 @@ export async function setSpellCastTargetAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -278,10 +305,12 @@ export async function endActiveEffectAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -309,6 +338,7 @@ export async function castReactionSpellCardAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
@@ -316,6 +346,7 @@ export async function castReactionSpellCardAction(formData: FormData) {
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }
 
 /**
@@ -340,6 +371,7 @@ export async function passReactionWindowAction(formData: FormData) {
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidatePath("/");
+    revalidatePath("/admin/test-room");
     return;
   }
 
@@ -351,4 +383,5 @@ export async function passReactionWindowAction(formData: FormData) {
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
 
   revalidatePath("/");
+  revalidatePath("/admin/test-room");
 }

@@ -22,8 +22,12 @@ export type HeldSpellCard = {
 export async function drawSpellCard(
   supabase: SupabaseClient,
   trigger: "nat1" | "nat20",
+  roomId?: string,
 ): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
-  const { data, error } = await supabase.rpc("draw_spell_card", { p_trigger: trigger });
+  const { data, error } = await supabase.rpc("draw_spell_card", {
+    p_trigger: trigger,
+    p_room_id: roomId ?? null,
+  });
   if (error) throw error;
 
   const rows = (data ?? []) as { instance_id: string | null; needs_swap_decision: boolean }[];
@@ -38,8 +42,15 @@ export async function drawSpellCard(
  * keeping either the newly-drawn card or the one already held. The other
  * instance is reshuffled back to in_deck, never removed.
  */
-export async function resolveCardSwap(supabase: SupabaseClient, keepNew: boolean): Promise<void> {
-  const { error } = await supabase.rpc("resolve_card_swap", { p_keep_new: keepNew });
+export async function resolveCardSwap(
+  supabase: SupabaseClient,
+  keepNew: boolean,
+  roomId?: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("resolve_card_swap", {
+    p_keep_new: keepNew,
+    p_room_id: roomId ?? null,
+  });
   if (error) throw error;
 }
 
@@ -49,8 +60,8 @@ export async function resolveCardSwap(supabase: SupabaseClient, keepNew: boolean
  * anyone else's, and never the deck's remaining contents or count (the
  * deck stays blind, user story 9).
  */
-export async function getMySpellCards(supabase: SupabaseClient): Promise<HeldSpellCard[]> {
-  const { data, error } = await supabase.rpc("get_my_spell_cards");
+export async function getMySpellCards(supabase: SupabaseClient, roomId?: string): Promise<HeldSpellCard[]> {
+  const { data, error } = await supabase.rpc("get_my_spell_cards", { p_room_id: roomId ?? null });
   if (error) throw error;
 
   return ((data ?? []) as {

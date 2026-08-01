@@ -64,7 +64,7 @@ export default async function HomePage() {
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
-  const heldSpellCards = await getMySpellCards(supabase);
+  const heldSpellCards = await getMySpellCards(supabase, roomId);
   const pendingSpellCasts =
     activeRound && activeRound.status === "closed"
       ? await getMyPendingCasts(supabase, activeRound.id)
@@ -147,6 +147,7 @@ export default async function HomePage() {
         roundIsClosed={activeRound?.status === "closed"}
         participants={participants}
         selfPlayerId={playerId}
+        roomId={roomId}
       />
 
       {activeRound ? (
