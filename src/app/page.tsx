@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getCurrentPlayer } from "@/lib/supabase/players";
+import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
+import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
+import { canAccessTestRoom } from "@/lib/game/testRoomAccess";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
@@ -39,6 +41,10 @@ export default async function HomePage() {
     .select("display_name, email, avatar_url")
     .eq("id", playerId)
     .maybeSingle();
+
+  const isAdmin = await getIsAdmin(supabase, playerId);
+  const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
+  const showAdminMenu = canAccessTestRoom({ isAdmin, adminModeEnabled });
 
   const roomId = await enterTodaysRoom(supabase);
   const roster = await getRoomRoster(supabase, roomId);
@@ -121,7 +127,10 @@ export default async function HomePage() {
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={playerId} />
-      <SignOutBadge name={player?.display_name ?? player?.email ?? user.email ?? ""} />
+      <SignOutBadge
+        name={player?.display_name ?? player?.email ?? user.email ?? ""}
+        showAdminMenu={showAdminMenu}
+      />
 
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew

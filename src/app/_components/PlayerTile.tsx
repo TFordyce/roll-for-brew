@@ -16,6 +16,7 @@ export function PlayerTile({
   modifier,
   joined = false,
   isStarter = false,
+  isTest = false,
   effectBadges = [],
 }: {
   displayName: string | null;
@@ -24,6 +25,7 @@ export function PlayerTile({
   modifier: number;
   joined?: boolean;
   isStarter?: boolean;
+  isTest?: boolean;
   effectBadges?: Exclude<ActiveEffectBadge["polarity"], null>[];
 }) {
   const name = displayName ?? email;
@@ -51,6 +53,11 @@ export function PlayerTile({
         {name}
         {isStarter ? <span className="text-gilt"> ★</span> : null}
       </span>
+      {isTest ? (
+        <span className="rounded-sm bg-tavern-plank px-1.5 py-0.5 font-display text-[10px] uppercase tracking-widest text-parchment-dim">
+          Test
+        </span>
+      ) : null}
       <span className="font-mono text-xs text-parchment-dim">{modifier >= 0 ? `+${modifier}` : modifier}</span>
       {effectBadges.length > 0 ? (
         <div className="flex flex-wrap justify-center gap-1" aria-label="active effects">

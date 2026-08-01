@@ -7,6 +7,7 @@ export type RosterEntry = {
   email: string;
   avatarUrl: string | null;
   modifier: number;
+  isTest: boolean;
 };
 
 /**
@@ -30,7 +31,7 @@ export async function getRoomRoster(
 ): Promise<RosterEntry[]> {
   const { data, error } = await supabase
     .from("room_players")
-    .select("player_id, modifier, players(display_name, email, avatar_url)")
+    .select("player_id, modifier, players(display_name, email, avatar_url, is_test)")
     .eq("room_id", roomId)
     .order("modifier", { ascending: false });
 
@@ -44,6 +45,18 @@ export async function getRoomRoster(
       email: player?.email ?? "",
       avatarUrl: player?.avatar_url ?? null,
       modifier: row.modifier as number,
+      isTest: player?.is_test === true,
     };
   });
+}
+
+/**
+ * The single persistent Test Room's id (issue #101 / ADR 0002) — dateless,
+ * so it can't be found via enter_todays_room's date lookup. Null if the
+ * seed migration (0024_admin_and_test_room.sql) hasn't run yet.
+ */
+export async function getTestRoomId(supabase: SupabaseClient): Promise<string | null> {
+  const { data, error } = await supabase.from("rooms").select("id").eq("is_test", true).maybeSingle();
+  if (error) throw error;
+  return (data?.id as string | undefined) ?? null;
 }

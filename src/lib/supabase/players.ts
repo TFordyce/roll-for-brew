@@ -26,3 +26,19 @@ export async function getCurrentPlayer(
   if (!user) return null;
   return { playerId: googlePlayerId(user), user };
 }
+
+/**
+ * Whether a player is a flagged Admin (players.is_admin — migration-only,
+ * see 0024_admin_and_test_room.sql). Defaults to false for a missing row
+ * rather than throwing, since a caller with no player row is never an admin.
+ */
+export async function getIsAdmin(supabase: SupabaseClient, playerId: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("players")
+    .select("is_admin")
+    .eq("id", playerId)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.is_admin === true;
+}
