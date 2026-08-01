@@ -1,6 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { type LayerRollsRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
@@ -26,10 +28,18 @@ export type TiedParticipant = {
  * how many reroll layers it takes. Which input(s) a tied player is offered
  * follows their roll_input_mode preference (#22), same as the plain
  * layer-0 roll — a reroll is still "their turn to roll".
+ *
+ * Also listens for layer-rolls-revealed (issue #99) so a tied player's own
+ * reroll shows its roll+modifier calculation the same way RoundReveal does
+ * for layer 0, rather than leaving this layer's rolls unshown until the
+ * round refreshes past the tie entirely. Filtered to this component's own
+ * `layer`, since the channel isn't otherwise scoped below roundId and a
+ * stray event from a prior layer could arrive right as this one mounts.
  */
 export function TieBanner({
   roomId,
   roundId,
+  layer,
   tiedParticipants,
   selfPlayerId,
   ownRoll,
@@ -37,20 +47,26 @@ export function TieBanner({
 }: {
   roomId: string;
   roundId: string;
+  layer: number;
   tiedParticipants: TiedParticipant[];
   selfPlayerId: string;
   ownRoll: number | null;
   rollInputMode: RollInputMode | null;
 }) {
   const router = useRouter();
+  const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
 
   useRoomChannel(roomId, roundId, {
+    "layer-rolls-revealed": (payload) => {
+      if (payload.layer === layer) setRolls(payload.rolls);
+    },
     "round-revealed": () => router.refresh(),
     "layer-tied": () => router.refresh(),
     "round-cancelled": () => router.refresh(),
   });
 
   const isTied = tiedParticipants.some((p) => p.playerId === selfPlayerId && !p.excludedAt);
+  const revealedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.value]) ?? []);
 
   return (
     <CardFrame title="Tied — Rerolling">
@@ -62,6 +78,9 @@ export function TieBanner({
             email={p.email}
             avatarUrl={p.avatarUrl}
             modifier={p.modifier}
+            revealedRoll={
+              revealedValueByPlayerId.get(p.playerId) ?? (p.playerId === selfPlayerId ? ownRoll : null)
+            }
             joined
           />
         ))}

@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
+import { formatModifier } from "@/lib/game/rollCalculation";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { RollCalculation } from "@/app/_components/RollCalculation";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -138,10 +140,9 @@ export function RoundReveal({
 
             return (
               <li key={p.playerId} className="flex items-center justify-between gap-3 py-2">
-                <span className="font-mono text-xs text-parchment-dim">
-                  {p.modifier >= 0 ? `+${p.modifier}` : p.modifier}
-                </span>
+                <span className="font-mono text-xs text-parchment-dim">{formatModifier(p.modifier)}</span>
                 <span className="font-body text-sm text-parchment">{p.displayName ?? p.email}</span>
+                {value !== null ? <RollCalculation roll={value} modifier={p.modifier} /> : null}
                 <span
                   className={`flex h-9 w-9 items-center justify-center rounded-md border-2 font-display text-sm ${
                     value === null

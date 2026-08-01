@@ -1,4 +1,6 @@
 import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
+import { formatModifier } from "@/lib/game/rollCalculation";
+import { RollCalculation } from "@/app/_components/RollCalculation";
 
 /**
  * A single player's tile — avatar, name, modifier — inside its own small
@@ -7,7 +9,10 @@ import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
  * from the rest of the roster in that second view. `effectBadges` (issue
  * #69) renders one dot per active spell-card effect currently on this
  * player — red for negative/debuff, gold for positive/buff — so the roster
- * doubles as an at-a-glance "who's under what effect" view.
+ * doubles as an at-a-glance "who's under what effect" view. `revealedRoll`
+ * (issue #99) is only passed by TieBanner, once a tied player's reroll comes
+ * in — it renders the roll+modifier calculation alongside the raw modifier,
+ * rather than leaving them as two values a player has to add up themselves.
  */
 export function PlayerTile({
   displayName,
@@ -18,6 +23,7 @@ export function PlayerTile({
   isStarter = false,
   isTest = false,
   effectBadges = [],
+  revealedRoll = null,
 }: {
   displayName: string | null;
   email: string;
@@ -27,6 +33,7 @@ export function PlayerTile({
   isStarter?: boolean;
   isTest?: boolean;
   effectBadges?: Exclude<ActiveEffectBadge["polarity"], null>[];
+  revealedRoll?: number | null;
 }) {
   const name = displayName ?? email;
   const initial = name.trim().charAt(0).toUpperCase() || "?";
@@ -58,7 +65,8 @@ export function PlayerTile({
           Test
         </span>
       ) : null}
-      <span className="font-mono text-xs text-parchment-dim">{modifier >= 0 ? `+${modifier}` : modifier}</span>
+      <span className="font-mono text-xs text-parchment-dim">{formatModifier(modifier)}</span>
+      {revealedRoll !== null ? <RollCalculation roll={revealedRoll} modifier={modifier} /> : null}
       {effectBadges.length > 0 ? (
         <div className="flex flex-wrap justify-center gap-1" aria-label="active effects">
           {effectBadges.map((polarity, index) => (
