@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
   createTestCleanup,
+  forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
 } from "./setup";
@@ -30,34 +31,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  async function forceHold(playerId: string, cardName: string): Promise<string> {
-    const { data: card, error: cardError } = await admin
-      .from("spell_cards")
-      .select("id")
-      .eq("name", cardName)
-      .single();
-    if (cardError) throw cardError;
-
-    const { data: instance, error: instanceError } = await admin
-      .from("spell_deck_instances")
-      .select("id")
-      .eq("card_id", card.id)
-      .single();
-    if (instanceError) throw instanceError;
-
-    const { error: updateError } = await admin
-      .from("spell_deck_instances")
-      .update({ location: "held", held_by_player: playerId })
-      .eq("id", instance.id);
-    if (updateError) throw updateError;
-
-    return instance.id as string;
-  }
-
   it("Cold Tea applies both the opponent's -3 penalty and the caster's 1d4 bonus", async () => {
     const caster = await signUp("cold-tea-caster");
     const target = await signUp("cold-tea-target");
-    await forceHold(caster.googleSub, "Cold Tea");
+    await forceHold(admin, caster.googleSub, "Cold Tea");
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -104,7 +81,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
   it("Slipped Spoon applies both the opponent's disadvantage and the caster's 1d4 bonus", async () => {
     const caster = await signUp("slipped-spoon-caster");
     const target = await signUp("slipped-spoon-target");
-    await forceHold(caster.googleSub, "Slipped Spoon");
+    await forceHold(admin, caster.googleSub, "Slipped Spoon");
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);

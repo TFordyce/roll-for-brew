@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
   createTestCleanup,
+  forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
 } from "./setup";
@@ -23,36 +24,6 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
 
   function signUpSignInAndEnter(label: string) {
     return signUpSignInAndEnterRoom(admin, cleanup, label);
-  }
-
-  /**
-   * Forces a specific catalog card into a player's hand directly (admin
-   * bypasses RLS) rather than relying on a random draw landing on the exact
-   * card a test needs — mirrors how these integration tests already use the
-   * admin client to seed/assert state outside the RPC surface.
-   */
-  async function forceHold(playerId: string, cardName: string): Promise<string> {
-    const { data: card, error: cardError } = await admin
-      .from("spell_cards")
-      .select("id")
-      .eq("name", cardName)
-      .single();
-    if (cardError) throw cardError;
-
-    const { data: instance, error: instanceError } = await admin
-      .from("spell_deck_instances")
-      .select("id")
-      .eq("card_id", card.id)
-      .single();
-    if (instanceError) throw instanceError;
-
-    const { error: updateError } = await admin
-      .from("spell_deck_instances")
-      .update({ location: "held", held_by_player: playerId })
-      .eq("id", instance.id);
-    if (updateError) throw updateError;
-
-    return instance.id as string;
   }
 
   it("seeds the catalog with all 65 cards across the documented tier split", async () => {
@@ -103,7 +74,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
 
   it("draw_spell_card parks a new draw as pending_swap when the player already holds a card", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("draw-already-holding");
-    await forceHold(googleSub, "Lucky Sip");
+    await forceHold(admin, googleSub, "Lucky Sip");
 
     const { data, error } = await client.rpc("draw_spell_card", { p_trigger: "nat20" });
     expect(error).toBeNull();
@@ -117,7 +88,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
 
   it("resolve_card_swap keeping the new card reshuffles the old one back to in_deck", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("swap-keep-new");
-    const oldInstanceId = await forceHold(googleSub, "Lucky Sip");
+    const oldInstanceId = await forceHold(admin, googleSub, "Lucky Sip");
     await client.rpc("draw_spell_card", { p_trigger: "nat1" });
 
     const { error } = await client.rpc("resolve_card_swap", { p_keep_new: true });
@@ -137,7 +108,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
 
   it("resolve_card_swap keeping the old card reshuffles the new one back to in_deck", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("swap-keep-old");
-    await forceHold(googleSub, "Lucky Sip");
+    await forceHold(admin, googleSub, "Lucky Sip");
     const { data: drawData } = await client.rpc("draw_spell_card", { p_trigger: "nat1" });
     const [drawRow] = drawData as { instance_id: string }[];
     const newInstanceId = drawRow!.instance_id;
@@ -159,7 +130,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
 
   it("casting a self-targeted flat-modifier card composes into get_round_modifier_effects and discards the card", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("cast-self-flat");
-    const instanceId = await forceHold(googleSub, "Lucky Sip");
+    const instanceId = await forceHold(admin, googleSub, "Lucky Sip");
 
     const { data: roundId } = await client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -195,7 +166,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
   it("an opponent-targeted card can be armed with no target while the round is still open, then targeted after close", async () => {
     const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-opp-caster");
     const { client: targetClient, googleSub: targetSub } = await signUpSignInAndEnter("cast-opp-target");
-    await forceHold(casterSub, "Milky Brew");
+    await forceHold(admin, casterSub, "Milky Brew");
 
     const { data: roundId } = await casterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -237,7 +208,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
 
   it("rejects casting a Reaction card pre-roll", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("cast-reaction-reject");
-    await forceHold(googleSub, "Six Sugars"); // Reaction, Self
+    await forceHold(admin, googleSub, "Six Sugars"); // Reaction, Self
 
     const { data: roundId } = await client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -252,7 +223,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
   it("rejects casting once the round has closed (RFB03)", async () => {
     const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-after-close");
     const { client: otherClient } = await signUpSignInAndEnter("cast-after-close-other");
-    await forceHold(casterSub, "Lucky Sip");
+    await forceHold(admin, casterSub, "Lucky Sip");
 
     const { data: roundId } = await casterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);

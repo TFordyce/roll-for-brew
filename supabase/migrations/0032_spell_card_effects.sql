@@ -288,8 +288,8 @@ declare
   v_effect_kind text;
   v_effect_params jsonb;
 begin
-  select round_id, caster_id, target_pending
-    into v_round_id, v_caster_id, v_target_pending
+  select round_id, caster_id, target_pending, effect_kind, effect_params
+    into v_round_id, v_caster_id, v_target_pending, v_effect_kind, v_effect_params
     from public.spell_casts
    where id = p_cast_id;
 
@@ -314,8 +314,8 @@ begin
       using errcode = 'RFB03';
   end if;
 
-  select sc.target, sc.id, casts.effect_kind, casts.effect_params
-    into v_target_stamp, v_card_id, v_effect_kind, v_effect_params
+  select sc.target, sc.id
+    into v_target_stamp, v_card_id
     from public.spell_casts casts
     join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
     join public.spell_cards sc on sc.id = sdi.card_id

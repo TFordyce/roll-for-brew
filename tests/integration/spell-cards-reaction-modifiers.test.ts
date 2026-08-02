@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
   createTestCleanup,
+  forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
 } from "./setup";
@@ -29,34 +30,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  async function forceHold(playerId: string, cardName: string): Promise<string> {
-    const { data: card, error: cardError } = await admin
-      .from("spell_cards")
-      .select("id")
-      .eq("name", cardName)
-      .single();
-    if (cardError) throw cardError;
-
-    const { data: instance, error: instanceError } = await admin
-      .from("spell_deck_instances")
-      .select("id")
-      .eq("card_id", card.id)
-      .single();
-    if (instanceError) throw instanceError;
-
-    const { error: updateError } = await admin
-      .from("spell_deck_instances")
-      .update({ location: "held", held_by_player: playerId })
-      .eq("id", instance.id);
-    if (updateError) throw updateError;
-
-    return instance.id as string;
-  }
-
   it("Six Sugars (dice_modifier, Reaction/Self) resolves 1d6 through the reaction window", async () => {
     const caster = await signUp("six-sugars-caster");
     const other = await signUp("six-sugars-other");
-    await forceHold(caster.googleSub, "Six Sugars");
+    await forceHold(admin, caster.googleSub, "Six Sugars");
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -98,7 +75,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
   it("Mug Shot (set_modifier, Reaction/Opponent) negates a target's modifier through the reaction window", async () => {
     const caster = await signUp("mug-shot-caster");
     const target = await signUp("mug-shot-target");
-    await forceHold(caster.googleSub, "Mug Shot");
+    await forceHold(admin, caster.googleSub, "Mug Shot");
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
