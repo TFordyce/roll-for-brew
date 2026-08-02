@@ -25,5 +25,5 @@ The player identity an Admin is currently puppeting. Held server-side as a per-a
 _Avoid_: impersonating, switched user, puppet target.
 
 **End Test Session**:
-The Admin action that cascade-deletes the Test Room's rounds, rolls, spell casts, and active effects. Leaves the Test Room and its Test Players intact for reuse.
+The Admin action that cascade-deletes the Test Room's rounds, rolls, spell casts, and active effects, and resets the caller's Acting As pointer back to themselves. Leaves the Test Room and its Test Players intact for reuse.
 _Avoid_: purge, reset, wipe.

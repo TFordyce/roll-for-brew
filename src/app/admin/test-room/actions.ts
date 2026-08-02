@@ -26,8 +26,9 @@ export async function setActingAsAction(formData: FormData): Promise<void> {
 }
 
 /**
- * Clears the Test Room's accumulated rounds/rolls/casts/effects, leaving the
- * room and its seeded roster ready for next time (issue #102).
+ * Clears the Test Room's accumulated rounds/rolls/casts/effects and resets
+ * Acting As back to the admin's own identity, leaving the room and its
+ * seeded roster ready for next time (issue #102).
  */
 export async function endTestSessionAction(): Promise<void> {
   const supabase = await createClient();
