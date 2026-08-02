@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
   createTestCleanup,
+  forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
 } from "./setup";
@@ -28,30 +29,6 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  async function forceHold(playerId: string, cardName: string): Promise<string> {
-    const { data: card, error: cardError } = await admin
-      .from("spell_cards")
-      .select("id")
-      .eq("name", cardName)
-      .single();
-    if (cardError) throw cardError;
-
-    const { data: instance, error: instanceError } = await admin
-      .from("spell_deck_instances")
-      .select("id")
-      .eq("card_id", card.id)
-      .single();
-    if (instanceError) throw instanceError;
-
-    const { error: updateError } = await admin
-      .from("spell_deck_instances")
-      .update({ location: "held", held_by_player: playerId })
-      .eq("id", instance.id);
-    if (updateError) throw updateError;
-
-    return instance.id as string;
-  }
-
   async function seedRoll(
     roundId: string,
     playerId: string,
@@ -72,7 +49,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
   it("Caffeine Crash composes into the modifier bucket for exactly its 2 remaining rounds, then expires", async () => {
     const caster = await signUp("crash-caster");
     const target = await signUp("crash-target");
-    await forceHold(caster.googleSub, "Caffeine Crash");
+    await forceHold(admin, caster.googleSub, "Caffeine Crash");
 
     // Round 1: cast with an immediate target (target already declared in).
     const { data: round1Id } = await caster.client.rpc("start_round");
@@ -168,7 +145,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
 
   it("roster badges (get_room_active_effects) show a positive-polarity badge for the caster's own Cloud of Cream", async () => {
     const caster = await signUp("cloud-caster");
-    await forceHold(caster.googleSub, "Cloud of Cream");
+    await forceHold(admin, caster.googleSub, "Cloud of Cream");
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -201,8 +178,8 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     const crashTarget = await signUp("detox-crash-target");
     const detoxer = await signUp("detox-detoxer");
 
-    await forceHold(cloudCaster.googleSub, "Cloud of Cream");
-    await forceHold(crashCaster.googleSub, "Caffeine Crash");
+    await forceHold(admin, cloudCaster.googleSub, "Cloud of Cream");
+    await forceHold(admin, crashCaster.googleSub, "Caffeine Crash");
 
     const { data: roundId } = await cloudCaster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -234,7 +211,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     });
     expect(beforeHold).toEqual([]);
 
-    const detoxInstanceId = await forceHold(detoxer.googleSub, "Lesser Detox");
+    const detoxInstanceId = await forceHold(admin, detoxer.googleSub, "Lesser Detox");
 
     const { data: dispellable, error: dispellableError } = await detoxer.client.rpc(
       "get_dispellable_active_effects",
@@ -293,8 +270,8 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     const crashTarget = await signUp("greater-detox-crash-target");
     const detoxer = await signUp("greater-detox-detoxer");
 
-    await forceHold(cloudCaster.googleSub, "Cloud of Cream");
-    await forceHold(crashCaster.googleSub, "Caffeine Crash");
+    await forceHold(admin, cloudCaster.googleSub, "Cloud of Cream");
+    await forceHold(admin, crashCaster.googleSub, "Caffeine Crash");
 
     const { data: roundId } = await cloudCaster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -320,7 +297,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       .eq("target_player_id", cloudCaster.googleSub)
       .single();
 
-    const detoxInstanceId = await forceHold(detoxer.googleSub, "Greater Detox");
+    const detoxInstanceId = await forceHold(admin, detoxer.googleSub, "Greater Detox");
 
     const { data: dispellable, error: dispellableError } = await detoxer.client.rpc(
       "get_dispellable_active_effects",

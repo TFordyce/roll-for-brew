@@ -96,6 +96,39 @@ export async function signUpSignInAndEnterRoom(
 }
 
 /**
+ * Forces a specific catalog card into a player's hand directly (admin
+ * bypasses RLS) rather than relying on a random draw landing on the exact
+ * card a test needs.
+ */
+export async function forceHold(
+  admin: SupabaseClient,
+  playerId: string,
+  cardName: string,
+): Promise<string> {
+  const { data: card, error: cardError } = await admin
+    .from("spell_cards")
+    .select("id")
+    .eq("name", cardName)
+    .single();
+  if (cardError) throw cardError;
+
+  const { data: instance, error: instanceError } = await admin
+    .from("spell_deck_instances")
+    .select("id")
+    .eq("card_id", card.id)
+    .single();
+  if (instanceError) throw instanceError;
+
+  const { error: updateError } = await admin
+    .from("spell_deck_instances")
+    .update({ location: "held", held_by_player: playerId })
+    .eq("id", instance.id);
+  if (updateError) throw updateError;
+
+  return instance.id as string;
+}
+
+/**
  * Tracks entities created during a test so they can be torn down in one
  * afterEach, instead of every test file hand-rolling the same arrays.
  */
