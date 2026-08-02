@@ -25,8 +25,9 @@ export async function setActingAs(supabase: SupabaseClient, targetPlayerId: stri
 
 /**
  * Calls the end_test_session RPC: cascade-deletes the Test Room's rounds,
- * rolls, spell casts, and active effects, leaving the room and its seeded
- * Test Player roster intact.
+ * rolls, spell casts, and active effects, resets the caller's Acting As
+ * pointer back to themselves, and leaves the room and its seeded Test Player
+ * roster intact.
  */
 export async function endTestSession(supabase: SupabaseClient): Promise<void> {
   const { error } = await supabase.rpc("end_test_session");
