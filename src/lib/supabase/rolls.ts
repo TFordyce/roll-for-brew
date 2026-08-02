@@ -48,6 +48,44 @@ export async function submitManualRoll(
 }
 
 /**
+ * Calls the submit_roll_as RPC (supabase/migrations/0029_admin_roll_as.sql):
+ * an admin submitting an in-app roll directly for another Test Room player,
+ * without first switching Acting As to become them. Admin-only and
+ * Test-Room-only, enforced server-side by the RPC itself.
+ */
+export async function submitRollAs(
+  supabase: SupabaseClient,
+  roundId: string,
+  playerId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("submit_roll_as", {
+    p_round_id: roundId,
+    p_player_id: playerId,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
+ * Calls the submit_manual_roll_as RPC (supabase/migrations/0029_admin_roll_as.sql):
+ * an admin submitting a manually-entered roll directly for another Test Room
+ * player, same admin/Test-Room gating as submitRollAs.
+ */
+export async function submitManualRollAs(
+  supabase: SupabaseClient,
+  roundId: string,
+  playerId: string,
+  value: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("submit_manual_roll_as", {
+    p_round_id: roundId,
+    p_player_id: playerId,
+    p_value: value,
+  });
+  if (error) throw error;
+}
+
+/**
  * Calls the get_current_layer_rolls_if_complete RPC. Returns the round's
  * current layer number and every expected roller's roll for it once
  * everyone has rolled, or null if the round is still waiting on someone.
