@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
@@ -11,74 +10,10 @@ import {
   broadcastRoundClosed,
   broadcastRoundStarted,
 } from "@/lib/supabase/realtime";
-import { drawSpellCard, resolveCardSwap } from "@/lib/supabase/spellCards";
+import { resolveCardSwap } from "@/lib/supabase/spellCards";
 import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
-
-/**
- * Every action here can be triggered from either real gameplay's "/" or,
- * for an admin puppeting a Test Player (issue #102), "/admin/test-room" —
- * revalidate both unconditionally rather than threading "which page called
- * this" through every action just to pick one.
- */
-function revalidateRoundSurfaces() {
-  revalidatePath("/");
-  revalidatePath("/admin/test-room");
-}
-
-/**
- * Draws a spell card if the just-submitted value is a natural 1 or 20
- * (issue #66) — scoped here, at the main round roll's submission, so a
- * card's own resolution roll (e.g. a future counterspell DC check) never
- * triggers a draw (user story 32).
- */
-async function maybeDrawSpellCard(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  value: number,
-  roomId: string,
-) {
-  if (value === 1) await drawSpellCard(supabase, "nat1", roomId);
-  else if (value === 20) await drawSpellCard(supabase, "nat20", roomId);
-}
-
-/**
- * True for the two submit_roll/submit_manual_roll rejections that mean "the
- * round moved on under you" rather than a real failure — the stall-timeout
- * checker (enforceStallTimeout, src/app/rounds/stallEnforcement.ts) runs
- * lazily on every render, so it can cancel a round or exclude this player
- * from the current layer between the page rendering the roll form and the
- * form actually being submitted. Surfacing that race as a crash (the prior
- * behaviour: throw straight through, no error boundary anywhere in
- * src/app) sent the stalled player to a raw error page for a state change
- * that was correct and expected; refreshing to the room's current state is
- * the right response instead.
- *
- * Keyed off the RFB01/RFB02 Postgres error codes (supabase/migrations/
- * 0013_stale_round_error_codes.sql), not the exception message text — a
- * cosmetic wording change to a `raise exception` string can't silently
- * break this check now. RFB03 (supabase/migrations/0019_spell_casts_pre_roll.sql)
- * extends the same convention to castSpellCardAction/setSpellCastTargetAction:
- * casting/targeting racing against declare-in closing is exactly the same
- * "round moved on under you" shape as a stale roll. RFB04
- * (supabase/migrations/0020_spell_reaction_window.sql) extends it again to
- * castReactionSpellCardAction/passReactionWindowAction: reacting or passing
- * against a window that's already closed (someone else's pass just closed
- * it) is the same race, one layer up. RFB05
- * (supabase/migrations/0023_declare_in_stale_round_error_code.sql) extends
- * it once more to declareInAction: declaring in against a round that
- * close_round already closed between render and submit is the same race,
- * one phase earlier than RFB01.
- */
-function isStaleRoundError(error: unknown): boolean {
-  const code = (error as { code?: string } | null)?.code;
-  return (
-    code === "RFB01" ||
-    code === "RFB02" ||
-    code === "RFB03" ||
-    code === "RFB04" ||
-    code === "RFB05"
-  );
-}
+import { isStaleRoundError, maybeDrawSpellCard, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
 
 /**
  * True for start_round's own version of the same "moved on under you" race:

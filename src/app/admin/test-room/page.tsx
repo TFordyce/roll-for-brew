@@ -10,6 +10,7 @@ import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { getEffectiveTestRoomPlayerId } from "@/lib/supabase/actingAs";
+import { getExpectedLayerRollerIds, getCurrentLayerRollerIds } from "@/lib/supabase/stall";
 import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
@@ -26,6 +27,7 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 import { ActingAsSwitcher, type ActingAsOption } from "@/app/admin/test-room/ActingAsSwitcher";
 import { EndTestSessionButton } from "@/app/admin/test-room/EndTestSessionButton";
+import { RollForOthers, type PendingRoller } from "@/app/admin/test-room/RollForOthers";
 
 /**
  * The Test Room (issue #101 / ADR 0002): a real, persistent room row, guarded
@@ -166,6 +168,28 @@ export default async function TestRoomPage() {
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
+  /**
+   * Everyone still expected to roll the round's current layer, other than
+   * whoever the admin is currently Acting As (that identity already has its
+   * own RollInputPicker rendered above) — the roster this page's "Roll For"
+   * panel (issue #102 follow-up) lets the admin fill in or randomly roll for,
+   * without switching Acting As once per person.
+   */
+  const nameByPlayerId = new Map(switcherOptions.map((option) => [option.playerId, option]));
+  let pendingRollers: PendingRoller[] = [];
+  if (activeRound && activeRound.status === "closed") {
+    const [expectedIds, rolledIds] = await Promise.all([
+      getExpectedLayerRollerIds(supabase, activeRound.id, currentLayer),
+      getCurrentLayerRollerIds(supabase, activeRound.id),
+    ]);
+    pendingRollers = [...expectedIds]
+      .filter((id) => id !== playerId && !rolledIds.has(id))
+      .map((id) => {
+        const option = nameByPlayerId.get(id);
+        return { playerId: id, displayName: option?.displayName ?? null, email: option?.email ?? "" };
+      });
+  }
+
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
@@ -267,6 +291,8 @@ export default async function TestRoomPage() {
           {needsRollInput && rollInputMode ? (
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
+
+          <RollForOthers roundId={activeRound.id} pendingRollers={pendingRollers} />
         </section>
       ) : null}
 
