@@ -198,6 +198,7 @@ export default async function HomePage() {
                   {roster.map((entry) => (
                     <PlayerTile
                       key={entry.playerId}
+                      playerId={entry.playerId}
                       displayName={entry.displayName}
                       email={entry.email}
                       avatarUrl={entry.avatarUrl}
@@ -265,6 +266,7 @@ export default async function HomePage() {
                 {roster.map((entry) => (
                   <PlayerTile
                     key={entry.playerId}
+                    playerId={entry.playerId}
                     displayName={entry.displayName}
                     email={entry.email}
                     avatarUrl={entry.avatarUrl}
