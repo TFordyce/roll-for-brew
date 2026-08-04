@@ -24,7 +24,7 @@ export type PendingRoller = {
  * card gets drawn if this roll lands on nat-1/20, instead of the usual
  * random in-deck instance — left on "Random on crit" it behaves exactly as
  * before. Only cards currently in_deck (inDeckCards, sourced from
- * get_in_deck_spell_cards — 0033) are offered, so a selection can never fail
+ * get_in_deck_spell_cards — 0034) are offered, so a selection can never fail
  * against a card someone else is already holding.
  */
 export function RollForOthers({
