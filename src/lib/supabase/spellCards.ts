@@ -9,6 +9,7 @@ export type HeldSpellCard = {
   tier: "common" | "rare" | "epic";
   effectText: string;
   effectKind: string | null;
+  edition: "4th";
 };
 
 /**
@@ -158,10 +159,10 @@ export async function drawPendingSpellCardManual(
  */
 export async function getSpellCardCatalog(
   supabase: SupabaseClient,
-): Promise<{ cardId: string; name: string; tier: "common" | "rare" | "epic" }[]> {
+): Promise<{ cardId: string; name: string; tier: "common" | "rare" | "epic"; edition: "4th" }[]> {
   const { data, error } = await supabase
     .from("spell_cards")
-    .select("id, name, tier")
+    .select("id, name, tier, edition")
     .order("tier")
     .order("name");
   if (error) throw error;
@@ -170,6 +171,7 @@ export async function getSpellCardCatalog(
     cardId: row.id as string,
     name: row.name as string,
     tier: row.tier as "common" | "rare" | "epic",
+    edition: row.edition as "4th",
   }));
 }
 
@@ -179,6 +181,7 @@ export type InDeckSpellCard = {
   tier: "common" | "rare" | "epic";
   target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
   castingTime: "A" | "R";
+  edition: "4th";
 };
 
 /**
@@ -197,12 +200,14 @@ export async function getInDeckSpellCards(supabase: SupabaseClient, roomId: stri
     tier: "common" | "rare" | "epic";
     target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
     casting_time: "A" | "R";
+    edition: "4th";
   }[]).map((row) => ({
     cardId: row.card_id,
     name: row.name,
     tier: row.tier,
     target: row.target,
     castingTime: row.casting_time,
+    edition: row.edition,
   }));
 }
 
@@ -242,6 +247,7 @@ export async function getMySpellCards(supabase: SupabaseClient, roomId?: string)
     tier: "common" | "rare" | "epic";
     effect_text: string;
     effect_kind: string | null;
+    edition: "4th";
   }[]).map((row) => ({
     instanceId: row.instance_id,
     location: row.location,
@@ -251,5 +257,6 @@ export async function getMySpellCards(supabase: SupabaseClient, roomId?: string)
     tier: row.tier,
     effectText: row.effect_text,
     effectKind: row.effect_kind,
+    edition: row.edition,
   }));
 }
