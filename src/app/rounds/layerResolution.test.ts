@@ -14,6 +14,8 @@ function fakeDeps(overrides: Partial<ApplyLayerOutcomeDeps> = {}): ApplyLayerOut
       >,
     ),
     getRoundModifierEffects: vi.fn(async () => new Map<string, ModifierEffect[]>()),
+    getTeaMakerOverride: vi.fn(async () => null),
+    resolveDeclaredNumberTeaMaker: vi.fn(async () => null),
     resolveRound: vi.fn(async () => {}),
     advanceRoundLayer: vi.fn(async () => 1),
     broadcastRoundRevealed: vi.fn(async () => {}),

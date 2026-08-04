@@ -9,6 +9,10 @@ function fakeDeps(overrides: Partial<FinalizeReactionWindowDeps> = {}): Finalize
     getCurrentLayerRollsIfComplete: vi.fn(async () => null),
     getForcedRerollTargets: vi.fn(async () => []),
     applyForcedReroll: vi.fn(async () => 20),
+    hasActiveCastKind: vi.fn(async () => false),
+    applyRollFlip: vi.fn(async () => []),
+    applyRollSwap: vi.fn(async () => []),
+    applyLowestGainsHighestModifier: vi.fn(async () => []),
     applyLayerOutcome: vi.fn(async () => {}),
     ...overrides,
   };

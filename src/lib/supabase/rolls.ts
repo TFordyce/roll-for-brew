@@ -163,19 +163,22 @@ export async function getOwnRoll(
 /**
  * Calls the resolve_round RPC: applies a single-brewer outcome the caller
  * already computed via resolveLayer (src/lib/game/resolveLayer.ts) —
- * writes rounds.brewer_id/cups_made/status='resolved'/resolved_at and
- * increments the brewer's modifier, atomically.
+ * writes rounds.brewer_id/cups_made/status='resolved'/resolved_at and, unless
+ * noModifierGain is set (Drip Tray's "they gain no modifier from this
+ * tea-making", 0033), increments the brewer's modifier, atomically.
  */
 export async function resolveRound(
   supabase: SupabaseClient,
   roundId: string,
   brewerId: string,
   cupsMade: number,
+  noModifierGain = false,
 ): Promise<void> {
   const { error } = await supabase.rpc("resolve_round", {
     p_round_id: roundId,
     p_brewer_id: brewerId,
     p_cups_made: cupsMade,
+    p_no_modifier_gain: noModifierGain,
   });
   if (error) throw error;
 }

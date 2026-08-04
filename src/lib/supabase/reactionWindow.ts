@@ -172,3 +172,110 @@ export async function applyForcedReroll(
   if (error) throw error;
   return data as number;
 }
+
+/**
+ * Calls has_active_cast_kind (0033): whether any un-negated cast of the
+ * given effect_kind is active for this round/layer's reaction window — the
+ * gate finalizeReactionWindow uses before calling one of the roll-transform
+ * apply_* functions below (Dunkin Disaster/Zariel's Fall/Broken Biscuit).
+ */
+export async function hasActiveCastKind(
+  supabase: SupabaseClient,
+  roundId: string,
+  layer: number,
+  effectKind: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("has_active_cast_kind", {
+    p_round_id: roundId,
+    p_layer: layer,
+    p_effect_kind: effectKind,
+  });
+  if (error) throw error;
+  return data as boolean;
+}
+
+export type RollChange = { playerId: string; value: number };
+
+/** Calls apply_roll_swap (0033, Dunkin Disaster): swaps the layer's highest and lowest rolls in place. */
+export async function applyRollSwap(supabase: SupabaseClient, roundId: string, layer: number): Promise<RollChange[]> {
+  const { data, error } = await supabase.rpc("apply_roll_swap", { p_round_id: roundId, p_layer: layer });
+  if (error) throw error;
+  return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
+}
+
+/** Calls apply_roll_flip (0033, Zariel's Fall): flips every roll in the layer to 21 minus its value. */
+export async function applyRollFlip(supabase: SupabaseClient, roundId: string, layer: number): Promise<RollChange[]> {
+  const { data, error } = await supabase.rpc("apply_roll_flip", { p_round_id: roundId, p_layer: layer });
+  if (error) throw error;
+  return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
+}
+
+/**
+ * Calls apply_lowest_gains_highest_modifier (0033, Broken Biscuit): adds the
+ * highest modifier on the table to the layer's lowest roller's roll.
+ */
+export async function applyLowestGainsHighestModifier(
+  supabase: SupabaseClient,
+  roundId: string,
+  layer: number,
+): Promise<RollChange[]> {
+  const { data, error } = await supabase.rpc("apply_lowest_gains_highest_modifier", {
+    p_round_id: roundId,
+    p_layer: layer,
+  });
+  if (error) throw error;
+  return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
+}
+
+export type TeaMakerOverride = {
+  mode: "highest_modifier" | "highest_roll" | "chosen";
+  noModifierGain: boolean;
+  chosenPlayerId: string | null;
+  targetPending: boolean;
+};
+
+/**
+ * Calls get_tea_maker_override (0033): the round's active tea_maker_override
+ * cast (Drip Tray/Topsy-Tea/Wild Brew Surge branch 6), if any — consulted by
+ * applyLayerOutcome before calling resolveLayer, since these cards decide the
+ * brewer by a rule other than "lowest roll+modifier wins".
+ */
+export async function getTeaMakerOverride(supabase: SupabaseClient, roundId: string): Promise<TeaMakerOverride | null> {
+  const { data, error } = await supabase.rpc("get_tea_maker_override", { p_round_id: roundId });
+  if (error) throw error;
+
+  const rows = (data ?? []) as {
+    mode: "highest_modifier" | "highest_roll" | "chosen";
+    no_modifier_gain: boolean;
+    chosen_player_id: string | null;
+    target_pending: boolean;
+  }[];
+  const [row] = rows;
+  if (!row) return null;
+
+  return {
+    mode: row.mode,
+    noModifierGain: row.no_modifier_gain,
+    chosenPlayerId: row.chosen_player_id,
+    targetPending: row.target_pending,
+  };
+}
+
+/**
+ * Calls resolve_declared_number_tea_maker (0033, Inscribed Saucer): checks a
+ * just-completed layer's rolls against any live declared number in the
+ * round's room and, on a match, consumes it and returns who it names as
+ * brewer (null if no match).
+ */
+export async function resolveDeclaredNumberTeaMaker(
+  supabase: SupabaseClient,
+  roundId: string,
+  layer: number,
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc("resolve_declared_number_tea_maker", {
+    p_round_id: roundId,
+    p_layer: layer,
+  });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
