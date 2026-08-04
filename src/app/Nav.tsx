@@ -8,14 +8,18 @@ const tabClass = (isActive: boolean) =>
   }`;
 
 /**
- * Top-level tab nav (issue #23) — Room and Stats. Each page checks its own
+ * Top-level tab nav (issue #23) — Room, Stats, and Collection (issue #135,
+ * part of the Spell Collection page spec #130). Each page checks its own
  * auth and renders this itself (mirroring how each page independently
  * redirects to /login), rather than living in the root layout. Carries its
  * own gilt-bordered/tavern-panel background (issue #78, same treatment as
  * CardFrame) so it reads as part of the tabletop UI on its own, independent
- * of whatever backdrop the page it sits on has.
+ * of whatever backdrop the page it sits on has. The Collection tab always
+ * links to the viewer's own `/collection` — a cross-player collection view
+ * at `/collection/:playerId` still renders this nav (site-wide chrome) with
+ * "collection" active, even though tapping it returns to your own.
  */
-export function Nav({ active }: { active: "room" | "stats" }) {
+export function Nav({ active }: { active: "room" | "stats" | "collection" }) {
   return (
     <nav className="flex gap-1 rounded-lg border-4 border-gilt bg-tavern-panel p-1 shadow-[0_0_0_1px_theme(colors.gilt.dark),0_8px_24px_rgb(0_0_0_/_0.5)]">
       <Link href="/" className={tabClass(active === "room")}>
@@ -23,6 +27,9 @@ export function Nav({ active }: { active: "room" | "stats" }) {
       </Link>
       <Link href="/stats" className={tabClass(active === "stats")}>
         Stats
+      </Link>
+      <Link href="/collection" className={tabClass(active === "collection")}>
+        Collection
       </Link>
     </nav>
   );

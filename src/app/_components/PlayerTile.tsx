@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
 import { formatModifier } from "@/lib/game/rollCalculation";
 import { RollCalculation } from "@/app/_components/RollCalculation";
@@ -13,6 +14,9 @@ import { RollCalculation } from "@/app/_components/RollCalculation";
  * (issue #99) is only passed by TieBanner, once a tied player's reroll comes
  * in — it renders the roll+modifier calculation alongside the raw modifier,
  * rather than leaving them as two values a player has to add up themselves.
+ * `playerId`, when passed, makes the tile a tap target linking to that
+ * player's `/collection/:playerId` (issue #135) — used for the room roster
+ * grids, not the tied-reroll/reveal views that reuse this same tile.
  */
 export function PlayerTile({
   displayName,
@@ -24,6 +28,7 @@ export function PlayerTile({
   isTest = false,
   effectBadges = [],
   revealedRoll = null,
+  playerId,
 }: {
   displayName: string | null;
   email: string;
@@ -34,11 +39,12 @@ export function PlayerTile({
   isTest?: boolean;
   effectBadges?: Exclude<ActiveEffectBadge["polarity"], null>[];
   revealedRoll?: number | null;
+  playerId?: string;
 }) {
   const name = displayName ?? email;
   const initial = name.trim().charAt(0).toUpperCase() || "?";
 
-  return (
+  const tile = (
     <div
       className={`flex flex-col items-center gap-1.5 rounded-md border-2 p-3 text-center transition-colors ${
         joined
@@ -80,5 +86,15 @@ export function PlayerTile({
         </div>
       ) : null}
     </div>
+  );
+
+  if (!playerId) {
+    return tile;
+  }
+
+  return (
+    <Link href={`/collection/${playerId}`} className="block">
+      {tile}
+    </Link>
   );
 }

@@ -13,8 +13,10 @@ import {
   getRoundsLostLeaderboard,
   type StatsWindow,
 } from "@/lib/supabase/stats";
+import { getPlayerSpellCollection } from "@/lib/supabase/spellCards";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { CompletionGauge } from "@/app/_components/CompletionGauge";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { RankRow } from "@/app/_components/RankRow";
 
@@ -101,15 +103,18 @@ export default async function StatsPage({
   const params = await searchParams;
   const window = windowFromParam(params.window);
   const selectedRoomId = params.room ?? null;
+  const playerId = googlePlayerId(user);
 
-  const [cupsMade, roundsLost, lossPercentage, modifierPeak, roomHistory] =
+  const [cupsMade, roundsLost, lossPercentage, modifierPeak, roomHistory, collectionCards] =
     await Promise.all([
       getCupsMadeLeaderboard(supabase, window),
       getRoundsLostLeaderboard(supabase, window),
       getLossPercentageLeaderboard(supabase, window),
       getModifierPeakLeaderboard(supabase, window),
       getRoomHistory(supabase),
+      getPlayerSpellCollection(supabase, playerId),
     ]);
+  const collectionDiscoveredCount = collectionCards.filter((c) => c.drawCount > 0).length;
 
   const roomRounds = selectedRoomId
     ? await getRoomRounds(supabase, selectedRoomId)
@@ -125,11 +130,25 @@ export default async function StatsPage({
 
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
-      <ParallaxBackdrop playerId={googlePlayerId(user)} />
+      <ParallaxBackdrop playerId={playerId} />
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
       </h1>
       <Nav active="stats" />
+
+      <section className="w-full max-w-md">
+        <CardFrame>
+          <div className="flex items-center justify-between gap-4">
+            <CompletionGauge discovered={collectionDiscoveredCount} total={collectionCards.length} />
+            <Link
+              href="/collection"
+              className="font-display text-xs uppercase tracking-widest text-gilt-bright hover:text-parchment"
+            >
+              View collection →
+            </Link>
+          </div>
+        </CardFrame>
+      </section>
 
       <section className="w-full max-w-md">
         <CardFrame
@@ -150,6 +169,7 @@ export default async function StatsPage({
             {cupsMade.map((entry, i) => (
               <RankRow
                 key={entry.playerId}
+                playerId={entry.playerId}
                 rank={i + 1}
                 displayName={entry.displayName}
                 email={entry.email}
@@ -166,6 +186,7 @@ export default async function StatsPage({
             {roundsLost.map((entry, i) => (
               <RankRow
                 key={entry.playerId}
+                playerId={entry.playerId}
                 rank={i + 1}
                 displayName={entry.displayName}
                 email={entry.email}
@@ -182,6 +203,7 @@ export default async function StatsPage({
             {lossPercentage.map((entry, i) => (
               <RankRow
                 key={entry.playerId}
+                playerId={entry.playerId}
                 rank={i + 1}
                 displayName={entry.displayName}
                 email={entry.email}
@@ -198,6 +220,7 @@ export default async function StatsPage({
             {modifierPeak.map((entry, i) => (
               <RankRow
                 key={entry.playerId}
+                playerId={entry.playerId}
                 rank={i + 1}
                 displayName={entry.displayName}
                 email={entry.email}
@@ -238,6 +261,7 @@ export default async function StatsPage({
               {roomRounds.map((round) => (
                 <div key={round.roundId} className="py-2">
                   <RankRow
+                    playerId={round.starterId}
                     displayName={round.starterDisplayName}
                     email={round.starterEmail}
                     avatarUrl={avatarsByPlayerId.get(round.starterId) ?? null}
