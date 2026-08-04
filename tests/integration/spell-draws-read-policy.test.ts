@@ -8,7 +8,7 @@ import {
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
-// spell_draws site-wide read RLS policy (0039) — any authenticated player
+// spell_draws site-wide read RLS policy (0040) — any authenticated player
 // can read another player's spell_draws rows, excluding test players' rows.
 describe.skipIf(!hasAnonTestEnv)("spell_draws: site-wide read RLS policy", () => {
   let admin: SupabaseClient;
