@@ -185,6 +185,16 @@ function useKettleSteamFrame(reducedMotion: boolean): number | null {
  * tiled wood-plank placeholder from issue #64. Prop-to-slot assignment is
  * shuffled once per player per day (see backdropShuffle.ts) so the counter
  * looks different day to day without shifting mid-session.
+ *
+ * The wrapper is viewport-`fixed`, not `absolute` within the page. Pages
+ * like /collection can grow far taller than one screen (a long card grid),
+ * and an `absolute inset-0` wrapper stretches to match that full scrollable
+ * height — anchoring the bottom-anchored scene to the bottom of the *page*
+ * instead of the bottom of the *viewport*. That left the counter/shelf art
+ * sitting far below the fold, only scrolling into view near the very bottom
+ * of a long grid (issue: collection page backdrop scuffed when scrolled).
+ * `fixed` keeps the scene glued to the visible viewport at every scroll
+ * position, matching how it already reads on one-screen pages.
  */
 export function ParallaxBackdrop({ playerId }: { playerId: string }) {
   const reducedMotion = useReducedMotion();
@@ -197,7 +207,7 @@ export function ParallaxBackdrop({ playerId }: { playerId: string }) {
   const scale = useSceneScale(containerRef);
 
   return (
-    <div ref={containerRef} className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden="true">
+    <div ref={containerRef} className="pointer-events-none fixed inset-0 -z-10 overflow-hidden" aria-hidden="true">
       <div
         className="absolute bottom-0 left-1/2"
         style={{
