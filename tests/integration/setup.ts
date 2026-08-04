@@ -129,6 +129,40 @@ export async function forceHold(
 }
 
 /**
+ * Records a spell_draws row for a specific catalog card directly (admin
+ * bypasses RLS), the same "force it rather than rely on a random draw"
+ * approach as forceHold above — but for draw *history* (spell_draws) rather
+ * than current hold state (spell_deck_instances). Doesn't touch
+ * spell_deck_instances location, so it's safe to call repeatedly against
+ * the same card to build up a draw_count without fighting the one-held-
+ * card-per-player constraint.
+ */
+export async function forceDraw(
+  admin: SupabaseClient,
+  playerId: string,
+  cardName: string,
+): Promise<void> {
+  const { data: card, error: cardError } = await admin
+    .from("spell_cards")
+    .select("id")
+    .eq("name", cardName)
+    .single();
+  if (cardError) throw cardError;
+
+  const { data: instance, error: instanceError } = await admin
+    .from("spell_deck_instances")
+    .select("id")
+    .eq("card_id", card.id)
+    .single();
+  if (instanceError) throw instanceError;
+
+  const { error: drawError } = await admin
+    .from("spell_draws")
+    .insert({ player_id: playerId, card_instance_id: instance.id, trigger: "nat1" });
+  if (drawError) throw drawError;
+}
+
+/**
  * Tracks entities created during a test so they can be torn down in one
  * afterEach, instead of every test file hand-rolling the same arrays.
  */
@@ -181,9 +215,13 @@ export function createTestCleanup(admin: SupabaseClient) {
         await admin.from("rooms").delete().eq("id", roomId);
       }
       for (const playerId of playerIds.splice(0)) {
+        // spell_draws.player_id has no ON DELETE CASCADE (0018), so a row
+        // forced in via forceDraw would otherwise block this delete.
+        await admin.from("spell_draws").delete().eq("player_id", playerId);
         await admin.from("players").delete().eq("id", playerId);
       }
       for (const id of userIds.splice(0)) {
+        await admin.from("spell_draws").delete().eq("player_id", id);
         await admin.from("players").delete().eq("id", id);
         await deleteTestUser(admin, id);
       }

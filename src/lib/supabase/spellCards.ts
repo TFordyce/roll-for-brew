@@ -260,3 +260,52 @@ export async function getMySpellCards(supabase: SupabaseClient, roomId?: string)
     edition: row.edition,
   }));
 }
+
+export type SpellCollectionCard = {
+  cardId: string;
+  name: string;
+  castingTime: "A" | "R" | null;
+  target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD" | "CHOSEN_PLAYERS" | null;
+  tier: "common" | "rare" | "epic";
+  effectText: string | null;
+  drawCount: number;
+};
+
+/**
+ * Calls the get_player_spell_collection RPC (supabase/migrations/
+ * 0039_player_spell_collection.sql): the full 71+-card catalog left-joined
+ * against the given player's own draw counts (issue #133, child of the
+ * Spell Collection page spec #130). Takes an explicit playerId, not
+ * implicit-self like getMySpellCards, since the same call path serves both
+ * "my collection" and viewing someone else's — spell names/effects aren't
+ * secret (0017/0032), only which physical instance a player currently holds
+ * is. castingTime/target/effectText are null until drawCount > 0; the page
+ * derives "discovered" as drawCount > 0 rather than a separate flag.
+ */
+export async function getPlayerSpellCollection(
+  supabase: SupabaseClient,
+  playerId: string,
+): Promise<SpellCollectionCard[]> {
+  const { data, error } = await supabase.rpc("get_player_spell_collection", {
+    p_player_id: playerId,
+  });
+  if (error) throw error;
+
+  return ((data ?? []) as {
+    card_id: string;
+    name: string;
+    casting_time: "A" | "R" | null;
+    target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD" | "CHOSEN_PLAYERS" | null;
+    tier: "common" | "rare" | "epic";
+    effect_text: string | null;
+    draw_count: number;
+  }[]).map((row) => ({
+    cardId: row.card_id,
+    name: row.name,
+    castingTime: row.casting_time,
+    target: row.target,
+    tier: row.tier,
+    effectText: row.effect_text,
+    drawCount: row.draw_count,
+  }));
+}
