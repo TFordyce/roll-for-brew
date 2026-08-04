@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { artFor, type CollectionCard, TOTAL_CATALOG_SIZE } from "./mockData";
+import { CompletionGauge } from "./CompletionGauge";
 
 /**
  * Variant C — "Display case spotlight". One enlarged card front-and-centre
@@ -22,32 +23,6 @@ const TIER_RING: Record<CollectionCard["tier"], string> = {
   rare: "stroke-gilt-bright",
   epic: "stroke-ember-bright",
 };
-
-function CompletionGauge({ discovered, total }: { discovered: number; total: number }) {
-  const pct = discovered / total;
-  const radius = 26;
-  const circumference = 2 * Math.PI * radius;
-  return (
-    <div className="relative flex h-16 w-16 shrink-0 items-center justify-center">
-      <svg viewBox="0 0 64 64" className="h-16 w-16 -rotate-90">
-        <circle cx="32" cy="32" r={radius} strokeWidth="6" className="fill-none stroke-tavern-plank-dark" />
-        <circle
-          cx="32"
-          cy="32"
-          r={radius}
-          strokeWidth="6"
-          strokeLinecap="round"
-          className="fill-none stroke-gilt-bright"
-          strokeDasharray={circumference}
-          strokeDashoffset={circumference * (1 - pct)}
-        />
-      </svg>
-      <span className="absolute font-mono text-[10px] text-parchment">
-        {discovered}/{total}
-      </span>
-    </div>
-  );
-}
 
 export function VariantC({ cards, discoveredCount }: { cards: CollectionCard[]; discoveredCount: number }) {
   const [gridMode, setGridMode] = useState(false);

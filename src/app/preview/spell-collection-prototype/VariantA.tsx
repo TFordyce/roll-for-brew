@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { artFor, type CollectionCard, TOTAL_CATALOG_SIZE } from "./mockData";
+import { CompletionGauge } from "./CompletionGauge";
 
 /**
  * Variant A — "Card grid + modal inspector". Dense TCG-style grid (closest
@@ -20,6 +21,14 @@ const TIER_LABEL: Record<CollectionCard["tier"], string> = {
   common: "Common",
   rare: "Rare",
   epic: "Epic",
+};
+
+const TIER_ORDER: CollectionCard["tier"][] = ["common", "rare", "epic"];
+
+const TIER_ACCENT: Record<CollectionCard["tier"], string> = {
+  common: "text-parchment-dim",
+  rare: "text-gilt-bright",
+  epic: "text-ember-bright",
 };
 
 function CardTile({
@@ -55,7 +64,7 @@ function CardTile({
         </span>
       </div>
       <p
-        className={`truncate px-1.5 py-1 font-display text-[11px] uppercase tracking-wide ${
+        className={`truncate px-1.5 py-1.5 font-display text-xs uppercase tracking-wide ${
           discovered ? "text-parchment" : "text-parchment-dim"
         }`}
       >
@@ -66,35 +75,43 @@ function CardTile({
 }
 
 export function VariantA({ cards, discoveredCount }: { cards: CollectionCard[]; discoveredCount: number }) {
-  const [tierFilter, setTierFilter] = useState<CollectionCard["tier"] | "all">("all");
+  const [tierFilter, setTierFilter] = useState<CollectionCard["tier"]>("common");
   const [inspecting, setInspecting] = useState<CollectionCard | null>(null);
 
-  const visible = cards.filter((c) => tierFilter === "all" || c.tier === tierFilter);
+  const visible = cards.filter((c) => c.tier === tierFilter);
   const inspectingIndex = inspecting ? cards.indexOf(inspecting) : -1;
 
   return (
     <div className="w-full max-w-2xl">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <p className="font-mono text-sm text-parchment">
-          {discoveredCount}/{TOTAL_CATALOG_SIZE} discovered
-        </p>
-        <div className="flex gap-1 font-display text-[10px] uppercase tracking-widest">
-          {(["all", "common", "rare", "epic"] as const).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTierFilter(t)}
-              className={`rounded px-2 py-1 ${
-                tierFilter === t ? "bg-ember text-parchment" : "text-parchment-dim hover:text-parchment"
-              }`}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+      <div className="mb-3 flex items-center justify-center">
+        <CompletionGauge discovered={discoveredCount} total={TOTAL_CATALOG_SIZE} />
       </div>
 
-      <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 md:grid-cols-6">
+      <div className="mb-3 flex gap-1 rounded-lg border-4 border-gilt bg-tavern-panel p-1">
+        {TIER_ORDER.map((tier) => {
+          const inTier = cards.filter((c) => c.tier === tier);
+          const tierDiscovered = inTier.filter((c) => c.drawCount > 0).length;
+          return (
+            <button
+              key={tier}
+              type="button"
+              onClick={() => setTierFilter(tier)}
+              className={`flex-1 rounded-md px-2 py-2 text-center font-display text-[10px] uppercase tracking-widest transition-colors ${
+                tierFilter === tier
+                  ? "bg-ember text-parchment"
+                  : `text-parchment-dim hover:bg-tavern-plank hover:text-parchment ${TIER_ACCENT[tier]}`
+              }`}
+            >
+              {tier}
+              <div className="font-mono text-[10px] normal-case tracking-normal">
+                {tierDiscovered}/{inTier.length}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {visible.map((card) => {
           const index = cards.indexOf(card);
           return <CardTile key={card.cardId} card={card} index={index} onTap={() => setInspecting(card)} />;
@@ -130,9 +147,7 @@ export function VariantA({ cards, discoveredCount }: { cards: CollectionCard[]; 
                 <p className="mt-2 font-body text-sm text-parchment">{inspecting.effectText}</p>
               </>
             ) : (
-              <p className="mt-1 font-body text-sm text-parchment-dim">
-                {TIER_LABEL[inspecting.tier]} · not yet drawn — effect hidden until discovered.
-              </p>
+              <p className="mt-1 font-body text-sm text-parchment-dim">{TIER_LABEL[inspecting.tier]} · not yet drawn.</p>
             )}
             <button
               type="button"
