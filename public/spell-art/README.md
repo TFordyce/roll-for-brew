@@ -1,6 +1,6 @@
 # Spell card art
 
-71 illustrated cards (v2 catalog, migration 0035), one PNG per card, 1024×1024,
+71 illustrated cards (v2 catalog, migration 0036), one PNG per card, 1024×1024,
 committed as delivered — no path/URL column on `spell_cards`; the collection UI
 derives each filename from the card's `name` at render time, same convention
 the source print-deck tool (`tea-spell-cards-v2.html`) used:
