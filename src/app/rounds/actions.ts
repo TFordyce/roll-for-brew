@@ -10,10 +10,15 @@ import {
   broadcastRoundClosed,
   broadcastRoundStarted,
 } from "@/lib/supabase/realtime";
-import { resolveCardSwap } from "@/lib/supabase/spellCards";
+import {
+  drawPendingSpellCard,
+  drawPendingSpellCardManual,
+  getSpellCardCatalog,
+  resolveCardSwap,
+} from "@/lib/supabase/spellCards";
 import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
-import { isStaleRoundError, maybeDrawSpellCard, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
+import { isStaleRoundError, maybeRecordPendingSpellDraw, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
 
 /**
  * True for start_round's own version of the same "moved on under you" race:
@@ -108,7 +113,7 @@ export async function submitRollAction(formData: FormData) {
     revalidateRoundSurfaces();
     return;
   }
-  await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
+  await maybeRecordPendingSpellDraw(supabase, value, roundId);
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidateRoundSurfaces();
@@ -139,7 +144,7 @@ export async function submitManualRollAction(formData: FormData) {
     revalidateRoundSurfaces();
     return;
   }
-  await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
+  await maybeRecordPendingSpellDraw(supabase, value, roundId);
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidateRoundSurfaces();
@@ -157,6 +162,75 @@ export async function resolveCardSwapAction(formData: FormData) {
   const supabase = await createClient();
   await resolveCardSwap(supabase, keepNew, roomId);
   revalidateRoundSurfaces();
+}
+
+/**
+ * Resolves a pending spell draw (the "how did you draw?" prompt,
+ * SpellDrawChoicePanel.tsx) with the app's own uniformly-random draw —
+ * the "draw in-app" choice.
+ */
+export async function drawPendingSpellCardAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("drawPendingSpellCardAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  await drawPendingSpellCard(supabase, roundId);
+  revalidateRoundSurfaces();
+}
+
+export type DrawPendingSpellCardManualState = { status: "idle" } | { status: "error"; message: string };
+
+/**
+ * Resolves a pending spell draw with the specific card the caller says
+ * they physically drew from the real deck ("players will definitely
+ * prefer drawing from the deck IRL"). The name is trusted client input,
+ * matched case/whitespace-insensitively against the catalog — same
+ * "trusted, no verification" posture as manual dice entry
+ * (submit_manual_roll) — but the RPC still re-checks that card actually
+ * has a drawable in-deck instance (RFB06 if not), so a typo or a physical/
+ * digital desync surfaces as a retryable message rather than corrupting
+ * deck state.
+ */
+export async function drawPendingSpellCardManualAction(
+  _prevState: DrawPendingSpellCardManualState,
+  formData: FormData,
+): Promise<DrawPendingSpellCardManualState> {
+  const roundId = formData.get("roundId");
+  const rawCardName = formData.get("cardName");
+  const cardName = typeof rawCardName === "string" ? rawCardName.trim() : "";
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("drawPendingSpellCardManualAction: missing roundId");
+  }
+  if (!cardName) {
+    return { status: "error", message: "Type the name of the card you drew." };
+  }
+
+  const supabase = await createClient();
+  const catalog = await getSpellCardCatalog(supabase);
+  const normalized = cardName.toLowerCase();
+  const match = catalog.find((c) => c.name.toLowerCase() === normalized);
+
+  if (!match) {
+    return { status: "error", message: `No card in the deck is named "${cardName}" — check the spelling.` };
+  }
+
+  try {
+    await drawPendingSpellCardManual(supabase, roundId, match.cardId);
+  } catch (error) {
+    if ((error as { code?: string } | null)?.code === "RFB06") {
+      return {
+        status: "error",
+        message: `${match.name} isn't currently in the deck (already held, or already drawn) — check with your table.`,
+      };
+    }
+    throw error;
+  }
+
+  revalidateRoundSurfaces();
+  return { status: "idle" };
 }
 
 /**

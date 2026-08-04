@@ -67,6 +67,112 @@ export async function drawSpellCardAs(
   return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
 }
 
+/**
+ * Calls the record_pending_spell_draw RPC (supabase/migrations/
+ * 0036_manual_spell_card_draw.sql): records that a nat-1/nat-20 has fired
+ * for the caller this round, without drawing yet — replaces the old
+ * immediate drawSpellCard call in maybeRecordPendingSpellDraw
+ * (roundActionHelpers.ts) so the player can be offered a choice of how the
+ * card gets drawn before it actually happens.
+ */
+export async function recordPendingSpellDraw(
+  supabase: SupabaseClient,
+  roundId: string,
+  trigger: "nat1" | "nat20",
+): Promise<void> {
+  const { error } = await supabase.rpc("record_pending_spell_draw", {
+    p_round_id: roundId,
+    p_trigger: trigger,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Calls the get_pending_spell_draw RPC: the caller's own pending trigger
+ * for this round, if any — feeds the "how did you draw?" prompt
+ * (SpellDrawChoicePanel.tsx).
+ */
+export async function getPendingSpellDraw(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<"nat1" | "nat20" | null> {
+  const { data, error } = await supabase.rpc("get_pending_spell_draw", { p_round_id: roundId });
+  if (error) throw error;
+
+  const rows = (data ?? []) as { trigger: "nat1" | "nat20" }[];
+  return rows[0]?.trigger ?? null;
+}
+
+/**
+ * Calls the draw_pending_spell_card RPC: resolves the caller's pending
+ * trigger with the app's own uniformly-random draw (the "draw in-app"
+ * choice), same semantics as drawSpellCard.
+ */
+export async function drawPendingSpellCard(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
+  const { data, error } = await supabase.rpc("draw_pending_spell_card", { p_round_id: roundId });
+  if (error) throw error;
+
+  const rows = (data ?? []) as { instance_id: string | null; needs_swap_decision: boolean }[];
+  const [row] = rows;
+  if (!row || row.instance_id === null) return null;
+
+  return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
+}
+
+/**
+ * Calls the draw_pending_spell_card_manual RPC: resolves the caller's
+ * pending trigger with the specific card they say they physically drew
+ * from the real deck. Throws with error.code === "RFB06" if that card has
+ * no currently-in-deck instance (a physical/digital desync) — callers
+ * should surface that as a retryable message, not a crash.
+ */
+export async function drawPendingSpellCardManual(
+  supabase: SupabaseClient,
+  roundId: string,
+  cardId: string,
+): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
+  const { data, error } = await supabase.rpc("draw_pending_spell_card_manual", {
+    p_round_id: roundId,
+    p_card_id: cardId,
+  });
+  if (error) throw error;
+
+  const rows = (data ?? []) as { instance_id: string | null; needs_swap_decision: boolean }[];
+  const [row] = rows;
+  if (!row || row.instance_id === null) return null;
+
+  return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
+}
+
+/**
+ * The full spell card catalog's id/name/tier, for resolving a player's
+ * free-text "I drew this IRL" input to a card id (and for the datalist
+ * that autocompletes it). Reading the whole catalog isn't a blind-deck
+ * violation — spell_cards, unlike spell_deck_instances, is already
+ * readable by every authenticated player (0017: names/effects aren't
+ * secret, only who holds which physical instance is) — so this is a plain
+ * table read, not a new RPC.
+ */
+export async function getSpellCardCatalog(
+  supabase: SupabaseClient,
+): Promise<{ cardId: string; name: string; tier: "common" | "rare" | "epic" }[]> {
+  const { data, error } = await supabase
+    .from("spell_cards")
+    .select("id, name, tier")
+    .order("tier")
+    .order("name");
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    cardId: row.id as string,
+    name: row.name as string,
+    tier: row.tier as "common" | "rare" | "epic",
+  }));
+}
+
 export type InDeckSpellCard = {
   cardId: string;
   name: string;

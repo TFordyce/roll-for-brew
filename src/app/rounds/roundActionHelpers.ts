@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { drawSpellCard, drawSpellCardAs } from "@/lib/supabase/spellCards";
+import { drawSpellCardAs, recordPendingSpellDraw } from "@/lib/supabase/spellCards";
 
 /**
  * Every action here can be triggered from either real gameplay's "/" or,
@@ -8,7 +8,7 @@ import { drawSpellCard, drawSpellCardAs } from "@/lib/supabase/spellCards";
  * revalidate both unconditionally rather than threading "which page called
  * this" through every action just to pick one.
  *
- * Pulled into its own (non-"use server") module, alongside maybeDrawSpellCard
+ * Pulled into its own (non-"use server") module, alongside maybeRecordPendingSpellDraw
  * and isStaleRoundError below, so admin/test-room/actions.ts's "roll for
  * others" actions (issue #102 follow-up) can share them too — a "use server"
  * file's exports must all be async actions themselves, so these plain
@@ -20,22 +20,28 @@ export function revalidateRoundSurfaces() {
 }
 
 /**
- * Draws a spell card if the just-submitted value is a natural 1 or 20
- * (issue #66) — scoped here, at the main round roll's submission, so a
- * card's own resolution roll (e.g. a future counterspell DC check) never
- * triggers a draw (user story 32).
+ * Records a pending spell draw if the just-submitted value is a natural 1
+ * or 20 (issue #66) — scoped here, at the main round roll's submission, so
+ * a card's own resolution roll (e.g. a future counterspell DC check) never
+ * triggers a draw (user story 32). Used to draw immediately; now just
+ * records the trigger (supabase/migrations/0036_manual_spell_card_draw.sql)
+ * so the roller can be offered a choice — draw in-app, or "I drew this
+ * IRL" against the physical deck — before the card actually gets drawn
+ * (SpellDrawChoicePanel.tsx).
  */
-export async function maybeDrawSpellCard(
+export async function maybeRecordPendingSpellDraw(
   supabase: Awaited<ReturnType<typeof createClient>>,
   value: number,
-  roomId: string,
+  roundId: string,
 ) {
-  if (value === 1) await drawSpellCard(supabase, "nat1", roomId);
-  else if (value === 20) await drawSpellCard(supabase, "nat20", roomId);
+  if (value === 1) await recordPendingSpellDraw(supabase, roundId, "nat1");
+  else if (value === 20) await recordPendingSpellDraw(supabase, roundId, "nat20");
 }
 
 /**
- * The admin "roll for others" counterpart to maybeDrawSpellCard: draws for
+ * The admin "roll for others" counterpart to maybeRecordPendingSpellDraw —
+ * draws immediately rather than deferring to a pending-choice prompt (Test
+ * Room admin puppeting has no physical deck to defer to), for
  * the explicit target player rather than current_player_id()'s Acting As
  * resolution (submit_roll_as/submit_manual_roll_as, 0029, already take that
  * target explicitly — this closes the same gap for the draw that follows),

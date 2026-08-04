@@ -17,8 +17,9 @@ import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
+import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
-import { getMySpellCards } from "@/lib/supabase/spellCards";
+import { getMySpellCards, getPendingSpellDraw, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
 import { Nav } from "@/app/Nav";
@@ -65,6 +66,8 @@ export default async function HomePage() {
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
   const heldSpellCards = await getMySpellCards(supabase, roomId);
+  const pendingSpellDrawTrigger = activeRound ? await getPendingSpellDraw(supabase, activeRound.id) : null;
+  const spellCardCatalog = pendingSpellDrawTrigger ? await getSpellCardCatalog(supabase) : [];
   const pendingSpellCasts =
     activeRound && activeRound.status === "closed"
       ? await getMyPendingCasts(supabase, activeRound.id)
@@ -149,6 +152,14 @@ export default async function HomePage() {
         selfPlayerId={playerId}
         roomId={roomId}
       />
+
+      {activeRound && pendingSpellDrawTrigger ? (
+        <SpellDrawChoicePanel
+          roundId={activeRound.id}
+          trigger={pendingSpellDrawTrigger}
+          catalogNames={spellCardCatalog.map((c) => c.name)}
+        />
+      ) : null}
 
       {activeRound ? (
         <section className="w-full max-w-md">
