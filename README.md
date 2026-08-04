@@ -59,8 +59,8 @@ How it's wired (see `supabase/migrations/0006_stats_leaderboards.sql`):
 3. In the Supabase dashboard, enable both the **Before User Created** Auth Hook (pointing at `public.check_whitelist_before_user_created`) and the **Custom Access Token** Auth Hook (pointing at `public.enforce_whitelist_on_access_token`). This mirrors `supabase/config.toml`, which only takes effect for local `supabase start` — the hosted project's hooks are configured in the dashboard.
 4. In Google Cloud Console, create an OAuth 2.0 Web application client. Add the Supabase project's callback URL (`https://<project-ref>.supabase.co/auth/v1/callback`) as an authorized redirect URI, and your app's origin as an authorized JavaScript origin.
 5. In the Supabase dashboard's Google provider settings, paste the Google client ID/secret and enable the provider.
-6. Add at least one email to `public.whitelist` (via the SQL editor) so you have someone who can actually log in.
-7. Copy `.env.example` to `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the project's API settings.
+6. Add at least one email to `public.whitelist` (via the SQL editor, or `npm run whitelist:add -- someone@example.com` once step 7 is done) so you have someone who can actually log in.
+7. Copy `.env.example` to `.env.local` and fill in `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` from the project's API settings. Add `SUPABASE_SERVICE_ROLE_KEY` too if you want to use `npm run whitelist:add` instead of the SQL editor.
 
 ### Running the app
 
