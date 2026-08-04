@@ -38,7 +38,7 @@ export async function drawSpellCard(
 }
 
 /**
- * Calls the draw_spell_card_as RPC (supabase/migrations/0033_admin_forced_crit_card.sql):
+ * Calls the draw_spell_card_as RPC (supabase/migrations/0034_admin_forced_crit_card.sql):
  * the admin "roll for others" counterpart to drawSpellCard — draws for an
  * explicit target player rather than current_player_id()'s Acting As
  * resolution, and optionally forces a specific catalog card (cardId) instead
