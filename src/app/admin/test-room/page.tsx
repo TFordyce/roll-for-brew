@@ -20,7 +20,7 @@ import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
-import { getMySpellCards } from "@/lib/supabase/spellCards";
+import { getInDeckSpellCards, getMySpellCards } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
 import { CardFrame } from "@/app/_components/CardFrame";
@@ -190,6 +190,10 @@ export default async function TestRoomPage() {
       });
   }
 
+  // Only fetched when there's actually someone to roll for — the "force
+  // crit card" picker (RollForOthers) is the only consumer.
+  const inDeckCards = pendingRollers.length > 0 ? await getInDeckSpellCards(supabase, roomId) : [];
+
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
@@ -292,7 +296,7 @@ export default async function TestRoomPage() {
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
 
-          <RollForOthers roundId={activeRound.id} pendingRollers={pendingRollers} />
+          <RollForOthers roundId={activeRound.id} pendingRollers={pendingRollers} inDeckCards={inDeckCards} />
         </section>
       ) : null}
 

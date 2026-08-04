@@ -1,6 +1,6 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { drawSpellCard } from "@/lib/supabase/spellCards";
+import { drawSpellCard, drawSpellCardAs } from "@/lib/supabase/spellCards";
 
 /**
  * Every action here can be triggered from either real gameplay's "/" or,
@@ -32,6 +32,26 @@ export async function maybeDrawSpellCard(
 ) {
   if (value === 1) await drawSpellCard(supabase, "nat1", roomId);
   else if (value === 20) await drawSpellCard(supabase, "nat20", roomId);
+}
+
+/**
+ * The admin "roll for others" counterpart to maybeDrawSpellCard: draws for
+ * the explicit target player rather than current_player_id()'s Acting As
+ * resolution (submit_roll_as/submit_manual_roll_as, 0029, already take that
+ * target explicitly — this closes the same gap for the draw that follows),
+ * and optionally forces a specific card (issue: "pick which cards are drawn
+ * on a crit") instead of the usual random in-deck instance. draw_spell_card_as
+ * re-checks admin + Test Room server-side regardless of what's passed here.
+ */
+export async function maybeDrawSpellCardAs(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  value: number,
+  roomId: string,
+  playerId: string,
+  forcedCardId?: string,
+) {
+  if (value === 1) await drawSpellCardAs(supabase, "nat1", roomId, playerId, forcedCardId);
+  else if (value === 20) await drawSpellCardAs(supabase, "nat20", roomId, playerId, forcedCardId);
 }
 
 /**

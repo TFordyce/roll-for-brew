@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { setActingAs, endTestSession } from "@/lib/supabase/actingAs";
 import { submitManualRollAs, submitRollAs } from "@/lib/supabase/rolls";
 import { getRoundRoomId } from "@/lib/supabase/rounds";
-import { isStaleRoundError, maybeDrawSpellCard, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
+import { isStaleRoundError, maybeDrawSpellCardAs, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
 import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 
 /**
@@ -41,10 +41,15 @@ export async function endTestSessionAction(): Promise<void> {
  * "roll for others") — lets the admin fill a pending roll without switching
  * Acting As to become that player first. submit_roll_as re-checks is_admin
  * and Test Room membership server-side regardless of what this form posts.
+ * forcedCardId, if the roll lands on nat-1/nat-20, is passed through to
+ * draw_spell_card_as so the admin can pick which card gets drawn rather than
+ * a random one — draw_spell_card_as re-validates admin + Test Room too.
  */
 export async function submitRollAsAction(formData: FormData): Promise<void> {
   const roundId = formData.get("roundId");
   const playerId = formData.get("playerId");
+  const rawForcedCardId = formData.get("forcedCardId");
+  const forcedCardId = typeof rawForcedCardId === "string" && rawForcedCardId ? rawForcedCardId : undefined;
   if (typeof roundId !== "string" || !roundId) {
     throw new Error("submitRollAsAction: missing roundId");
   }
@@ -61,7 +66,7 @@ export async function submitRollAsAction(formData: FormData): Promise<void> {
     revalidateRoundSurfaces();
     return;
   }
-  await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
+  await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), playerId, forcedCardId);
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidateRoundSurfaces();
@@ -76,6 +81,8 @@ export async function submitManualRollAsAction(formData: FormData): Promise<void
   const playerId = formData.get("playerId");
   const rawValue = formData.get("value");
   const value = typeof rawValue === "string" ? Number(rawValue) : NaN;
+  const rawForcedCardId = formData.get("forcedCardId");
+  const forcedCardId = typeof rawForcedCardId === "string" && rawForcedCardId ? rawForcedCardId : undefined;
 
   if (typeof roundId !== "string" || !roundId) {
     throw new Error("submitManualRollAsAction: missing roundId");
@@ -95,7 +102,7 @@ export async function submitManualRollAsAction(formData: FormData): Promise<void
     revalidateRoundSurfaces();
     return;
   }
-  await maybeDrawSpellCard(supabase, value, await getRoundRoomId(supabase, roundId));
+  await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), playerId, forcedCardId);
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidateRoundSurfaces();
