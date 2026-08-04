@@ -169,6 +169,10 @@ export async function castSpellCardAction(formData: FormData) {
   const roundId = formData.get("roundId");
   const rawTarget = formData.get("targetPlayerId");
   const targetPlayerId = typeof rawTarget === "string" && rawTarget ? rawTarget : undefined;
+  const chosenPlayerIds = formData.getAll("chosenPlayerIds").filter((v): v is string => typeof v === "string" && v.length > 0);
+  const rawDeclaredNumber = formData.get("declaredNumber");
+  const declaredNumber =
+    typeof rawDeclaredNumber === "string" && rawDeclaredNumber ? Number(rawDeclaredNumber) : undefined;
 
   if (typeof roundId !== "string" || !roundId) {
     throw new Error("castSpellCardAction: missing roundId");
@@ -176,7 +180,11 @@ export async function castSpellCardAction(formData: FormData) {
 
   const supabase = await createClient();
   try {
-    await castSpellCard(supabase, roundId, targetPlayerId);
+    await castSpellCard(supabase, roundId, {
+      targetPlayerId,
+      chosenPlayerIds: chosenPlayerIds.length > 0 ? chosenPlayerIds : undefined,
+      declaredNumber,
+    });
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidateRoundSurfaces();

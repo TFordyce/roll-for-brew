@@ -46,15 +46,57 @@ own text specifies (`tests/integration/spell-active-effects.test.ts`).
 
 ## Gaps (47), grouped by missing capability
 
-### TABLE/WILD target — casting RPCs don't handle these stamps at all
-`cast_spell_card` and `cast_reaction_spell_card` only branch on
-SELF/OPPONENT/PLAYER; a TABLE or WILD card raises `"% -targeted cards
-cannot be cast pre-roll yet"` today, regardless of `effect_kind`.
+### TABLE/WILD target — RESOLVED (issue #115, `0033_spell_cards_table_wild_casting.sql`)
+`cast_spell_card`/`cast_reaction_spell_card` now resolve TABLE/
+ALL_OTHER_PLAYERS/CHOSEN_PLAYERS/WILD `target_role`s (0032 reserved these
+but rejected every card stamped that way outright). All 13 previously-gap
+cards are mapped:
 
-- Boil Over, Tea-M Reroll, Dunkin Disaster, Broken Biscuit, Drip Tray,
-  Inscribed Saucer, Scalding Pour (rare)
-- Kettle Crash, Wild Brew Surge, Time for Brew, Zariel's Fall, Topsy-Tea,
-  Kettle Storm (epic)
+- Boil Over (`set_modifier`/TABLE), Tea-M Reroll (`forced_reroll`/TABLE),
+  Scalding Pour (`flat_modifier`/ALL_OTHER_PLAYERS), Kettle Storm
+  (`flat_modifier`/ALL_OTHER_PLAYERS) — clean fits, fanned out to the
+  round's roster (deferred to `close_round` for a pre-roll 'A' cast, since
+  the roster isn't final until then; immediate for a Reaction 'R' cast).
+- Dunkin Disaster (`roll_swap`), Zariel's Fall (`roll_flip`), Broken Biscuit
+  (`lowest_gains_highest_modifier`) — new roll-transform primitives,
+  resolved at reaction-window finalize time via new `apply_*` RPCs, the
+  same "UPDATE `rolls.value` in place, patch the in-memory array" pattern
+  `apply_forced_reroll` (0021) already established.
+- Drip Tray, Topsy-Tea — new `tea_maker_override` primitive (modes
+  `highest_modifier`/`highest_roll`), consumed client-side in
+  `applyLayerOutcome` before `resolveLayer` runs, since brewer selection is
+  TS-owned. Drip Tray's "no modifier gained" carve-out is a new
+  `resolve_round` param (`p_no_modifier_gain`). This also resolves the two
+  TABLE-scoped cross-references in "Tea-maker selection/forcing" below —
+  the rest of that gap (Tea Party Revolt, Tea Cosy, etc.) is untouched.
+- Kettle Crash — new `reset_persistent_modifier` primitive, zeroes
+  `room_players.modifier` room-wide immediately (not round-scoped, so no
+  fan-out needed). Simplified: only the "modifiers reset to 0" half of its
+  text is implemented — "the day starts again, mechanically" isn't given a
+  literal meaning beyond that.
+- Wild Brew Surge — the d6 branch is rolled and dispatched inline in
+  `cast_spell_card` (not data-driven; the six outcomes are mutually
+  exclusive alternatives, not simultaneous effect rows), reusing
+  `reset_persistent_modifier`/a new `persistent_modifier_delta`/a new
+  `persistent_modifier_swap`/the TABLE `forced_reroll` fan-out/
+  `tea_maker_override` for its six branches respectively.
+- Inscribed Saucer — new `declared_number_tea_maker` primitive, persisted
+  in `spell_active_effects` across rounds until some future roll matches
+  the declared number, then self-consumes.
+- Time for Brew — **simplified, not literal**: its card text describes a
+  true state-rollback/replay ("scrap the result... the round is replayed
+  entirely"), which would mean unwinding an already-resolved round — out of
+  proportion for this ticket. Mapped instead to the same `forced_reroll`/
+  TABLE shape as Tea-M Reroll (everyone rerolls, brewer redetermined from
+  the new rolls). Flagged for follow-up if this narrower reading isn't
+  good enough at the table.
+
+Also lands `CHOSEN_PLAYERS` target-role support (a caster picks up to N
+players at cast time, validated immediately rather than deferred) and maps
+it onto Calami-Tea (previously unmapped) to exercise it end-to-end — with
+its 1d4-per-round text simplified to a flat -2 approximation, reusing the
+existing modifier-bucket/persistence machinery instead of adding a bespoke
+per-round-dice-reroll primitive for one card.
 
 ### Compound cards — one card, two simultaneous effects on two targets
 A single `effect_kind`/`effect_params` row can't represent "opponent gets a
@@ -80,28 +122,33 @@ without the "gains no modifier from this tea-making" carve-out several of
 these cards attach.
 
 - Tea Party Revolt, Last Drip (common)
-- Tea Cosy, Drip Tray*, Loose Leaf, PG Tipped, Loaf of Lipton, Brew IOU
-  (rare) — *Drip Tray is TABLE-scoped too, listed once above
-- The Last Cuppa, Earl of Earl Grey, Topsy-Tea* (epic) — *Topsy-Tea is
-  TABLE-scoped too, listed once above
+- Tea Cosy, Loose Leaf, PG Tipped, Loaf of Lipton, Brew IOU (rare) — Drip
+  Tray (also rare) is RESOLVED via `tea_maker_override`, see #115 above
+- The Last Cuppa, Earl of Earl Grey (epic) — Topsy-Tea (also epic) is
+  RESOLVED via `tea_maker_override`, see #115 above
 
 ### Roll manipulation beyond forced_reroll's shape
 `forced_reroll` replaces one player's roll with a *fresh random* reroll.
 These cards need a different roll transformation:
 
-- Brew-tal Swap (swaps two existing rolls, doesn't generate new ones)
+- Brew-tal Swap (swaps two existing rolls, doesn't generate new ones) — the
+  `roll_swap` primitive #115 added for Dunkin Disaster (TABLE-wide swap of
+  the layer's highest/lowest) does the swap mechanics generically, but
+  Brew-tal Swap is OPPONENT-targeted (a *chosen* pair, not highest/lowest) —
+  needs a target-aware variant, not just a data row.
 - Sleeping Camomile (forces a fixed result of natural 1, not a reroll)
 - Steaming Mug Bond (both players count as the lower of their two rolls)
 - Stir the Pot (swaps two *other* players' rolls — the OPPONENT/PLAYER
   target model is caster-vs-one-other, not "two players besides the caster")
-- Zariel's Fall (rewrites every roll in the layer via a formula) — TABLE-
-  scoped too, listed once above
+- Zariel's Fall (rewrites every roll in the layer via a formula) — RESOLVED
+  via the new `roll_flip` primitive, see #115 above
 - Yorkshire Terror — mechanically identical to Milk First?'s forced_reroll,
-  but Action-timed (pre-roll) rather than Reaction-timed. The current
-  plumbing (`get_forced_reroll_targets`/`apply_forced_reroll`) only reads
-  casts tied to a `reaction_window_id`, so an Action-cast `forced_reroll`
-  row would never be picked up at layer-finalize time — this needs the
-  primitive's timing extended, not just a data row.
+  but Action-timed (pre-roll) rather than Reaction-timed. #115's
+  `open_reaction_window` change (attaching a pre-roll-armed `forced_reroll`
+  cast to the layer-0 window once it opens, added for Wild Brew Surge's
+  "everyone rerolls" branch) incidentally unblocks this too — Yorkshire
+  Terror itself is still unmapped (no `spell_card_effects` row), but the
+  RPC-timing blocker this note originally described no longer applies.
 
 ### Counterspell variant distinct from contested_negate
 - Saving Steep — fixed DC 10 regardless of tier, plus a "nat 1 doubles the

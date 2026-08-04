@@ -114,11 +114,37 @@ export function SpellCardPanel({
             ) : held.castingTime === "A" && held.target !== "CARD" && roundId && roundIsOpen ? (
               <form action={castSpellCardAction} className="mt-3">
                 <input type="hidden" name="roundId" value={roundId} />
-                {held.target === "SELF" ? null : (
+                {held.target === "OPPONENT" || held.target === "PLAYER" ? (
                   <p className="mb-2 font-body text-xs text-parchment-dim">
                     Target is chosen once declare-in closes and the roster is final.
                   </p>
-                )}
+                ) : held.target === "CHOSEN_PLAYERS" ? (
+                  <fieldset className="mb-2">
+                    <legend className="mb-1 font-body text-xs text-parchment-dim">Choose up to 3 players:</legend>
+                    <div className="flex flex-col gap-1">
+                      {participants
+                        .filter((p) => p.playerId !== selfPlayerId)
+                        .map((p) => (
+                          <label key={p.playerId} className="flex items-center gap-2 font-body text-sm text-parchment">
+                            <input type="checkbox" name="chosenPlayerIds" value={p.playerId} />
+                            {p.displayName ?? p.email}
+                          </label>
+                        ))}
+                    </div>
+                  </fieldset>
+                ) : held.effectKind === "declared_number_tea_maker" ? (
+                  <label className="mb-2 block font-body text-xs text-parchment-dim">
+                    Declare a number (1–20):
+                    <input
+                      type="number"
+                      name="declaredNumber"
+                      min={1}
+                      max={20}
+                      required
+                      className="mt-1 w-full rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 text-sm text-parchment focus:border-gilt focus:outline-none"
+                    />
+                  </label>
+                ) : null}
                 <button
                   type="submit"
                   className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
@@ -142,7 +168,7 @@ export function SpellCardPanel({
                   required
                   className="mb-2 w-full rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 text-sm text-parchment focus:border-gilt focus:outline-none"
                 >
-                  {(cast.target === "PLAYER" ? participants : otherParticipants).map((p) => (
+                  {(cast.target === "PLAYER" || cast.target === "WILD" ? participants : otherParticipants).map((p) => (
                     <option key={p.playerId} value={p.playerId}>
                       {p.displayName ?? p.email}
                     </option>

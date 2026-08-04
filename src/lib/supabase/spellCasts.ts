@@ -4,7 +4,7 @@ import type { ModifierEffect } from "@/lib/game/modifierBucket";
 export type PendingCast = {
   castId: string;
   cardName: string;
-  target: "OPPONENT" | "PLAYER";
+  target: "OPPONENT" | "PLAYER" | "WILD";
 };
 
 export type ActiveEffectBadge = {
@@ -25,20 +25,27 @@ export type DispellableEffect = {
 };
 
 /**
- * Calls the cast_spell_card RPC (supabase/migrations/0019_spell_casts_pre_roll.sql):
- * casts the caller's currently-held Action card during a round's declare-in
- * window. p_targetPlayerId is omitted (or null) to arm an OPPONENT/PLAYER
- * card before the participant roster is final — set_spell_cast_target fills
- * it in later. Returns the new cast's id.
+ * Calls the cast_spell_card RPC (supabase/migrations/0019_spell_casts_pre_roll.sql,
+ * grew chosenPlayerIds/declaredNumber in 0033 for CHOSEN_PLAYERS/Inscribed
+ * Saucer): casts the caller's currently-held Action card during a round's
+ * declare-in window. targetPlayerId is omitted (or null) to arm an OPPONENT/
+ * PLAYER card before the participant roster is final — set_spell_cast_target
+ * fills it in later. chosenPlayerIds is required for a CHOSEN_PLAYERS card
+ * (Calami-Tea) — up to the card's max_targets, validated against the round's
+ * roster immediately (no deferral, unlike OPPONENT/PLAYER). declaredNumber is
+ * required for a declared_number_tea_maker card (Inscribed Saucer), 1-20.
+ * TABLE/WILD cards need neither. Returns the new cast's id.
  */
 export async function castSpellCard(
   supabase: SupabaseClient,
   roundId: string,
-  targetPlayerId?: string,
+  options: { targetPlayerId?: string; chosenPlayerIds?: string[]; declaredNumber?: number } = {},
 ): Promise<string> {
   const { data, error } = await supabase.rpc("cast_spell_card", {
     p_round_id: roundId,
-    p_target_player_id: targetPlayerId ?? null,
+    p_target_player_id: options.targetPlayerId ?? null,
+    p_chosen_player_ids: options.chosenPlayerIds ?? null,
+    p_declared_number: options.declaredNumber ?? null,
   });
   if (error) throw error;
   return data as string;

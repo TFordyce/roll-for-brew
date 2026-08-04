@@ -5,7 +5,7 @@ export type HeldSpellCard = {
   location: "held" | "pending_swap";
   cardName: string;
   castingTime: "A" | "R";
-  target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
+  target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD" | "CHOSEN_PLAYERS";
   tier: "common" | "rare" | "epic";
   effectText: string;
   effectKind: string | null;
@@ -69,7 +69,7 @@ export async function getMySpellCards(supabase: SupabaseClient, roomId?: string)
     location: "held" | "pending_swap";
     card_name: string;
     casting_time: "A" | "R";
-    target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD";
+    target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD" | "CHOSEN_PLAYERS";
     tier: "common" | "rare" | "epic";
     effect_text: string;
     effect_kind: string | null;
