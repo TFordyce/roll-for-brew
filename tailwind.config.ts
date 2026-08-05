@@ -32,6 +32,18 @@ const config: Config = {
         display: ["var(--font-display)", "serif"],
         body: ["var(--font-body)", "ui-sans-serif", "system-ui", "sans-serif"],
       },
+      keyframes: {
+        // Teaspoon-in-cup pending indicator (issue #171) — a stir motion
+        // (rock back and forth around the rim) reads more thematic at small
+        // size than a full 360° spin.
+        "teaspoon-stir": {
+          "0%, 100%": { transform: "rotate(-20deg)" },
+          "50%": { transform: "rotate(20deg)" },
+        },
+      },
+      animation: {
+        "teaspoon-stir": "teaspoon-stir 0.6s ease-in-out infinite",
+      },
     },
   },
   plugins: [],
