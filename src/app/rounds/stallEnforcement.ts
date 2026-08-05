@@ -22,7 +22,7 @@ export type StallOutcome =
  * src/app/page.tsx on every render of a room with an active round, rather
  * than a scheduled job — there's no cron/worker anywhere in this app, and a
  * fresh Supabase read already happens on every request there. `now` is
- * injectable so tests can simulate ~2 minutes elapsing without sleeping it
+ * injectable so tests can simulate ~5 minutes elapsing without sleeping it
  * out for real.
  *
  * Three stall points, one per round phase:

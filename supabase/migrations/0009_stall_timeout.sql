@@ -1,4 +1,4 @@
--- Stall-timeout enforcement (issue #21). A fixed ~2-minute code constant
+-- Stall-timeout enforcement (issue #21). A fixed ~5-minute code constant
 -- (STALL_TIMEOUT_MS, src/lib/game/stallTimeout.ts — deliberately not
 -- duplicated here in SQL) is checked lazily on read
 -- (src/app/rounds/stallEnforcement.ts, invoked from src/app/page.tsx on
