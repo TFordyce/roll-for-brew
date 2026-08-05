@@ -28,7 +28,6 @@ import { PlayerTile } from "@/app/_components/PlayerTile";
 import { ActingAsSwitcher, type ActingAsOption } from "@/app/admin/test-room/ActingAsSwitcher";
 import { EndTestSessionButton } from "@/app/admin/test-room/EndTestSessionButton";
 import { RollForOthers, type PendingRoller } from "@/app/admin/test-room/RollForOthers";
-import { RollCalculationPrototype } from "@/app/_components/RollCalculationPrototype";
 
 /**
  * The Test Room (issue #101 / ADR 0002): a real, persistent room row, guarded
@@ -203,10 +202,6 @@ export default async function TestRoomPage() {
 
       <section className="w-full max-w-md">
         <ActingAsSwitcher options={switcherOptions} currentPlayerId={playerId} />
-      </section>
-
-      <section className="w-full max-w-md">
-        <RollCalculationPrototype />
       </section>
 
       <SpellCardPanel

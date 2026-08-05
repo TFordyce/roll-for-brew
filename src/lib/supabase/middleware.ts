@@ -2,7 +2,14 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { requireSupabaseEnv, type CookieToSet } from "./cookies";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/auth/auth-code-error", "/preview"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth/callback",
+  "/auth/auth-code-error",
+  "/preview",
+  // PROTOTYPE — throwaway route, see src/app/prototype/roll-calc-ui/page.tsx
+  "/prototype/roll-calc-ui",
+];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(

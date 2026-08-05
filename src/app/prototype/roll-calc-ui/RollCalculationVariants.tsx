@@ -8,13 +8,14 @@
  * <RollCalculation> (src/app/_components/RollCalculation.tsx), which today
  * only ever shows a bare "roll + modifier = total".
  *
- * Three variants, switchable via ?variant=A|B|C, mounted as an extra section
- * on the real Test Room page (/admin/test-room) so it sits against the
- * actual chrome/density rather than a blank page. Data is fixture rows, not
- * live game state — hitting every one of these cases (nat1, nat20, a flat
- * spell bonus, a multiplier, a hard "set to X", a bonus/penalty die, and a
- * forced reroll) through real play would mean orchestrating eight separate
- * rounds.
+ * Three variants, switchable via ?variant=A|B|C, on the standalone
+ * /prototype/roll-calc-ui route (see page.tsx in this folder) — unauthenticated
+ * and static, following the same pattern as /preview: no Supabase client, no
+ * server data, so there's nothing for middleware/RLS/admin-mode to gate.
+ * Fixture rows stand in for live game state — hitting every one of these
+ * cases (nat1, nat20, a flat spell bonus, a multiplier, a hard "set to X", a
+ * bonus/penalty die, and a forced reroll) through real play would mean
+ * orchestrating eight separate rounds.
  *
  * Shared visual vocabulary applied across all three variants (per the ask):
  * the modifier value is bold+underlined, the roll sits inside a wireframe
@@ -438,9 +439,10 @@ function PrototypeSwitcher({ current }: { current: VariantKey }) {
   );
 }
 
-export function RollCalculationPrototype() {
-  if (process.env.NODE_ENV === "production") return null;
-
+// Production gating happens one level up in page.tsx (the /preview pattern —
+// hard-404 whenever process.env.VERCEL is set), so this component doesn't
+// need its own NODE_ENV check.
+export function RollCalculationVariants() {
   const searchParams = useSearchParams();
   const raw = searchParams.get("variant")?.toUpperCase();
   const current: VariantKey = (VARIANT_KEYS as readonly string[]).includes(raw ?? "")
