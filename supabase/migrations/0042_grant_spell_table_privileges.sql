@@ -1,3 +1,9 @@
+-- Renumbered from 0041 to 0042 (see 0041_repair_missing_0036_objects.sql)
+-- after this migration's own live push proved it needs
+-- pending_spell_draws (created there) to already exist — grant statements
+-- on a table that doesn't exist yet fail. `supabase db push` applies
+-- migrations in filename order, so the repair has to sort before this one.
+--
 -- Fixes issue #137: migration 0015's table-level grants were a one-time
 -- snapshot of the tables that existed at that point (players, rooms,
 -- room_players, rounds, round_participants, rolls,
