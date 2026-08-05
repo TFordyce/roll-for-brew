@@ -196,6 +196,48 @@ export function createTestCleanup(admin: SupabaseClient) {
   const roomIds: string[] = [];
   const roundIds: string[] = [];
 
+  /**
+   * Resets any spell_deck_instances row still pointing at a player back to
+   * in_deck before the player row itself is deleted. held_by_player
+   * references public.players(id) with no ON DELETE clause (0018) — a test
+   * that forces a hold (or leaves a draw parked as pending_swap) and never
+   * resolves it would otherwise block the player delete below, which
+   * silently no-ops on error and permanently leaks both the orphaned
+   * player row and the card's held state into later tests/runs (issue
+   * #175).
+   */
+  async function releaseHeldCards(playerId: string) {
+    const { error } = await admin
+      .from("spell_deck_instances")
+      .update({ location: "in_deck", held_by_player: null })
+      .eq("held_by_player", playerId);
+    if (error) throw error;
+  }
+
+  /**
+   * Deletes any spell_active_effects row still referencing a player, as
+   * either caster or target. Unlike spell_casts (cascades away with its
+   * round, which cleanup always deletes), spell_active_effects cascades
+   * only off room_id (0020) — and this suite's rooms are the shared
+   * "today's room" from enter_todays_room, never deleted per test. A
+   * persistent effect left active past its owning test (e.g. Calami-Tea's
+   * immediate-resolve CHOSEN_PLAYERS effect) would otherwise block the
+   * caster's or target's player delete below the same way held cards did
+   * (issue #175).
+   */
+  async function releaseActiveEffects(playerId: string) {
+    const { error } = await admin
+      .from("spell_active_effects")
+      .delete()
+      .or(`caster_id.eq.${playerId},target_player_id.eq.${playerId}`);
+    if (error) throw error;
+  }
+
+  async function deletePlayer(playerId: string) {
+    const { error } = await admin.from("players").delete().eq("id", playerId);
+    if (error) throw error;
+  }
+
   return {
     trackUser(userId: string) {
       userIds.push(userId);
@@ -241,11 +283,15 @@ export function createTestCleanup(admin: SupabaseClient) {
         // spell_draws.player_id has no ON DELETE CASCADE (0018), so a row
         // forced in via forceDraw would otherwise block this delete.
         await admin.from("spell_draws").delete().eq("player_id", playerId);
-        await admin.from("players").delete().eq("id", playerId);
+        await releaseHeldCards(playerId);
+        await releaseActiveEffects(playerId);
+        await deletePlayer(playerId);
       }
       for (const id of userIds.splice(0)) {
         await admin.from("spell_draws").delete().eq("player_id", id);
-        await admin.from("players").delete().eq("id", id);
+        await releaseHeldCards(id);
+        await releaseActiveEffects(id);
+        await deletePlayer(id);
         await deleteTestUser(admin, id);
       }
       await Promise.all(

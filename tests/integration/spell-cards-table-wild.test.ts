@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  byTarget,
   createTestAdminClient,
   createTestCleanup,
   forceHold,
@@ -45,18 +46,27 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
 
     // Before close_round, the roster isn't final yet — the effect is
     // deferred (a placeholder row, not yet visible to get_round_modifier_effects).
-    const { data: beforeClose } = await caster.client.rpc("get_round_modifier_effects", { p_round_id: roundId });
+    const { data: beforeCloseAll } = await caster.client.rpc("get_round_modifier_effects", { p_round_id: roundId });
+    const beforeClose = byTarget(
+      beforeCloseAll as { target_player_id: string }[],
+      caster.googleSub,
+      target.googleSub,
+    );
     expect(beforeClose).toHaveLength(0);
 
     const { error: closeError } = await caster.client.rpc("close_round", { p_round_id: roundId });
     expect(closeError).toBeNull();
 
-    const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
+    const { data: effectsAll, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: roundId,
     });
     expect(effectsError).toBeNull();
 
-    const rows = effects as { target_player_id: string; effect_kind: string; effect_params: Record<string, unknown> }[];
+    const rows = byTarget(
+      effectsAll as { target_player_id: string; effect_kind: string; effect_params: Record<string, unknown> }[],
+      caster.googleSub,
+      target.googleSub,
+    );
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.target_player_id).sort()).toEqual([caster.googleSub, target.googleSub].sort());
     for (const row of rows) {
@@ -78,14 +88,18 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     await caster.client.rpc("close_round", { p_round_id: roundId });
 
     const { data: effects } = await caster.client.rpc("get_round_modifier_effects", { p_round_id: roundId });
-    const rows = effects as {
-      target_player_id: string;
-      effect_kind: string;
-      effect_params: Record<string, unknown>;
-      resolved_value: number | null;
-      card_name: string;
-      caster_player_id: string;
-    }[];
+    const rows = byTarget(
+      effects as {
+        target_player_id: string;
+        effect_kind: string;
+        effect_params: Record<string, unknown>;
+        resolved_value: number | null;
+        card_name: string;
+        caster_player_id: string;
+      }[],
+      caster.googleSub,
+      target.googleSub,
+    );
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({
