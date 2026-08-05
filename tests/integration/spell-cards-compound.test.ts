@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  byTarget,
   createTestAdminClient,
   createTestCleanup,
   forceHold,
@@ -52,12 +53,18 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     });
     expect(effectsError).toBeNull();
 
-    const rows = effects as {
-      target_player_id: string;
-      effect_kind: string;
-      effect_params: Record<string, unknown>;
-      resolved_value: number | null;
-    }[];
+    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // targets before asserting exact length (issue #147).
+    const rows = byTarget(
+      effects as {
+        target_player_id: string;
+        effect_kind: string;
+        effect_params: Record<string, unknown>;
+        resolved_value: number | null;
+      }[],
+      caster.googleSub,
+      target.googleSub,
+    );
     expect(rows).toHaveLength(2);
 
     const targetRow = rows.find((r) => r.target_player_id === target.googleSub);
