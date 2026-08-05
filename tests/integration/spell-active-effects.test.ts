@@ -15,6 +15,16 @@ import {
 // effect (Caffeine Crash) composing across its remaining rounds and
 // expiring on schedule, and a Detox-style card (Lesser Detox) ending
 // another player's active effect early, scoped by tier.
+// Row shape returned by get_dispellable_active_effects, shared by the two
+// Detox tests below so the byTarget(...) cast isn't typed out twice.
+type DispellableEffectRow = {
+  effect_id: string;
+  target_player_id: string;
+  target_display_name: string;
+  card_name: string;
+  tier: string;
+};
+
 describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and Detox", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
@@ -226,13 +236,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     // Room-wide RPC (get_dispellable_active_effects): filter to this test's
     // own target before asserting exact contents (issue #147).
     const cloudDispellable = byTarget(
-      dispellable as {
-        effect_id: string;
-        target_player_id: string;
-        target_display_name: string;
-        card_name: string;
-        tier: string;
-      }[],
+      dispellable as DispellableEffectRow[],
       cloudCaster.googleSub,
     );
     expect(cloudDispellable).toEqual([
@@ -324,13 +328,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     // Room-wide RPC (get_dispellable_active_effects): filter to this test's
     // own target before asserting exact contents (issue #147).
     const crashDispellable = byTarget(
-      dispellable as {
-        effect_id: string;
-        target_player_id: string;
-        target_display_name: string;
-        card_name: string;
-        tier: string;
-      }[],
+      dispellable as DispellableEffectRow[],
       crashTarget.googleSub,
     );
     expect(crashDispellable).toEqual([
