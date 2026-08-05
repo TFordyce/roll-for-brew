@@ -1,16 +1,14 @@
 import { submitManualRollAction, submitRollAction } from "@/app/rounds/actions";
+import { SubmitButton } from "@/app/_components/SubmitButton";
 
 /** The in-app (server-generated) roll form — shared by the in_app_only branch and RollBothPicker's 'both' choice. */
 export function InAppRollForm({ roundId }: { roundId: string }) {
   return (
     <form action={submitRollAction} className="mt-3">
       <input type="hidden" name="roundId" value={roundId} />
-      <button
-        type="submit"
-        className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
-      >
+      <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
         Roll
-      </button>
+      </SubmitButton>
     </form>
   );
 }
@@ -28,12 +26,9 @@ export function ManualRollForm({ roundId }: { roundId: string }) {
         required
         className="w-16 rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 font-mono text-sm text-parchment focus:border-gilt focus:outline-none"
       />
-      <button
-        type="submit"
-        className="flex-1 rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
-      >
+      <SubmitButton className="flex-1 rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
         Submit
-      </button>
+      </SubmitButton>
     </form>
   );
 }
