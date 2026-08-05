@@ -61,6 +61,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
         effect_kind: string;
         effect_params: Record<string, unknown>;
         resolved_value: number | null;
+        card_name: string;
+        caster_player_id: string;
       }[],
       caster.googleSub,
       target.googleSub,
@@ -73,6 +75,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       effect_kind: "flat_modifier",
       effect_params: { delta: -3 },
       resolved_value: null,
+      card_name: "Cold Tea",
+      caster_player_id: caster.googleSub,
     });
 
     const casterRow = rows.find((r) => r.target_player_id === caster.googleSub);
@@ -80,6 +84,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       target_player_id: caster.googleSub,
       effect_kind: "dice_modifier",
       effect_params: { dice: "1d4" },
+      card_name: "Cold Tea",
+      caster_player_id: caster.googleSub,
     });
     expect(casterRow!.resolved_value).toBeGreaterThanOrEqual(1);
     expect(casterRow!.resolved_value).toBeLessThanOrEqual(4);

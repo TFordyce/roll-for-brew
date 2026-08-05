@@ -87,6 +87,8 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
         effect_kind: "set_modifier",
         effect_params: { value: -1 },
         resolved_value: null,
+        card_name: "Caffeine Crash",
+        caster_player_id: caster.googleSub,
       },
     ]);
 
@@ -127,6 +129,8 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
         effect_kind: "set_modifier",
         effect_params: { value: -1 },
         resolved_value: null,
+        card_name: "Caffeine Crash",
+        caster_player_id: caster.googleSub,
       },
     ]);
 

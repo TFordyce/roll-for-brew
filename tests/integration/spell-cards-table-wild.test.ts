@@ -83,6 +83,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
       effect_kind: string;
       effect_params: Record<string, unknown>;
       resolved_value: number | null;
+      card_name: string;
+      caster_player_id: string;
     }[];
 
     expect(rows).toHaveLength(1);
@@ -91,6 +93,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
       effect_kind: "flat_modifier",
       effect_params: { delta: -3 },
       resolved_value: null,
+      card_name: "Scalding Pour",
+      caster_player_id: caster.googleSub,
     });
   });
 
