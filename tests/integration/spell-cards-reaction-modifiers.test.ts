@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  byTarget,
   createTestAdminClient,
   createTestCleanup,
   forceHold,
@@ -59,7 +60,13 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
       p_round_id: roundId,
     });
     expect(effectsError).toBeNull();
-    expect(effects).toEqual([
+    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // target before asserting exact contents (issue #147).
+    const casterEffects = byTarget(
+      effects as { target_player_id: string; resolved_value: number }[],
+      caster.googleSub,
+    );
+    expect(casterEffects).toEqual([
       {
         target_player_id: caster.googleSub,
         effect_kind: "dice_modifier",
@@ -67,7 +74,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
         resolved_value: expect.any(Number),
       },
     ]);
-    const resolvedValue = (effects as { resolved_value: number }[])[0]!.resolved_value;
+    const resolvedValue = casterEffects[0]!.resolved_value;
     expect(resolvedValue).toBeGreaterThanOrEqual(1);
     expect(resolvedValue).toBeLessThanOrEqual(6);
   });
@@ -100,7 +107,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
       p_round_id: roundId,
     });
     expect(effectsError).toBeNull();
-    expect(effects).toEqual([
+    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // target before asserting exact contents (issue #147).
+    expect(byTarget(effects as { target_player_id: string }[], target.googleSub)).toEqual([
       {
         target_player_id: target.googleSub,
         effect_kind: "set_modifier",

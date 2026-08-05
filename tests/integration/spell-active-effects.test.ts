@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  byTarget,
   createTestAdminClient,
   createTestCleanup,
   forceHold,
@@ -14,6 +15,16 @@ import {
 // effect (Caffeine Crash) composing across its remaining rounds and
 // expiring on schedule, and a Detox-style card (Lesser Detox) ending
 // another player's active effect early, scoped by tier.
+// Row shape returned by get_dispellable_active_effects, shared by the two
+// Detox tests below so the byTarget(...) cast isn't typed out twice.
+type DispellableEffectRow = {
+  effect_id: string;
+  target_player_id: string;
+  target_display_name: string;
+  card_name: string;
+  tier: string;
+};
+
 describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and Detox", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
@@ -68,7 +79,9 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       { p_round_id: round1Id },
     );
     expect(round1EffectsError).toBeNull();
-    expect(round1Effects).toEqual([
+    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // target before asserting exact contents (issue #147).
+    expect(byTarget(round1Effects as { target_player_id: string }[], target.googleSub)).toEqual([
       {
         target_player_id: target.googleSub,
         effect_kind: "set_modifier",
@@ -108,7 +121,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     const { data: round2Effects } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: round2Id,
     });
-    expect(round2Effects).toEqual([
+    expect(byTarget(round2Effects as { target_player_id: string }[], target.googleSub)).toEqual([
       {
         target_player_id: target.googleSub,
         effect_kind: "set_modifier",
@@ -140,7 +153,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     const { data: round3Effects } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: round3Id,
     });
-    expect(round3Effects).toEqual([]);
+    expect(byTarget(round3Effects as { target_player_id: string }[], target.googleSub)).toEqual([]);
   });
 
   it("roster badges (get_room_active_effects) show a positive-polarity badge for the caster's own Cloud of Cream", async () => {
@@ -160,7 +173,9 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       p_room_id: caster.roomId,
     });
     expect(badgesError).toBeNull();
-    expect(badges).toEqual([
+    // Room-wide RPC (get_room_active_effects): filter to this test's own
+    // target before asserting exact contents (issue #147).
+    expect(byTarget(badges as { target_player_id: string }[], caster.googleSub)).toEqual([
       {
         effect_id: expect.any(String),
         target_player_id: caster.googleSub,
@@ -218,7 +233,13 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       { p_round_id: roundId },
     );
     expect(dispellableError).toBeNull();
-    expect(dispellable).toEqual([
+    // Room-wide RPC (get_dispellable_active_effects): filter to this test's
+    // own target before asserting exact contents (issue #147).
+    const cloudDispellable = byTarget(
+      dispellable as DispellableEffectRow[],
+      cloudCaster.googleSub,
+    );
+    expect(cloudDispellable).toEqual([
       {
         effect_id: expect.any(String),
         target_player_id: cloudCaster.googleSub,
@@ -243,7 +264,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     expect(rareStillThere).toHaveLength(1);
 
     // Accepted: Cloud of Cream is Common-tier.
-    const cloudEffectId = (dispellable as { effect_id: string }[])[0]!.effect_id;
+    const cloudEffectId = cloudDispellable[0]!.effect_id;
     const { error: endError } = await detoxer.client.rpc("end_active_effect", {
       p_round_id: roundId,
       p_effect_id: cloudEffectId,
@@ -304,7 +325,13 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       { p_round_id: roundId },
     );
     expect(dispellableError).toBeNull();
-    expect(dispellable).toEqual([
+    // Room-wide RPC (get_dispellable_active_effects): filter to this test's
+    // own target before asserting exact contents (issue #147).
+    const crashDispellable = byTarget(
+      dispellable as DispellableEffectRow[],
+      crashTarget.googleSub,
+    );
+    expect(crashDispellable).toEqual([
       {
         effect_id: expect.any(String),
         target_player_id: crashTarget.googleSub,
@@ -329,7 +356,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     expect(commonStillThere).toHaveLength(1);
 
     // Accepted: Caffeine Crash is Rare-tier.
-    const rareEffectId = (dispellable as { effect_id: string }[])[0]!.effect_id;
+    const rareEffectId = crashDispellable[0]!.effect_id;
     const { error: endError } = await detoxer.client.rpc("end_active_effect", {
       p_round_id: roundId,
       p_effect_id: rareEffectId,

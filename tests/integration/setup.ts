@@ -163,6 +163,29 @@ export async function forceDraw(
 }
 
 /**
+ * Narrows a room-scoped RPC result (get_round_modifier_effects,
+ * get_room_active_effects, get_dispellable_active_effects — all shaped with
+ * a target_player_id column) down to the row(s) for one or more player ids.
+ *
+ * These RPCs are intentionally room-wide, not test-wide (persistent effects
+ * must keep composing across every round in the room, and roster badges
+ * must show every active effect on the roster) — so once the full suite
+ * shares the daily room, a test asserting the RPC's *entire* result set
+ * breaks as soon as another test leaves casts/effects behind in that same
+ * room, even though the RPC returned exactly what it's supposed to (issue
+ * #147). Player ids are generated fresh per test (signUpSignInAndEnterRoom),
+ * so filtering by them is enough to isolate a test's own rows without
+ * touching the RPCs themselves.
+ */
+export function byTarget<T extends { target_player_id: string }>(
+  rows: T[],
+  ...targetPlayerIds: string[]
+): T[] {
+  const wanted = new Set(targetPlayerIds);
+  return rows.filter((row) => wanted.has(row.target_player_id));
+}
+
+/**
  * Tracks entities created during a test so they can be torn down in one
  * afterEach, instead of every test file hand-rolling the same arrays.
  */

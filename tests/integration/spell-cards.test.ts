@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
+  byTarget,
   createTestAdminClient,
   createTestCleanup,
   forceHold,
@@ -146,7 +147,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
       p_round_id: roundId,
     });
     expect(effectsError).toBeNull();
-    expect(effects).toEqual([
+    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // target before asserting exact contents (issue #147).
+    expect(byTarget(effects as { target_player_id: string }[], googleSub)).toEqual([
       {
         target_player_id: googleSub,
         effect_kind: "flat_modifier",
@@ -196,7 +199,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     const { data: effects } = await casterClient.rpc("get_round_modifier_effects", {
       p_round_id: roundId,
     });
-    expect(effects).toEqual([
+    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // target before asserting exact contents (issue #147).
+    expect(byTarget(effects as { target_player_id: string }[], targetSub)).toEqual([
       {
         target_player_id: targetSub,
         effect_kind: "set_modifier",
