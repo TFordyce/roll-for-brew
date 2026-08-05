@@ -1,15 +1,17 @@
--- Repairs live-DB drift: migration 0041's push failed with "relation
--- public.pending_spell_draws does not exist", proving that table (and
--- almost certainly the rest of 0036_manual_spell_card_draw.sql's objects —
--- record_pending_spell_draw, get_pending_spell_draw,
--- draw_pending_spell_card, draw_pending_spell_card_manual) were never
--- actually created live, despite `supabase migration list` showing 0036 as
--- applied. That command only confirms a row exists in the migration
--- history table, not that the DDL ran — the most likely explanation is the
--- 0036/0037 numbering collision between PR #127 (this file, stayed 0036)
--- and PR #125 (renumbered 0036→0037 by PR #129): live's history picked up
--- a "0036" entry from that collision that doesn't correspond to this
--- file's actual content.
+-- Repairs live-DB drift: pushing the grant-privileges migration below
+-- (originally 0041, renumbered to 0042 so this repair runs first — see
+-- note there) failed with "relation public.pending_spell_draws does not
+-- exist", proving that table (and almost certainly the rest of
+-- 0036_manual_spell_card_draw.sql's objects — record_pending_spell_draw,
+-- get_pending_spell_draw, draw_pending_spell_card,
+-- draw_pending_spell_card_manual) were never actually created live,
+-- despite `supabase migration list` showing 0036 as applied. That command
+-- only confirms a row exists in the migration history table, not that the
+-- DDL ran — the most likely explanation is the 0036/0037 numbering
+-- collision between PR #127 (this file, stayed 0036) and PR #125
+-- (renumbered 0036→0037 by PR #129): live's history picked up a "0036"
+-- entry from that collision that doesn't correspond to this file's actual
+-- content.
 --
 -- Every statement below is copied verbatim from 0036 and is safe to
 -- re-run whether or not each object already exists live: create table if
