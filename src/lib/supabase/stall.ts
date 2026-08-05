@@ -118,6 +118,7 @@ export async function getCompletedLayerRollsForStallResolution(
     player_id: string;
     value: number;
     modifier_snapshot: number;
+    discarded_value: number | null;
   }[];
   const [first] = rows;
   if (!first) return null;
@@ -128,6 +129,7 @@ export async function getCompletedLayerRollsForStallResolution(
       playerId: row.player_id,
       value: row.value,
       modifierSnapshot: row.modifier_snapshot,
+      discardedValue: row.discarded_value,
     })),
   };
 }

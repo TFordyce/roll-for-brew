@@ -109,6 +109,44 @@ describe.skipIf(!hasAnonTestEnv)("discarded advantage/disadvantage roll (issue #
     expect(roll!.value).toBeGreaterThanOrEqual(roll!.discarded_value as number);
   });
 
+  it("surfaces discarded_value through get_current_layer_rolls_if_complete (issue #167, migration 0051)", async () => {
+    const caster = await signUp("discard-rpc-caster");
+    const other = await signUp("discard-rpc-other");
+    await forceHold(admin, caster.googleSub, "Sugar Rush");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await other.client.rpc("declare_in", { p_round_id: roundId });
+
+    const { error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: null,
+    });
+    expect(castError).toBeNull();
+
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+
+    const { error: casterRollError } = await caster.client.rpc("submit_roll", { p_round_id: roundId });
+    expect(casterRollError).toBeNull();
+    const { error: otherRollError } = await other.client.rpc("submit_roll", { p_round_id: roundId });
+    expect(otherRollError).toBeNull();
+
+    const { data: rows, error: rowsError } = await caster.client.rpc("get_current_layer_rolls_if_complete", {
+      p_round_id: roundId,
+    });
+    expect(rowsError).toBeNull();
+
+    const typedRows = rows as { player_id: string; value: number; discarded_value: number | null }[];
+    const casterRow = typedRows.find((r) => r.player_id === caster.googleSub);
+    const otherRow = typedRows.find((r) => r.player_id === other.googleSub);
+
+    // Advantage keeps the higher of the two d20s for the caster; the other
+    // player had no advantage/disadvantage this round.
+    expect(casterRow?.discarded_value).not.toBeNull();
+    expect(casterRow!.value).toBeGreaterThanOrEqual(casterRow!.discarded_value as number);
+    expect(otherRow?.discarded_value).toBeNull();
+  });
+
   // submit_roll_as (0029_admin_roll_as.sql) carries the exact same
   // advantage/disadvantage resolution block as submit_roll — the two are
   // kept in lockstep by convention (see 0031's own duplication of this

@@ -31,8 +31,8 @@ describe("finalizeReactionWindow", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0 },
-        { playerId: "p2", value: 12, modifierSnapshot: 0 },
+        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
       ],
     };
     const deps = fakeDeps({
@@ -49,8 +49,8 @@ describe("finalizeReactionWindow", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 2, modifierSnapshot: 0 },
-        { playerId: "p2", value: 12, modifierSnapshot: 0 },
+        { playerId: "p1", value: 2, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
       ],
     };
     const deps = fakeDeps({
@@ -65,8 +65,8 @@ describe("finalizeReactionWindow", () => {
     expect(deps.applyLayerOutcome).toHaveBeenCalledWith(supabase, "round-1", {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 19, modifierSnapshot: 0 },
-        { playerId: "p2", value: 12, modifierSnapshot: 0 },
+        { playerId: "p1", value: 19, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
       ],
     });
   });
@@ -75,9 +75,9 @@ describe("finalizeReactionWindow", () => {
     const completedLayer: CompletedLayer = {
       layer: 1,
       rolls: [
-        { playerId: "p1", value: 2, modifierSnapshot: 0 },
-        { playerId: "p2", value: 3, modifierSnapshot: 0 },
-        { playerId: "p3", value: 12, modifierSnapshot: 0 },
+        { playerId: "p1", value: 2, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p2", value: 3, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p3", value: 12, modifierSnapshot: 0, discardedValue: null },
       ],
     };
     const newValues: Record<string, number> = { p1: 18, p2: 4 };
@@ -92,9 +92,9 @@ describe("finalizeReactionWindow", () => {
     expect(deps.applyLayerOutcome).toHaveBeenCalledWith(supabase, "round-1", {
       layer: 1,
       rolls: [
-        { playerId: "p1", value: 18, modifierSnapshot: 0 },
-        { playerId: "p2", value: 4, modifierSnapshot: 0 },
-        { playerId: "p3", value: 12, modifierSnapshot: 0 },
+        { playerId: "p1", value: 18, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p2", value: 4, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p3", value: 12, modifierSnapshot: 0, discardedValue: null },
       ],
     });
   });
