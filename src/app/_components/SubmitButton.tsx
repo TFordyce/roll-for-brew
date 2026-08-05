@@ -27,7 +27,7 @@ export function SubmitButton({
   const { pending } = useFormStatus();
 
   return (
-    <button type="submit" disabled={disabled || pending} className={className} {...props}>
+    <button {...props} type="submit" disabled={disabled || pending} className={className}>
       <span className="inline-flex items-center justify-center gap-2">
         {pending ? (
           <svg className="h-4 w-4 animate-spin text-gilt-bright" viewBox="0 0 24 24" fill="none" aria-hidden="true">
