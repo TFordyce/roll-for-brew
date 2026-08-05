@@ -155,6 +155,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
         effect_kind: "flat_modifier",
         effect_params: { delta: 3 },
         resolved_value: null,
+        card_name: "Lucky Sip",
+        caster_player_id: googleSub,
       },
     ]);
 
@@ -207,6 +209,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
         effect_kind: "set_modifier",
         effect_params: { value: 0 },
         resolved_value: null,
+        card_name: "Milky Brew",
+        caster_player_id: casterSub,
       },
     ]);
   });

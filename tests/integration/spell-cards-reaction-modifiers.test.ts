@@ -72,6 +72,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
         effect_kind: "dice_modifier",
         effect_params: { dice: "1d6" },
         resolved_value: expect.any(Number),
+        card_name: "Six Sugars",
+        caster_player_id: caster.googleSub,
       },
     ]);
     const resolvedValue = casterEffects[0]!.resolved_value;
@@ -115,6 +117,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
         effect_kind: "set_modifier",
         effect_params: { value: 0 },
         resolved_value: null,
+        card_name: "Mug Shot",
+        caster_player_id: caster.googleSub,
       },
     ]);
   });
