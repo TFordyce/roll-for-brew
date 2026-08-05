@@ -42,7 +42,11 @@ export function PlayerTile({
   playerId?: string;
 }) {
   const name = displayName ?? email;
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  // First name only — a long full name wraps to two lines in the tile's
+  // fixed width, so show just the first name and truncate with an ellipsis
+  // rather than wrap. Full name still shows on hover via the title attribute.
+  const firstName = name.trim().split(/\s+/)[0] || name;
+  const initial = firstName.trim().charAt(0).toUpperCase() || "?";
 
   const tile = (
     <div
@@ -62,8 +66,8 @@ export function PlayerTile({
           <span className="font-display text-lg font-semibold text-gilt-bright">{initial}</span>
         )}
       </div>
-      <span className="w-full break-words text-xs leading-tight text-parchment">
-        {name}
+      <span className="w-full truncate text-xs leading-tight text-parchment" title={name}>
+        {firstName}
         {isStarter ? <span className="text-gilt"> ★</span> : null}
       </span>
       {isTest ? (
