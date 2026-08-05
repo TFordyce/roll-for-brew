@@ -42,3 +42,29 @@ export async function getIsAdmin(supabase: SupabaseClient, playerId: string): Pr
   if (error) throw error;
   return data?.is_admin === true;
 }
+
+export type RealPlayer = { id: string; displayName: string | null; email: string };
+
+/**
+ * Every non-test player (players.is_test — 0024), for the /admin/cards
+ * allocation picker (issue #154) — the whole point of that tool is
+ * reconciling real people's real hands, so seeded Test Players never belong
+ * in the list. players is readable site-wide by any authenticated caller
+ * (0001), so this is a plain table read, not a new RPC.
+ */
+export async function getRealPlayers(supabase: SupabaseClient): Promise<RealPlayer[]> {
+  const { data, error } = await supabase
+    .from("players")
+    .select("id, display_name, email")
+    .eq("is_test", false)
+    .order("display_name")
+    .order("email");
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    id: row.id as string,
+    displayName: row.display_name as string | null,
+    email: row.email as string,
+  }));
+}

@@ -55,6 +55,12 @@ export function SignOutBadge({ name, showAdminMenu = false }: { name: string; sh
           >
             Admin
           </Link>
+          <Link
+            href="/admin/cards"
+            className="rounded-md px-3 py-1.5 text-right font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember/40"
+          >
+            Allocate Cards
+          </Link>
           <form
             action="/auth/signout"
             method="post"
