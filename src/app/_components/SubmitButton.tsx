@@ -47,7 +47,7 @@ export function SubmitButton({
               strokeLinecap="round"
             />
             {/* teaspoon, rocking around the rim to mimic stirring */}
-            <g className="origin-[11px_8px] animate-stir text-ember-bright motion-reduce:animate-none">
+            <g className="origin-[11px_8px] animate-teaspoon-stir text-ember-bright motion-reduce:animate-none">
               <line x1="11" y1="8" x2="11" y2="15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
               <circle cx="11" cy="15.5" r="1.3" fill="currentColor" />
             </g>

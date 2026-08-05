@@ -36,13 +36,13 @@ const config: Config = {
         // Teaspoon-in-cup pending indicator (issue #171) — a stir motion
         // (rock back and forth around the rim) reads more thematic at small
         // size than a full 360° spin.
-        stir: {
+        "teaspoon-stir": {
           "0%, 100%": { transform: "rotate(-20deg)" },
           "50%": { transform: "rotate(20deg)" },
         },
       },
       animation: {
-        stir: "stir 0.6s ease-in-out infinite",
+        "teaspoon-stir": "teaspoon-stir 0.6s ease-in-out infinite",
       },
     },
   },
