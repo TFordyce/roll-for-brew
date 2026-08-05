@@ -39,6 +39,10 @@ export type PlayerDeclaredInPayload = {
   roundId: string;
 };
 
+export type PlayerWithdrewPayload = {
+  roundId: string;
+};
+
 export type RoundStartedPayload = {
   roundId: string;
 };
@@ -197,6 +201,28 @@ export async function broadcastPlayerDeclaredIn(
     const result = await channel.httpSend("player-declared-in", payload);
     if (!result.success) {
       throw new Error(`broadcastPlayerDeclaredIn: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a withdrawal once withdraw_declaration has committed — the
+ * "cancel an accidental declare" counterpart to broadcastPlayerDeclaredIn,
+ * covering the same "Who's In?" view for the roster/"Need N more" update in
+ * the other direction.
+ */
+export async function broadcastPlayerWithdrew(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: PlayerWithdrewPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("player-withdrew", payload);
+    if (!result.success) {
+      throw new Error(`broadcastPlayerWithdrew: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);

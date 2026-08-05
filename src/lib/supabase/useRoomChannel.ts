@@ -7,6 +7,7 @@ import {
   type LayerRollsRevealedPayload,
   type LayerTiedPayload,
   type PlayerDeclaredInPayload,
+  type PlayerWithdrewPayload,
   type ReactionWindowChangedPayload,
   type RoundCancelledPayload,
   type RoundClosedPayload,
@@ -22,6 +23,7 @@ type RoomBroadcastPayloadMap = {
   "layer-rolls-revealed": LayerRollsRevealedPayload;
   "reaction-window-changed": ReactionWindowChangedPayload;
   "player-declared-in": PlayerDeclaredInPayload;
+  "player-withdrew": PlayerWithdrewPayload;
   "round-started": RoundStartedPayload;
 };
 

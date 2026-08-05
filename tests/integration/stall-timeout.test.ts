@@ -9,7 +9,7 @@ import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInA
 // added in supabase/migrations/0009_stall_timeout.sql. Real elapsed time
 // isn't waited out — enforceStallTimeout's `now` parameter is injected as a
 // fixed instant STALL_TIMEOUT_MS+ after real setup, which is exactly what
-// makes this testable without sleeping ~2 minutes per test.
+// makes this testable without sleeping ~5 minutes per test.
 function future() {
   return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
 }
