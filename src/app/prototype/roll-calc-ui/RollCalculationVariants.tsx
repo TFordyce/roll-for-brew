@@ -8,46 +8,51 @@
  * <RollCalculation> (src/app/_components/RollCalculation.tsx), which today
  * only ever shows a bare "roll + modifier = total".
  *
- * Three variants, switchable via ?variant=A|B|C, on the standalone
- * /prototype/roll-calc-ui route (see page.tsx in this folder) — unauthenticated
- * and static, following the same pattern as /preview: no Supabase client, no
- * server data, so there's nothing for middleware/RLS/admin-mode to gate.
- * Fixture rows stand in for live game state — hitting every one of these
- * cases (nat1, nat20, a flat spell bonus, a multiplier, a hard "set to X", a
- * bonus/penalty die, and a forced reroll) through real play would mean
- * orchestrating eight separate rounds.
+ * Fixtures are grounded in the real spell_card_effects catalog (supabase/
+ * migrations/0032_spell_card_effects.sql), not invented names — flat/
+ * multiplier/set effects fold into a single "modifier" value before this
+ * component ever sees them (src/lib/game/modifierBucket.ts), but
+ * `dice_modifier` (only ever 1d4 or 1d6 in the catalog — Six Sugars, Cold
+ * Tea, Slipped Spoon; no d8/d10/d12 anywhere) is a genuinely separate
+ * additive term the total doesn't otherwise account for, and `advantage`/
+ * `disadvantage` (Sugar Rush, Fortune's Flavour, Slipped Spoon) are a
+ * roll-twice-keep-one mechanic on the roll itself, not a modifier change.
  *
- * Shared visual vocabulary applied across all three variants (per the ask):
- * the modifier value is bold+underlined, the roll sits inside a wireframe
- * d20, a plain (non-dice) spell effect gets a small twinkling sparkle, and a
- * dice-based bonus/penalty ("+1d4", "-1d4") gets a wireframe d4 (triangular
- * pyramid) instead — the variants disagree on layout, not on this iconography.
- *
- * See the issue this is scoping for the question and the eventual verdict.
+ * This went through a few rounds of feedback (see git history on this
+ * branch for the earlier A/B/C layout comparison, since superseded):
+ * settled on one combined layout — inline "roll (+adv/dis) + modifier +
+ * dice-effect(s) = total" line, with a caster-attributed badge per spell
+ * effect underneath (name only, no icon — the icon lives in the equation
+ * term itself for dice effects). Die shapes are plain geometric outlines
+ * (circle/triangle/square) with the rolled/kept value layered inside, not
+ * literal wireframe polyhedra — simpler reads better at icon size than the
+ * geometrically-accurate but fussier Wikimedia sourced shapes tried
+ * earlier (still in research/wireframe-dice-icons.md if that direction
+ * comes back).
  */
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 
-type ModifierEffectFixture = {
-  name: string;
-  detail: string; // human-readable, e.g. "×2" or "set to 0" or "+1d4 (rolled 3)"
-  dieShape?: "d4" | "d6"; // present when this effect adds/subtracts a rolled die rather than a flat/multiplier/set value
-  casterName: string; // who cast the spell that produced this effect
+type SpellEffectKind = "flat" | "multiplier" | "set" | "dice" | "advantage" | "disadvantage";
+
+type SpellEffectFixture = {
+  cardName: string; // real spell_cards.name, e.g. "Lucky Sip", "Cold Tea"
+  casterName: string;
+  kind: SpellEffectKind;
+  detail: string; // human-readable, for the badge's title tooltip
+  dieShape?: "d4" | "d6"; // only present when kind === "dice"
+  dieValue?: number; // the rolled sub-value, only present when kind === "dice"
 };
 
 type Fixture = {
   label: string;
   playerName: string;
   baseModifier: number;
-  finalModifier: number;
-  roll: number;
-  originalRoll?: number; // present only when a reroll swapped the die
-  rerollSource?: string;
-  rerollCasterName?: string;
-  modifierEffects?: ModifierEffectFixture[];
+  finalModifier: number; // already composed from any flat/multiplier/set effects
+  roll: number; // the kept d20 roll (post advantage/disadvantage, if any)
+  discardedRoll?: number; // the other d20 from an advantage/disadvantage pair
+  spellEffects?: SpellEffectFixture[];
 };
 
 const FIXTURES: Fixture[] = [
@@ -73,563 +78,256 @@ const FIXTURES: Fixture[] = [
     roll: 20,
   },
   {
-    label: "Flat spell bonus (+2)",
+    label: "Lucky Sip — flat +3, self-cast",
     playerName: "Priya",
     baseModifier: 2,
-    finalModifier: 4,
+    finalModifier: 5,
     roll: 11,
-    modifierEffects: [{ name: "Lucky Brew", detail: "+2", casterName: "Owen" }],
+    spellEffects: [{ cardName: "Lucky Sip", casterName: "Priya", kind: "flat", detail: "+3" }],
   },
   {
-    label: "Multiplier spell effect (×2)",
+    label: "Brewer's Blessing — flat +5, cast on target",
     playerName: "Owen",
-    baseModifier: 3,
+    baseModifier: 1,
     finalModifier: 6,
     roll: 9,
-    modifierEffects: [{ name: "Double Down", detail: "×2", casterName: "Dev" }],
+    spellEffects: [{ cardName: "Brewer's Blessing", casterName: "Dev", kind: "flat", detail: "+5" }],
   },
   {
-    label: 'Hard "set" spell effect',
+    label: "Double Shot — ×2, self-cast",
+    playerName: "Dev",
+    baseModifier: 3,
+    finalModifier: 6,
+    roll: 8,
+    spellEffects: [{ cardName: "Double Shot", casterName: "Dev", kind: "multiplier", detail: "×2" }],
+  },
+  {
+    label: "Milky Brew — set to 0, cast on target",
     playerName: "Mara",
     baseModifier: 4,
     finalModifier: 0,
     roll: 13,
-    modifierEffects: [{ name: "Milky Brew", detail: "set to 0", casterName: "Sam" }],
+    spellEffects: [{ cardName: "Milky Brew", casterName: "Sam", kind: "set", detail: "set to 0" }],
   },
   {
-    label: "Bonus die (+1d4)",
+    label: "Six Sugars — +1d6, self-cast",
     playerName: "Owen",
     baseModifier: 2,
-    finalModifier: 5,
+    finalModifier: 2,
     roll: 10,
-    modifierEffects: [{ name: "Ember Boost", detail: "+1d4 (rolled 3)", dieShape: "d4", casterName: "Priya" }],
+    spellEffects: [
+      { cardName: "Six Sugars", casterName: "Owen", kind: "dice", dieShape: "d6", dieValue: 4, detail: "+1d6" },
+    ],
   },
   {
-    label: "Penalty die (-1d4)",
+    label: "Cold Tea — target side (flat -3)",
     playerName: "Mara",
     baseModifier: 4,
-    finalModifier: 2,
+    finalModifier: 1,
     roll: 15,
-    modifierEffects: [
-      { name: "Curse of Stumbling", detail: "-1d4 (rolled 2)", dieShape: "d4", casterName: "Dev" },
-    ],
+    spellEffects: [{ cardName: "Cold Tea", casterName: "Priya", kind: "flat", detail: "-3" }],
   },
   {
-    label: "Stacked effects (flat + dice penalty)",
+    label: "Cold Tea — caster side (+1d4)",
     playerName: "Priya",
     baseModifier: 2,
-    finalModifier: 3,
-    roll: 8,
-    modifierEffects: [
-      { name: "Lucky Brew", detail: "+2", casterName: "Owen" },
-      { name: "Curse of Stumbling", detail: "-1d4 (rolled 1)", dieShape: "d4", casterName: "Sam" },
+    finalModifier: 2,
+    roll: 9,
+    spellEffects: [
+      { cardName: "Cold Tea", casterName: "Priya", kind: "dice", dieShape: "d4", dieValue: 3, detail: "+1d4" },
     ],
   },
   {
-    label: "Forced reroll",
+    label: "Slipped Spoon — target side (disadvantage)",
     playerName: "Dev",
     baseModifier: 3,
     finalModifier: 3,
-    roll: 17,
-    originalRoll: 4,
-    rerollSource: "Chaos Die",
-    rerollCasterName: "Mara",
+    roll: 6,
+    discardedRoll: 14,
+    spellEffects: [{ cardName: "Slipped Spoon", casterName: "Sam", kind: "disadvantage", detail: "disadvantage" }],
   },
   {
-    label: "Reroll landed on nat 1",
+    label: "Slipped Spoon — caster side (+1d4)",
     playerName: "Sam",
     baseModifier: -1,
     finalModifier: -1,
-    roll: 1,
-    originalRoll: 12,
-    rerollSource: "Chaos Die",
-    rerollCasterName: "Owen",
+    roll: 12,
+    spellEffects: [
+      { cardName: "Slipped Spoon", casterName: "Sam", kind: "dice", dieShape: "d4", dieValue: 2, detail: "+1d4" },
+    ],
+  },
+  {
+    label: "Sugar Rush — advantage, self-cast",
+    playerName: "Owen",
+    baseModifier: 2,
+    finalModifier: 2,
+    roll: 18,
+    discardedRoll: 7,
+    spellEffects: [{ cardName: "Sugar Rush", casterName: "Owen", kind: "advantage", detail: "advantage" }],
+  },
+  {
+    label: "Fortune's Flavour — advantage, cast on target",
+    playerName: "Mara",
+    baseModifier: 4,
+    finalModifier: 4,
+    roll: 19,
+    discardedRoll: 5,
+    spellEffects: [{ cardName: "Fortune's Flavour", casterName: "Priya", kind: "advantage", detail: "advantage" }],
+  },
+  {
+    label: "Sugar Rush — advantage roll lands on nat 20",
+    playerName: "Dev",
+    baseModifier: 3,
+    finalModifier: 3,
+    roll: 20,
+    discardedRoll: 13,
+    spellEffects: [{ cardName: "Sugar Rush", casterName: "Dev", kind: "advantage", detail: "advantage" }],
   },
 ];
 
-const VARIANT_KEYS = ["A", "B", "C", "D"] as const;
-type VariantKey = (typeof VARIANT_KEYS)[number];
-const VARIANT_NAMES: Record<VariantKey, string> = {
-  A: "Inline chip",
-  B: "Stacked breakdown line",
-  C: "Expand on demand",
-  D: "Inline + caster badges (latest)",
-};
+// ---------------------------------------------------------------------------
+// Shared iconography.
+// ---------------------------------------------------------------------------
 
-function isAffected(f: Fixture): boolean {
-  return (f.modifierEffects?.length ?? 0) > 0 || f.originalRoll !== undefined;
+/** A plain geometric outline per die shape — not a literal wireframe polyhedron, just legible at icon size. */
+function DieOutline({ shape }: { shape: "d4" | "d6" | "d20" }) {
+  if (shape === "d4") return <polygon points="12,3 21,20 3,20" />;
+  if (shape === "d6") return <rect x="4" y="4" width="16" height="16" rx="1.5" />;
+  return <circle cx="12" cy="12" r="9.5" />;
 }
 
-// ---------------------------------------------------------------------------
-// Shared iconography — reused by all three variants below.
-// ---------------------------------------------------------------------------
-
 /**
- * The d20-roll value, sat inside a real icosahedron wireframe — not
- * hand-drawn: geometry lifted from Wikimedia Commons' "Icosahedron
- * graph.svg" (dual GFDL 1.2+ / CC BY-SA 3.0 — verified 12-vertex icosahedron
- * graph, see research/wireframe-dice-icons.md), rescaled from its native
- * ~627×586 canvas into this 24-unit icon via a single uniform <g scale>
- * rather than hand-retranscribed coordinates. `vector-effect:
- * non-scaling-stroke` keeps the line weight legible after that scale-down
- * without needing to guess a rescaled stroke-width by hand.
- *
- * LICENSING NOTE: this specific source is CC BY-SA — if this variant ships,
- * it needs an attribution credit somewhere (an in-app "About"/credits
- * list is enough), unlike the CC0/ISC d4 and d6 sources below.
- *
- * `struck` renders it greyed-out with a line through the number — the
- * discarded roll of a reroll/advantage-disadvantage pair, sat next to the
- * live one rather than spelled out as "was 4" text.
+ * A die value — its shape outline with the actual rolled/kept number
+ * layered in the middle. Used both for the base d20 roll (with `struck` for
+ * the discarded half of an advantage/disadvantage pair) and for a dice
+ * spell-effect term inline in the calculation.
  */
-function RollValue({ value, struck = false }: { value: number; struck?: boolean }) {
+function DieValue({
+  shape,
+  value,
+  struck = false,
+  size = "h-5 w-5",
+  textSize = "text-[10px]",
+  tone = "text-parchment-dim/60",
+  valueTone = "text-parchment",
+}: {
+  shape: "d4" | "d6" | "d20";
+  value: number;
+  struck?: boolean;
+  size?: string;
+  textSize?: string;
+  tone?: string;
+  valueTone?: string;
+}) {
   return (
     <span
-      className={`relative inline-flex h-6 w-6 shrink-0 items-center justify-center ${struck ? "opacity-40" : ""}`}
-      title={struck ? "discarded roll" : "d20 roll"}
+      className={`relative inline-flex ${size} shrink-0 items-center justify-center ${struck ? "opacity-40" : ""}`}
+      title={`${struck ? "discarded " : ""}${shape} roll`}
     >
       <svg
         viewBox="0 0 24 24"
-        className={`absolute inset-0 h-full w-full ${struck ? "text-parchment-dim/30" : "text-parchment-dim/50"}`}
+        className={`absolute inset-0 h-full w-full ${struck ? "text-parchment-dim/30" : tone}`}
         fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
         aria-hidden
       >
-        <g transform="scale(0.0383)">
-          <g transform="translate(1 1)">
-            <path
-              d="M 213.27708,407.68141 L 213.27708,312.91607 L 298.83665,261.47203 L 383.31318,311.29152 L 383.31318,407.1399 L 298.83665,454.79333 L 213.27708,407.68141 z
-                 M 298.83665,262.01354 L 271.21932,337.2843 L 214.90163,406.05686 L 298.29513,377.3565 L 381.68863,407.1399 L 326.45398,337.82582 L 298.83665,262.01354 z
-                 M 272.30235,337.2843 L 298.29513,376.81499 L 325.91246,337.2843 L 272.30235,337.2843 z
-                 M 214.36011,313.9991 L 270.13629,336.74278 M 325.37094,336.74278 L 382.23015,312.37455 M 298.83665,377.3565 L 298.83665,452.62726
-                 M 9.50837,571.15925 L 613.71473,571.54216 L 298.29513,10.20849 L 9.50837,571.15925 z
-                 M 10.90861,570.39343 L 213.8186,314.54062 L 298.29513,11.29152 L 384.93773,312.37455 L 614.03195,571.66793 L 297.2121,454.25181 L 10.90861,570.39343 z
-                 M 298.2259,12.00612 L 298.2259,262.42914 M 383.23188,405.6374 L 611.44612,569.5228 M 10.27772,569.5228 L 213.21992,407.93486"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              vectorEffect="non-scaling-stroke"
-            />
-            <g transform="translate(154.25181,171.94134)" fill="currentColor" opacity="0.7">
-              <circle r="32" cx="143.90794" cy="90.072206" />
-              <circle r="32" cx="229.60289" cy="140.16245" />
-              <circle r="32" cx="172.92419" cy="165.88447" />
-              <circle r="32" cx="116.24548" cy="165.88447" />
-              <circle r="32" cx="59.566787" cy="140.16245" />
-              <circle r="32" cx="143.90794" cy="205.84116" />
-              <circle r="32" cx="143.90794" cy="283.61011" />
-              <circle r="32" cx="59.566787" cy="235.74" />
-              <circle r="32" cx="229.60289" cy="235.74" />
-              <circle r="32" cx="-143.50181" cy="398.46571" />
-              <circle r="32" cx="458.70758" cy="398.46571" />
-              <circle r="32" cx="143.90794" cy="-161.19134" />
-            </g>
-          </g>
-        </g>
+        <DieOutline shape={shape} />
       </svg>
-      <span
-        className={`relative z-10 font-mono text-[11px] ${struck ? "text-parchment-dim line-through" : "text-parchment"}`}
-      >
+      <span className={`relative z-10 font-mono font-bold ${textSize} ${struck ? "text-parchment-dim line-through" : valueTone}`}>
         {value}
       </span>
     </span>
   );
 }
 
-/** The modifier value — bold + underlined, distinct from the plain roll number. */
+/** The modifier value — bold + underlined, distinct from the die values either side of it. */
 function ModifierValue({ value }: { value: number }) {
   return <span className="font-bold text-parchment underline decoration-parchment-dim/60 underline-offset-2">{value}</span>;
 }
 
-/** A quiet twinkle — a plain (non-dice) spell effect touched this number. */
-function SparkleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 animate-pulse text-fuchsia-300" fill="currentColor" aria-hidden>
-      <path d="M12 1 L14.2 9.8 L23 12 L14.2 14.2 L12 23 L9.8 14.2 L1 12 L9.8 9.8 Z" />
-    </svg>
-  );
-}
+// ---------------------------------------------------------------------------
+// The calculation line: roll (+ discarded adv/dis roll inline, not stacked)
+// + modifier + any dice-effect term(s) = total.
+// ---------------------------------------------------------------------------
+function CalcLine({ f }: { f: Fixture }) {
+  const calc = classifyRollCalculation(f.roll, f.finalModifier);
+  const diceEffects = (f.spellEffects ?? []).filter((e) => e.kind === "dice");
+  const diceSum = diceEffects.reduce((sum, e) => sum + (e.dieValue ?? 0), 0);
 
-/**
- * A wireframe d4 (triangular pyramid) with its face-count layered in the
- * middle, same layering pattern as RollValue's number-inside-the-die look —
- * labels the shape itself ("this is a d4 effect"), the way a physical d4 is
- * printed. The actual rolled sub-value (e.g. "rolled 3") stays in the
- * effect's text, not on the icon.
- *
- * Geometry lifted from Wikimedia Commons' "Basic tetrahedron.svg" (CC0 1.0,
- * no attribution required — see research/wireframe-dice-icons.md): a
- * genuine tetrahedron projection with the back edge dashed per the standard
- * wireframe convention, rescaled from its native 800×800 canvas the same
- * way as RollValue's d20 — one uniform <g scale>, not hand-retranscribed
- * coordinates — with vector-effect keeping strokes legible post-scale.
- */
-function D4Icon() {
-  return (
-    <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" title="d4 effect">
-      <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full text-sky-300/70" fill="none" aria-hidden>
-        <g transform="scale(0.03)">
-          <line
-            x1="100"
-            y1="60"
-            x2="790"
-            y2="600"
-            stroke="currentColor"
-            strokeWidth="1.2"
-            strokeLinejoin="round"
-            strokeDasharray="24 16"
-            vectorEffect="non-scaling-stroke"
-          />
-          <path d="M 10,790 L 400,10 L 790,600 Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-          <path d="M 10,790 L 100,60 L 400,10" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-        </g>
-      </svg>
-      <span className="relative z-10 translate-y-[3px] font-mono text-[7px] font-bold text-sky-100">4</span>
+  const rollTerm = (
+    <span className="flex items-center gap-1">
+      {f.discardedRoll !== undefined ? <DieValue shape="d20" value={f.discardedRoll} struck /> : null}
+      <DieValue shape="d20" value={f.roll} size="h-6 w-6" textSize="text-[11px]" />
     </span>
   );
-}
-
-/** A small twirl — marks the reroll/discard-and-replace badge underneath. */
-function RerollIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 text-fuchsia-300" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-      <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" />
-      <path d="M18 3v4h-4M6 21v-4h4" />
-    </svg>
-  );
-}
-
-/** Picks the right icon for a single modifier-effect fixture. */
-function EffectIcon({ effect }: { effect: ModifierEffectFixture }) {
-  return effect.dieShape ? <D4Icon /> : <SparkleIcon />;
-}
-
-// ---------------------------------------------------------------------------
-// Variant A — Inline chip: the existing "roll + modifier = total" line grows
-// a small inline chip right next to whichever term a spell touched. Nothing
-// moves for unaffected rows; affected rows get slightly wider.
-// ---------------------------------------------------------------------------
-function VariantA({ f }: { f: Fixture }) {
-  const calc = classifyRollCalculation(f.roll, f.finalModifier);
 
   if (calc.kind === "nat1" || calc.kind === "nat20") {
     return (
-      <span
-        className={`font-display text-xs font-semibold uppercase tracking-widest ${
-          calc.kind === "nat1" ? "text-red-500" : "text-gilt-bright"
-        }`}
-      >
-        {calc.kind === "nat1" ? "Nat 1" : "Nat 20"}
+      <span className="flex flex-nowrap items-center gap-1.5 whitespace-nowrap">
+        {rollTerm}
+        <span
+          className={`font-display text-xs font-semibold uppercase tracking-widest ${
+            calc.kind === "nat1" ? "text-red-500" : "text-gilt-bright"
+          }`}
+        >
+          {calc.kind === "nat1" ? "Nat 1" : "Nat 20"}
+        </span>
       </span>
     );
   }
 
   const operator = calc.modifier >= 0 ? "+" : "-";
-  const modifierChip =
-    f.modifierEffects && f.modifierEffects.length > 0 ? (
-      <span
-        className="ml-1 inline-flex flex-wrap items-center gap-1 rounded-sm border border-gilt-dark bg-tavern-panel-dark px-1 py-0.5 text-[10px] uppercase tracking-wide text-gilt-bright"
-        title={f.modifierEffects.map((e) => `${e.name}: ${e.detail}`).join(", ")}
-      >
-        {f.modifierEffects.map((e) => (
-          <span key={e.name} className="inline-flex items-center gap-0.5">
-            <EffectIcon effect={e} />
-            {e.name}
-          </span>
-        ))}
-      </span>
-    ) : null;
-
-  const rollChip =
-    f.originalRoll !== undefined ? (
-      <span
-        className="ml-1 rounded-sm border border-gilt-dark bg-tavern-panel-dark px-1 py-0.5 text-[10px] uppercase tracking-wide text-parchment-dim"
-        title={`Rerolled by ${f.rerollSource}`}
-      >
-        was {f.originalRoll}
-      </span>
-    ) : null;
+  const total = calc.total + diceSum;
 
   return (
-    <span className="flex flex-wrap items-center justify-end gap-x-1 whitespace-nowrap font-mono text-xs text-parchment-dim">
-      <RollValue value={calc.roll} />
-      {rollChip}
+    <span className="flex flex-nowrap items-center gap-1 whitespace-nowrap font-mono text-xs text-parchment-dim">
+      {rollTerm}
       {operator} <ModifierValue value={Math.abs(calc.modifier)} />
-      {modifierChip}
-      = <span className="text-parchment">{calc.total}</span>
+      {diceEffects.map((e, i) => (
+        <span key={i} className="flex items-center gap-0.5">
+          + <DieValue shape={e.dieShape!} value={e.dieValue!} tone="text-sky-300/60" valueTone="text-sky-100" />
+        </span>
+      ))}
+      = <span className="text-parchment">{total}</span>
     </span>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Variant B — Stacked breakdown: the top line always looks exactly like
-// today's compact calculation. Affected rows grow a second, smaller line
-// underneath spelling out each contributing effect in plain language.
-// ---------------------------------------------------------------------------
-function VariantB({ f }: { f: Fixture }) {
-  const calc = classifyRollCalculation(f.roll, f.finalModifier);
-
-  const breakdownRows: { key: string; icon: React.JSX.Element | null; text: string }[] = [];
-  if (f.originalRoll !== undefined) {
-    breakdownRows.push({
-      key: "reroll",
-      icon: null,
-      text: `Roll: ${f.originalRoll} → ${f.roll} (${f.rerollSource})`,
-    });
-  }
-  for (const e of f.modifierEffects ?? []) {
-    breakdownRows.push({ key: e.name, icon: <EffectIcon effect={e} />, text: `${e.name}: ${e.detail}` });
-  }
-
-  if (calc.kind === "nat1" || calc.kind === "nat20") {
-    return (
-      <div className="flex flex-col items-end gap-0.5">
-        <span
-          className={`font-display text-xs font-semibold uppercase tracking-widest ${
-            calc.kind === "nat1" ? "text-red-500" : "text-gilt-bright"
-          }`}
-        >
-          {calc.kind === "nat1" ? "Nat 1" : "Nat 20"}
-        </span>
-        {breakdownRows.map((row) => (
-          <span key={row.key} className="flex items-center gap-1 whitespace-nowrap text-[10px] text-parchment-dim/80">
-            {row.icon}
-            {row.text}
-          </span>
-        ))}
-      </div>
-    );
-  }
-
-  const operator = calc.modifier >= 0 ? "+" : "-";
-
-  return (
-    <div className="flex flex-col items-end gap-0.5">
-      <span className="flex items-center gap-1 whitespace-nowrap font-mono text-xs text-parchment-dim">
-        <RollValue value={calc.roll} /> {operator} <ModifierValue value={Math.abs(calc.modifier)} /> ={" "}
-        <span className="text-parchment">{calc.total}</span>
-      </span>
-      {breakdownRows.map((row) => (
-        <span key={row.key} className="flex items-center gap-1 whitespace-nowrap text-[10px] text-parchment-dim/80">
-          {row.icon}
-          {row.text}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Variant C — Expand on demand: the roster row is identical to today's for
-// every entry, affected or not — a small "i" marker appears next to affected
-// ones only. Clicking/tapping it toggles a breakdown panel below that row.
-// Keeps the default roster as dense as it is today.
-// ---------------------------------------------------------------------------
-function VariantC({ f }: { f: Fixture }) {
-  const [expanded, setExpanded] = useState(false);
-  const calc = classifyRollCalculation(f.roll, f.finalModifier);
-  const affected = isAffected(f);
-
-  const summary =
-    calc.kind === "nat1" || calc.kind === "nat20" ? (
-      <span
-        className={`font-display text-xs font-semibold uppercase tracking-widest ${
-          calc.kind === "nat1" ? "text-red-500" : "text-gilt-bright"
-        }`}
-      >
-        {calc.kind === "nat1" ? "Nat 1" : "Nat 20"}
-      </span>
-    ) : (
-      <span className="flex items-center gap-1 whitespace-nowrap font-mono text-xs text-parchment-dim">
-        <RollValue value={calc.roll} /> {calc.modifier >= 0 ? "+" : "-"}{" "}
-        <ModifierValue value={Math.abs(calc.modifier)} /> = <span className="text-parchment">{calc.total}</span>
-      </span>
-    );
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      <span className="flex items-center gap-1.5">
-        {summary}
-        {affected ? (
-          <button
-            type="button"
-            onClick={() => setExpanded((v) => !v)}
-            aria-label="Show what affected this roll"
-            className="flex h-4 w-4 items-center justify-center rounded-full border border-gilt-bright text-[9px] font-bold text-gilt-bright hover:bg-gilt-bright hover:text-tavern-panel-dark"
-          >
-            i
-          </button>
-        ) : null}
-      </span>
-      {affected && expanded ? (
-        <div className="flex flex-col gap-0.5 rounded-sm border border-gilt-dark bg-tavern-panel-dark px-2 py-1 text-[10px] text-parchment-dim">
-          {f.originalRoll !== undefined ? (
-            <p>
-              Roll rerolled: {f.originalRoll} → {f.roll} ({f.rerollSource})
-            </p>
-          ) : null}
-          {f.modifierEffects?.map((e) => (
-            <p key={e.name} className="flex items-center gap-1">
-              <EffectIcon effect={e} />
-              {e.name}: {e.detail}
-            </p>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Variant D — Combination, per feedback on Variant A: the same inline
-// "roll + modifier = total" line, but with the inline chips pulled out into
-// caster-attributed badge rows underneath (one per effect) instead of
-// crowding the calculation itself. A reroll no longer says "was 4" — the
-// discarded roll renders as a greyed-out, struck-through d20 sitting next to
-// the live one, the way advantage/disadvantage pairs are usually drawn.
-// ---------------------------------------------------------------------------
-function VariantD({ f }: { f: Fixture }) {
-  const calc = classifyRollCalculation(f.roll, f.finalModifier);
-
-  const discardedRoll =
-    f.originalRoll !== undefined ? <RollValue value={f.originalRoll} struck /> : null;
-
-  const topLine =
-    calc.kind === "nat1" || calc.kind === "nat20" ? (
-      <span className="flex items-center gap-1">
-        {discardedRoll}
-        <span
-          className={`font-display text-xs font-semibold uppercase tracking-widest ${
-            calc.kind === "nat1" ? "text-red-500" : "text-gilt-bright"
-          }`}
-        >
-          {calc.kind === "nat1" ? "Nat 1" : "Nat 20"}
-        </span>
-      </span>
-    ) : (
-      <span className="flex items-center gap-1 whitespace-nowrap font-mono text-xs text-parchment-dim">
-        {discardedRoll}
-        <RollValue value={calc.roll} /> {calc.modifier >= 0 ? "+" : "-"}{" "}
-        <ModifierValue value={Math.abs(calc.modifier)} /> = <span className="text-parchment">{calc.total}</span>
-      </span>
-    );
-
-  const badgeRows: { key: string; icon: React.JSX.Element; name: string; caster: string }[] = [];
-  if (f.originalRoll !== undefined) {
-    badgeRows.push({
-      key: "reroll",
-      icon: <RerollIcon />,
-      name: f.rerollSource ?? "Reroll",
-      caster: f.rerollCasterName ?? "—",
-    });
-  }
-  for (const e of f.modifierEffects ?? []) {
-    badgeRows.push({ key: e.name, icon: <EffectIcon effect={e} />, name: e.name, caster: e.casterName });
-  }
-
-  return (
-    <div className="flex flex-col items-end gap-1">
-      {topLine}
-      {badgeRows.map((row) => (
-        <div key={row.key} className="flex items-center gap-1.5">
-          <span className="inline-flex items-center gap-1 rounded-full border border-gilt-dark bg-tavern-panel-dark px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gilt-bright">
-            {row.icon}
-            {row.name}
-          </span>
-          <span className="text-[10px] text-parchment-dim">{row.caster}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-const VARIANT_COMPONENTS: Record<VariantKey, (props: { f: Fixture }) => React.JSX.Element> = {
-  A: VariantA,
-  B: VariantB,
-  C: VariantC,
-  D: VariantD,
-};
-
-function PrototypeSwitcher({ current }: { current: VariantKey }) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  function go(next: VariantKey) {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("variant", next);
-    router.replace(`?${params.toString()}`, { scroll: false });
-  }
-
-  function cycle(delta: 1 | -1) {
-    const index = VARIANT_KEYS.indexOf(current);
-    const next = VARIANT_KEYS[(index + delta + VARIANT_KEYS.length) % VARIANT_KEYS.length]!;
-    go(next);
-  }
-
-  useEffect(() => {
-    function onKeyDown(e: KeyboardEvent) {
-      const target = e.target as HTMLElement | null;
-      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) {
-        return;
-      }
-      if (e.key === "ArrowLeft") cycle(-1);
-      if (e.key === "ArrowRight") cycle(1);
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current]);
-
-  return (
-    <div className="fixed bottom-4 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-full border-2 border-fuchsia-400 bg-black/90 px-4 py-2 shadow-lg">
-      <button
-        type="button"
-        onClick={() => cycle(-1)}
-        className="text-fuchsia-300 hover:text-fuchsia-100"
-        aria-label="Previous variant"
-      >
-        ←
-      </button>
-      <span className="font-mono text-xs text-fuchsia-200">
-        {current} — {VARIANT_NAMES[current]}
-      </span>
-      <button
-        type="button"
-        onClick={() => cycle(1)}
-        className="text-fuchsia-300 hover:text-fuchsia-100"
-        aria-label="Next variant"
-      >
-        →
-      </button>
-    </div>
-  );
-}
-
-// Production gating happens one level up in page.tsx (the /preview pattern —
-// hard-404 whenever process.env.VERCEL is set), so this component doesn't
-// need its own NODE_ENV check.
-export function RollCalculationVariants() {
-  const searchParams = useSearchParams();
-  const raw = searchParams.get("variant")?.toUpperCase();
-  const current: VariantKey = (VARIANT_KEYS as readonly string[]).includes(raw ?? "")
-    ? (raw as VariantKey)
-    : "D";
-  const Variant = VARIANT_COMPONENTS[current];
-
+/** One caster-attributed badge per spell effect — name only, no icon (the icon lives in the calc line for dice effects). */
+function EffectBadges({ f }: { f: Fixture }) {
+  if (!f.spellEffects || f.spellEffects.length === 0) return null;
   return (
     <>
-      <CardFrame title="Roll Calculation UI — prototype (spell-affected rolls)">
-        <ul className="divide-y divide-gilt-dark/40">
-          {FIXTURES.map((f) => (
-            <li key={f.label} className="flex items-center justify-between gap-3 py-2">
-              <div className="flex flex-col">
-                <span className="font-body text-sm text-parchment">{f.playerName}</span>
-                <span className="text-[10px] text-parchment-dim/70">{f.label}</span>
-              </div>
-              <Variant f={f} />
-            </li>
-          ))}
-        </ul>
-      </CardFrame>
-      <PrototypeSwitcher current={current} />
+      {f.spellEffects.map((e, i) => (
+        <div key={i} className="flex items-center gap-1.5" title={e.detail}>
+          <span className="rounded-full border border-gilt-dark bg-tavern-panel-dark px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gilt-bright">
+            {e.cardName}
+          </span>
+          <span className="text-[10px] text-parchment-dim">{e.casterName}</span>
+        </div>
+      ))}
     </>
+  );
+}
+
+export function RollCalculationVariants() {
+  return (
+    <CardFrame title="Roll Calculation UI — prototype (spell-affected rolls)">
+      <ul className="divide-y divide-gilt-dark/40">
+        {FIXTURES.map((f) => (
+          <li key={f.label} className="flex items-center justify-between gap-3 py-2">
+            <div className="flex flex-col">
+              <span className="font-body text-sm text-parchment">{f.playerName}</span>
+              <span className="text-[10px] text-parchment-dim/70">{f.label}</span>
+            </div>
+            <div className="flex flex-col items-end gap-1">
+              <CalcLine f={f} />
+              <EffectBadges f={f} />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </CardFrame>
   );
 }

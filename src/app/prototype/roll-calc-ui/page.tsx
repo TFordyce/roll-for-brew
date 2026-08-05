@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { RollCalculationVariants } from "./RollCalculationVariants";
 
@@ -12,7 +11,7 @@ import { RollCalculationVariants } from "./RollCalculationVariants";
  * VERCEL for every one of its environments (production, preview, even
  * `vercel dev`), so this route is inert the moment it's actually deployed.
  *
- * See RollCalculationVariants.tsx for the three variants and fixtures.
+ * See RollCalculationVariants.tsx for the fixtures and design.
  */
 export default function RollCalcUiPrototypePage() {
   if (process.env.VERCEL) {
@@ -25,14 +24,10 @@ export default function RollCalcUiPrototypePage() {
         Prototype: Roll Calculation UI
       </h1>
       <p className="max-w-md text-center font-body text-sm text-parchment-dim">
-        Fixture data only — nothing here is a live round. Use the switcher at the bottom (or ←/→) to flip between
-        variants A/B/C.
+        Fixture data only — nothing here is a live round.
       </p>
       <section className="w-full max-w-md">
-        {/* useSearchParams needs a Suspense boundary in the app router */}
-        <Suspense fallback={null}>
-          <RollCalculationVariants />
-        </Suspense>
+        <RollCalculationVariants />
       </section>
     </main>
   );
