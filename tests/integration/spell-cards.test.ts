@@ -27,11 +27,11 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  it("seeds the catalog with all 65 cards across the documented tier split", async () => {
+  it("seeds the catalog with all 71 cards across the documented tier split", async () => {
     const { count: total } = await admin
       .from("spell_cards")
       .select("*", { count: "exact", head: true });
-    expect(total).toBe(65);
+    expect(total).toBe(71);
 
     const { count: common } = await admin
       .from("spell_cards")
@@ -46,16 +46,16 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
       .select("*", { count: "exact", head: true })
       .eq("tier", "epic");
 
-    expect(common).toBe(20);
-    expect(rare).toBe(33);
-    expect(epic).toBe(12);
+    expect(common).toBe(22);
+    expect(rare).toBe(35);
+    expect(epic).toBe(14);
   });
 
   it("seeds exactly one deck instance per catalog card", async () => {
     const { count } = await admin
       .from("spell_deck_instances")
       .select("*", { count: "exact", head: true });
-    expect(count).toBe(65);
+    expect(count).toBe(71);
   });
 
   it("draw_spell_card gives a player holding nothing an immediate held card", async () => {

@@ -78,13 +78,19 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     await caster.client.rpc("close_round", { p_round_id: roundId });
 
     const { data: effects } = await caster.client.rpc("get_round_modifier_effects", { p_round_id: roundId });
-    const rows = effects as { target_player_id: string; effect_kind: string; effect_params: Record<string, unknown> }[];
+    const rows = effects as {
+      target_player_id: string;
+      effect_kind: string;
+      effect_params: Record<string, unknown>;
+      resolved_value: number | null;
+    }[];
 
     expect(rows).toHaveLength(1);
     expect(rows[0]).toEqual({
       target_player_id: target.googleSub,
       effect_kind: "flat_modifier",
       effect_params: { delta: -3 },
+      resolved_value: null,
     });
   });
 
