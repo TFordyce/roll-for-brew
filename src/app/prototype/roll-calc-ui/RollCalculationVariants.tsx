@@ -35,6 +35,7 @@ type ModifierEffectFixture = {
   name: string;
   detail: string; // human-readable, e.g. "×2" or "set to 0" or "+1d4 (rolled 3)"
   dieShape?: "d4" | "d6"; // present when this effect adds/subtracts a rolled die rather than a flat/multiplier/set value
+  casterName: string; // who cast the spell that produced this effect
 };
 
 type Fixture = {
@@ -45,6 +46,7 @@ type Fixture = {
   roll: number;
   originalRoll?: number; // present only when a reroll swapped the die
   rerollSource?: string;
+  rerollCasterName?: string;
   modifierEffects?: ModifierEffectFixture[];
 };
 
@@ -76,7 +78,7 @@ const FIXTURES: Fixture[] = [
     baseModifier: 2,
     finalModifier: 4,
     roll: 11,
-    modifierEffects: [{ name: "Lucky Brew", detail: "+2" }],
+    modifierEffects: [{ name: "Lucky Brew", detail: "+2", casterName: "Owen" }],
   },
   {
     label: "Multiplier spell effect (×2)",
@@ -84,7 +86,7 @@ const FIXTURES: Fixture[] = [
     baseModifier: 3,
     finalModifier: 6,
     roll: 9,
-    modifierEffects: [{ name: "Double Down", detail: "×2" }],
+    modifierEffects: [{ name: "Double Down", detail: "×2", casterName: "Dev" }],
   },
   {
     label: 'Hard "set" spell effect',
@@ -92,7 +94,7 @@ const FIXTURES: Fixture[] = [
     baseModifier: 4,
     finalModifier: 0,
     roll: 13,
-    modifierEffects: [{ name: "Milky Brew", detail: "set to 0" }],
+    modifierEffects: [{ name: "Milky Brew", detail: "set to 0", casterName: "Sam" }],
   },
   {
     label: "Bonus die (+1d4)",
@@ -100,7 +102,7 @@ const FIXTURES: Fixture[] = [
     baseModifier: 2,
     finalModifier: 5,
     roll: 10,
-    modifierEffects: [{ name: "Ember Boost", detail: "+1d4 (rolled 3)", dieShape: "d4" }],
+    modifierEffects: [{ name: "Ember Boost", detail: "+1d4 (rolled 3)", dieShape: "d4", casterName: "Priya" }],
   },
   {
     label: "Penalty die (-1d4)",
@@ -108,7 +110,9 @@ const FIXTURES: Fixture[] = [
     baseModifier: 4,
     finalModifier: 2,
     roll: 15,
-    modifierEffects: [{ name: "Curse of Stumbling", detail: "-1d4 (rolled 2)", dieShape: "d4" }],
+    modifierEffects: [
+      { name: "Curse of Stumbling", detail: "-1d4 (rolled 2)", dieShape: "d4", casterName: "Dev" },
+    ],
   },
   {
     label: "Stacked effects (flat + dice penalty)",
@@ -117,8 +121,8 @@ const FIXTURES: Fixture[] = [
     finalModifier: 3,
     roll: 8,
     modifierEffects: [
-      { name: "Lucky Brew", detail: "+2" },
-      { name: "Curse of Stumbling", detail: "-1d4 (rolled 1)", dieShape: "d4" },
+      { name: "Lucky Brew", detail: "+2", casterName: "Owen" },
+      { name: "Curse of Stumbling", detail: "-1d4 (rolled 1)", dieShape: "d4", casterName: "Sam" },
     ],
   },
   {
@@ -129,6 +133,7 @@ const FIXTURES: Fixture[] = [
     roll: 17,
     originalRoll: 4,
     rerollSource: "Chaos Die",
+    rerollCasterName: "Mara",
   },
   {
     label: "Reroll landed on nat 1",
@@ -138,15 +143,17 @@ const FIXTURES: Fixture[] = [
     roll: 1,
     originalRoll: 12,
     rerollSource: "Chaos Die",
+    rerollCasterName: "Owen",
   },
 ];
 
-const VARIANT_KEYS = ["A", "B", "C"] as const;
+const VARIANT_KEYS = ["A", "B", "C", "D"] as const;
 type VariantKey = (typeof VARIANT_KEYS)[number];
 const VARIANT_NAMES: Record<VariantKey, string> = {
   A: "Inline chip",
   B: "Stacked breakdown line",
   C: "Expand on demand",
+  D: "Inline + caster badges (latest)",
 };
 
 function isAffected(f: Fixture): boolean {
@@ -157,17 +164,35 @@ function isAffected(f: Fixture): boolean {
 // Shared iconography — reused by all three variants below.
 // ---------------------------------------------------------------------------
 
-/** The d20-roll value, sat inside a wireframe icosahedron-ish outline. */
-function RollValue({ value }: { value: number }) {
+/**
+ * The d20-roll value, sat inside a wireframe icosahedron-ish outline.
+ * `struck` renders it greyed-out with a line through the number — the
+ * discarded roll of a reroll/advantage-disadvantage pair, sat next to the
+ * live one rather than spelled out as "was 4" text.
+ */
+function RollValue({ value, struck = false }: { value: number; struck?: boolean }) {
   return (
-    <span className="relative inline-flex h-6 w-6 shrink-0 items-center justify-center" title="d20 roll">
-      <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full text-parchment-dim/50" fill="none" stroke="currentColor" strokeWidth="1">
+    <span
+      className={`relative inline-flex h-6 w-6 shrink-0 items-center justify-center ${struck ? "opacity-40" : ""}`}
+      title={struck ? "discarded roll" : "d20 roll"}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        className={`absolute inset-0 h-full w-full ${struck ? "text-parchment-dim/30" : "text-parchment-dim/50"}`}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1"
+      >
         <polygon points="12,1 22,7 22,17 12,23 2,17 2,7" />
         <polyline points="2,7 12,13 22,7" />
         <polyline points="12,13 12,23" />
         <polyline points="12,1 12,13" />
       </svg>
-      <span className="relative z-10 font-mono text-[11px] text-parchment">{value}</span>
+      <span
+        className={`relative z-10 font-mono text-[11px] ${struck ? "text-parchment-dim line-through" : "text-parchment"}`}
+      >
+        {value}
+      </span>
     </span>
   );
 }
@@ -186,13 +211,34 @@ function SparkleIcon() {
   );
 }
 
-/** A wireframe d4 (triangular pyramid) — a bonus/penalty die was added behind this number. */
+/**
+ * A wireframe d4 (triangular pyramid) with its face-count layered in the
+ * middle, same layering pattern as RollValue's number-inside-the-die look —
+ * labels the shape itself ("this is a d4 effect"), the way a physical d4 is
+ * printed. The actual rolled sub-value (e.g. "rolled 3") stays in the
+ * effect's text, not on the icon.
+ * TODO: pending /research on a geometrically-accurate wireframe source
+ * (agent in flight) — this is hand-drawn and may get swapped.
+ */
 function D4Icon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 shrink-0 text-sky-300" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-      <polygon points="12,2 22,20 2,20" />
-      <polyline points="12,2 12,20" />
-      <polyline points="12,2 7,20" />
+    <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" title="d4 effect">
+      <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full text-sky-300/70" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+        <polygon points="12,2 22,20 2,20" />
+        <polyline points="12,2 12,20" />
+        <polyline points="12,2 7,20" />
+      </svg>
+      <span className="relative z-10 translate-y-[3px] font-mono text-[7px] font-bold text-sky-100">4</span>
+    </span>
+  );
+}
+
+/** A small twirl — marks the reroll/discard-and-replace badge underneath. */
+function RerollIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-3 w-3 shrink-0 text-fuchsia-300" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3" />
+      <path d="M18 3v4h-4M6 21v-4h4" />
     </svg>
   );
 }
@@ -378,10 +424,74 @@ function VariantC({ f }: { f: Fixture }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Variant D — Combination, per feedback on Variant A: the same inline
+// "roll + modifier = total" line, but with the inline chips pulled out into
+// caster-attributed badge rows underneath (one per effect) instead of
+// crowding the calculation itself. A reroll no longer says "was 4" — the
+// discarded roll renders as a greyed-out, struck-through d20 sitting next to
+// the live one, the way advantage/disadvantage pairs are usually drawn.
+// ---------------------------------------------------------------------------
+function VariantD({ f }: { f: Fixture }) {
+  const calc = classifyRollCalculation(f.roll, f.finalModifier);
+
+  const discardedRoll =
+    f.originalRoll !== undefined ? <RollValue value={f.originalRoll} struck /> : null;
+
+  const topLine =
+    calc.kind === "nat1" || calc.kind === "nat20" ? (
+      <span className="flex items-center gap-1">
+        {discardedRoll}
+        <span
+          className={`font-display text-xs font-semibold uppercase tracking-widest ${
+            calc.kind === "nat1" ? "text-red-500" : "text-gilt-bright"
+          }`}
+        >
+          {calc.kind === "nat1" ? "Nat 1" : "Nat 20"}
+        </span>
+      </span>
+    ) : (
+      <span className="flex items-center gap-1 whitespace-nowrap font-mono text-xs text-parchment-dim">
+        {discardedRoll}
+        <RollValue value={calc.roll} /> {calc.modifier >= 0 ? "+" : "-"}{" "}
+        <ModifierValue value={Math.abs(calc.modifier)} /> = <span className="text-parchment">{calc.total}</span>
+      </span>
+    );
+
+  const badgeRows: { key: string; icon: React.JSX.Element; name: string; caster: string }[] = [];
+  if (f.originalRoll !== undefined) {
+    badgeRows.push({
+      key: "reroll",
+      icon: <RerollIcon />,
+      name: f.rerollSource ?? "Reroll",
+      caster: f.rerollCasterName ?? "—",
+    });
+  }
+  for (const e of f.modifierEffects ?? []) {
+    badgeRows.push({ key: e.name, icon: <EffectIcon effect={e} />, name: e.name, caster: e.casterName });
+  }
+
+  return (
+    <div className="flex flex-col items-end gap-1">
+      {topLine}
+      {badgeRows.map((row) => (
+        <div key={row.key} className="flex items-center gap-1.5">
+          <span className="inline-flex items-center gap-1 rounded-full border border-gilt-dark bg-tavern-panel-dark px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gilt-bright">
+            {row.icon}
+            {row.name}
+          </span>
+          <span className="text-[10px] text-parchment-dim">{row.caster}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const VARIANT_COMPONENTS: Record<VariantKey, (props: { f: Fixture }) => React.JSX.Element> = {
   A: VariantA,
   B: VariantB,
   C: VariantC,
+  D: VariantD,
 };
 
 function PrototypeSwitcher({ current }: { current: VariantKey }) {
@@ -447,7 +557,7 @@ export function RollCalculationVariants() {
   const raw = searchParams.get("variant")?.toUpperCase();
   const current: VariantKey = (VARIANT_KEYS as readonly string[]).includes(raw ?? "")
     ? (raw as VariantKey)
-    : "A";
+    : "D";
   const Variant = VARIANT_COMPONENTS[current];
 
   return (
