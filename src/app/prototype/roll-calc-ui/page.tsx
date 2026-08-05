@@ -26,7 +26,7 @@ export default function RollCalcUiPrototypePage() {
       <p className="max-w-md text-center font-body text-sm text-parchment-dim">
         Fixture data only — nothing here is a live round.
       </p>
-      <section className="w-full max-w-md">
+      <section className="w-full max-w-xl">
         <RollCalculationVariants />
       </section>
     </main>
