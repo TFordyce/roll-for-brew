@@ -165,7 +165,19 @@ function isAffected(f: Fixture): boolean {
 // ---------------------------------------------------------------------------
 
 /**
- * The d20-roll value, sat inside a wireframe icosahedron-ish outline.
+ * The d20-roll value, sat inside a real icosahedron wireframe — not
+ * hand-drawn: geometry lifted from Wikimedia Commons' "Icosahedron
+ * graph.svg" (dual GFDL 1.2+ / CC BY-SA 3.0 — verified 12-vertex icosahedron
+ * graph, see research/wireframe-dice-icons.md), rescaled from its native
+ * ~627×586 canvas into this 24-unit icon via a single uniform <g scale>
+ * rather than hand-retranscribed coordinates. `vector-effect:
+ * non-scaling-stroke` keeps the line weight legible after that scale-down
+ * without needing to guess a rescaled stroke-width by hand.
+ *
+ * LICENSING NOTE: this specific source is CC BY-SA — if this variant ships,
+ * it needs an attribution credit somewhere (an in-app "About"/credits
+ * list is enough), unlike the CC0/ISC d4 and d6 sources below.
+ *
  * `struck` renders it greyed-out with a line through the number — the
  * discarded roll of a reroll/advantage-disadvantage pair, sat next to the
  * live one rather than spelled out as "was 4" text.
@@ -180,13 +192,38 @@ function RollValue({ value, struck = false }: { value: number; struck?: boolean 
         viewBox="0 0 24 24"
         className={`absolute inset-0 h-full w-full ${struck ? "text-parchment-dim/30" : "text-parchment-dim/50"}`}
         fill="none"
-        stroke="currentColor"
-        strokeWidth="1"
+        aria-hidden
       >
-        <polygon points="12,1 22,7 22,17 12,23 2,17 2,7" />
-        <polyline points="2,7 12,13 22,7" />
-        <polyline points="12,13 12,23" />
-        <polyline points="12,1 12,13" />
+        <g transform="scale(0.0383)">
+          <g transform="translate(1 1)">
+            <path
+              d="M 213.27708,407.68141 L 213.27708,312.91607 L 298.83665,261.47203 L 383.31318,311.29152 L 383.31318,407.1399 L 298.83665,454.79333 L 213.27708,407.68141 z
+                 M 298.83665,262.01354 L 271.21932,337.2843 L 214.90163,406.05686 L 298.29513,377.3565 L 381.68863,407.1399 L 326.45398,337.82582 L 298.83665,262.01354 z
+                 M 272.30235,337.2843 L 298.29513,376.81499 L 325.91246,337.2843 L 272.30235,337.2843 z
+                 M 214.36011,313.9991 L 270.13629,336.74278 M 325.37094,336.74278 L 382.23015,312.37455 M 298.83665,377.3565 L 298.83665,452.62726
+                 M 9.50837,571.15925 L 613.71473,571.54216 L 298.29513,10.20849 L 9.50837,571.15925 z
+                 M 10.90861,570.39343 L 213.8186,314.54062 L 298.29513,11.29152 L 384.93773,312.37455 L 614.03195,571.66793 L 297.2121,454.25181 L 10.90861,570.39343 z
+                 M 298.2259,12.00612 L 298.2259,262.42914 M 383.23188,405.6374 L 611.44612,569.5228 M 10.27772,569.5228 L 213.21992,407.93486"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              vectorEffect="non-scaling-stroke"
+            />
+            <g transform="translate(154.25181,171.94134)" fill="currentColor" opacity="0.7">
+              <circle r="32" cx="143.90794" cy="90.072206" />
+              <circle r="32" cx="229.60289" cy="140.16245" />
+              <circle r="32" cx="172.92419" cy="165.88447" />
+              <circle r="32" cx="116.24548" cy="165.88447" />
+              <circle r="32" cx="59.566787" cy="140.16245" />
+              <circle r="32" cx="143.90794" cy="205.84116" />
+              <circle r="32" cx="143.90794" cy="283.61011" />
+              <circle r="32" cx="59.566787" cy="235.74" />
+              <circle r="32" cx="229.60289" cy="235.74" />
+              <circle r="32" cx="-143.50181" cy="398.46571" />
+              <circle r="32" cx="458.70758" cy="398.46571" />
+              <circle r="32" cx="143.90794" cy="-161.19134" />
+            </g>
+          </g>
+        </g>
       </svg>
       <span
         className={`relative z-10 font-mono text-[11px] ${struck ? "text-parchment-dim line-through" : "text-parchment"}`}
@@ -217,16 +254,33 @@ function SparkleIcon() {
  * labels the shape itself ("this is a d4 effect"), the way a physical d4 is
  * printed. The actual rolled sub-value (e.g. "rolled 3") stays in the
  * effect's text, not on the icon.
- * TODO: pending /research on a geometrically-accurate wireframe source
- * (agent in flight) — this is hand-drawn and may get swapped.
+ *
+ * Geometry lifted from Wikimedia Commons' "Basic tetrahedron.svg" (CC0 1.0,
+ * no attribution required — see research/wireframe-dice-icons.md): a
+ * genuine tetrahedron projection with the back edge dashed per the standard
+ * wireframe convention, rescaled from its native 800×800 canvas the same
+ * way as RollValue's d20 — one uniform <g scale>, not hand-retranscribed
+ * coordinates — with vector-effect keeping strokes legible post-scale.
  */
 function D4Icon() {
   return (
     <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center" title="d4 effect">
-      <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full text-sky-300/70" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
-        <polygon points="12,2 22,20 2,20" />
-        <polyline points="12,2 12,20" />
-        <polyline points="12,2 7,20" />
+      <svg viewBox="0 0 24 24" className="absolute inset-0 h-full w-full text-sky-300/70" fill="none" aria-hidden>
+        <g transform="scale(0.03)">
+          <line
+            x1="100"
+            y1="60"
+            x2="790"
+            y2="600"
+            stroke="currentColor"
+            strokeWidth="1.2"
+            strokeLinejoin="round"
+            strokeDasharray="24 16"
+            vectorEffect="non-scaling-stroke"
+          />
+          <path d="M 10,790 L 400,10 L 790,600 Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+          <path d="M 10,790 L 100,60 L 400,10" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+        </g>
       </svg>
       <span className="relative z-10 translate-y-[3px] font-mono text-[7px] font-bold text-sky-100">4</span>
     </span>
