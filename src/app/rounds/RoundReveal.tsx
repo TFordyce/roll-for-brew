@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
-import { formatModifier } from "@/lib/game/rollCalculation";
+import { classifyRollCalculation, formatModifier } from "@/lib/game/rollCalculation";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 
@@ -137,6 +137,13 @@ export function RoundReveal({
             const revealedValue = revealedValueByPlayerId.get(p.playerId);
             const value = revealedValue ?? (p.playerId === selfPlayerId ? ownRoll : null);
             const isBrewer = brewerId === p.playerId;
+            // The badge must show the same value the inline RollCalculation
+            // expression shows and resolveLayer actually compares — roll +
+            // modifier for an ordinary roll, but the bare roll for nat-1/
+            // nat-20, which resolve by their own rule regardless of modifier
+            // (issue #153).
+            const calc = value === null ? null : classifyRollCalculation(value, p.modifier);
+            const badgeValue = calc === null ? null : calc.kind === "sum" ? calc.total : value;
 
             return (
               <li key={p.playerId} className="flex items-center justify-between gap-3 py-2">
@@ -152,7 +159,7 @@ export function RoundReveal({
                         : "border-gilt bg-tavern-panel-dark text-parchment"
                   }`}
                 >
-                  {value ?? "?"}
+                  {badgeValue ?? "?"}
                 </span>
               </li>
             );
