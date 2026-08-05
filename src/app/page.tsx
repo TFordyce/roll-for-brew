@@ -27,6 +27,7 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 import { SignOutBadge } from "@/app/_components/SignOutBadge";
+import { SubmitButton } from "@/app/_components/SubmitButton";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -213,37 +214,30 @@ export default async function HomePage() {
                 {!hasDeclared ? (
                   <form action={declareInAction} className="mt-4">
                     <input type="hidden" name="roundId" value={activeRound.id} />
-                    <button
-                      type="submit"
-                      className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
-                    >
+                    <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                       I&rsquo;m in
-                    </button>
+                    </SubmitButton>
                   </form>
                 ) : null}
 
                 {hasDeclared && !isStarter ? (
                   <form action={withdrawDeclarationAction} className="mt-4">
                     <input type="hidden" name="roundId" value={activeRound.id} />
-                    <button
-                      type="submit"
-                      className="w-full rounded-md border-2 border-gilt-dark bg-transparent px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment-dim hover:border-gilt hover:text-parchment"
-                    >
+                    <SubmitButton className="w-full rounded-md border-2 border-gilt-dark bg-transparent px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment-dim hover:border-gilt hover:text-parchment disabled:cursor-not-allowed disabled:hover:border-gilt-dark disabled:hover:text-parchment-dim">
                       Not in after all
-                    </button>
+                    </SubmitButton>
                   </form>
                 ) : null}
 
                 {isStarter ? (
                   <form action={closeRoundAction} className="mt-3">
                     <input type="hidden" name="roundId" value={activeRound.id} />
-                    <button
-                      type="submit"
+                    <SubmitButton
                       disabled={!canClose}
                       className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark"
                     >
                       {canClose ? "Let's roll" : `Need ${2 - participants.length} more to roll`}
-                    </button>
+                    </SubmitButton>
                   </form>
                 ) : null}
               </CardFrame>
@@ -289,12 +283,9 @@ export default async function HomePage() {
               </div>
 
               <form action={startRoundAction} className="mt-4">
-                <button
-                  type="submit"
-                  className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
-                >
+                <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                   Start Round
-                </button>
+                </SubmitButton>
               </form>
             </CardFrame>
           </div>

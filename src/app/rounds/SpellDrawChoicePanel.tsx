@@ -7,6 +7,7 @@ import {
   type DrawPendingSpellCardManualState,
 } from "@/app/rounds/actions";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { SubmitButton } from "@/app/_components/SubmitButton";
 
 const initialState: DrawPendingSpellCardManualState = { status: "idle" };
 
@@ -39,12 +40,9 @@ export function SpellDrawChoicePanel({
 
         <form action={drawPendingSpellCardAction} className="mt-3">
           <input type="hidden" name="roundId" value={roundId} />
-          <button
-            type="submit"
-            className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
-          >
+          <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
             Draw in the app
-          </button>
+          </SubmitButton>
         </form>
 
         <div className="my-3 text-center font-body text-xs uppercase tracking-widest text-parchment-dim">or</div>

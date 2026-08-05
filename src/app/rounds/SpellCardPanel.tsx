@@ -8,6 +8,7 @@ import {
   setSpellCastTargetAction,
 } from "@/app/rounds/actions";
 import { CardFrame } from "@/app/_components/CardFrame";
+import { SubmitButton } from "@/app/_components/SubmitButton";
 
 /**
  * The docked held-card widget + casting/targeting/swap forms (issues #66/
@@ -57,22 +58,16 @@ export function SpellCardPanel({
               <form action={resolveCardSwapAction} className="flex-1">
                 <input type="hidden" name="keepNew" value="true" />
                 <input type="hidden" name="roomId" value={roomId} />
-                <button
-                  type="submit"
-                  className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
-                >
+                <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                   Keep {pendingSwap.cardName}
-                </button>
+                </SubmitButton>
               </form>
               <form action={resolveCardSwapAction} className="flex-1">
                 <input type="hidden" name="keepNew" value="false" />
                 <input type="hidden" name="roomId" value={roomId} />
-                <button
-                  type="submit"
-                  className="w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
-                >
+                <SubmitButton className="w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark disabled:cursor-not-allowed disabled:border-gilt-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                   Keep {held?.cardName}
-                </button>
+                </SubmitButton>
               </form>
             </div>
           </div>
@@ -101,12 +96,9 @@ export function SpellCardPanel({
                       </option>
                     ))}
                   </select>
-                  <button
-                    type="submit"
-                    className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
-                  >
+                  <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                     End effect with {held.cardName}
-                  </button>
+                  </SubmitButton>
                 </form>
               ) : (
                 <p className="mt-2 font-body text-xs text-parchment-dim">Nothing eligible to end right now.</p>
@@ -145,12 +137,9 @@ export function SpellCardPanel({
                     />
                   </label>
                 ) : null}
-                <button
-                  type="submit"
-                  className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
-                >
+                <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                   Cast {held.cardName}
-                </button>
+                </SubmitButton>
               </form>
             ) : null}
           </div>
@@ -174,12 +163,9 @@ export function SpellCardPanel({
                     </option>
                   ))}
                 </select>
-                <button
-                  type="submit"
-                  className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
-                >
+                <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
                   Confirm target
-                </button>
+                </SubmitButton>
               </form>
             ))
           : null}

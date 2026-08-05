@@ -7,6 +7,7 @@ import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { ReactionStackEntry } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { orderStackForResolution } from "@/lib/game/reactionStack";
+import { SubmitButton } from "@/app/_components/SubmitButton";
 
 /**
  * The reaction window's ribbon banner (issue #68): a bottom bar over the
@@ -104,25 +105,21 @@ export function ReactionBanner({
             </select>
           ) : null}
 
-          <button
-            type="submit"
+          <SubmitButton
             disabled={heldReactionCard.target === "CARD" && negatableStack.length === 0}
             className="rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark"
           >
             Cast
-          </button>
+          </SubmitButton>
         </form>
       ) : null}
 
       {eligible && !alreadyPassed ? (
         <form action={passReactionWindowAction}>
           <input type="hidden" name="roundId" value={roundId} />
-          <button
-            type="submit"
-            className="rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
-          >
+          <SubmitButton className="rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark disabled:cursor-not-allowed disabled:border-gilt-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
             Pass
-          </button>
+          </SubmitButton>
         </form>
       ) : eligible ? (
         <p className="font-body text-sm text-parchment-dim">Waiting on other players&hellip;</p>
