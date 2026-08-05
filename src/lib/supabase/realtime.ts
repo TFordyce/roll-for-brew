@@ -8,7 +8,7 @@ export type RoundRevealedPayload = {
   roundId: string;
   brewerId: string;
   cupsMade: number;
-  rolls: { playerId: string; value: number }[];
+  rolls: { playerId: string; value: number; discardedValue: number | null }[];
 };
 
 export type LayerTiedPayload = {
@@ -28,7 +28,7 @@ export type RoundClosedPayload = {
 export type LayerRollsRevealedPayload = {
   roundId: string;
   layer: number;
-  rolls: { playerId: string; value: number }[];
+  rolls: { playerId: string; value: number; discardedValue: number | null }[];
 };
 
 export type ReactionWindowChangedPayload = {

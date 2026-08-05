@@ -4,6 +4,10 @@ export type LayerRoll = {
   playerId: string;
   value: number;
   modifierSnapshot: number;
+  // Only non-null when advantage/disadvantage applied this roll (0049/0051,
+  // issue #164/#167) — the d20 rolled a second time and not kept, shown
+  // struck-through next to the kept value.
+  discardedValue: number | null;
 };
 
 export type CompletedLayer = {
@@ -104,6 +108,7 @@ export async function getCurrentLayerRollsIfComplete(
     player_id: string;
     value: number;
     modifier_snapshot: number;
+    discarded_value: number | null;
   }[];
   const [first] = rows;
   if (!first) return null;
@@ -114,6 +119,7 @@ export async function getCurrentLayerRollsIfComplete(
       playerId: row.player_id,
       value: row.value,
       modifierSnapshot: row.modifier_snapshot,
+      discardedValue: row.discarded_value,
     })),
   };
 }

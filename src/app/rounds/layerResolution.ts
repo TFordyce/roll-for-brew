@@ -122,7 +122,7 @@ export async function applyLayerOutcome(
       roundId,
       brewerId: outcome.playerId,
       cupsMade,
-      rolls: rolls.map((r) => ({ playerId: r.playerId, value: r.value })),
+      rolls: rolls.map((r) => ({ playerId: r.playerId, value: r.value, discardedValue: r.discardedValue })),
     });
   } else {
     const nextLayer = await deps.advanceRoundLayer(supabase, roundId, outcome.tiedPlayerIds);
@@ -239,7 +239,11 @@ export async function resolveCompletedLayerIfAny(
   await broadcastLayerRollsRevealed(supabase, roomId, {
     roundId,
     layer: completedLayer.layer,
-    rolls: completedLayer.rolls.map((r) => ({ playerId: r.playerId, value: r.value })),
+    rolls: completedLayer.rolls.map((r) => ({
+      playerId: r.playerId,
+      value: r.value,
+      discardedValue: r.discardedValue,
+    })),
   });
 
   const { isClosed } = await openReactionWindow(supabase, roundId, completedLayer.layer);

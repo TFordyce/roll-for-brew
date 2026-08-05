@@ -33,7 +33,7 @@ export type ModifierEffectDetail = {
     | "set_modifier"
     | "advantage"
     | "disadvantage";
-  effectParams: { delta?: number; multiplier?: number; value?: number };
+  effectParams: { delta?: number; multiplier?: number; value?: number; dice?: string };
   resolvedValue: number | null;
   cardName: string;
   casterPlayerId: string;
@@ -100,7 +100,7 @@ type RawModifierEffectRow = {
     | "set_modifier"
     | "advantage"
     | "disadvantage";
-  effect_params: { delta?: number; multiplier?: number; value?: number };
+  effect_params: { delta?: number; multiplier?: number; value?: number; dice?: string };
   resolved_value: number | null;
   card_name: string;
   caster_player_id: string;

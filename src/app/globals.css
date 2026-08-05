@@ -1,3 +1,35 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Spell-effect badge animation (issue #167, prototype worktree-prototype-roll-calc-ui
+   commit 95bda4f) — a scrolling gradient sweep on the card-name text, plus a
+   soft pulse/glow layered on top. Applied via RollCalculation.tsx's inline
+   `animation` style, which references these two keyframe sets by name. */
+@keyframes badge-scroll {
+  to {
+    background-position: -100% 0;
+  }
+}
+@keyframes text-pulse-glow-boon {
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 0px rgba(245, 197, 66, 0);
+  }
+  50% {
+    opacity: 0.85;
+    text-shadow: 0 0 6px rgba(245, 197, 66, 0.85);
+  }
+}
+@keyframes text-pulse-glow-bust {
+  0%,
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 0px rgba(224, 67, 63, 0);
+  }
+  50% {
+    opacity: 0.85;
+    text-shadow: 0 0 6px rgba(224, 67, 63, 0.85);
+  }
+}
