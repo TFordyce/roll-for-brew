@@ -1,11 +1,12 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { closeRound, declareIn, getRoundRoomId, startRound } from "@/lib/supabase/rounds";
+import { closeRound, declareIn, getRoundRoomId, startRound, withdrawDeclaration } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import {
   broadcastPlayerDeclaredIn,
+  broadcastPlayerWithdrew,
   broadcastReactionWindowChanged,
   broadcastRoundClosed,
   broadcastRoundStarted,
@@ -78,6 +79,28 @@ export async function declareInAction(formData: FormData) {
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+}
+
+/** Undoes an accidental "I'm in" (declareInAction) while the round is still open. */
+export async function withdrawDeclarationAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("withdrawDeclarationAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await withdrawDeclaration(supabase, roundId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidateRoundSurfaces();
+    return;
+  }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastPlayerWithdrew(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
 }

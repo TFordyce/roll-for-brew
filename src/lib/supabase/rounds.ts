@@ -47,6 +47,18 @@ export async function declareIn(supabase: SupabaseClient, roundId: string): Prom
 }
 
 /**
+ * Calls the withdraw_declaration RPC (supabase/migrations/
+ * 0043_withdraw_declaration.sql) — undoes an accidental "I'm in" while the
+ * round is still open. The starter can't withdraw this way; their
+ * round_participants row represents owning the round, not an optional
+ * declaration.
+ */
+export async function withdrawDeclaration(supabase: SupabaseClient, roundId: string): Promise<void> {
+  const { error } = await supabase.rpc("withdraw_declaration", { p_round_id: roundId });
+  if (error) throw error;
+}
+
+/**
  * Calls the close_round RPC. Only succeeds for the round's starter, and
  * only once at least 2 players have declared in.
  */

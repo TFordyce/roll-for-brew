@@ -9,7 +9,7 @@ import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from 
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
-import { closeRoundAction, declareInAction, startRoundAction } from "@/app/rounds/actions";
+import { closeRoundAction, declareInAction, startRoundAction, withdrawDeclarationAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
@@ -218,6 +218,18 @@ export default async function HomePage() {
                       className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright"
                     >
                       I&rsquo;m in
+                    </button>
+                  </form>
+                ) : null}
+
+                {hasDeclared && !isStarter ? (
+                  <form action={withdrawDeclarationAction} className="mt-4">
+                    <input type="hidden" name="roundId" value={activeRound.id} />
+                    <button
+                      type="submit"
+                      className="w-full rounded-md border-2 border-gilt-dark bg-transparent px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment-dim hover:border-gilt hover:text-parchment"
+                    >
+                      Not in after all
                     </button>
                   </form>
                 ) : null}
