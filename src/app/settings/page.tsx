@@ -4,8 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
+import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
+import { getTodaysModifierAdjustments } from "@/lib/supabase/modifierAdjustments";
 import { SettingsForm } from "@/app/settings/SettingsForm";
 import { AdminModeToggle } from "@/app/settings/AdminModeToggle";
+import { ModifierAdjustmentForm } from "@/app/settings/ModifierAdjustmentForm";
+import { ModifierAdjustmentList } from "@/app/settings/ModifierAdjustmentList";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 
@@ -21,6 +25,12 @@ export default async function SettingsPage() {
   const isAdmin = await getIsAdmin(supabase, current.playerId);
   const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
 
+  const roomId = await enterTodaysRoom(supabase);
+  const [roster, adjustments] = await Promise.all([
+    getRoomRoster(supabase, roomId),
+    getTodaysModifierAdjustments(supabase, roomId),
+  ]);
+
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={current.playerId} />
@@ -31,6 +41,18 @@ export default async function SettingsPage() {
       <section className="w-full max-w-sm">
         <CardFrame title="Roll Input Mode">
           <SettingsForm rollInputMode={rollInputMode} />
+        </CardFrame>
+      </section>
+
+      <section className="w-full max-w-sm">
+        <CardFrame title="Modifier Adjustment">
+          <ModifierAdjustmentForm roster={roster} />
+        </CardFrame>
+      </section>
+
+      <section className="w-full max-w-sm">
+        <CardFrame title="Today's Adjustments">
+          <ModifierAdjustmentList adjustments={adjustments} currentPlayerId={current.playerId} />
         </CardFrame>
       </section>
 
