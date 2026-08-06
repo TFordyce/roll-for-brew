@@ -8,12 +8,14 @@ import {
   getLossPercentageLeaderboard,
   getModifierPeakLeaderboard,
   getPlayerAvatars,
+  getRoomAdjustments,
   getRoomHistory,
   getRoomRounds,
   getRoundsLostLeaderboard,
   type StatsWindow,
 } from "@/lib/supabase/stats";
 import { getPlayerSpellCollection } from "@/lib/supabase/spellCards";
+import { formatModifier } from "@/lib/game/rollCalculation";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { CompletionGauge } from "@/app/_components/CompletionGauge";
@@ -116,9 +118,12 @@ export default async function StatsPage({
     ]);
   const collectionDiscoveredCount = collectionCards.filter((c) => c.drawCount > 0).length;
 
-  const roomRounds = selectedRoomId
-    ? await getRoomRounds(supabase, selectedRoomId)
-    : [];
+  const [roomRounds, roomAdjustments] = selectedRoomId
+    ? await Promise.all([
+        getRoomRounds(supabase, selectedRoomId),
+        getRoomAdjustments(supabase, selectedRoomId),
+      ])
+    : [[], []] as const;
 
   const avatarsByPlayerId = await getPlayerAvatars(supabase, [
     ...cupsMade.map((e) => e.playerId),
@@ -126,6 +131,7 @@ export default async function StatsPage({
     ...lossPercentage.map((e) => e.playerId),
     ...modifierPeak.map((e) => e.playerId),
     ...roomRounds.map((r) => r.starterId),
+    ...roomAdjustments.map((a) => a.targetId),
   ]);
 
   return (
@@ -276,6 +282,29 @@ export default async function StatsPage({
                 <p className="py-2 text-sm text-parchment-dim">
                   No resolved rounds that day.
                 </p>
+              ) : null}
+
+              {roomAdjustments.length > 0 ? (
+                <div className="mt-3 divide-y divide-gilt-dark/40 border-t border-gilt-dark pt-3">
+                  <h4 className="mb-1 font-display text-xs font-semibold uppercase tracking-widest text-gilt-bright">
+                    Adjustments
+                  </h4>
+                  {roomAdjustments.map((adjustment) => (
+                    <div key={adjustment.adjustmentId} className="py-2">
+                      <RankRow
+                        playerId={adjustment.targetId}
+                        displayName={adjustment.targetDisplayName}
+                        email={adjustment.targetEmail}
+                        avatarUrl={avatarsByPlayerId.get(adjustment.targetId) ?? null}
+                        value={formatModifier(adjustment.delta)}
+                      />
+                      <p className="pl-10 text-xs text-parchment-dim">
+                        {adjustment.reason} — by{" "}
+                        {adjustment.actorDisplayName ?? adjustment.actorEmail}
+                      </p>
+                    </div>
+                  ))}
+                </div>
               ) : null}
             </div>
           ) : null}

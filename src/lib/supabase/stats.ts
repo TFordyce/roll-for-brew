@@ -35,6 +35,19 @@ export type RoomRoundEntry = {
   brewerEmail: string;
 };
 
+export type RoomAdjustmentEntry = {
+  adjustmentId: string;
+  createdAt: string;
+  delta: number;
+  reason: string;
+  actorId: string;
+  actorDisplayName: string | null;
+  actorEmail: string;
+  targetId: string;
+  targetDisplayName: string | null;
+  targetEmail: string;
+};
+
 /**
  * Reads the stats_cups_made_{all_time,last_30_days} view
  * (supabase/migrations/0006_stats_leaderboards.sql) — total cups_made
@@ -181,6 +194,39 @@ export async function getRoomRounds(
     brewerId: row.brewer_id as string,
     brewerDisplayName: row.brewer_display_name as string | null,
     brewerEmail: row.brewer_email as string,
+  }));
+}
+
+/**
+ * Reads the stats_room_adjustments view filtered to one room — that day's
+ * logged modifier adjustments (actor, target, delta, reason), newest first
+ * (supabase/migrations/0053_stats_modifier_adjustments.sql).
+ */
+export async function getRoomAdjustments(
+  supabase: SupabaseClient,
+  roomId: string,
+): Promise<RoomAdjustmentEntry[]> {
+  const { data, error } = await supabase
+    .from("stats_room_adjustments")
+    .select(
+      "adjustment_id, created_at, delta, reason, actor_id, actor_display_name, actor_email, target_id, target_display_name, target_email",
+    )
+    .eq("room_id", roomId)
+    .order("created_at", { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => ({
+    adjustmentId: row.adjustment_id as string,
+    createdAt: row.created_at as string,
+    delta: row.delta as number,
+    reason: row.reason as string,
+    actorId: row.actor_id as string,
+    actorDisplayName: row.actor_display_name as string | null,
+    actorEmail: row.actor_email as string,
+    targetId: row.target_id as string,
+    targetDisplayName: row.target_display_name as string | null,
+    targetEmail: row.target_email as string,
   }));
 }
 

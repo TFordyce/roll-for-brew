@@ -62,6 +62,37 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
     return roundId;
   }
 
+  // Seeds a modifier_adjustments row directly (bypassing log_modifier_adjustment)
+  // so created_at can be pinned to a known instant, the same reason
+  // seedResolvedRound bypasses resolve_round for resolved_at. Cleanup needs no
+  // explicit tracking: both target_player_id and actor_player_id cascade
+  // delete off players (0052), and cleanup always deletes the players a test
+  // creates.
+  async function seedAdjustment(options: {
+    roomId: string;
+    targetPlayerId: string;
+    actorPlayerId: string;
+    delta: number;
+    reason: string;
+    createdAt: Date;
+  }) {
+    const { data, error } = await admin
+      .from("modifier_adjustments")
+      .insert({
+        room_id: options.roomId,
+        target_player_id: options.targetPlayerId,
+        actor_player_id: options.actorPlayerId,
+        delta: options.delta,
+        reason: options.reason,
+        created_at: options.createdAt.toISOString(),
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+
+    return data.id as string;
+  }
+
   it("stats_cups_made_{all_time,last_30_days} sum a brewer's cups_made, filtered by resolved_at", async () => {
     const a = await signUp("cups-a");
     const b = await signUp("cups-b");
@@ -250,6 +281,140 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
       .single();
     expect(last30Error).toBeNull();
     expect(last30!.peak_modifier).toBe(3);
+  });
+
+  it("stats_modifier_peak_{all_time,last_30_days} interleaves round losses and adjustments chronologically, not adjustments-on-top (issue #185)", async () => {
+    const c = await signUp("peak-interleave-c");
+    const other = await signUp("peak-interleave-other");
+    const t1 = new Date(Date.now() - 3 * 60 * 1000);
+    const t2 = new Date(Date.now() - 2 * 60 * 1000);
+    const t3 = new Date(Date.now() - 1 * 60 * 1000);
+
+    // Chronological order: round loss (+3, running=3) -> adjustment (-5,
+    // running=-2) -> round loss (+4, running=2). True peak is 3, reached at
+    // t1. A naive "sum adjustments on top of the round-only peak" (or
+    // "rounds only") approximation would instead compute the round-only
+    // running sum (3, then 3+4=7) and report a peak of 7 — wrong, and at
+    // the wrong point in time too.
+    await seedResolvedRound({
+      roomId: c.roomId,
+      startedBy: c.googleSub,
+      brewerId: c.googleSub,
+      participantIds: [c.googleSub, other.googleSub],
+      cupsMade: 3,
+      resolvedAt: t1,
+    });
+    await seedAdjustment({
+      roomId: c.roomId,
+      targetPlayerId: c.googleSub,
+      actorPlayerId: other.googleSub,
+      delta: -5,
+      reason: "test penalty",
+      createdAt: t2,
+    });
+    await seedResolvedRound({
+      roomId: c.roomId,
+      startedBy: c.googleSub,
+      brewerId: c.googleSub,
+      participantIds: [c.googleSub, other.googleSub],
+      cupsMade: 4,
+      resolvedAt: t3,
+    });
+
+    const { data: allTime, error: allTimeError } = await c.client
+      .from("stats_modifier_peak_all_time")
+      .select("player_id, peak_modifier")
+      .eq("player_id", c.googleSub)
+      .single();
+    expect(allTimeError).toBeNull();
+    expect(allTime!.peak_modifier).toBe(3);
+
+    const { data: last30, error: last30Error } = await c.client
+      .from("stats_modifier_peak_last_30_days")
+      .select("player_id, peak_modifier")
+      .eq("player_id", c.googleSub)
+      .single();
+    expect(last30Error).toBeNull();
+    expect(last30!.peak_modifier).toBe(3);
+  });
+
+  it("stats_modifier_peak_last_30_days filters round losses and adjustments independently by their own timestamp", async () => {
+    const c = await signUp("peak-filter-c");
+    const other = await signUp("peak-filter-other");
+    const fortyDaysAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
+    const recent = new Date();
+
+    // Round loss is stale (outside the 30-day window); adjustment is
+    // recent. all_time sees both (running sum 2, then 2+5=7, peak 7);
+    // last_30_days should see only the adjustment (peak 5), proving each
+    // stream is filtered by its own timestamp column rather than the union
+    // being filtered as a whole after the fact.
+    await seedResolvedRound({
+      roomId: c.roomId,
+      startedBy: c.googleSub,
+      brewerId: c.googleSub,
+      participantIds: [c.googleSub, other.googleSub],
+      cupsMade: 2,
+      resolvedAt: fortyDaysAgo,
+    });
+    await seedAdjustment({
+      roomId: c.roomId,
+      targetPlayerId: c.googleSub,
+      actorPlayerId: other.googleSub,
+      delta: 5,
+      reason: "coffee run",
+      createdAt: recent,
+    });
+
+    const { data: allTime, error: allTimeError } = await c.client
+      .from("stats_modifier_peak_all_time")
+      .select("player_id, peak_modifier")
+      .eq("player_id", c.googleSub)
+      .single();
+    expect(allTimeError).toBeNull();
+    expect(allTime!.peak_modifier).toBe(7);
+
+    const { data: last30, error: last30Error } = await c.client
+      .from("stats_modifier_peak_last_30_days")
+      .select("player_id, peak_modifier")
+      .eq("player_id", c.googleSub)
+      .single();
+    expect(last30Error).toBeNull();
+    expect(last30!.peak_modifier).toBe(5);
+  });
+
+  it("stats_room_adjustments exposes a room's adjustments (actor, target, delta, reason, timestamp)", async () => {
+    const a = await signUp("room-adj-a");
+    const b = await signUp("room-adj-b");
+    const createdAt = new Date();
+
+    const adjustmentId = await seedAdjustment({
+      roomId: a.roomId,
+      targetPlayerId: b.googleSub,
+      actorPlayerId: a.googleSub,
+      delta: 10,
+      reason: "muffin breakfast",
+      createdAt,
+    });
+
+    const { data, error } = await a.client
+      .from("stats_room_adjustments")
+      .select(
+        "room_id, adjustment_id, delta, reason, actor_id, target_id, created_at",
+      )
+      .eq("room_id", a.roomId)
+      .eq("adjustment_id", adjustmentId)
+      .single();
+    expect(error).toBeNull();
+    expect(data).toMatchObject({
+      room_id: a.roomId,
+      adjustment_id: adjustmentId,
+      delta: 10,
+      reason: "muffin breakfast",
+      actor_id: a.googleSub,
+      target_id: b.googleSub,
+    });
+    expect(new Date(data!.created_at as string).getTime()).toBe(createdAt.getTime());
   });
 
   it("stats_room_history and stats_room_rounds expose per-room resolved-round drill-down", async () => {
