@@ -200,6 +200,7 @@ export default async function HomePage() {
                     <PlayerTile
                       key={entry.playerId}
                       playerId={entry.playerId}
+                      roomId={roomId}
                       displayName={entry.displayName}
                       email={entry.email}
                       avatarUrl={entry.avatarUrl}
@@ -273,6 +274,7 @@ export default async function HomePage() {
                   <PlayerTile
                     key={entry.playerId}
                     playerId={entry.playerId}
+                    roomId={roomId}
                     displayName={entry.displayName}
                     email={entry.email}
                     avatarUrl={entry.avatarUrl}
