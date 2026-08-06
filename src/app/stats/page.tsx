@@ -26,6 +26,11 @@ function windowFromParam(value: string | undefined): StatsWindow {
   return value === "last_30_days" ? "last_30_days" : "all_time";
 }
 
+// Matches ModifierAdjustmentList's (Settings) own formatTime convention.
+function formatAdjustmentTime(createdAt: string): string {
+  return new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
 function WindowToggle({
   window,
   roomId,
@@ -284,28 +289,32 @@ export default async function StatsPage({
                 </p>
               ) : null}
 
-              {roomAdjustments.length > 0 ? (
-                <div className="mt-3 divide-y divide-gilt-dark/40 border-t border-gilt-dark pt-3">
-                  <h4 className="mb-1 font-display text-xs font-semibold uppercase tracking-widest text-gilt-bright">
-                    Adjustments
-                  </h4>
-                  {roomAdjustments.map((adjustment) => (
-                    <div key={adjustment.adjustmentId} className="py-2">
-                      <RankRow
-                        playerId={adjustment.targetId}
-                        displayName={adjustment.targetDisplayName}
-                        email={adjustment.targetEmail}
-                        avatarUrl={avatarsByPlayerId.get(adjustment.targetId) ?? null}
-                        value={formatModifier(adjustment.delta)}
-                      />
-                      <p className="pl-10 text-xs text-parchment-dim">
-                        {adjustment.reason} — by{" "}
-                        {adjustment.actorDisplayName ?? adjustment.actorEmail}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
+              <div className="mt-3 divide-y divide-gilt-dark/40 border-t border-gilt-dark pt-3">
+                <h4 className="mb-1 font-display text-xs font-semibold uppercase tracking-widest text-gilt-bright">
+                  Adjustments
+                </h4>
+                {roomAdjustments.map((adjustment) => (
+                  <div key={adjustment.adjustmentId} className="py-2">
+                    <RankRow
+                      playerId={adjustment.targetId}
+                      displayName={adjustment.targetDisplayName}
+                      email={adjustment.targetEmail}
+                      avatarUrl={avatarsByPlayerId.get(adjustment.targetId) ?? null}
+                      value={formatModifier(adjustment.delta)}
+                    />
+                    <p className="pl-10 text-xs text-parchment-dim">
+                      {adjustment.reason} — by{" "}
+                      {adjustment.actorDisplayName ?? adjustment.actorEmail} at{" "}
+                      {formatAdjustmentTime(adjustment.createdAt)}
+                    </p>
+                  </div>
+                ))}
+                {roomAdjustments.length === 0 ? (
+                  <p className="py-2 text-sm text-parchment-dim">
+                    No adjustments logged that day.
+                  </p>
+                ) : null}
+              </div>
             </div>
           ) : null}
         </CardFrame>
