@@ -27,3 +27,7 @@ _Avoid_: impersonating, switched user, puppet target.
 **End Test Session**:
 The Admin action that cascade-deletes the Test Room's rounds, rolls, spell casts, and active effects, zeroes every Test Player's accumulated `room_players.modifier`, and resets the caller's Acting As pointer back to themselves. Leaves the Test Room and its Test Players intact for reuse, with the roster looking like a freshly-seeded room.
 _Avoid_: purge, reset, wipe.
+
+**Modifier Adjustment**:
+A one-off, signed, reasoned change any player can log against any player's `room_players.modifier` for today's room (`modifier_adjustments`, append-only — rows are only ever inserted or deleted on undo, never updated). Logged from Settings via `log_modifier_adjustment`, which derives the actor server-side and applies the delta immediately; the actor can undo only their own most-recently-logged adjustment, and only within 5 minutes of logging it, via `delete_modifier_adjustment`.
+_Avoid_: modifier override, manual roll, correction (that conflates it with a spell effect).
