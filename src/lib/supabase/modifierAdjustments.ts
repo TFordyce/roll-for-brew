@@ -45,6 +45,29 @@ export async function deleteModifierAdjustment(supabase: SupabaseClient, adjustm
   if (error) throw error;
 }
 
+export type ModifierBreakdown = {
+  cupsMade: number;
+  adjustments: number;
+};
+
+/**
+ * The two sums behind a player's room-scoped modifier (get_modifier_breakdown,
+ * 0054) — resolved-round cups_made as brewer, and modifier_adjustments.delta
+ * — for the modifier breakdown popover (issue #184). Both default to zero
+ * server-side when a player has no history of one or both kinds.
+ */
+export async function getModifierBreakdown(
+  supabase: SupabaseClient,
+  playerId: string,
+  roomId: string,
+): Promise<ModifierBreakdown> {
+  const { data, error } = await supabase
+    .rpc("get_modifier_breakdown", { p_player_id: playerId, p_room_id: roomId })
+    .single();
+  if (error) throw error;
+  return { cupsMade: (data as { cups_made: number }).cups_made, adjustments: (data as { adjustments: number }).adjustments };
+}
+
 /**
  * Today's logged adjustments for a room, actor and target names included so
  * the Settings list doesn't need a second round-trip. modifier_adjustments

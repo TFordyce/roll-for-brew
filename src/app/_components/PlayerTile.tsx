@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
 import { formatModifier } from "@/lib/game/rollCalculation";
 import { RollCalculation } from "@/app/_components/RollCalculation";
+import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 
 /**
  * A single player's tile — avatar, name, modifier — inside its own small
@@ -14,9 +15,14 @@ import { RollCalculation } from "@/app/_components/RollCalculation";
  * (issue #99) is only passed by TieBanner, once a tied player's reroll comes
  * in — it renders the roll+modifier calculation alongside the raw modifier,
  * rather than leaving them as two values a player has to add up themselves.
- * `playerId`, when passed, makes the tile a tap target linking to that
+ * `playerId`, when passed, makes the avatar a tap target linking to that
  * player's `/collection/:playerId` (issue #135) — used for the room roster
- * grids, not the tied-reroll/reveal views that reuse this same tile.
+ * grids, not the tied-reroll/reveal views that reuse this same tile. Scoped
+ * to just the avatar (not the whole tile) so it doesn't compete with the
+ * modifier number's own tap target below.
+ * `roomId`, when passed alongside `playerId`, additionally makes the
+ * modifier number itself a tap/click target opening the modifier breakdown
+ * popover (issue #184).
  */
 export function PlayerTile({
   displayName,
@@ -29,6 +35,7 @@ export function PlayerTile({
   effectBadges = [],
   revealedRoll = null,
   playerId,
+  roomId,
 }: {
   displayName: string | null;
   email: string;
@@ -40,6 +47,7 @@ export function PlayerTile({
   effectBadges?: Exclude<ActiveEffectBadge["polarity"], null>[];
   revealedRoll?: number | null;
   playerId?: string;
+  roomId?: string;
 }) {
   const name = displayName ?? email;
   // First name only — a long full name wraps to two lines in the tile's
@@ -48,7 +56,20 @@ export function PlayerTile({
   const firstName = name.trim().split(/\s+/)[0] || name;
   const initial = firstName.trim().charAt(0).toUpperCase() || "?";
 
-  const tile = (
+  const avatar = (
+    <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-gilt bg-tavern-plank">
+      {avatarUrl ? (
+        // next/image requires allowlisting Google's avatar host; a plain
+        // <img> avoids that config for a small, user-supplied thumbnail.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+      ) : (
+        <span className="font-display text-lg font-semibold text-gilt-bright">{initial}</span>
+      )}
+    </div>
+  );
+
+  return (
     <div
       className={`flex flex-col items-center gap-1.5 rounded-md border-2 p-3 text-center transition-colors ${
         joined
@@ -56,16 +77,7 @@ export function PlayerTile({
           : "border-gilt-dark bg-tavern-panel-dark"
       }`}
     >
-      <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-gilt bg-tavern-plank">
-        {avatarUrl ? (
-          // next/image requires allowlisting Google's avatar host; a plain
-          // <img> avoids that config for a small, user-supplied thumbnail.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <span className="font-display text-lg font-semibold text-gilt-bright">{initial}</span>
-        )}
-      </div>
+      {playerId ? <Link href={`/collection/${playerId}`}>{avatar}</Link> : avatar}
       <span className="w-full truncate text-xs leading-tight text-parchment" title={name}>
         {firstName}
         {isStarter ? <span className="text-gilt"> ★</span> : null}
@@ -75,7 +87,11 @@ export function PlayerTile({
           Test
         </span>
       ) : null}
-      <span className="font-mono text-xs text-parchment-dim">{formatModifier(modifier)}</span>
+      {playerId && roomId ? (
+        <ModifierBreakdown playerId={playerId} roomId={roomId} modifier={modifier} />
+      ) : (
+        <span className="font-mono text-xs text-parchment-dim">{formatModifier(modifier)}</span>
+      )}
       {revealedRoll !== null ? <RollCalculation roll={revealedRoll} modifier={modifier} /> : null}
       {effectBadges.length > 0 ? (
         <div className="flex flex-wrap justify-center gap-1" aria-label="active effects">
@@ -90,15 +106,5 @@ export function PlayerTile({
         </div>
       ) : null}
     </div>
-  );
-
-  if (!playerId) {
-    return tile;
-  }
-
-  return (
-    <Link href={`/collection/${playerId}`} className="block">
-      {tile}
-    </Link>
   );
 }

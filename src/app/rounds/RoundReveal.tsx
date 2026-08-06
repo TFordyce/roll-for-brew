@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
-import { classifyRollCalculation, formatModifier } from "@/lib/game/rollCalculation";
+import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { buildRollCalculation } from "@/lib/game/rollCalculationEffects";
 import { getRoundModifierEffectDetails, type ModifierEffectDetail } from "@/lib/supabase/spellCasts";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
+import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -187,7 +188,7 @@ export function RoundReveal({
 
             return (
               <li key={p.playerId} className="flex items-center justify-between gap-3 py-2">
-                <span className="font-mono text-xs text-parchment-dim">{formatModifier(p.modifier)}</span>
+                <ModifierBreakdown playerId={p.playerId} roomId={roomId} modifier={p.modifier} />
                 <span className="font-body text-sm text-parchment">{p.displayName ?? p.email}</span>
                 {value !== null ? (
                   <RollCalculation
