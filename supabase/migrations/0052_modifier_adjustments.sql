@@ -35,6 +35,16 @@ create policy "modifier adjustments are readable by authenticated users"
   to authenticated
   using (true);
 
+-- Every table created since 0017 needs its own explicit grant -- 0015's
+-- `grant all on all tables in schema public` was a one-time snapshot, not
+-- retroactive (issue #137/0042's fix generalized this same lesson). Without
+-- it, PostgREST returns "permission denied" before RLS even gets a say.
+-- service_role gets `all` (createTestAdminClient reads/writes this table
+-- directly in tests); authenticated gets `select` only, since every write
+-- goes through the security definer functions below.
+grant all on public.modifier_adjustments to service_role;
+grant select on public.modifier_adjustments to authenticated;
+
 -- Logs an adjustment and applies it to the target's live room_players.modifier
 -- in the same transaction. Validates the target is present in the caller's
 -- own today's room (not a client-supplied room id -- "today" is re-derived
