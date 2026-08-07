@@ -95,6 +95,13 @@ export function RollCalculation({
   );
 }
 
+/** Shake amplitude at the lowest (floor) and highest (capped) jitter intensity, in px. */
+const JITTER_MIN_AMPLITUDE_PX = 1;
+const JITTER_MAX_AMPLITUDE_PX = 3;
+/** Shake period at the lowest and highest jitter intensity, in seconds — faster as intensity rises. */
+const JITTER_MAX_PERIOD_SECONDS = 0.5;
+const JITTER_MIN_PERIOD_SECONDS = 0.25;
+
 /**
  * The modifier term of the calc line ("+ 8"), isolated into its own element
  * so the issue #196 "danger" jitter can target it without disturbing the
@@ -104,8 +111,9 @@ export function RollCalculation({
  * `jitter` is the 0-1 intensity from `getModifierJitterIntensity` — 0 (below
  * +8) renders today's static text; anything above scales both the shake's
  * amplitude and its speed via CSS custom properties consumed by the
- * `modifier-jitter` keyframes in globals.css, then tints the term red as an
- * extra "danger" signal alongside the motion.
+ * `modifier-jitter` keyframes in globals.css. Only the motion signals
+ * "danger" here, deliberately — the issue asks for a jitter cue, not an
+ * additional color change layered on top.
  */
 function ModifierTerm({ operator, value, jitter }: { operator: string; value: number; jitter: number }) {
   if (jitter <= 0) {
@@ -116,13 +124,16 @@ function ModifierTerm({ operator, value, jitter }: { operator: string; value: nu
     );
   }
 
+  const amplitude = JITTER_MIN_AMPLITUDE_PX + jitter * (JITTER_MAX_AMPLITUDE_PX - JITTER_MIN_AMPLITUDE_PX);
+  const period = JITTER_MAX_PERIOD_SECONDS - jitter * (JITTER_MAX_PERIOD_SECONDS - JITTER_MIN_PERIOD_SECONDS);
+
   return (
     <span
-      className="inline-block text-red-400"
+      className="inline-block"
       style={
         {
-          animation: `modifier-jitter ${0.5 - jitter * 0.25}s ease-in-out infinite`,
-          "--jitter-amplitude": `${1 + jitter * 2}px`,
+          animation: `modifier-jitter ${period}s ease-in-out infinite`,
+          "--jitter-amplitude": `${amplitude}px`,
         } as CSSProperties
       }
     >
