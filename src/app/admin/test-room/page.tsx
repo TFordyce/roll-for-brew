@@ -19,6 +19,7 @@ import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
+import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getInDeckSpellCards, getMySpellCards } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
@@ -203,6 +204,8 @@ export default async function TestRoomPage() {
       <section className="w-full max-w-md">
         <ActingAsSwitcher options={switcherOptions} currentPlayerId={playerId} />
       </section>
+
+      {activeRound ? <SpellCastLive roomId={roomId} roundId={activeRound.id} /> : null}
 
       <SpellCardPanel
         heldCards={heldSpellCards}
