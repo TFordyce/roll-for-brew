@@ -20,6 +20,13 @@
     now / a round is pending / already rated (editable until the room's
     next round resolves).
 
+    Round 2, per feedback on issue #202: liked A's tap-per-star and B's
+    pushpin/corkboard design. Variant D merges them — B's chrome, A's tap
+    interaction, plus an explicit Confirm/Undo step: Confirm stamps the
+    rater's initials in a typewriter ink-stamp style, Undo removes it
+    (the star selection stays, only the confirmation is retracted). A/B/C
+    are kept for reference/comparison.
+
     Open this file directly in a browser — no server needed.
   */
   :root {
@@ -169,6 +176,59 @@
   #variant-C .keypad button { background: transparent; border: 1px solid #3fff6b; color: #3fff6b; padding: 4px 8px; cursor: pointer; }
   #variant-C .keypad button.confirm { margin-left: auto; background: rgba(63,255,107,0.1); }
 
+  /* ---------- Variant D — Merged: pushpin card + tap-per-star + confirm/undo stamp ---------- */
+  #variant-D .tab {
+    top: 50%;
+    padding: 12px 8px 12px 12px;
+    border: 2px solid #8a5a3a;
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    background: #c9762f;
+  }
+  #variant-D .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
+  #variant-D .panel {
+    top: 96px; right: 16px; width: 260px;
+    border: 2px solid #8a5a3a;
+    border-radius: 4px;
+    background: #fdf6e3;
+    color: #3a2a1a;
+    box-shadow: 0 10px 20px rgb(0 0 0 / 0.5);
+    transform: translateX(0); opacity: 1;
+  }
+  #variant-D .panel.closed { transform: translateX(32px); opacity: 0; }
+  #variant-D .panel-inner { position: relative; padding: 16px; }
+  #variant-D .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
+  #variant-D .stars { display: flex; gap: 4px; margin: 4px 0 12px; }
+  #variant-D .confirm-row { display: flex; gap: 8px; margin-top: 4px; }
+  #variant-D .confirm-row button {
+    flex: 1;
+    border: 2px solid #8a5a3a;
+    background: transparent;
+    color: #3a2a1a;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 6px 4px;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  #variant-D .confirm-row button.primary { background: #c9762f; color: #fdf6e3; border-color: #8a5a3a; }
+  #variant-D .confirm-row button:disabled { opacity: 0.35; cursor: default; }
+  #variant-D .ink-stamp {
+    display: inline-block;
+    margin-top: 14px;
+    padding: 3px 12px;
+    font-family: "Courier New", Courier, monospace;
+    font-weight: 700;
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    color: #7a1f1f;
+    border: 2px solid #7a1f1f;
+    border-radius: 2px;
+    transform: rotate(-5deg);
+    opacity: 0.88;
+  }
+
   /* ---------- floating bottom switcher ---------- */
   .switcher {
     position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
@@ -188,9 +248,10 @@
   <div class="stage">
     <h1>Brew Rating — panel prototype</h1>
     <p class="intro">
-      Wayfinder ticket #202. Three structurally different takes on the slide-out rating panel — flip with the
-      bar below (or ← / →). Use the buttons to see the three things the panel needs to say. Standalone file,
-      open directly in a browser.
+      Wayfinder ticket #202. Flip designs with the bar below (or ← / →) — <strong>D</strong> is the current pick,
+      merging B's pushpin-card look with A's tap-per-star and a Confirm/Undo step. A/B/C stay for reference. Use
+      the buttons to preview the three things the panel needs to say — note "Nothing to rate" now hides the tab
+      entirely rather than showing a message. Standalone file, open directly in a browser.
     </p>
     <div class="state-buttons" id="state-buttons"></div>
   </div>
@@ -248,6 +309,24 @@
     </div>
   </div>
 
+  <!-- ============ Variant D — Merged: pushpin card + tap-per-star + confirm/undo stamp ============ -->
+  <div id="variant-D">
+    <button class="tab" data-toggle="D" aria-label="Open brew rating">
+      <span class="pending-dot" data-pending-dot style="display:none;"></span>
+      <span class="pushpin"></span>
+    </button>
+    <div class="panel closed" data-panel="D">
+      <div class="panel-inner">
+        <span class="pushpin pin-top"></span>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <strong style="text-transform:uppercase; letter-spacing:0.08em; font-size:11px;">Brew Rating</strong>
+          <button class="close-btn" data-toggle="D" aria-label="Close">×</button>
+        </div>
+        <div data-body="D"></div>
+      </div>
+    </div>
+  </div>
+
   <div class="switcher">
     <span class="title">Design</span>
     <button data-cycle="-1" aria-label="Previous variant">←</button>
@@ -262,18 +341,28 @@
   // ---------- shared mock data (stands in for the real "most recent rateable round" lookup) ----------
   var MOCK_ROUND = { brewerName: "Sam", roomLabel: "Today's Room", resolvedAgo: "12 minutes ago" };
   var MOCK_SUBMITTED_SCORE = 4;
+  var MOCK_RATER_INITIALS = "T.F.";
 
   var STATE_KEYS = ["none", "pending", "rated"];
   var STATE_LABEL = { none: "Nothing to rate", pending: "Round to rate", rated: "Already rated" };
 
-  var VARIANT_KEYS = ["A", "B", "C"];
+  var VARIANT_KEYS = ["A", "B", "C", "D"];
   var VARIANT_LABEL = {
     A: "Bookmark ribbon — tap-per-star",
     B: "Pushpin corkboard — drag-across",
     C: "Terminal quest-log — keypad",
+    D: "Merged — pushpin card, tap-per-star, confirm/undo stamp",
   };
 
-  var state = { panelState: "pending", variant: "A", open: { A: true, B: true, C: true }, score: 0, pendingC: 3 };
+  var state = {
+    panelState: "pending",
+    variant: "D",
+    open: { A: true, B: true, C: true, D: true },
+    score: 0,
+    pendingC: 3,
+    scoreD: 0,
+    confirmedD: false,
+  };
 
   // ---------- pixel star: 9x8 grid, rendered as an inline SVG built from a text pattern ----------
   var STAR_PATTERN = [
@@ -338,7 +427,6 @@
       btn.addEventListener("click", function () {
         state.score = Number(btn.getAttribute("data-star"));
         state.panelState = "rated";
-        MOCK_SUBMITTED_SCORE_OVERRIDE = state.score;
         render();
       });
     });
@@ -416,19 +504,82 @@
     });
   }
 
+  function renderBodyD() {
+    var el = document.querySelector('[data-body="D"]');
+    if (state.panelState === "none") {
+      // Unreachable via the UI now (the tab itself is hidden — see updatePanels),
+      // kept as a defensive fallback only.
+      el.innerHTML = '<p style="padding:16px 0;text-align:center;font-size:11px;font-style:italic;opacity:0.6;">Nothing to rate right now.</p>';
+      return;
+    }
+    el.innerHTML =
+      '<p style="margin:0 0 12px;font-size:11px;">' + MOCK_ROUND.brewerName + " — " + MOCK_ROUND.resolvedAgo + "</p>" +
+      '<div class="stars" data-stars-d>' + starsHtml(state.scoreD, 30, "#f5c542", "#4a4a52", "data-star-d") + "</div>" +
+      '<div class="confirm-row">' +
+      '<button data-d-confirm class="primary"' + (state.confirmedD || state.scoreD === 0 ? " disabled" : "") + '>Confirm</button>' +
+      '<button data-d-undo' + (state.confirmedD ? "" : " disabled") + ">Undo</button>" +
+      "</div>" +
+      (state.confirmedD
+        ? '<span class="ink-stamp">✓ ' + MOCK_RATER_INITIALS + "</span>"
+        : '<p style="margin-top:12px;font-size:10px;opacity:0.6;">Tap a star, then Confirm to stamp it.</p>');
+
+    function paintStars(n) {
+      var container = el.querySelector("[data-stars-d]");
+      container.innerHTML = starsHtml(n, 30, "#f5c542", "#4a4a52", "data-star-d");
+      wireStars();
+    }
+    function wireStars() {
+      el.querySelectorAll("[data-star-d]").forEach(function (btn) {
+        btn.addEventListener("mouseenter", function () {
+          if (!state.confirmedD) paintStars(Number(btn.getAttribute("data-star-d")));
+        });
+        btn.addEventListener("click", function () {
+          // Picking a star always stages a fresh, unconfirmed selection — any
+          // existing stamp is retracted the moment you touch the stars again.
+          state.scoreD = Number(btn.getAttribute("data-star-d"));
+          state.confirmedD = false;
+          render();
+        });
+      });
+    }
+    wireStars();
+    el.querySelector("[data-stars-d]").addEventListener("mouseleave", function () { paintStars(state.scoreD); });
+
+    var confirmBtn = el.querySelector("[data-d-confirm]");
+    if (confirmBtn) confirmBtn.addEventListener("click", function () {
+      if (state.scoreD === 0) return;
+      state.confirmedD = true;
+      state.panelState = "rated";
+      render();
+    });
+    var undoBtn = el.querySelector("[data-d-undo]");
+    if (undoBtn) undoBtn.addEventListener("click", function () {
+      state.confirmedD = false;
+      state.panelState = "pending";
+      render();
+    });
+  }
+
   // ---------- open/close + tab pending dots ----------
   function updatePanels() {
+    // "Nothing to rate" (issue #202 feedback) isn't a message inside the panel — the
+    // tab itself doesn't appear at all, because the player wasn't in the previous
+    // round (or it was a previous day). Force the panel shut when that's the case.
+    if (state.panelState === "none") state.open[state.variant] = false;
+
     VARIANT_KEYS.forEach(function (v) {
       document.querySelector('[data-panel="' + v + '"]').classList.toggle("closed", !state.open[v]);
       document.getElementById("variant-" + v).style.display = state.variant === v ? "" : "none";
     });
+    var activeTab = document.querySelector("#variant-" + state.variant + " .tab");
+    if (activeTab) activeTab.style.display = state.panelState === "none" ? "none" : "";
     document.querySelectorAll("[data-pending-dot]").forEach(function (d) {
       d.style.display = state.panelState === "pending" ? "" : "none";
     });
   }
 
   function render() {
-    renderBodyA(); renderBodyB(); renderBodyC();
+    renderBodyA(); renderBodyB(); renderBodyC(); renderBodyD();
     updatePanels();
     document.getElementById("switcher-label").textContent = state.variant + " — " + VARIANT_LABEL[state.variant];
     document.querySelectorAll(".state-btn").forEach(function (btn) {
@@ -451,7 +602,13 @@
     btn.className = "state-btn";
     btn.setAttribute("data-state", s);
     btn.textContent = STATE_LABEL[s];
-    btn.addEventListener("click", function () { state.panelState = s; render(); });
+    btn.addEventListener("click", function () {
+      state.panelState = s;
+      // Keep variant D's confirm/undo/stamp state consistent with the quick-preview buttons.
+      state.confirmedD = s === "rated";
+      state.scoreD = s === "rated" ? MOCK_SUBMITTED_SCORE : 0;
+      render();
+    });
     stateButtonsEl.appendChild(btn);
   });
 
