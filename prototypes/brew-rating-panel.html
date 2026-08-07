@@ -74,6 +74,10 @@
   button { font-family: inherit; }
 
   /* ---------- shared tab handle ---------- */
+  /* Opening is a "pull onscreen" with a little overshoot (back-out easing);
+     closing snaps away faster and flatter — the tab itself moves, not just
+     the panel, so it reads as one motion instead of a panel sliding out
+     from behind a tab that never moves. */
   .tab {
     position: fixed;
     right: 0;
@@ -83,14 +87,27 @@
     gap: 8px;
     cursor: pointer;
     box-shadow: 0 4px 12px rgb(0 0 0 / 0.4);
-    transition: transform 0.15s ease-out;
+    transform: translateX(0) rotate(0deg);
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  [data-open="false"] .tab {
+    transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1);
   }
   .tab:hover { transform: translateX(-4px); }
+  [data-open="true"] .tab { transform: translateX(-14px) rotate(-3deg); }
+  [data-open="true"] .tab:hover { transform: translateX(-18px) rotate(-3deg); }
   .pending-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--gilt-bright); }
 
   /* ---------- panel base ---------- */
-  .panel { position: fixed; z-index: 50; transition: transform 0.3s ease-out, opacity 0.3s ease-out; }
-  .panel.closed { pointer-events: none; }
+  .panel {
+    position: fixed;
+    z-index: 50;
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.45s ease;
+  }
+  .panel.closed {
+    pointer-events: none;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.25s ease-in;
+  }
   .close-btn { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; }
 
   /* ---------- Variant A — Bookmark ribbon ---------- */
@@ -561,7 +578,9 @@
 
     VARIANT_KEYS.forEach(function (v) {
       document.querySelector('[data-panel="' + v + '"]').classList.toggle("closed", !state.open[v]);
-      document.getElementById("variant-" + v).style.display = state.variant === v ? "" : "none";
+      var wrapper = document.getElementById("variant-" + v);
+      wrapper.style.display = state.variant === v ? "" : "none";
+      wrapper.setAttribute("data-open", state.open[v] ? "true" : "false");
     });
     var activeTab = document.querySelector("#variant-" + state.variant + " .tab");
     if (activeTab) activeTab.style.display = state.panelState === "none" ? "none" : "";
