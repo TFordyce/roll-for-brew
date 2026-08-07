@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — Profile page layout (issue #203)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /*
+    PROTOTYPE — throwaway, standalone. No build step, no framework, no
+    connection to the roll-for-brew app (feedback: prototypes for this repo
+    must NOT be a route inside the Next.js app — its middleware hits real
+    Supabase auth/env even for "unauthenticated" pages).
+
+    Answers the wayfinder ticket "Prototype: Profile page layout
+    (/[playerId])" (issue #203, part of Map: Brew Rating system, #201).
+
+    Three structurally different takes on the new /[playerId] profile page
+    — combining the brew rating average with the four existing per-player
+    stats (cups made, rounds lost, loss %, modifier peak) currently only on
+    /stats — switchable via the bottom bar (or ← / →). Palette/typography
+    approximate the real tabavern design system (tailwind.config.ts's
+    tavern/gilt/parchment/ember tokens, Cinzel display + Inter body) with
+    system fonts so this stays a single offline-openable file.
+
+    Open this file directly in a browser — no server needed.
+  */
+  :root {
+    color-scheme: dark;
+    --tavern-plank: #4a3222;
+    --tavern-plank-dark: #3a2718;
+    --tavern-panel: #2a1e14;
+    --tavern-panel-dark: #1c130c;
+    --gilt: #c9a54a;
+    --gilt-bright: #e8ce8f;
+    --gilt-dark: #8a6a2c;
+    --parchment: #f1e6cf;
+    --parchment-dim: #c9bda3;
+    --ember: #7a3b2e;
+    --ember-bright: #b3543f;
+    --star-lit: #e8ce8f;
+    --star-unlit: #5a4a34;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Georgia, "Iowan Old Style", serif;
+    background: var(--tavern-plank);
+    color: var(--parchment);
+  }
+  .display { font-family: "Trebuchet MS", "Century Gothic", sans-serif; text-transform: uppercase; letter-spacing: 0.08em; }
+  .stage { padding: 24px 24px 8px; }
+  .stage h1.display { margin: 0; font-size: 18px; color: var(--gilt-bright); }
+  .intro { max-width: 680px; font-size: 13px; color: var(--parchment-dim); line-height: 1.5; font-family: ui-sans-serif, system-ui, sans-serif; }
+
+  .frame {
+    border-radius: 10px;
+    border: 4px solid var(--gilt);
+    background: var(--tavern-panel);
+    box-shadow: 0 0 0 1px var(--gilt-dark), 0 8px 24px rgb(0 0 0 / 0.5);
+    padding: 16px;
+  }
+  .frame > .frame-title {
+    margin: 0 0 10px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gilt-bright);
+  }
+  .divider-list > * + * { border-top: 1px solid rgba(138,106,44,0.4); padding-top: 8px; margin-top: 8px; }
+
+  .avatar {
+    width: 56px; height: 56px; border-radius: 999px; flex-shrink: 0;
+    border: 2px solid var(--gilt-dark); background: var(--tavern-plank);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; font-weight: 700; color: var(--gilt-bright);
+  }
+  .avatar.sm { width: 28px; height: 28px; font-size: 11px; }
+
+  a.link { color: var(--gilt-bright); text-decoration: none; font-family: inherit; }
+  a.link:hover { color: var(--parchment); }
+
+  button { font-family: inherit; }
+
+  .stage-body { padding: 16px 24px 120px; display: flex; justify-content: center; }
+  .page-shell { width: 100%; max-width: 720px; }
+
+  /* ---------- pixel star ---------- */
+  svg.pxstar { display: block; }
+
+  /* ---------- switcher bar ---------- */
+  .switcher {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 60;
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(0,0,0,0.85); color: #fff;
+    padding: 8px 16px; border-radius: 999px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+    font-size: 12px; font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .switcher .label { min-width: 260px; text-align: center; font-weight: 600; }
+  .switcher .title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.5); }
+  .switcher button { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; line-height: 1; }
+
+  .window-toggle { display: flex; gap: 12px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+  .window-toggle a { cursor: pointer; }
+  .window-toggle a.active { color: var(--gilt-bright); }
+  .window-toggle a:not(.active) { color: var(--parchment-dim); }
+
+  /* ---------- Variant A — stacked stats-page mirror ---------- */
+  #variant-A .header-row { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; }
+  #variant-A .header-name { font-size: 15px; font-weight: 700; color: var(--parchment); }
+  #variant-A .header-email { font-size: 11px; color: var(--parchment-dim); }
+  #variant-A .rating-frame { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  #variant-A .rating-avg { font-size: 26px; font-weight: 700; color: var(--gilt-bright); font-family: inherit; }
+  #variant-A .stat-row { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  #variant-A .stat-label { color: var(--parchment-dim); }
+  #variant-A .stat-value { font-family: ui-monospace, monospace; color: var(--parchment); }
+  #variant-A .collection-link-row {
+    margin-top: 12px; display: flex; align-items: center; justify-content: space-between;
+    border-radius: 8px; border: 2px solid var(--gilt-dark); background: var(--tavern-panel-dark);
+    padding: 12px 14px; font-size: 12px;
+  }
+
+  /* ---------- Variant B — hero badge + stat-tile grid + tabbed sub-nav ---------- */
+  #variant-B .hero {
+    display: flex; align-items: center; gap: 16px; padding: 20px;
+    border-radius: 10px; border: 4px solid var(--gilt); background: var(--tavern-panel);
+    box-shadow: 0 0 0 1px var(--gilt-dark), 0 8px 24px rgb(0 0 0 / 0.5);
+  }
+  #variant-B .hero-avatar { width: 72px; height: 72px; font-size: 26px; }
+  #variant-B .hero-name { font-size: 17px; font-weight: 700; }
+  #variant-B .hero-rating { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #variant-B .hero-rating-num { font-size: 20px; font-weight: 700; color: var(--gilt-bright); }
+  #variant-B .subnav { display: flex; gap: 6px; margin: 14px 0; }
+  #variant-B .subnav-tab {
+    border-radius: 6px; padding: 8px 16px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+    cursor: pointer; border: none;
+  }
+  #variant-B .subnav-tab.active { background: var(--ember); color: var(--parchment); box-shadow: 0 0 0 1px var(--gilt-dark); }
+  #variant-B .subnav-tab:not(.active) { background: transparent; color: var(--parchment-dim); }
+  #variant-B .tile-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  #variant-B .tile {
+    border-radius: 8px; border: 2px solid var(--gilt-dark); background: var(--tavern-panel-dark);
+    padding: 14px; text-align: center;
+  }
+  #variant-B .tile-value { font-size: 22px; font-weight: 700; color: var(--gilt-bright); font-family: ui-monospace, monospace; }
+  #variant-B .tile-label { margin-top: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--parchment-dim); }
+  #variant-B .collection-tab-body { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  #variant-B .card-thumb {
+    aspect-ratio: 3/4; border-radius: 6px; border: 2px solid var(--gilt-dark); background: var(--tavern-panel-dark);
+    display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--parchment-dim); text-align: center; padding: 4px;
+  }
+
+  /* ---------- Variant C — sidebar split + embedded collection preview ---------- */
+  #variant-C .split { display: grid; grid-template-columns: 200px 1fr; gap: 16px; align-items: start; }
+  #variant-C .sidebar { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 20px 12px; }
+  #variant-C .sidebar .avatar { width: 64px; height: 64px; font-size: 24px; }
+  #variant-C .sidebar-name { font-size: 14px; font-weight: 700; }
+  #variant-C .sidebar-rating-num { font-size: 22px; font-weight: 700; color: var(--gilt-bright); margin-top: 4px; }
+  #variant-C .main-col > * + * { margin-top: 12px; }
+  #variant-C .stat-line { display: flex; justify-content: space-between; font-size: 13px; padding: 6px 0; }
+  #variant-C .stat-line + .stat-line { border-top: 1px solid rgba(138,106,44,0.4); }
+  #variant-C .preview-strip { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; }
+  #variant-C .preview-card {
+    flex: 0 0 72px; aspect-ratio: 3/4; border-radius: 6px; border: 2px solid var(--gilt-dark); background: var(--tavern-panel-dark);
+    display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--parchment-dim); text-align: center; padding: 4px;
+  }
+  @media (max-width: 560px) {
+    #variant-C .split { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <h1 class="display">Profile page — layout prototype</h1>
+    <p class="intro">
+      Wayfinder ticket <a class="link" href="https://github.com/TFordyce/roll-for-brew/issues/203" target="_blank" rel="noopener">#203</a>,
+      part of the Brew Rating map (<a class="link" href="https://github.com/TFordyce/roll-for-brew/issues/201" target="_blank" rel="noopener">#201</a>).
+      Three structurally different takes on <code>/[playerId]</code> — the new profile page combining the Brew Rating
+      average with the four existing per-player stats (cups made, rounds lost, loss %, modifier peak), and how the
+      spell collection (moving from <code>/collection/[playerId]</code> to <code>/[playerId]/collection</code>)
+      relates to it. Flip with the bar below, or ← / →. Mock data — no live rating input here (see the
+      <a class="link" href="https://github.com/TFordyce/roll-for-brew/issues/202" target="_blank" rel="noopener">rating panel prototype</a>
+      for that).
+    </p>
+  </div>
+
+  <div class="stage-body">
+    <div class="page-shell">
+
+      <!-- ============ Variant A — stacked stats-page mirror, collection as a link row ============ -->
+      <div id="variant-A">
+        <div class="header-row">
+          <div class="avatar">P</div>
+          <div>
+            <div class="header-name">Priya</div>
+            <div class="header-email">priya@example.com</div>
+          </div>
+        </div>
+
+        <div class="frame" style="margin-bottom: 14px;">
+          <p class="frame-title">Brew Rating</p>
+          <div class="rating-frame">
+            <div class="rating-avg" id="a-rating-avg">4.91<span style="font-size:14px;color:var(--parchment-dim);">/5</span></div>
+            <div id="a-rating-stars"></div>
+          </div>
+        </div>
+
+        <div class="frame">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 10px;">
+            <p class="frame-title" style="margin:0;">Player Stats</p>
+            <div class="window-toggle" id="a-window-toggle"></div>
+          </div>
+          <div class="divider-list" id="a-stats-list"></div>
+        </div>
+
+        <div class="collection-link-row">
+          <span style="color: var(--parchment);">Spell Collection — <span id="a-collection-count" style="color: var(--parchment-dim);"></span></span>
+          <a class="link display" href="#" style="font-size:11px;">View collection →</a>
+        </div>
+      </div>
+
+      <!-- ============ Variant B — hero badge + stat-tile grid, collection as a sub-nav tab ============ -->
+      <div id="variant-B">
+        <div class="hero">
+          <div class="avatar hero-avatar">P</div>
+          <div>
+            <div class="hero-name">Priya</div>
+            <div class="hero-rating">
+              <span class="hero-rating-num">4.91</span>
+              <span id="b-rating-stars"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="subnav">
+          <button class="subnav-tab active" data-b-tab="overview">Overview</button>
+          <button class="subnav-tab" data-b-tab="collection">Collection</button>
+        </div>
+
+        <div data-b-panel="overview">
+          <div class="tile-grid" id="b-tile-grid"></div>
+        </div>
+        <div data-b-panel="collection" style="display:none;">
+          <div class="collection-tab-body" id="b-collection-grid"></div>
+        </div>
+      </div>
+
+      <!-- ============ Variant C — sidebar split, embedded collection preview ============ -->
+      <div id="variant-C">
+        <div class="split">
+          <div class="frame sidebar">
+            <div class="avatar">P</div>
+            <div class="sidebar-name">Priya</div>
+            <div>
+              <div class="sidebar-rating-num">4.91<span style="font-size:11px;color:var(--parchment-dim);">/5</span></div>
+              <div id="c-rating-stars" style="margin-top:4px; display:flex; justify-content:center;"></div>
+            </div>
+          </div>
+
+          <div class="main-col">
+            <div class="frame">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+                <p class="frame-title" style="margin:0;">Player Stats</p>
+                <div class="window-toggle" id="c-window-toggle"></div>
+              </div>
+              <div id="c-stats-list"></div>
+            </div>
+
+            <div class="frame">
+              <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom: 8px;">
+                <p class="frame-title" style="margin:0;">Spell Collection</p>
+                <a class="link display" href="#" style="font-size:11px;">View full collection →</a>
+              </div>
+              <div class="preview-strip" id="c-collection-strip"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="switcher">
+    <span class="title">Design</span>
+    <button data-cycle="-1" aria-label="Previous variant">←</button>
+    <span class="label" id="switcher-label"></span>
+    <button data-cycle="1" aria-label="Next variant">→</button>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- mock data (stands in for the real per-player stats/brew-rating RPCs) ----------
+  var PLAYER = { name: "Priya", email: "priya@example.com", initial: "P" };
+  var RATING_AVG = 4.91;
+  var STATS_BY_WINDOW = {
+    all_time: { cupsMade: 38, roundsLost: 5, lossPercentage: 12, roundsPlayed: 42, peakModifier: "+7" },
+    last_30_days: { cupsMade: 9, roundsLost: 1, lossPercentage: 8, roundsPlayed: 12, peakModifier: "+4" },
+  };
+  var COLLECTION = { discovered: 47, total: 71 };
+  var MOCK_CARDS = [
+    "Scalding Pour", "Brew IOU", "Caffeinated Focus", "Cast Iron Kettle",
+    "Gambler's Infusion", "Wild Dispatch", "Bes Tea", "Brewmageddon",
+  ];
+
+  var VARIANT_KEYS = ["A", "B", "C"];
+  var VARIANT_LABEL = {
+    A: "Stacked mirror — list stats, collection as a link",
+    B: "Hero badge + tiles — collection as a sub-nav tab",
+    C: "Sidebar split — list stats + embedded collection preview",
+  };
+
+  var state = { variant: "A", windowA: "all_time", windowC: "all_time", bTab: "overview" };
+
+  // ---------- pixel star (9x8 grid), lit / unlit / partial (clip by fraction) ----------
+  var STAR_PATTERN = [
+    "....X....",
+    "....X....",
+    "...XXX...",
+    "XXXXXXXXX",
+    ".XXXXXXX.",
+    "..XXXXX..",
+    ".XX...XX.",
+    "XX.....XX",
+  ];
+  function starRects(fill) {
+    var cols = STAR_PATTERN[0].length, rows = STAR_PATTERN.length, out = "";
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        if (STAR_PATTERN[y][x] === "X") {
+          out += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + fill + '" />';
+        }
+      }
+    }
+    return out;
+  }
+  // Render a 5-star average as two stacked layers: a full unlit row, and a
+  // lit row clipped to `avg / 5` of the total width (partial stars read as
+  // a partially-filled pixel sprite, not rounded up/down).
+  function starRow(avg, size) {
+    var cols = STAR_PATTERN[0].length, rows = STAR_PATTERN.length;
+    var h = (size / cols) * rows;
+    var unlit = "";
+    for (var n = 0; n < 5; n++) {
+      unlit += '<svg class="pxstar" width="' + size + '" height="' + h + '" viewBox="0 0 ' + cols + ' ' + rows +
+        '" shape-rendering="crispEdges" style="display:inline-block;">' + starRects("var(--star-unlit)") + '</svg>';
+    }
+    var remaining = avg;
+    var lit = "";
+    for (var i = 0; i < 5; i++) {
+      var frac = Math.max(0, Math.min(1, remaining));
+      remaining -= 1;
+      var pxWidth = size * frac;
+      lit += '<span style="display:inline-block; overflow:hidden; width:' + pxWidth + 'px; vertical-align:top;">' +
+        '<svg class="pxstar" width="' + size + '" height="' + h + '" viewBox="0 0 ' + cols + ' ' + rows +
+        '" shape-rendering="crispEdges">' + starRects("var(--star-lit)") + '</svg></span>';
+    }
+    return (
+      '<span style="position:relative; display:inline-flex;">' +
+      '<span style="display:inline-flex;">' + unlit + '</span>' +
+      '<span style="position:absolute; top:0; left:0; display:inline-flex;">' + lit + '</span>' +
+      '</span>'
+    );
+  }
+
+  function statsList(w) {
+    var s = STATS_BY_WINDOW[w];
+    return [
+      { label: "Cups made", value: s.cupsMade },
+      { label: "Rounds lost", value: s.roundsLost },
+      { label: "Loss percentage", value: s.lossPercentage + "% (" + s.roundsLost + "/" + s.roundsPlayed + ")" },
+      { label: "Highest modifier reached", value: s.peakModifier },
+    ];
+  }
+
+  function windowToggleHtml(current, varLetter) {
+    return (
+      '<a class="' + (current === "all_time" ? "active" : "") + '" data-window-toggle="' + varLetter + '" data-w="all_time">All-time</a>' +
+      '<a class="' + (current === "last_30_days" ? "active" : "") + '" data-window-toggle="' + varLetter + '" data-w="last_30_days">Last 30 days</a>'
+    );
+  }
+
+  // ---------- renderers ----------
+  function renderA() {
+    document.getElementById("a-rating-stars").innerHTML = starRow(RATING_AVG, 22);
+    document.getElementById("a-window-toggle").innerHTML = windowToggleHtml(state.windowA, "A");
+    document.getElementById("a-collection-count").textContent = COLLECTION.discovered + "/" + COLLECTION.total + " discovered";
+    var list = statsList(state.windowA);
+    document.getElementById("a-stats-list").innerHTML = list.map(function (row) {
+      return '<div class="stat-row"><span class="stat-label">' + row.label + '</span><span class="stat-value">' + row.value + '</span></div>';
+    }).join("");
+  }
+
+  function renderB() {
+    document.getElementById("b-rating-stars").innerHTML = starRow(RATING_AVG, 16);
+    var s = STATS_BY_WINDOW.all_time;
+    var tiles = [
+      { label: "Cups made", value: s.cupsMade },
+      { label: "Rounds lost", value: s.roundsLost },
+      { label: "Loss %", value: s.lossPercentage + "%" },
+      { label: "Peak modifier", value: s.peakModifier },
+    ];
+    document.getElementById("b-tile-grid").innerHTML = tiles.map(function (t) {
+      return '<div class="tile"><div class="tile-value">' + t.value + '</div><div class="tile-label">' + t.label + '</div></div>';
+    }).join("");
+    document.getElementById("b-collection-grid").innerHTML = MOCK_CARDS.map(function (name) {
+      return '<div class="card-thumb">' + name + '</div>';
+    }).join("");
+    document.querySelectorAll("[data-b-tab]").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-b-tab") === state.bTab);
+    });
+    document.querySelector('[data-b-panel="overview"]').style.display = state.bTab === "overview" ? "" : "none";
+    document.querySelector('[data-b-panel="collection"]').style.display = state.bTab === "collection" ? "" : "none";
+  }
+
+  function renderC() {
+    document.getElementById("c-rating-stars").innerHTML = starRow(RATING_AVG, 14);
+    document.getElementById("c-window-toggle").innerHTML = windowToggleHtml(state.windowC, "C");
+    var list = statsList(state.windowC);
+    document.getElementById("c-stats-list").innerHTML = list.map(function (row) {
+      return '<div class="stat-line"><span class="stat-label" style="color:var(--parchment-dim);">' + row.label + '</span><span style="font-family:ui-monospace,monospace;">' + row.value + '</span></div>';
+    }).join("");
+    document.getElementById("c-collection-strip").innerHTML = MOCK_CARDS.slice(0, 6).map(function (name) {
+      return '<div class="preview-card">' + name + '</div>';
+    }).join("");
+  }
+
+  function render() {
+    renderA(); renderB(); renderC();
+    VARIANT_KEYS.forEach(function (v) {
+      document.getElementById("variant-" + v).style.display = state.variant === v ? "" : "none";
+    });
+    document.getElementById("switcher-label").textContent = state.variant + " — " + VARIANT_LABEL[state.variant];
+  }
+
+  // ---------- wiring ----------
+  document.body.addEventListener("click", function (e) {
+    var wt = e.target.closest("[data-window-toggle]");
+    if (wt) {
+      e.preventDefault();
+      var v = wt.getAttribute("data-window-toggle");
+      var w = wt.getAttribute("data-w");
+      if (v === "A") state.windowA = w;
+      if (v === "C") state.windowC = w;
+      render();
+      return;
+    }
+    var bt = e.target.closest("[data-b-tab]");
+    if (bt) {
+      state.bTab = bt.getAttribute("data-b-tab");
+      render();
+    }
+  });
+
+  function cycleVariant(dir) {
+    var idx = VARIANT_KEYS.indexOf(state.variant);
+    state.variant = VARIANT_KEYS[(idx + dir + VARIANT_KEYS.length) % VARIANT_KEYS.length];
+    render();
+  }
+  document.querySelectorAll("[data-cycle]").forEach(function (btn) {
+    btn.addEventListener("click", function () { cycleVariant(Number(btn.getAttribute("data-cycle"))); });
+  });
+  window.addEventListener("keydown", function (e) {
+    var tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.key === "ArrowLeft") cycleVariant(-1);
+    if (e.key === "ArrowRight") cycleVariant(1);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
