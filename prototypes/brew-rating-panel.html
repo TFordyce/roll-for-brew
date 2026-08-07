@@ -14,19 +14,18 @@
     Answers the wayfinder ticket "Prototype: Rating panel (16-bit notepad
     + star toggle)" (issue #202, part of Map: Brew Rating system, #201).
 
-    Three structurally different takes on the slide-out rating panel,
-    switchable via the bottom bar (or ← / →), plus a state switcher for
-    the three things the panel must communicate: nothing to rate right
-    now / a round is pending / already rated (editable until the room's
-    next round resolves).
-
-    Round 2, per feedback on issue #202: liked A's tap-per-star and B's
-    pushpin/corkboard design. Variant D merges them — B's chrome, A's tap
-    interaction. Round 3: replaced the separate Confirm/Undo buttons with
-    a single dashed-outline "signature" box below the stars — click it to
-    lock the rating in and stamp your initials, click the signed stamp
-    again to withdraw it (the star selection stays put either way). A/B/C
-    are kept for reference/comparison.
+    Started as three structurally different takes (A/B/C) on the slide-out
+    rating panel, switchable via a bottom bar. Round 2: liked A's
+    tap-per-star and B's pushpin/corkboard design — merged into Variant D
+    (B's chrome, A's tap interaction). Round 3: replaced separate
+    Confirm/Undo buttons with a single dashed-outline "signature" box below
+    the stars — click it to lock the rating in and stamp your initials,
+    click the signed stamp again to withdraw it. Round 5: tab and note now
+    share one vertical anchor and animate together instead of independently.
+    Round 6: tab raised above the panel (was getting hidden once they
+    overlapped) plus a few alternate tab looks to react to. Round 7: settled
+    on Variant D as the only design going forward — A/B/C dropped — with the
+    winning tab look being A's vertical bookmark-ribbon treatment.
 
     Open this file directly in a browser — no server needed.
   */
@@ -73,7 +72,7 @@
 
   button { font-family: inherit; }
 
-  /* ---------- shared tab handle ---------- */
+  /* ---------- tab handle ---------- */
   /* Opening is a "pull onscreen" with a little overshoot (back-out easing);
      closing snaps away faster and flatter — the tab itself moves, not just
      the panel, so it reads as one motion instead of a panel sliding out
@@ -81,9 +80,9 @@
   .tab {
     position: fixed;
     right: 0;
-    z-index: 55; /* above .panel (z-index 50) — once tab and panel share an
-                    anchor and overlap, the tab must sit on top or the panel
-                    swallows it (round 5 feedback) */
+    z-index: 55; /* above .panel (z-index 50) — tab and panel share an
+                    anchor and overlap, so the tab must sit on top or the
+                    panel swallows it (round 6 fix) */
     display: flex;
     align-items: center;
     gap: 8px;
@@ -100,21 +99,10 @@
   [data-open="true"] .tab:hover { transform: translateX(-18px) rotate(-3deg); }
   .pending-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--gilt-bright); }
 
-  /* ---------- panel base ---------- */
-  .panel {
-    position: fixed;
-    z-index: 50;
-    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.45s ease;
-  }
-  .panel.closed {
-    pointer-events: none;
-    transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.25s ease-in;
-  }
-  .close-btn { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; }
-
-  /* ---------- Variant A — Bookmark ribbon ---------- */
-  #variant-A .tab {
-    top: 33%;
+  /* Round 7: the winning tab look — A's vertical bookmark ribbon — applied
+     to Variant D. Overrides the pin/rotate transform above with its own
+     resting angle since it reads better flat. */
+  .tab.tab-look-bookmark {
     writing-mode: vertical-rl;
     flex-direction: column;
     padding: 16px 8px;
@@ -127,84 +115,26 @@
     text-transform: uppercase;
     letter-spacing: 0.1em;
   }
-  #variant-A .panel {
-    top: 0; right: 0; height: 100%; width: 300px;
-    border-left: 4px solid var(--gilt);
-    background: var(--parchment);
-    color: var(--tavern-panel);
-    box-shadow: -8px 0 24px rgb(0 0 0 / 0.5);
-    transform: translateX(0);
-  }
-  #variant-A .panel.closed { transform: translateX(100%); }
-  #variant-A .panel-inner { padding: 20px; display: flex; flex-direction: column; height: 100%; }
-  #variant-A .stars { display: flex; gap: 4px; margin: 8px 0; }
+  [data-open="true"] .tab.tab-look-bookmark { transform: translateX(-4px) rotate(0deg); }
+  [data-open="true"] .tab.tab-look-bookmark:hover { transform: translateX(-8px) rotate(0deg); }
 
-  /* ---------- Variant B — Pushpin corkboard ---------- */
-  #variant-B .tab {
-    top: 50%;
-    padding: 12px 8px 12px 12px;
-    border: 2px solid #8a5a3a;
-    border-right: none;
-    border-radius: 999px 0 0 999px;
-    background: #c9762f;
+  /* ---------- panel base ---------- */
+  .panel {
+    position: fixed;
+    z-index: 50;
+    transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.45s ease;
   }
-  #variant-B .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
-  #variant-B .panel {
-    top: 96px; right: 16px; width: 260px;
-    border: 2px solid #8a5a3a;
-    border-radius: 4px;
-    background: #fdf6e3;
-    color: #3a2a1a;
-    box-shadow: 0 10px 20px rgb(0 0 0 / 0.5);
-    transform: translateX(0); opacity: 1;
+  .panel.closed {
+    pointer-events: none;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 1, 1), opacity 0.25s ease-in;
   }
-  #variant-B .panel.closed { transform: translateX(32px); opacity: 0; }
-  #variant-B .panel-inner { position: relative; padding: 16px; }
-  #variant-B .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
-  #variant-B .strip { display: flex; gap: 4px; padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.05); touch-action: none; cursor: grab; }
+  .close-btn { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; }
 
-  /* ---------- Variant C — Terminal quest-log ---------- */
-  #variant-C .tab {
-    top: 50%;
-    padding: 12px;
-    border: 2px solid #3fff6b;
-    border-right: none;
-    background: #000;
-    color: #3fff6b;
-    font-size: 12px;
-    box-shadow: 0 0 12px rgb(63 255 107 / 0.4);
-  }
-  #variant-C .cursor { animation: blink 1s steps(1) infinite; }
-  @keyframes blink { 50% { opacity: 0; } }
-  #variant-C .panel {
-    top: 0; right: 0; height: 100%; width: 300px;
-    border-left: 4px solid #3fff6b;
-    background: #000;
-    color: #3fff6b;
-    box-shadow: -8px 0 24px rgb(0 0 0 / 0.6);
-    overflow: hidden;
-    transform: translateX(0);
-  }
-  #variant-C .panel.closed { transform: translateX(100%); }
-  #variant-C .scanlines {
-    position: absolute; inset: 0; opacity: 0.2; pointer-events: none;
-    background-image: repeating-linear-gradient(0deg, #3fff6b 0px, transparent 1px, transparent 3px);
-  }
-  #variant-C .panel-inner { position: relative; padding: 20px; font-size: 12px; }
-  #variant-C .stars { display: flex; gap: 4px; margin: 8px 0 12px; }
-  #variant-C .keypad { display: flex; gap: 8px; font-size: 11px; }
-  #variant-C .keypad button { background: transparent; border: 1px solid #3fff6b; color: #3fff6b; padding: 4px 8px; cursor: pointer; }
-  #variant-C .keypad button.confirm { margin-left: auto; background: rgba(63,255,107,0.1); }
-
-  /* ---------- Variant D — Merged: pushpin card + tap-per-star + confirm/undo stamp ---------- */
-  /* Round 5, per feedback on issue #202: the tab and the note were animating
-     independently at two different heights (tab pinned to viewport
-     vertical-center, panel pinned near the top) so they read as unrelated
-     elements rather than "the tab pulling the note onto the page". Both now
-     share the same vertical anchor, and the panel slides fully off-screen
-     when closed (instead of a small 32px nudge) so the whole trip — off
-     behind the tab to flush against it — reads as one motion. */
-  #variant-D .tab {
+  /* ---------- Variant D — pushpin card + tap-per-star + confirm/undo stamp ---------- */
+  /* Round 5, per feedback: tab and note now share one vertical anchor and
+     the panel does a full off-screen slide when closed, instead of
+     animating independently at two different heights. */
+  .tab {
     top: 110px;
     padding: 12px 8px 12px 12px;
     border: 2px solid #8a5a3a;
@@ -212,8 +142,8 @@
     border-radius: 999px 0 0 999px;
     background: #c9762f;
   }
-  #variant-D .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
-  #variant-D .panel {
+  .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
+  .panel {
     top: 110px; right: 16px; width: 260px;
     border: 2px solid #8a5a3a;
     border-radius: 4px;
@@ -222,55 +152,11 @@
     box-shadow: 0 10px 20px rgb(0 0 0 / 0.5);
     transform: translateX(0); opacity: 1;
   }
-  #variant-D .panel.closed { transform: translateX(140%); opacity: 0; }
-
-  /* Round 6: a few different looks for the tab itself — same position/
-     animation envelope, different shape/material. Pick with the buttons
-     under the intro text (Variant D only). */
-  #variant-D .tab.tab-look-pin {
-    padding: 12px 8px 12px 12px;
-    border: 2px solid #8a5a3a;
-    border-right: none;
-    border-radius: 999px 0 0 999px;
-    background: #c9762f;
-  }
-  #variant-D .tab.tab-look-ribbon {
-    padding: 14px 8px;
-    border: none;
-    background: #7a1f1f;
-    color: #fdf6e3;
-    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 12px 50%);
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.12em;
-  }
-  #variant-D .tab.tab-look-index {
-    padding: 12px 10px;
-    border: 2px solid #3a2a1a;
-    border-right: none;
-    border-radius: 3px 0 0 3px;
-    background: #fdf6e3;
-    color: #3a2a1a;
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    writing-mode: vertical-rl;
-  }
-  #variant-D .tab.tab-look-scroll {
-    padding: 14px 10px 14px 14px;
-    border: 3px solid #a8763f;
-    border-right: none;
-    border-radius: 999px 0 0 999px;
-    background: linear-gradient(160deg, #e8c98a 0%, #c9a35f 55%, #a8763f 100%);
-    box-shadow: inset 0 0 6px rgba(90, 60, 20, 0.5), 0 4px 12px rgb(0 0 0 / 0.4);
-  }
-  #variant-D .tab.tab-look-scroll .pushpin { background: #7a1f1f; }
-  #variant-D .panel-inner { position: relative; padding: 16px; }
-  #variant-D .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
-  #variant-D .stars { display: flex; gap: 4px; margin: 4px 0 12px; }
-  #variant-D .sign-box {
+  .panel.closed { transform: translateX(140%); opacity: 0; }
+  .panel-inner { position: relative; padding: 16px; }
+  .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
+  .stars { display: flex; gap: 4px; margin: 4px 0 12px; }
+  .sign-box {
     display: block;
     width: 100%;
     margin-top: 4px;
@@ -285,8 +171,8 @@
     text-align: center;
     cursor: pointer;
   }
-  #variant-D .sign-box:disabled { opacity: 0.35; cursor: default; }
-  #variant-D .sign-box.signed {
+  .sign-box:disabled { opacity: 0.35; cursor: default; }
+  .sign-box.signed {
     border-style: solid;
     border-color: #7a1f1f;
     color: #7a1f1f;
@@ -297,112 +183,35 @@
     letter-spacing: 0.16em;
     transform: rotate(-3deg);
   }
-
-  /* ---------- floating bottom switcher ---------- */
-  .switcher {
-    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    z-index: 60;
-    display: flex; align-items: center; gap: 12px;
-    background: rgba(0,0,0,0.85); color: #fff;
-    padding: 8px 16px; border-radius: 999px;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
-    font-size: 12px;
-  }
-  .switcher .label { min-width: 220px; text-align: center; font-weight: 600; }
-  .switcher .title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.5); }
-  .switcher button { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; line-height: 1; }
 </style>
 </head>
 <body>
   <div class="stage">
     <h1>Brew Rating — panel prototype</h1>
     <p class="intro">
-      Wayfinder ticket #202. Flip designs with the bar below (or ← / →) — <strong>D</strong> is the current pick,
-      merging B's pushpin-card look with A's tap-per-star and a Confirm/Undo step. A/B/C stay for reference. Use
-      the state buttons to preview the three things the panel needs to say — note "Nothing to rate" now hides the tab
-      entirely rather than showing a message. The second row of buttons swaps just the tab's look on Variant D
-      (open the panel to see it sitting against the note). Standalone file, open directly in a browser.
+      Wayfinder ticket #202. Down to a single design now — pushpin card + tap-per-star + a
+      "sign to lock in" stamp box, with A's vertical bookmark-ribbon tab. Use the buttons to
+      preview the three things the panel needs to say — note "Nothing to rate" hides the tab
+      entirely rather than showing a message. Standalone file, open directly in a browser.
     </p>
     <div class="state-buttons" id="state-buttons"></div>
-    <div class="state-buttons" id="tab-look-buttons" style="margin-top:8px;"></div>
   </div>
 
-  <!-- ============ Variant A — Bookmark ribbon (tap-per-star) ============ -->
-  <div id="variant-A">
-    <button class="tab" data-toggle="A" aria-label="Open brew rating">
+  <div id="widget">
+    <button class="tab tab-look-bookmark" data-toggle aria-label="Open brew rating">
+      <span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>
       <span>Rate Brew</span>
-      <span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>
     </button>
-    <div class="panel closed" data-panel="A">
-      <div class="panel-inner">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <strong style="text-transform:uppercase; letter-spacing:0.08em; font-size:13px;">Brewer's Notepad</strong>
-          <button class="close-btn" data-toggle="A" aria-label="Close">×</button>
-        </div>
-        <div data-body="A"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ Variant B — Pushpin corkboard (drag-across) ============ -->
-  <div id="variant-B">
-    <button class="tab" data-toggle="B" aria-label="Open brew rating">
-      <span class="pending-dot" data-pending-dot style="display:none;"></span>
-      <span class="pushpin"></span>
-    </button>
-    <div class="panel closed" data-panel="B">
+    <div class="panel closed" data-panel>
       <div class="panel-inner">
         <span class="pushpin pin-top"></span>
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <strong style="text-transform:uppercase; letter-spacing:0.08em; font-size:11px;">Brew Rating</strong>
-          <button class="close-btn" data-toggle="B" aria-label="Close">×</button>
+          <button class="close-btn" data-toggle aria-label="Close">×</button>
         </div>
-        <div data-body="B"></div>
+        <div data-body></div>
       </div>
     </div>
-  </div>
-
-  <!-- ============ Variant C — Terminal quest-log (keypad) ============ -->
-  <div id="variant-C">
-    <button class="tab" data-toggle="C" aria-label="Open brew rating">
-      <span class="pending-dot" data-pending-dot style="display:none;"></span>
-      <span class="cursor">▌RATE</span>
-    </button>
-    <div class="panel closed" data-panel="C">
-      <div class="scanlines"></div>
-      <div class="panel-inner">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-          <span>&gt; brew_log.exe</span>
-          <button class="close-btn" data-toggle="C" aria-label="Close" style="color:#3fff6b;">[X]</button>
-        </div>
-        <div data-body="C"></div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ============ Variant D — Merged: pushpin card + tap-per-star + confirm/undo stamp ============ -->
-  <div id="variant-D">
-    <button class="tab tab-look-pin" data-toggle="D" data-tab-d aria-label="Open brew rating">
-      <span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>
-      <span class="pushpin"></span>
-    </button>
-    <div class="panel closed" data-panel="D">
-      <div class="panel-inner">
-        <span class="pushpin pin-top"></span>
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <strong style="text-transform:uppercase; letter-spacing:0.08em; font-size:11px;">Brew Rating</strong>
-          <button class="close-btn" data-toggle="D" aria-label="Close">×</button>
-        </div>
-        <div data-body="D"></div>
-      </div>
-    </div>
-  </div>
-
-  <div class="switcher">
-    <span class="title">Design</span>
-    <button data-cycle="-1" aria-label="Previous variant">←</button>
-    <span class="label" id="switcher-label"></span>
-    <button data-cycle="1" aria-label="Next variant">→</button>
   </div>
 
 <script>
@@ -417,55 +226,12 @@
   var STATE_KEYS = ["none", "pending", "rated"];
   var STATE_LABEL = { none: "Nothing to rate", pending: "Round to rate", rated: "Already rated" };
 
-  var VARIANT_KEYS = ["A", "B", "C", "D"];
-  var VARIANT_LABEL = {
-    A: "Bookmark ribbon — tap-per-star",
-    B: "Pushpin corkboard — drag-across",
-    C: "Terminal quest-log — keypad",
-    D: "Merged — pushpin card, tap-per-star, confirm/undo stamp",
-  };
-
   var state = {
     panelState: "pending",
-    variant: "D",
-    open: { A: true, B: true, C: true, D: true },
-    score: 0,
-    pendingC: 3,
+    open: true,
     scoreD: 0,
     confirmedD: false,
-    tabLookD: "pin",
   };
-
-  // ---------- Variant D tab looks (round 6, per feedback the tab got lost
-  // behind the note once they shared a position) — same slot/animation,
-  // different shape/material. `content` is the tab's inner markup. ----------
-  var TAB_LOOKS = {
-    pin: {
-      label: "Pushpin",
-      content:
-        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
-        '<span class="pushpin"></span>',
-    },
-    ribbon: {
-      label: "Ribbon flag",
-      content:
-        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
-        '<span>RATE</span>',
-    },
-    index: {
-      label: "Index tab",
-      content:
-        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
-        '<span>RATE</span>',
-    },
-    scroll: {
-      label: "Scroll edge",
-      content:
-        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
-        '<span class="pushpin"></span>',
-    },
-  };
-  var TAB_LOOK_KEYS = ["pin", "ribbon", "index", "scroll"];
 
   // ---------- pixel star: 9x8 grid, rendered as an inline SVG built from a text pattern ----------
   var STAR_PATTERN = [
@@ -509,108 +275,10 @@
     return out;
   }
 
-  // ---------- per-variant body rendering ----------
-  function renderBodyA() {
-    var el = document.querySelector('[data-body="A"]');
+  function renderBody() {
+    var el = document.querySelector('[data-body]');
     if (state.panelState === "none") {
-      el.innerHTML = '<p style="margin-top:32px;text-align:center;font-size:13px;font-style:italic;opacity:0.6;">' +
-        "Nothing to rate right now — check back after the next round.</p>";
-      return;
-    }
-    var score = state.panelState === "rated" ? MOCK_SUBMITTED_SCORE : state.score;
-    el.innerHTML =
-      '<p style="margin:0 0 4px;font-size:13px;">' + MOCK_ROUND.brewerName + " brewed for " + MOCK_ROUND.roomLabel + "</p>" +
-      '<p style="margin:0 0 20px;font-size:11px;opacity:0.6;">Resolved ' + MOCK_ROUND.resolvedAgo + "</p>" +
-      '<div class="stars" data-stars-a>' + starsHtml(score, 36, "var(--star-lit)", "var(--star-unlit)", "data-star") + "</div>" +
-      '<p style="font-size:11px;opacity:0.6;">' +
-      (state.panelState === "rated" ? "Submitted — tap a star to change it until the next round resolves." : "Tap a star to rate.") +
-      "</p>";
-    el.querySelectorAll("[data-star]").forEach(function (btn) {
-      btn.addEventListener("mouseenter", function () { renderStarsA(Number(btn.getAttribute("data-star"))); });
-      btn.addEventListener("click", function () {
-        state.score = Number(btn.getAttribute("data-star"));
-        state.panelState = "rated";
-        render();
-      });
-    });
-    el.querySelector("[data-stars-a]").addEventListener("mouseleave", function () { renderStarsA(score); });
-  }
-  function renderStarsA(n) {
-    var container = document.querySelector("[data-stars-a]");
-    if (!container) return;
-    container.innerHTML = starsHtml(n, 36, "var(--star-lit)", "var(--star-unlit)", "data-star");
-    container.querySelectorAll("[data-star]").forEach(function (btn) {
-      btn.addEventListener("mouseenter", function () { renderStarsA(Number(btn.getAttribute("data-star"))); });
-      btn.addEventListener("click", function () {
-        state.score = Number(btn.getAttribute("data-star"));
-        state.panelState = "rated";
-        render();
-      });
-    });
-  }
-
-  function renderBodyB() {
-    var el = document.querySelector('[data-body="B"]');
-    if (state.panelState === "none") {
-      el.innerHTML = '<p style="padding:16px 0;text-align:center;font-size:11px;font-style:italic;opacity:0.6;">Nothing to rate right now.</p>';
-      return;
-    }
-    var score = state.panelState === "rated" ? MOCK_SUBMITTED_SCORE : state.score;
-    el.innerHTML =
-      '<p style="margin:0 0 12px;font-size:11px;">' + MOCK_ROUND.brewerName + " — " + MOCK_ROUND.resolvedAgo + "</p>" +
-      '<div class="strip" data-strip-b>' + starsHtml(score, 30, "#f5c542", "#4a4a52") + "</div>" +
-      '<p style="margin-top:8px;font-size:10px;opacity:0.6;">' +
-      (state.panelState === "rated" ? "Drag to change your rating." : "Drag across the stars to rate.") + "</p>";
-
-    var strip = el.querySelector("[data-strip-b]");
-    var dragging = false;
-    function scoreFromX(clientX) {
-      var rect = strip.getBoundingClientRect();
-      var ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
-      return Math.max(1, Math.min(5, Math.ceil(ratio * 5)));
-    }
-    function paint(n) { strip.innerHTML = starsHtml(n, 30, "#f5c542", "#4a4a52"); }
-    strip.addEventListener("pointerdown", function (e) {
-      dragging = true; strip.setPointerCapture(e.pointerId); paint(scoreFromX(e.clientX));
-    });
-    strip.addEventListener("pointermove", function (e) { if (dragging) paint(scoreFromX(e.clientX)); });
-    strip.addEventListener("pointerup", function (e) {
-      if (dragging) { state.score = scoreFromX(e.clientX); state.panelState = "rated"; dragging = false; render(); }
-    });
-  }
-
-  function renderBodyC() {
-    var el = document.querySelector('[data-body="C"]');
-    if (state.panelState === "none") {
-      el.innerHTML = '<p style="margin-top:32px;">&gt; No rateable round found.<br />&gt; Standing by...</p>';
-      return;
-    }
-    var committed = state.panelState === "rated" ? MOCK_SUBMITTED_SCORE : state.score;
-    if (!state.pendingC) state.pendingC = committed || 3;
-    el.innerHTML =
-      '<p style="margin:0 0 4px;">&gt; BREWER: ' + MOCK_ROUND.brewerName + "</p>" +
-      '<p style="margin:0 0 20px;opacity:0.6;">&gt; RESOLVED: ' + MOCK_ROUND.resolvedAgo + "</p>" +
-      '<p style="margin:0 0 8px;">&gt; SCORE:</p>' +
-      '<div class="stars" data-stars-c>' + starsHtml(state.pendingC, 32, "#3fff6b", "#123a1e") + "</div>" +
-      '<p style="margin:0 0 16px;font-size:11px;opacity:0.7;">↑/↓ or 1-5 to select, ENTER to confirm</p>' +
-      '<div class="keypad">' +
-      '<button data-c-minus>-</button><button data-c-plus>+</button>' +
-      '<button class="confirm" data-c-confirm>CONFIRM</button></div>' +
-      (state.panelState === "rated"
-        ? '<p style="margin-top:16px;font-size:11px;opacity:0.6;">&gt; last submitted: ' + committed + '/5 — editable until next round resolves.</p>'
-        : "");
-    function repaint() { document.querySelector("[data-stars-c]").innerHTML = starsHtml(state.pendingC, 32, "#3fff6b", "#123a1e"); }
-    el.querySelector("[data-c-minus]").addEventListener("click", function () { state.pendingC = Math.max(1, state.pendingC - 1); repaint(); });
-    el.querySelector("[data-c-plus]").addEventListener("click", function () { state.pendingC = Math.min(5, state.pendingC + 1); repaint(); });
-    el.querySelector("[data-c-confirm]").addEventListener("click", function () {
-      state.score = state.pendingC; state.panelState = "rated"; render();
-    });
-  }
-
-  function renderBodyD() {
-    var el = document.querySelector('[data-body="D"]');
-    if (state.panelState === "none") {
-      // Unreachable via the UI now (the tab itself is hidden — see updatePanels),
+      // Unreachable via the UI now (the tab itself is hidden — see updatePanel),
       // kept as a defensive fallback only.
       el.innerHTML = '<p style="padding:16px 0;text-align:center;font-size:11px;font-style:italic;opacity:0.6;">Nothing to rate right now.</p>';
       return;
@@ -656,52 +324,35 @@
     });
   }
 
-  function renderTabD() {
-    var tab = document.querySelector("[data-tab-d]");
-    if (!tab) return;
-    tab.className = "tab tab-look-" + state.tabLookD;
-    tab.innerHTML = TAB_LOOKS[state.tabLookD].content;
-  }
-
-  // ---------- open/close + tab pending dots ----------
-  function updatePanels() {
+  // ---------- open/close + tab pending dot ----------
+  function updatePanel() {
     // "Nothing to rate" (issue #202 feedback) isn't a message inside the panel — the
     // tab itself doesn't appear at all, because the player wasn't in the previous
     // round (or it was a previous day). Force the panel shut when that's the case.
-    if (state.panelState === "none") state.open[state.variant] = false;
+    if (state.panelState === "none") state.open = false;
 
-    renderTabD();
-    VARIANT_KEYS.forEach(function (v) {
-      document.querySelector('[data-panel="' + v + '"]').classList.toggle("closed", !state.open[v]);
-      var wrapper = document.getElementById("variant-" + v);
-      wrapper.style.display = state.variant === v ? "" : "none";
-      wrapper.setAttribute("data-open", state.open[v] ? "true" : "false");
-    });
-    var activeTab = document.querySelector("#variant-" + state.variant + " .tab");
-    if (activeTab) activeTab.style.display = state.panelState === "none" ? "none" : "";
+    document.querySelector('[data-panel]').classList.toggle("closed", !state.open);
+    document.getElementById("widget").setAttribute("data-open", state.open ? "true" : "false");
+    var tab = document.querySelector(".tab");
+    if (tab) tab.style.display = state.panelState === "none" ? "none" : "";
     document.querySelectorAll("[data-pending-dot]").forEach(function (d) {
       d.style.display = state.panelState === "pending" ? "" : "none";
     });
   }
 
   function render() {
-    renderBodyA(); renderBodyB(); renderBodyC(); renderBodyD();
-    updatePanels();
-    document.getElementById("switcher-label").textContent = state.variant + " — " + VARIANT_LABEL[state.variant];
+    renderBody();
+    updatePanel();
     document.querySelectorAll(".state-btn[data-state]").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-state") === state.panelState);
     });
-    document.querySelectorAll(".state-btn[data-tab-look]").forEach(function (btn) {
-      btn.classList.toggle("active", btn.getAttribute("data-tab-look") === state.tabLookD);
-    });
   }
 
-  // ---------- wiring: tab toggles, state buttons, variant switcher, keyboard ----------
+  // ---------- wiring: tab toggle, state buttons ----------
   document.querySelectorAll("[data-toggle]").forEach(function (btn) {
     btn.addEventListener("click", function () {
-      var v = btn.getAttribute("data-toggle");
-      state.open[v] = !state.open[v];
-      updatePanels();
+      state.open = !state.open;
+      updatePanel();
     });
   });
 
@@ -713,44 +364,12 @@
     btn.textContent = STATE_LABEL[s];
     btn.addEventListener("click", function () {
       state.panelState = s;
-      // Keep variant D's confirm/undo/stamp state consistent with the quick-preview buttons.
+      // Keep the confirm/undo/stamp state consistent with the quick-preview buttons.
       state.confirmedD = s === "rated";
       state.scoreD = s === "rated" ? MOCK_SUBMITTED_SCORE : 0;
       render();
     });
     stateButtonsEl.appendChild(btn);
-  });
-
-  var tabLookButtonsEl = document.getElementById("tab-look-buttons");
-  var tabLookHint = document.createElement("span");
-  tabLookHint.textContent = "Tab look (Variant D):";
-  tabLookHint.style.cssText = "align-self:center;font-size:11px;color:var(--parchment-dim);margin-right:4px;";
-  tabLookButtonsEl.appendChild(tabLookHint);
-  TAB_LOOK_KEYS.forEach(function (k) {
-    var btn = document.createElement("button");
-    btn.className = "state-btn";
-    btn.setAttribute("data-tab-look", k);
-    btn.textContent = TAB_LOOKS[k].label;
-    btn.addEventListener("click", function () {
-      state.tabLookD = k;
-      render();
-    });
-    tabLookButtonsEl.appendChild(btn);
-  });
-
-  function cycleVariant(dir) {
-    var idx = VARIANT_KEYS.indexOf(state.variant);
-    state.variant = VARIANT_KEYS[(idx + dir + VARIANT_KEYS.length) % VARIANT_KEYS.length];
-    render();
-  }
-  document.querySelectorAll("[data-cycle]").forEach(function (btn) {
-    btn.addEventListener("click", function () { cycleVariant(Number(btn.getAttribute("data-cycle"))); });
-  });
-  window.addEventListener("keydown", function (e) {
-    var tag = (e.target && e.target.tagName) || "";
-    if (tag === "INPUT" || tag === "TEXTAREA") return;
-    if (e.key === "ArrowLeft") cycleVariant(-1);
-    if (e.key === "ArrowRight") cycleVariant(1);
   });
 
   render();
