@@ -195,8 +195,15 @@
   #variant-C .keypad button.confirm { margin-left: auto; background: rgba(63,255,107,0.1); }
 
   /* ---------- Variant D — Merged: pushpin card + tap-per-star + confirm/undo stamp ---------- */
+  /* Round 5, per feedback on issue #202: the tab and the note were animating
+     independently at two different heights (tab pinned to viewport
+     vertical-center, panel pinned near the top) so they read as unrelated
+     elements rather than "the tab pulling the note onto the page". Both now
+     share the same vertical anchor, and the panel slides fully off-screen
+     when closed (instead of a small 32px nudge) so the whole trip — off
+     behind the tab to flush against it — reads as one motion. */
   #variant-D .tab {
-    top: 50%;
+    top: 110px;
     padding: 12px 8px 12px 12px;
     border: 2px solid #8a5a3a;
     border-right: none;
@@ -205,7 +212,7 @@
   }
   #variant-D .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
   #variant-D .panel {
-    top: 96px; right: 16px; width: 260px;
+    top: 110px; right: 16px; width: 260px;
     border: 2px solid #8a5a3a;
     border-radius: 4px;
     background: #fdf6e3;
@@ -213,7 +220,7 @@
     box-shadow: 0 10px 20px rgb(0 0 0 / 0.5);
     transform: translateX(0); opacity: 1;
   }
-  #variant-D .panel.closed { transform: translateX(32px); opacity: 0; }
+  #variant-D .panel.closed { transform: translateX(140%); opacity: 0; }
   #variant-D .panel-inner { position: relative; padding: 16px; }
   #variant-D .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
   #variant-D .stars { display: flex; gap: 4px; margin: 4px 0 12px; }
