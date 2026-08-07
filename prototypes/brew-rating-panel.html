@@ -22,9 +22,10 @@
 
     Round 2, per feedback on issue #202: liked A's tap-per-star and B's
     pushpin/corkboard design. Variant D merges them — B's chrome, A's tap
-    interaction, plus an explicit Confirm/Undo step: Confirm stamps the
-    rater's initials in a typewriter ink-stamp style, Undo removes it
-    (the star selection stays, only the confirmation is retracted). A/B/C
+    interaction. Round 3: replaced the separate Confirm/Undo buttons with
+    a single dashed-outline "signature" box below the stars — click it to
+    lock the rating in and stamp your initials, click the signed stamp
+    again to withdraw it (the star selection stays put either way). A/B/C
     are kept for reference/comparison.
 
     Open this file directly in a browser — no server needed.
@@ -199,34 +200,32 @@
   #variant-D .panel-inner { position: relative; padding: 16px; }
   #variant-D .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
   #variant-D .stars { display: flex; gap: 4px; margin: 4px 0 12px; }
-  #variant-D .confirm-row { display: flex; gap: 8px; margin-top: 4px; }
-  #variant-D .confirm-row button {
-    flex: 1;
-    border: 2px solid #8a5a3a;
+  #variant-D .sign-box {
+    display: block;
+    width: 100%;
+    margin-top: 4px;
+    padding: 10px 8px;
+    border: 2px dashed #8a5a3a;
+    border-radius: 4px;
     background: transparent;
-    color: #3a2a1a;
+    color: #8a5a3a;
     font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    padding: 6px 4px;
-    border-radius: 4px;
+    letter-spacing: 0.08em;
+    text-align: center;
     cursor: pointer;
   }
-  #variant-D .confirm-row button.primary { background: #c9762f; color: #fdf6e3; border-color: #8a5a3a; }
-  #variant-D .confirm-row button:disabled { opacity: 0.35; cursor: default; }
-  #variant-D .ink-stamp {
-    display: inline-block;
-    margin-top: 14px;
-    padding: 3px 12px;
+  #variant-D .sign-box:disabled { opacity: 0.35; cursor: default; }
+  #variant-D .sign-box.signed {
+    border-style: solid;
+    border-color: #7a1f1f;
+    color: #7a1f1f;
+    background: rgba(122, 31, 31, 0.05);
     font-family: "Courier New", Courier, monospace;
     font-weight: 700;
-    font-size: 13px;
-    letter-spacing: 0.14em;
-    color: #7a1f1f;
-    border: 2px solid #7a1f1f;
-    border-radius: 2px;
-    transform: rotate(-5deg);
-    opacity: 0.88;
+    font-size: 14px;
+    letter-spacing: 0.16em;
+    transform: rotate(-3deg);
   }
 
   /* ---------- floating bottom switcher ---------- */
@@ -515,13 +514,10 @@
     el.innerHTML =
       '<p style="margin:0 0 12px;font-size:11px;">' + MOCK_ROUND.brewerName + " — " + MOCK_ROUND.resolvedAgo + "</p>" +
       '<div class="stars" data-stars-d>' + starsHtml(state.scoreD, 30, "#f5c542", "#4a4a52", "data-star-d") + "</div>" +
-      '<div class="confirm-row">' +
-      '<button data-d-confirm class="primary"' + (state.confirmedD || state.scoreD === 0 ? " disabled" : "") + '>Confirm</button>' +
-      '<button data-d-undo' + (state.confirmedD ? "" : " disabled") + ">Undo</button>" +
-      "</div>" +
-      (state.confirmedD
-        ? '<span class="ink-stamp">✓ ' + MOCK_RATER_INITIALS + "</span>"
-        : '<p style="margin-top:12px;font-size:10px;opacity:0.6;">Tap a star, then Confirm to stamp it.</p>');
+      '<button type="button" data-d-sign class="sign-box' + (state.confirmedD ? " signed" : "") + '"' +
+      (!state.confirmedD && state.scoreD === 0 ? " disabled" : "") + ">" +
+      (state.confirmedD ? "✓ " + MOCK_RATER_INITIALS : "Sign to lock in your rating") +
+      "</button>";
 
     function paintStars(n) {
       var container = el.querySelector("[data-stars-d]");
@@ -545,17 +541,13 @@
     wireStars();
     el.querySelector("[data-stars-d]").addEventListener("mouseleave", function () { paintStars(state.scoreD); });
 
-    var confirmBtn = el.querySelector("[data-d-confirm]");
-    if (confirmBtn) confirmBtn.addEventListener("click", function () {
-      if (state.scoreD === 0) return;
-      state.confirmedD = true;
-      state.panelState = "rated";
-      render();
-    });
-    var undoBtn = el.querySelector("[data-d-undo]");
-    if (undoBtn) undoBtn.addEventListener("click", function () {
-      state.confirmedD = false;
-      state.panelState = "pending";
+    var signBox = el.querySelector("[data-d-sign]");
+    if (signBox) signBox.addEventListener("click", function () {
+      if (!state.confirmedD && state.scoreD === 0) return;
+      // One box, two states: click locks the rating in and signs it; clicking the
+      // signed box again withdraws the stamp (the star selection stays put).
+      state.confirmedD = !state.confirmedD;
+      state.panelState = state.confirmedD ? "rated" : "pending";
       render();
     });
   }
