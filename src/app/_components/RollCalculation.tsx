@@ -1,4 +1,5 @@
-import { classifyRollCalculation } from "@/lib/game/rollCalculation";
+import type { CSSProperties } from "react";
+import { classifyRollCalculation, getModifierJitterIntensity } from "@/lib/game/rollCalculation";
 import { DieIcon } from "@/app/_components/DieIcon";
 import type { RollCalculationDiceTerm, RollCalculationEffectBadge } from "@/lib/game/rollCalculationEffects";
 
@@ -63,6 +64,8 @@ export function RollCalculation({
     );
   }
 
+  const jitter = getModifierJitterIntensity(calc.modifier);
+
   return (
     <div className="flex flex-col items-end gap-1">
       <span className="flex flex-wrap items-center justify-end gap-1 whitespace-nowrap font-mono text-sm text-parchment-dim">
@@ -70,7 +73,7 @@ export function RollCalculation({
         {discardedRoll !== null ? (
           <span className="text-parchment-dim/60 line-through">{discardedRoll}</span>
         ) : null}
-        {operator} {Math.abs(calc.modifier)}
+        <ModifierTerm operator={operator} value={Math.abs(calc.modifier)} jitter={jitter} />
         {diceTerms.map((term, i) => (
           <DieIcon key={i} shape={term.shape} value={term.value} className="h-4 w-4" />
         ))}
@@ -86,6 +89,53 @@ export function RollCalculation({
         </span>
       ) : null}
     </div>
+  );
+}
+
+/** Shake amplitude at the lowest (floor) and highest (capped) jitter intensity, in px. */
+const JITTER_MIN_AMPLITUDE_PX = 1;
+const JITTER_MAX_AMPLITUDE_PX = 3;
+/** Shake period at the lowest and highest jitter intensity, in seconds — faster as intensity rises. */
+const JITTER_MAX_PERIOD_SECONDS = 0.5;
+const JITTER_MIN_PERIOD_SECONDS = 0.25;
+
+/**
+ * The modifier term of the calc line ("+ 8"), isolated into its own element
+ * so the issue #196 "danger" jitter can target it without disturbing the
+ * roll or total — the acceptance criteria is explicit that those two must
+ * stay legible regardless of how high the modifier climbs.
+ *
+ * `jitter` is the 0-1 intensity from `getModifierJitterIntensity` — 0 (below
+ * +8) renders today's static text; anything above scales both the shake's
+ * amplitude and its speed via CSS custom properties consumed by the
+ * `modifier-jitter` keyframes in globals.css. Only the motion signals
+ * "danger" here, deliberately — the issue asks for a jitter cue, not an
+ * additional color change layered on top.
+ */
+function ModifierTerm({ operator, value, jitter }: { operator: string; value: number; jitter: number }) {
+  if (jitter <= 0) {
+    return (
+      <>
+        {operator} {value}
+      </>
+    );
+  }
+
+  const amplitude = JITTER_MIN_AMPLITUDE_PX + jitter * (JITTER_MAX_AMPLITUDE_PX - JITTER_MIN_AMPLITUDE_PX);
+  const period = JITTER_MAX_PERIOD_SECONDS - jitter * (JITTER_MAX_PERIOD_SECONDS - JITTER_MIN_PERIOD_SECONDS);
+
+  return (
+    <span
+      className="inline-block"
+      style={
+        {
+          animation: `modifier-jitter ${period}s ease-in-out infinite`,
+          "--jitter-amplitude": `${amplitude}px`,
+        } as CSSProperties
+      }
+    >
+      {operator} {value}
+    </span>
   );
 }
 

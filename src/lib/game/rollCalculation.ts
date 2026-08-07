@@ -22,3 +22,35 @@ export function classifyRollCalculation(roll: number, modifier: number): RollCal
 export function formatModifier(modifier: number): string {
   return modifier >= 0 ? `+${modifier}` : `${modifier}`;
 }
+
+/** Where the "danger" jitter cue on a high modifier starts (issue #196). */
+const JITTER_THRESHOLD = 8;
+/** Modifier value at which jitter intensity hits its readable maximum (issue #196). */
+const JITTER_CAP = 14;
+/**
+ * Intensity right at the threshold — a floor rather than 0, so the jitter is
+ * visible the instant a modifier crosses +8 instead of fading in from
+ * nothing (issue #196's acceptance criteria calls for a visible cue at +8).
+ */
+const JITTER_FLOOR = 0.25;
+
+/**
+ * Jitter intensity (0-1) for the modifier term in RollCalculation's rich
+ * mode (issue #196) — a "danger" cue when a player's modifier is running
+ * away with the round. The threshold is absolute (+8), not relative to
+ * other players: a relative "double the next-highest" rule false-positives
+ * early game, since the first player to pull ahead is trivially "infinitely"
+ * ahead of everyone still at +0.
+ *
+ * Ramps linearly from a floor at +8 (just starting to jitter, but already
+ * visible) to full intensity at +14, then holds at 1 so very high modifiers
+ * don't become unreadable visual noise. These numbers came from
+ * conversation, not a tuning pass — see the #196 write-up for how they were
+ * eyeballed.
+ */
+export function getModifierJitterIntensity(modifier: number): number {
+  if (modifier < JITTER_THRESHOLD) return 0;
+  if (modifier >= JITTER_CAP) return 1;
+  const ramp = (modifier - JITTER_THRESHOLD) / (JITTER_CAP - JITTER_THRESHOLD);
+  return JITTER_FLOOR + (1 - JITTER_FLOOR) * ramp;
+}
