@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstName } from "@/lib/game/displayName";
+import { firstName, firstNameOrFallback } from "@/lib/game/displayName";
 
 describe("firstName", () => {
   it("drops the surname from a two-part name", () => {
@@ -21,5 +21,15 @@ describe("firstName", () => {
   it("falls back to the original string for an empty/whitespace-only name", () => {
     expect(firstName("")).toBe("");
     expect(firstName("   ")).toBe("   ");
+  });
+});
+
+describe("firstNameOrFallback", () => {
+  it("extracts the first name from an actual display name", () => {
+    expect(firstNameOrFallback("Ada Lovelace", "ada@example.com")).toBe("Ada");
+  });
+
+  it("skips extraction for a null display name, using the fallback as-is", () => {
+    expect(firstNameOrFallback(null, "ada@example.com")).toBe("ada@example.com");
   });
 });

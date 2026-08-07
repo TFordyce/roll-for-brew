@@ -13,3 +13,13 @@
 export function firstName(displayName: string): string {
   return displayName.trim().split(/\s+/)[0] || displayName;
 }
+
+/**
+ * The `displayName ?? email` fallback plus first-name extraction, combined —
+ * every call site needs both, so this folds the "skip extraction for the
+ * email fallback" rule in one place rather than each caller re-deriving it
+ * around `firstName` (issue #197).
+ */
+export function firstNameOrFallback(displayName: string | null, fallback: string): string {
+  return displayName === null ? fallback : firstName(displayName);
+}

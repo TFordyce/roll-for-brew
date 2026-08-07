@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
 import { formatModifier } from "@/lib/game/rollCalculation";
-import { firstName } from "@/lib/game/displayName";
+import { firstNameOrFallback } from "@/lib/game/displayName";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 
@@ -54,9 +54,9 @@ export function PlayerTile({
   // First name only — a long full name wraps to two lines in the tile's
   // fixed width, so show just the first name and truncate with an ellipsis
   // rather than wrap. Full name still shows on hover via the title attribute.
-  // displayName === null (email fallback) skips extraction (issue #197) —
-  // an email has no surname to drop.
-  const firstNameOnly = displayName === null ? name : firstName(displayName);
+  // The email fallback skips extraction (issue #197) — an email has no
+  // surname to drop.
+  const firstNameOnly = firstNameOrFallback(displayName, email);
   const initial = firstNameOnly.trim().charAt(0).toUpperCase() || "?";
 
   const avatar = (
