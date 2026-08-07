@@ -33,3 +33,21 @@
     text-shadow: 0 0 6px rgba(224, 67, 63, 0.85);
   }
 }
+
+/* "Danger" jitter on a runaway-high modifier (issue #196) — applied via
+   RollCalculation.tsx's ModifierTerm to the modifier term only, never the
+   roll or total. Amplitude comes from the --jitter-amplitude custom
+   property, scaled by getModifierJitterIntensity (rollCalculation.ts) so
+   the shake grows with how far above +8 the modifier sits, capped at +14. */
+@keyframes modifier-jitter {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(calc(-1 * var(--jitter-amplitude, 2px)));
+  }
+  75% {
+    transform: translateX(var(--jitter-amplitude, 2px));
+  }
+}

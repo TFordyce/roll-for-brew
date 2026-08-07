@@ -1,4 +1,5 @@
-import { classifyRollCalculation } from "@/lib/game/rollCalculation";
+import type { CSSProperties } from "react";
+import { classifyRollCalculation, getModifierJitterIntensity } from "@/lib/game/rollCalculation";
 import { DieIcon } from "@/app/_components/DieIcon";
 import type { RollCalculationDiceTerm, RollCalculationEffectBadge } from "@/lib/game/rollCalculationEffects";
 
@@ -63,6 +64,8 @@ export function RollCalculation({
     );
   }
 
+  const jitter = getModifierJitterIntensity(calc.modifier);
+
   return (
     <div className="flex flex-col items-end gap-1">
       <span className="flex flex-wrap items-center justify-end gap-1 whitespace-nowrap font-mono text-sm text-parchment-dim">
@@ -73,7 +76,7 @@ export function RollCalculation({
           </>
         ) : null}
         <span className="font-semibold text-parchment">{calc.roll}</span>
-        {operator} {Math.abs(calc.modifier)}
+        <ModifierTerm operator={operator} value={Math.abs(calc.modifier)} jitter={jitter} />
         {diceTerms.map((term, i) => (
           <DieIcon key={i} shape={term.shape} value={term.value} className="h-4 w-4" />
         ))}
@@ -89,6 +92,42 @@ export function RollCalculation({
         </span>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * The modifier term of the calc line ("+ 8"), isolated into its own element
+ * so the issue #196 "danger" jitter can target it without disturbing the
+ * roll or total — the acceptance criteria is explicit that those two must
+ * stay legible regardless of how high the modifier climbs.
+ *
+ * `jitter` is the 0-1 intensity from `getModifierJitterIntensity` — 0 (below
+ * +8) renders today's static text; anything above scales both the shake's
+ * amplitude and its speed via CSS custom properties consumed by the
+ * `modifier-jitter` keyframes in globals.css, then tints the term red as an
+ * extra "danger" signal alongside the motion.
+ */
+function ModifierTerm({ operator, value, jitter }: { operator: string; value: number; jitter: number }) {
+  if (jitter <= 0) {
+    return (
+      <>
+        {operator} {value}
+      </>
+    );
+  }
+
+  return (
+    <span
+      className="inline-block text-red-400"
+      style={
+        {
+          animation: `modifier-jitter ${0.5 - jitter * 0.25}s ease-in-out infinite`,
+          "--jitter-amplitude": `${1 + jitter * 2}px`,
+        } as CSSProperties
+      }
+    >
+      {operator} {value}
+    </span>
   );
 }
 
