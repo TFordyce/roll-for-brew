@@ -7,6 +7,7 @@ import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { buildRollCalculation } from "@/lib/game/rollCalculationEffects";
+import { firstName } from "@/lib/game/displayName";
 import { getRoundModifierEffectDetails, type ModifierEffectDetail } from "@/lib/supabase/spellCasts";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
@@ -189,17 +190,21 @@ export function RoundReveal({
             return (
               <li key={p.playerId} className="flex items-center justify-between gap-3 py-2">
                 <ModifierBreakdown playerId={p.playerId} roomId={roomId} modifier={p.modifier} />
-                <span className="font-body text-sm text-parchment">{p.displayName ?? p.email}</span>
-                {value !== null ? (
-                  <RollCalculation
-                    roll={value}
-                    modifier={built.composedModifier}
-                    rich
-                    discardedRoll={discardedValue}
-                    diceTerms={built.diceTerms}
-                    effects={built.effects}
-                  />
-                ) : null}
+                <div className="flex min-w-0 flex-1 flex-col gap-y-0.5 sm:flex-row sm:items-center sm:gap-x-2">
+                  <span className="font-body text-sm text-parchment" title={p.displayName ?? p.email}>
+                    {p.displayName === null ? p.email : firstName(p.displayName)}
+                  </span>
+                  {value !== null ? (
+                    <RollCalculation
+                      roll={value}
+                      modifier={built.composedModifier}
+                      rich
+                      discardedRoll={discardedValue}
+                      diceTerms={built.diceTerms}
+                      effects={built.effects}
+                    />
+                  ) : null}
+                </div>
                 <span
                   className={`flex h-9 w-9 items-center justify-center rounded-md border-2 font-display text-sm ${
                     value === null
