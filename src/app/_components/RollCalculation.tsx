@@ -69,13 +69,10 @@ export function RollCalculation({
   return (
     <div className="flex flex-col items-end gap-1">
       <span className="flex flex-wrap items-center justify-end gap-1 whitespace-nowrap font-mono text-sm text-parchment-dim">
+        <DieIcon shape="d20" value={calc.roll} className="h-5 w-5" />
         {discardedRoll !== null ? (
-          <>
-            <DieIcon shape="d20" value={calc.roll} className="h-5 w-5" />
-            <span className="text-parchment-dim/60 line-through">{discardedRoll}</span>
-          </>
+          <span className="text-parchment-dim/60 line-through">{discardedRoll}</span>
         ) : null}
-        <span className="font-semibold text-parchment">{calc.roll}</span>
         <ModifierTerm operator={operator} value={Math.abs(calc.modifier)} jitter={jitter} />
         {diceTerms.map((term, i) => (
           <DieIcon key={i} shape={term.shape} value={term.value} className="h-4 w-4" />
