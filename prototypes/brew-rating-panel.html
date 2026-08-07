@@ -81,7 +81,9 @@
   .tab {
     position: fixed;
     right: 0;
-    z-index: 40;
+    z-index: 55; /* above .panel (z-index 50) — once tab and panel share an
+                    anchor and overlap, the tab must sit on top or the panel
+                    swallows it (round 5 feedback) */
     display: flex;
     align-items: center;
     gap: 8px;
@@ -221,6 +223,50 @@
     transform: translateX(0); opacity: 1;
   }
   #variant-D .panel.closed { transform: translateX(140%); opacity: 0; }
+
+  /* Round 6: a few different looks for the tab itself — same position/
+     animation envelope, different shape/material. Pick with the buttons
+     under the intro text (Variant D only). */
+  #variant-D .tab.tab-look-pin {
+    padding: 12px 8px 12px 12px;
+    border: 2px solid #8a5a3a;
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    background: #c9762f;
+  }
+  #variant-D .tab.tab-look-ribbon {
+    padding: 14px 8px;
+    border: none;
+    background: #7a1f1f;
+    color: #fdf6e3;
+    clip-path: polygon(0 0, 100% 0, 100% 100%, 0 100%, 12px 50%);
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+  }
+  #variant-D .tab.tab-look-index {
+    padding: 12px 10px;
+    border: 2px solid #3a2a1a;
+    border-right: none;
+    border-radius: 3px 0 0 3px;
+    background: #fdf6e3;
+    color: #3a2a1a;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    writing-mode: vertical-rl;
+  }
+  #variant-D .tab.tab-look-scroll {
+    padding: 14px 10px 14px 14px;
+    border: 3px solid #a8763f;
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    background: linear-gradient(160deg, #e8c98a 0%, #c9a35f 55%, #a8763f 100%);
+    box-shadow: inset 0 0 6px rgba(90, 60, 20, 0.5), 0 4px 12px rgb(0 0 0 / 0.4);
+  }
+  #variant-D .tab.tab-look-scroll .pushpin { background: #7a1f1f; }
   #variant-D .panel-inner { position: relative; padding: 16px; }
   #variant-D .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
   #variant-D .stars { display: flex; gap: 4px; margin: 4px 0 12px; }
@@ -273,10 +319,12 @@
     <p class="intro">
       Wayfinder ticket #202. Flip designs with the bar below (or ← / →) — <strong>D</strong> is the current pick,
       merging B's pushpin-card look with A's tap-per-star and a Confirm/Undo step. A/B/C stay for reference. Use
-      the buttons to preview the three things the panel needs to say — note "Nothing to rate" now hides the tab
-      entirely rather than showing a message. Standalone file, open directly in a browser.
+      the state buttons to preview the three things the panel needs to say — note "Nothing to rate" now hides the tab
+      entirely rather than showing a message. The second row of buttons swaps just the tab's look on Variant D
+      (open the panel to see it sitting against the note). Standalone file, open directly in a browser.
     </p>
     <div class="state-buttons" id="state-buttons"></div>
+    <div class="state-buttons" id="tab-look-buttons" style="margin-top:8px;"></div>
   </div>
 
   <!-- ============ Variant A — Bookmark ribbon (tap-per-star) ============ -->
@@ -334,8 +382,8 @@
 
   <!-- ============ Variant D — Merged: pushpin card + tap-per-star + confirm/undo stamp ============ -->
   <div id="variant-D">
-    <button class="tab" data-toggle="D" aria-label="Open brew rating">
-      <span class="pending-dot" data-pending-dot style="display:none;"></span>
+    <button class="tab tab-look-pin" data-toggle="D" data-tab-d aria-label="Open brew rating">
+      <span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>
       <span class="pushpin"></span>
     </button>
     <div class="panel closed" data-panel="D">
@@ -385,7 +433,39 @@
     pendingC: 3,
     scoreD: 0,
     confirmedD: false,
+    tabLookD: "pin",
   };
+
+  // ---------- Variant D tab looks (round 6, per feedback the tab got lost
+  // behind the note once they shared a position) — same slot/animation,
+  // different shape/material. `content` is the tab's inner markup. ----------
+  var TAB_LOOKS = {
+    pin: {
+      label: "Pushpin",
+      content:
+        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
+        '<span class="pushpin"></span>',
+    },
+    ribbon: {
+      label: "Ribbon flag",
+      content:
+        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
+        '<span>RATE</span>',
+    },
+    index: {
+      label: "Index tab",
+      content:
+        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
+        '<span>RATE</span>',
+    },
+    scroll: {
+      label: "Scroll edge",
+      content:
+        '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>' +
+        '<span class="pushpin"></span>',
+    },
+  };
+  var TAB_LOOK_KEYS = ["pin", "ribbon", "index", "scroll"];
 
   // ---------- pixel star: 9x8 grid, rendered as an inline SVG built from a text pattern ----------
   var STAR_PATTERN = [
@@ -576,6 +656,13 @@
     });
   }
 
+  function renderTabD() {
+    var tab = document.querySelector("[data-tab-d]");
+    if (!tab) return;
+    tab.className = "tab tab-look-" + state.tabLookD;
+    tab.innerHTML = TAB_LOOKS[state.tabLookD].content;
+  }
+
   // ---------- open/close + tab pending dots ----------
   function updatePanels() {
     // "Nothing to rate" (issue #202 feedback) isn't a message inside the panel — the
@@ -583,6 +670,7 @@
     // round (or it was a previous day). Force the panel shut when that's the case.
     if (state.panelState === "none") state.open[state.variant] = false;
 
+    renderTabD();
     VARIANT_KEYS.forEach(function (v) {
       document.querySelector('[data-panel="' + v + '"]').classList.toggle("closed", !state.open[v]);
       var wrapper = document.getElementById("variant-" + v);
@@ -600,8 +688,11 @@
     renderBodyA(); renderBodyB(); renderBodyC(); renderBodyD();
     updatePanels();
     document.getElementById("switcher-label").textContent = state.variant + " — " + VARIANT_LABEL[state.variant];
-    document.querySelectorAll(".state-btn").forEach(function (btn) {
+    document.querySelectorAll(".state-btn[data-state]").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-state") === state.panelState);
+    });
+    document.querySelectorAll(".state-btn[data-tab-look]").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-tab-look") === state.tabLookD);
     });
   }
 
@@ -628,6 +719,23 @@
       render();
     });
     stateButtonsEl.appendChild(btn);
+  });
+
+  var tabLookButtonsEl = document.getElementById("tab-look-buttons");
+  var tabLookHint = document.createElement("span");
+  tabLookHint.textContent = "Tab look (Variant D):";
+  tabLookHint.style.cssText = "align-self:center;font-size:11px;color:var(--parchment-dim);margin-right:4px;";
+  tabLookButtonsEl.appendChild(tabLookHint);
+  TAB_LOOK_KEYS.forEach(function (k) {
+    var btn = document.createElement("button");
+    btn.className = "state-btn";
+    btn.setAttribute("data-tab-look", k);
+    btn.textContent = TAB_LOOKS[k].label;
+    btn.addEventListener("click", function () {
+      state.tabLookD = k;
+      render();
+    });
+    tabLookButtonsEl.appendChild(btn);
   });
 
   function cycleVariant(dir) {
