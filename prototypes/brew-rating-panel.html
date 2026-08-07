@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — Brew Rating panel (issue #202)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /*
+    PROTOTYPE — throwaway, standalone. No build step, no framework, no
+    connection to the roll-for-brew app (see feedback: prototypes for this
+    repo must NOT be a route inside the Next.js app — its middleware hits
+    real Supabase auth/env even for "unauthenticated" pages).
+
+    Answers the wayfinder ticket "Prototype: Rating panel (16-bit notepad
+    + star toggle)" (issue #202, part of Map: Brew Rating system, #201).
+
+    Three structurally different takes on the slide-out rating panel,
+    switchable via the bottom bar (or ← / →), plus a state switcher for
+    the three things the panel must communicate: nothing to rate right
+    now / a round is pending / already rated (editable until the room's
+    next round resolves).
+
+    Open this file directly in a browser — no server needed.
+  */
+  :root {
+    color-scheme: dark;
+    --parchment: #e8dcb8;
+    --parchment-dim: #cbbf9a;
+    --tavern-panel: #2a2118;
+    --tavern-plank: #1c150f;
+    --gilt: #b8923f;
+    --gilt-bright: #f5c542;
+    --ember: #a5432f;
+    --star-lit: #f5c542;
+    --star-unlit: #4a4a52;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: ui-monospace, "Courier New", monospace;
+    background: var(--tavern-plank);
+    background-image:
+      repeating-linear-gradient(90deg, rgba(255,255,255,0.02) 0 2px, transparent 2px 40px);
+    color: var(--parchment);
+  }
+  h1 { font-size: 20px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--gilt-bright); }
+  .intro { max-width: 640px; font-size: 13px; color: var(--parchment-dim); line-height: 1.5; }
+  .stage { padding: 32px; }
+
+  .state-buttons { margin-top: 16px; display: flex; gap: 8px; }
+  .state-btn {
+    border: 2px solid rgba(184,146,63,0.4);
+    background: transparent;
+    color: var(--parchment-dim);
+    font: inherit;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+    padding: 6px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+  .state-btn.active { border-color: var(--gilt-bright); background: var(--ember); color: var(--parchment); }
+
+  button { font-family: inherit; }
+
+  /* ---------- shared tab handle ---------- */
+  .tab {
+    position: fixed;
+    right: 0;
+    z-index: 40;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.4);
+    transition: transform 0.15s ease-out;
+  }
+  .tab:hover { transform: translateX(-4px); }
+  .pending-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--gilt-bright); }
+
+  /* ---------- panel base ---------- */
+  .panel { position: fixed; z-index: 50; transition: transform 0.3s ease-out, opacity 0.3s ease-out; }
+  .panel.closed { pointer-events: none; }
+  .close-btn { background: none; border: none; cursor: pointer; font-size: 16px; line-height: 1; }
+
+  /* ---------- Variant A — Bookmark ribbon ---------- */
+  #variant-A .tab {
+    top: 33%;
+    writing-mode: vertical-rl;
+    flex-direction: column;
+    padding: 16px 8px;
+    border: 2px solid var(--gilt);
+    border-right: none;
+    border-radius: 6px 0 0 6px;
+    background: var(--ember);
+    color: var(--parchment);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  #variant-A .panel {
+    top: 0; right: 0; height: 100%; width: 300px;
+    border-left: 4px solid var(--gilt);
+    background: var(--parchment);
+    color: var(--tavern-panel);
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.5);
+    transform: translateX(0);
+  }
+  #variant-A .panel.closed { transform: translateX(100%); }
+  #variant-A .panel-inner { padding: 20px; display: flex; flex-direction: column; height: 100%; }
+  #variant-A .stars { display: flex; gap: 4px; margin: 8px 0; }
+
+  /* ---------- Variant B — Pushpin corkboard ---------- */
+  #variant-B .tab {
+    top: 50%;
+    padding: 12px 8px 12px 12px;
+    border: 2px solid #8a5a3a;
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    background: #c9762f;
+  }
+  #variant-B .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
+  #variant-B .panel {
+    top: 96px; right: 16px; width: 260px;
+    border: 2px solid #8a5a3a;
+    border-radius: 4px;
+    background: #fdf6e3;
+    color: #3a2a1a;
+    box-shadow: 0 10px 20px rgb(0 0 0 / 0.5);
+    transform: translateX(0); opacity: 1;
+  }
+  #variant-B .panel.closed { transform: translateX(32px); opacity: 0; }
+  #variant-B .panel-inner { position: relative; padding: 16px; }
+  #variant-B .pin-top { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); }
+  #variant-B .strip { display: flex; gap: 4px; padding: 8px; border-radius: 4px; background: rgba(0,0,0,0.05); touch-action: none; cursor: grab; }
+
+  /* ---------- Variant C — Terminal quest-log ---------- */
+  #variant-C .tab {
+    top: 50%;
+    padding: 12px;
+    border: 2px solid #3fff6b;
+    border-right: none;
+    background: #000;
+    color: #3fff6b;
+    font-size: 12px;
+    box-shadow: 0 0 12px rgb(63 255 107 / 0.4);
+  }
+  #variant-C .cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  #variant-C .panel {
+    top: 0; right: 0; height: 100%; width: 300px;
+    border-left: 4px solid #3fff6b;
+    background: #000;
+    color: #3fff6b;
+    box-shadow: -8px 0 24px rgb(0 0 0 / 0.6);
+    overflow: hidden;
+    transform: translateX(0);
+  }
+  #variant-C .panel.closed { transform: translateX(100%); }
+  #variant-C .scanlines {
+    position: absolute; inset: 0; opacity: 0.2; pointer-events: none;
+    background-image: repeating-linear-gradient(0deg, #3fff6b 0px, transparent 1px, transparent 3px);
+  }
+  #variant-C .panel-inner { position: relative; padding: 20px; font-size: 12px; }
+  #variant-C .stars { display: flex; gap: 4px; margin: 8px 0 12px; }
+  #variant-C .keypad { display: flex; gap: 8px; font-size: 11px; }
+  #variant-C .keypad button { background: transparent; border: 1px solid #3fff6b; color: #3fff6b; padding: 4px 8px; cursor: pointer; }
+  #variant-C .keypad button.confirm { margin-left: auto; background: rgba(63,255,107,0.1); }
+
+  /* ---------- floating bottom switcher ---------- */
+  .switcher {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 60;
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(0,0,0,0.85); color: #fff;
+    padding: 8px 16px; border-radius: 999px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+    font-size: 12px;
+  }
+  .switcher .label { min-width: 220px; text-align: center; font-weight: 600; }
+  .switcher .title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.5); }
+  .switcher button { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; line-height: 1; }
+</style>
+</head>
+<body>
+  <div class="stage">
+    <h1>Brew Rating — panel prototype</h1>
+    <p class="intro">
+      Wayfinder ticket #202. Three structurally different takes on the slide-out rating panel — flip with the
+      bar below (or ← / →). Use the buttons to see the three things the panel needs to say. Standalone file,
+      open directly in a browser.
+    </p>
+    <div class="state-buttons" id="state-buttons"></div>
+  </div>
+
+  <!-- ============ Variant A — Bookmark ribbon (tap-per-star) ============ -->
+  <div id="variant-A">
+    <button class="tab" data-toggle="A" aria-label="Open brew rating">
+      <span>Rate Brew</span>
+      <span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>
+    </button>
+    <div class="panel closed" data-panel="A">
+      <div class="panel-inner">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <strong style="text-transform:uppercase; letter-spacing:0.08em; font-size:13px;">Brewer's Notepad</strong>
+          <button class="close-btn" data-toggle="A" aria-label="Close">×</button>
+        </div>
+        <div data-body="A"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Variant B — Pushpin corkboard (drag-across) ============ -->
+  <div id="variant-B">
+    <button class="tab" data-toggle="B" aria-label="Open brew rating">
+      <span class="pending-dot" data-pending-dot style="display:none;"></span>
+      <span class="pushpin"></span>
+    </button>
+    <div class="panel closed" data-panel="B">
+      <div class="panel-inner">
+        <span class="pushpin pin-top"></span>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <strong style="text-transform:uppercase; letter-spacing:0.08em; font-size:11px;">Brew Rating</strong>
+          <button class="close-btn" data-toggle="B" aria-label="Close">×</button>
+        </div>
+        <div data-body="B"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ Variant C — Terminal quest-log (keypad) ============ -->
+  <div id="variant-C">
+    <button class="tab" data-toggle="C" aria-label="Open brew rating">
+      <span class="pending-dot" data-pending-dot style="display:none;"></span>
+      <span class="cursor">▌RATE</span>
+    </button>
+    <div class="panel closed" data-panel="C">
+      <div class="scanlines"></div>
+      <div class="panel-inner">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <span>&gt; brew_log.exe</span>
+          <button class="close-btn" data-toggle="C" aria-label="Close" style="color:#3fff6b;">[X]</button>
+        </div>
+        <div data-body="C"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="switcher">
+    <span class="title">Design</span>
+    <button data-cycle="-1" aria-label="Previous variant">←</button>
+    <span class="label" id="switcher-label"></span>
+    <button data-cycle="1" aria-label="Next variant">→</button>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- shared mock data (stands in for the real "most recent rateable round" lookup) ----------
+  var MOCK_ROUND = { brewerName: "Sam", roomLabel: "Today's Room", resolvedAgo: "12 minutes ago" };
+  var MOCK_SUBMITTED_SCORE = 4;
+
+  var STATE_KEYS = ["none", "pending", "rated"];
+  var STATE_LABEL = { none: "Nothing to rate", pending: "Round to rate", rated: "Already rated" };
+
+  var VARIANT_KEYS = ["A", "B", "C"];
+  var VARIANT_LABEL = {
+    A: "Bookmark ribbon — tap-per-star",
+    B: "Pushpin corkboard — drag-across",
+    C: "Terminal quest-log — keypad",
+  };
+
+  var state = { panelState: "pending", variant: "A", open: { A: true, B: true, C: true }, score: 0, pendingC: 3 };
+
+  // ---------- pixel star: 9x8 grid, rendered as an inline SVG built from a text pattern ----------
+  var STAR_PATTERN = [
+    "....X....",
+    "....X....",
+    "...XXX...",
+    "XXXXXXXXX",
+    ".XXXXXXX.",
+    "..XXXXX..",
+    ".XX...XX.",
+    "XX.....XX",
+  ];
+  function pixelStarSvg(lit, size, litColor, unlitColor) {
+    litColor = litColor || "var(--star-lit)";
+    unlitColor = unlitColor || "var(--star-unlit)";
+    var cols = STAR_PATTERN[0].length, rows = STAR_PATTERN.length;
+    var fill = lit ? litColor : unlitColor;
+    var rects = "";
+    for (var y = 0; y < rows; y++) {
+      for (var x = 0; x < cols; x++) {
+        if (STAR_PATTERN[y][x] === "X") {
+          rects += '<rect x="' + x + '" y="' + y + '" width="1" height="1" fill="' + fill + '" />';
+        }
+      }
+    }
+    if (lit) rects += '<rect x="4" y="3" width="1" height="1" fill="#fff2c2" />';
+    var h = (size / cols) * rows;
+    return '<svg width="' + size + '" height="' + h + '" viewBox="0 0 ' + cols + ' ' + rows +
+      '" shape-rendering="crispEdges" aria-hidden="true">' + rects + '</svg>';
+  }
+
+  function starsHtml(count, size, litColor, unlitColor, dataAttr) {
+    var out = "";
+    for (var n = 1; n <= 5; n++) {
+      var lit = n <= count;
+      out += '<button type="button" aria-label="Rate ' + n + ' star' + (n > 1 ? "s" : "") + '" ' +
+        (dataAttr ? dataAttr + '="' + n + '"' : "") +
+        ' style="background:none;border:none;padding:0;cursor:pointer;">' +
+        pixelStarSvg(lit, size, litColor, unlitColor) + '</button>';
+    }
+    return out;
+  }
+
+  // ---------- per-variant body rendering ----------
+  function renderBodyA() {
+    var el = document.querySelector('[data-body="A"]');
+    if (state.panelState === "none") {
+      el.innerHTML = '<p style="margin-top:32px;text-align:center;font-size:13px;font-style:italic;opacity:0.6;">' +
+        "Nothing to rate right now — check back after the next round.</p>";
+      return;
+    }
+    var score = state.panelState === "rated" ? MOCK_SUBMITTED_SCORE : state.score;
+    el.innerHTML =
+      '<p style="margin:0 0 4px;font-size:13px;">' + MOCK_ROUND.brewerName + " brewed for " + MOCK_ROUND.roomLabel + "</p>" +
+      '<p style="margin:0 0 20px;font-size:11px;opacity:0.6;">Resolved ' + MOCK_ROUND.resolvedAgo + "</p>" +
+      '<div class="stars" data-stars-a>' + starsHtml(score, 36, "var(--star-lit)", "var(--star-unlit)", "data-star") + "</div>" +
+      '<p style="font-size:11px;opacity:0.6;">' +
+      (state.panelState === "rated" ? "Submitted — tap a star to change it until the next round resolves." : "Tap a star to rate.") +
+      "</p>";
+    el.querySelectorAll("[data-star]").forEach(function (btn) {
+      btn.addEventListener("mouseenter", function () { renderStarsA(Number(btn.getAttribute("data-star"))); });
+      btn.addEventListener("click", function () {
+        state.score = Number(btn.getAttribute("data-star"));
+        state.panelState = "rated";
+        MOCK_SUBMITTED_SCORE_OVERRIDE = state.score;
+        render();
+      });
+    });
+    el.querySelector("[data-stars-a]").addEventListener("mouseleave", function () { renderStarsA(score); });
+  }
+  function renderStarsA(n) {
+    var container = document.querySelector("[data-stars-a]");
+    if (!container) return;
+    container.innerHTML = starsHtml(n, 36, "var(--star-lit)", "var(--star-unlit)", "data-star");
+    container.querySelectorAll("[data-star]").forEach(function (btn) {
+      btn.addEventListener("mouseenter", function () { renderStarsA(Number(btn.getAttribute("data-star"))); });
+      btn.addEventListener("click", function () {
+        state.score = Number(btn.getAttribute("data-star"));
+        state.panelState = "rated";
+        render();
+      });
+    });
+  }
+
+  function renderBodyB() {
+    var el = document.querySelector('[data-body="B"]');
+    if (state.panelState === "none") {
+      el.innerHTML = '<p style="padding:16px 0;text-align:center;font-size:11px;font-style:italic;opacity:0.6;">Nothing to rate right now.</p>';
+      return;
+    }
+    var score = state.panelState === "rated" ? MOCK_SUBMITTED_SCORE : state.score;
+    el.innerHTML =
+      '<p style="margin:0 0 12px;font-size:11px;">' + MOCK_ROUND.brewerName + " — " + MOCK_ROUND.resolvedAgo + "</p>" +
+      '<div class="strip" data-strip-b>' + starsHtml(score, 30, "#f5c542", "#4a4a52") + "</div>" +
+      '<p style="margin-top:8px;font-size:10px;opacity:0.6;">' +
+      (state.panelState === "rated" ? "Drag to change your rating." : "Drag across the stars to rate.") + "</p>";
+
+    var strip = el.querySelector("[data-strip-b]");
+    var dragging = false;
+    function scoreFromX(clientX) {
+      var rect = strip.getBoundingClientRect();
+      var ratio = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+      return Math.max(1, Math.min(5, Math.ceil(ratio * 5)));
+    }
+    function paint(n) { strip.innerHTML = starsHtml(n, 30, "#f5c542", "#4a4a52"); }
+    strip.addEventListener("pointerdown", function (e) {
+      dragging = true; strip.setPointerCapture(e.pointerId); paint(scoreFromX(e.clientX));
+    });
+    strip.addEventListener("pointermove", function (e) { if (dragging) paint(scoreFromX(e.clientX)); });
+    strip.addEventListener("pointerup", function (e) {
+      if (dragging) { state.score = scoreFromX(e.clientX); state.panelState = "rated"; dragging = false; render(); }
+    });
+  }
+
+  function renderBodyC() {
+    var el = document.querySelector('[data-body="C"]');
+    if (state.panelState === "none") {
+      el.innerHTML = '<p style="margin-top:32px;">&gt; No rateable round found.<br />&gt; Standing by...</p>';
+      return;
+    }
+    var committed = state.panelState === "rated" ? MOCK_SUBMITTED_SCORE : state.score;
+    if (!state.pendingC) state.pendingC = committed || 3;
+    el.innerHTML =
+      '<p style="margin:0 0 4px;">&gt; BREWER: ' + MOCK_ROUND.brewerName + "</p>" +
+      '<p style="margin:0 0 20px;opacity:0.6;">&gt; RESOLVED: ' + MOCK_ROUND.resolvedAgo + "</p>" +
+      '<p style="margin:0 0 8px;">&gt; SCORE:</p>' +
+      '<div class="stars" data-stars-c>' + starsHtml(state.pendingC, 32, "#3fff6b", "#123a1e") + "</div>" +
+      '<p style="margin:0 0 16px;font-size:11px;opacity:0.7;">↑/↓ or 1-5 to select, ENTER to confirm</p>' +
+      '<div class="keypad">' +
+      '<button data-c-minus>-</button><button data-c-plus>+</button>' +
+      '<button class="confirm" data-c-confirm>CONFIRM</button></div>' +
+      (state.panelState === "rated"
+        ? '<p style="margin-top:16px;font-size:11px;opacity:0.6;">&gt; last submitted: ' + committed + '/5 — editable until next round resolves.</p>'
+        : "");
+    function repaint() { document.querySelector("[data-stars-c]").innerHTML = starsHtml(state.pendingC, 32, "#3fff6b", "#123a1e"); }
+    el.querySelector("[data-c-minus]").addEventListener("click", function () { state.pendingC = Math.max(1, state.pendingC - 1); repaint(); });
+    el.querySelector("[data-c-plus]").addEventListener("click", function () { state.pendingC = Math.min(5, state.pendingC + 1); repaint(); });
+    el.querySelector("[data-c-confirm]").addEventListener("click", function () {
+      state.score = state.pendingC; state.panelState = "rated"; render();
+    });
+  }
+
+  // ---------- open/close + tab pending dots ----------
+  function updatePanels() {
+    VARIANT_KEYS.forEach(function (v) {
+      document.querySelector('[data-panel="' + v + '"]').classList.toggle("closed", !state.open[v]);
+      document.getElementById("variant-" + v).style.display = state.variant === v ? "" : "none";
+    });
+    document.querySelectorAll("[data-pending-dot]").forEach(function (d) {
+      d.style.display = state.panelState === "pending" ? "" : "none";
+    });
+  }
+
+  function render() {
+    renderBodyA(); renderBodyB(); renderBodyC();
+    updatePanels();
+    document.getElementById("switcher-label").textContent = state.variant + " — " + VARIANT_LABEL[state.variant];
+    document.querySelectorAll(".state-btn").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-state") === state.panelState);
+    });
+  }
+
+  // ---------- wiring: tab toggles, state buttons, variant switcher, keyboard ----------
+  document.querySelectorAll("[data-toggle]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var v = btn.getAttribute("data-toggle");
+      state.open[v] = !state.open[v];
+      updatePanels();
+    });
+  });
+
+  var stateButtonsEl = document.getElementById("state-buttons");
+  STATE_KEYS.forEach(function (s) {
+    var btn = document.createElement("button");
+    btn.className = "state-btn";
+    btn.setAttribute("data-state", s);
+    btn.textContent = STATE_LABEL[s];
+    btn.addEventListener("click", function () { state.panelState = s; render(); });
+    stateButtonsEl.appendChild(btn);
+  });
+
+  function cycleVariant(dir) {
+    var idx = VARIANT_KEYS.indexOf(state.variant);
+    state.variant = VARIANT_KEYS[(idx + dir + VARIANT_KEYS.length) % VARIANT_KEYS.length];
+    render();
+  }
+  document.querySelectorAll("[data-cycle]").forEach(function (btn) {
+    btn.addEventListener("click", function () { cycleVariant(Number(btn.getAttribute("data-cycle"))); });
+  });
+  window.addEventListener("keydown", function (e) {
+    var tag = (e.target && e.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA") return;
+    if (e.key === "ArrowLeft") cycleVariant(-1);
+    if (e.key === "ArrowRight") cycleVariant(1);
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
