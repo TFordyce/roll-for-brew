@@ -149,6 +149,7 @@ export function SpellCardPanel({
           ? pendingCasts.map((cast) => (
               <form key={cast.castId} action={setSpellCastTargetAction} className="mt-3 first:mt-0">
                 <input type="hidden" name="castId" value={cast.castId} />
+                <input type="hidden" name="roundId" value={roundId} />
                 <p className="mb-1 font-body text-sm text-parchment">
                   Choose a target for <strong className="text-gilt-bright">{cast.cardName}</strong>:
                 </p>

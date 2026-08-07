@@ -47,6 +47,10 @@ export type RoundStartedPayload = {
   roundId: string;
 };
 
+export type SpellCastChangedPayload = {
+  roundId: string;
+};
+
 /**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
@@ -245,6 +249,33 @@ export async function broadcastRoundStarted(
     const result = await channel.httpSend("round-started", payload);
     if (!result.success) {
       throw new Error(`broadcastRoundStarted: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a change to a round's spell-cast/active-effect state (issue
+ * #205) — casting an Action card, filling in a deferred target, or ending
+ * another player's active effect early all change what other players see
+ * (caster/target/advantage in RoundReveal per PR #176, effect badges on
+ * PlayerTile, the dispellable-effects list on their own SpellCardPanel), but
+ * previously had no broadcast at all. One event covers all three causes —
+ * mirrors broadcastReactionWindowChanged's approach — since the receiving
+ * side (SpellCastLive.tsx) just refreshes the server component tree rather
+ * than trying to reconstruct state from the payload.
+ */
+export async function broadcastSpellCastChanged(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: SpellCastChangedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("spell-cast-changed", payload);
+    if (!result.success) {
+      throw new Error(`broadcastSpellCastChanged: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);

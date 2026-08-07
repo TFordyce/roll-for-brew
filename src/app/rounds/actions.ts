@@ -10,6 +10,7 @@ import {
   broadcastReactionWindowChanged,
   broadcastRoundClosed,
   broadcastRoundStarted,
+  broadcastSpellCastChanged,
 } from "@/lib/supabase/realtime";
 import {
   drawPendingSpellCard,
@@ -260,7 +261,9 @@ export async function drawPendingSpellCardManualAction(
  * Casts the caller's held Action card for the given round's declare-in
  * window (issue #67). targetPlayerId is omitted to arm an OPPONENT/PLAYER
  * card before the participant roster is final; setSpellCastTargetAction
- * fills it in once declare-in closes.
+ * fills it in once declare-in closes. Broadcasts spell-cast-changed (issue
+ * #205) so other players — who may now be targeted, or see a new active
+ * effect — pick it up without a manual reload.
  */
 export async function castSpellCardAction(formData: FormData) {
   const roundId = formData.get("roundId");
@@ -288,23 +291,32 @@ export async function castSpellCardAction(formData: FormData) {
     return;
   }
 
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+
   revalidateRoundSurfaces();
 }
 
 /**
  * Fills in the deferred target for a card armed before declare-in closed
  * (issue #67, user story 23) — only valid once the round has closed and the
- * roster is final.
+ * roster is final. Broadcasts spell-cast-changed (issue #205) since this
+ * changes the caster/target/advantage data other players see in RoundReveal
+ * (PR #176).
  */
 export async function setSpellCastTargetAction(formData: FormData) {
   const castId = formData.get("castId");
   const targetPlayerId = formData.get("targetPlayerId");
+  const roundId = formData.get("roundId");
 
   if (typeof castId !== "string" || !castId) {
     throw new Error("setSpellCastTargetAction: missing castId");
   }
   if (typeof targetPlayerId !== "string" || !targetPlayerId) {
     throw new Error("setSpellCastTargetAction: missing targetPlayerId");
+  }
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("setSpellCastTargetAction: missing roundId");
   }
 
   const supabase = await createClient();
@@ -316,6 +328,9 @@ export async function setSpellCastTargetAction(formData: FormData) {
     return;
   }
 
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+
   revalidateRoundSurfaces();
 }
 
@@ -323,7 +338,8 @@ export async function setSpellCastTargetAction(formData: FormData) {
  * Ends another player's active effect early using the caller's currently-
  * held dispel-kind card (Lesser Detox, issue #69) — targets an active
  * effect id rather than a player, so it's a separate action from
- * castSpellCardAction.
+ * castSpellCardAction. Broadcasts spell-cast-changed (issue #205) so the
+ * dispelled player sees their effect end without a manual reload.
  */
 export async function endActiveEffectAction(formData: FormData) {
   const roundId = formData.get("roundId");
@@ -344,6 +360,9 @@ export async function endActiveEffectAction(formData: FormData) {
     revalidateRoundSurfaces();
     return;
   }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastSpellCastChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
 }

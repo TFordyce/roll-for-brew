@@ -17,6 +17,7 @@ import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
+import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getMySpellCards, getPendingSpellDraw, getSpellCardCatalog } from "@/lib/supabase/spellCards";
@@ -141,6 +142,8 @@ export default async function HomePage() {
         Roll for Brew
       </h1>
       <Nav active="room" />
+
+      {activeRound ? <SpellCastLive roomId={roomId} roundId={activeRound.id} /> : null}
 
       <SpellCardPanel
         heldCards={heldSpellCards}

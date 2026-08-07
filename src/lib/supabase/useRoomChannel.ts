@@ -13,6 +13,7 @@ import {
   type RoundClosedPayload,
   type RoundRevealedPayload,
   type RoundStartedPayload,
+  type SpellCastChangedPayload,
 } from "@/lib/supabase/realtime";
 
 type RoomBroadcastPayloadMap = {
@@ -25,6 +26,7 @@ type RoomBroadcastPayloadMap = {
   "player-declared-in": PlayerDeclaredInPayload;
   "player-withdrew": PlayerWithdrewPayload;
   "round-started": RoundStartedPayload;
+  "spell-cast-changed": SpellCastChangedPayload;
 };
 
 export type RoomChannelEventHandlers = {
