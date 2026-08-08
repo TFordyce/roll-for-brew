@@ -16,7 +16,7 @@ import { getModifierBreakdown, type ModifierBreakdown as Breakdown } from "@/lib
  *
  * Fetches lazily on first open rather than eagerly for every roster tile —
  * most tiles are never tapped, so this avoids one RPC per rendered player.
- * PlayerTile's own /collection/:playerId link is scoped to just the avatar,
+ * PlayerTile's own /:playerId/collection link is scoped to just the avatar,
  * not this trigger, so there's no competing tap target to guard against
  * here.
  */

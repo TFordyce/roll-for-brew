@@ -2,6 +2,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type StatsWindow = "all_time" | "last_30_days";
 
+/**
+ * Parses the shared `?window=` search param used by both `/stats` and the
+ * `/[playerId]` profile page (issue #212) — anything other than the literal
+ * `last_30_days` defaults to all-time, matching `/stats`' original behavior.
+ */
+export function windowFromParam(value: string | undefined): StatsWindow {
+  return value === "last_30_days" ? "last_30_days" : "all_time";
+}
+
 type LeaderboardPlayer = {
   playerId: string;
   displayName: string | null;
@@ -145,6 +154,46 @@ export async function getModifierPeakLeaderboard(
     email: row.email as string,
     peakModifier: row.peak_modifier as number,
   }));
+}
+
+/**
+ * One player's slice of the four `stats_*` leaderboards (issue #212's
+ * `/[playerId]` profile page's Player Stats card) — reuses the existing
+ * leaderboard fetchers rather than adding parallel per-player views, and
+ * extracts the row matching `playerId` from each. A player absent from a
+ * leaderboard (no rounds played as brewer in the window) reads as zero, not
+ * unknown — mirrors how the leaderboards themselves simply omit that player
+ * rather than listing a zero row.
+ */
+export type PlayerStatsSnapshot = {
+  cupsMade: number;
+  roundsLost: number;
+  roundsPlayed: number;
+  lossPercentage: number;
+  peakModifier: number;
+};
+
+export async function getPlayerStatsSnapshot(
+  supabase: SupabaseClient,
+  playerId: string,
+  window: StatsWindow,
+): Promise<PlayerStatsSnapshot> {
+  const [cupsMade, roundsLost, lossPercentage, modifierPeak] = await Promise.all([
+    getCupsMadeLeaderboard(supabase, window),
+    getRoundsLostLeaderboard(supabase, window),
+    getLossPercentageLeaderboard(supabase, window),
+    getModifierPeakLeaderboard(supabase, window),
+  ]);
+
+  const lossEntry = lossPercentage.find((e) => e.playerId === playerId);
+
+  return {
+    cupsMade: cupsMade.find((e) => e.playerId === playerId)?.cupsMade ?? 0,
+    roundsLost: roundsLost.find((e) => e.playerId === playerId)?.roundsLost ?? 0,
+    roundsPlayed: lossEntry?.roundsPlayed ?? 0,
+    lossPercentage: lossEntry?.lossPercentage ?? 0,
+    peakModifier: modifierPeak.find((e) => e.playerId === playerId)?.peakModifier ?? 0,
+  };
 }
 
 /**

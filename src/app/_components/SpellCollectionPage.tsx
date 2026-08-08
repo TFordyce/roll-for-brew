@@ -7,7 +7,7 @@ import { Nav } from "@/app/Nav";
 
 /**
  * Shared page shell for both `/collection` (own collection, issue #134) and
- * `/collection/:playerId` (any player's, issue #135) — the two routes fetch
+ * `/:playerId/collection` (any player's, issue #135) — the two routes fetch
  * `get_player_spell_collection` for different target ids and share this one
  * rendering. `viewerPlayerId` always seeds the backdrop's daily prop shuffle
  * off the signed-in viewer (not the collection being looked at), so the

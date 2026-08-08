@@ -10,7 +10,7 @@ import { SpellCollectionPage } from "@/app/_components/SpellCollectionPage";
  * `get_player_spell_collection` RPC (#133): every catalog card left-joined
  * against this player's own draw counts, so a zero-draws player still gets
  * a full (all-undiscovered) grid rather than an empty page. Cross-player
- * viewing lives at `/collection/:playerId` (issue #135), sharing this same
+ * viewing lives at `/:playerId/collection` (issue #135), sharing this same
  * `SpellCollectionPage` shell with a different target id.
  */
 export default async function CollectionPage() {

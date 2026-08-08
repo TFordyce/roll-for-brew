@@ -16,10 +16,13 @@ const tabClass = (isActive: boolean) =>
  * CardFrame) so it reads as part of the tabletop UI on its own, independent
  * of whatever backdrop the page it sits on has. The Collection tab always
  * links to the viewer's own `/collection` — a cross-player collection view
- * at `/collection/:playerId` still renders this nav (site-wide chrome) with
+ * at `/[playerId]/collection` still renders this nav (site-wide chrome) with
  * "collection" active, even though tapping it returns to your own.
+ * `active: null` renders the nav with no tab highlighted, for pages that
+ * don't correspond to any of the three tabs (the `/[playerId]` profile
+ * page, issue #212).
  */
-export function Nav({ active }: { active: "room" | "stats" | "collection" }) {
+export function Nav({ active }: { active: "room" | "stats" | "collection" | null }) {
   return (
     <nav className="flex gap-1 rounded-lg border-4 border-gilt bg-tavern-panel p-1 shadow-[0_0_0_1px_theme(colors.gilt.dark),0_8px_24px_rgb(0_0_0_/_0.5)]">
       <Link href="/" className={tabClass(active === "room")}>
