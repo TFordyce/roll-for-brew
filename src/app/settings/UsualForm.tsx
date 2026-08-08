@@ -16,7 +16,9 @@ const selectClassName =
  * save state so editing one Usual never disturbs the other's "Saved" flash.
  * An unset Usual (usual === null) starts both selects on their first
  * option rather than leaving them blank — a valid, no-preference state that
- * only becomes a saved row once the player actually hits Save.
+ * only becomes a saved row once the player actually hits Save. The status
+ * line above the selects is what actually distinguishes "never saved" from
+ * "saved as Dairy/None", since the selects themselves can't show blank.
  */
 function UsualDrinkSection({ drinkType, usual }: { drinkType: DrinkType; usual: UsualDrink | null }) {
   const [state, formAction, isPending] = useActionState(updateUsualDrinkAction, initialState);
@@ -32,6 +34,12 @@ function UsualDrinkSection({ drinkType, usual }: { drinkType: DrinkType; usual: 
   return (
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="drinkType" value={drinkType} />
+
+      <p className="font-body text-xs text-parchment-dim">
+        {usual
+          ? `Currently saved: ${usual.milk} milk, ${usual.sugar} sugar.`
+          : "No Usual saved yet — choosing and saving below sets one."}
+      </p>
 
       <label className="flex flex-col gap-1 font-body text-sm text-parchment">
         Milk
