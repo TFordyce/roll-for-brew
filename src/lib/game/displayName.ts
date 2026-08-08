@@ -23,3 +23,17 @@ export function firstName(displayName: string): string {
 export function firstNameOrFallback(displayName: string | null, fallback: string): string {
   return displayName === null ? fallback : firstName(displayName);
 }
+
+/**
+ * Oxford-joins a list of already-resolved names into prose ("A", "A and B",
+ * "A, B and C") — pulled out for TieRollModal.tsx's "You're tied with
+ * {names}" copy (issue #220, piece 3), but general enough for any other
+ * inline-names sentence to reuse rather than reimplementing the join rule.
+ * `emptyFallback` covers the (should-be-impossible) case of an empty list —
+ * callers know their own domain's wording for "nobody else".
+ */
+export function joinNames(names: string[], emptyFallback: string): string {
+  if (names.length === 0) return emptyFallback;
+  if (names.length === 1) return names[0]!;
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}

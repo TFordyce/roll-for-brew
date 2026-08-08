@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { type LayerRollsRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
-import { RollInputPicker } from "@/app/rounds/RollInputPicker";
+import { firstNameOrFallback } from "@/lib/game/displayName";
+import { TieRollModal } from "@/app/rounds/TieRollModal";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 
@@ -22,12 +23,13 @@ export type TiedParticipant = {
  * The tie phase view (issue #20): once a layer resolves to a tie, every
  * device — tied rerollers and spectators alike — swaps the roster for this
  * banner naming the tied players. Only a tied player's own device shows an
- * active roll input; everyone else purely spectates. Listens for the room's
- * Realtime Broadcast channel the same way RoundReveal does, so a further tie
- * or the eventual reveal refreshes every device in lockstep regardless of
- * how many reroll layers it takes. Which input(s) a tied player is offered
- * follows their roll_input_mode preference (#22), same as the plain
- * layer-0 roll — a reroll is still "their turn to roll".
+ * active roll-in prompt, and (issue #220, piece 3) it's a modal (TieRollModal)
+ * rather than an inline form — everyone else purely spectates. Listens for
+ * the room's Realtime Broadcast channel the same way RoundReveal does, so a
+ * further tie or the eventual reveal refreshes every device in lockstep
+ * regardless of how many reroll layers it takes. Which input(s) a tied
+ * player is offered follows their roll_input_mode preference (#22), same as
+ * the plain layer-0 roll — a reroll is still "their turn to roll".
  *
  * Also listens for layer-rolls-revealed (issue #99) so a tied player's own
  * reroll shows its roll+modifier calculation the same way RoundReveal does
@@ -67,6 +69,9 @@ export function TieBanner({
 
   const isTied = tiedParticipants.some((p) => p.playerId === selfPlayerId && !p.excludedAt);
   const revealedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.value]) ?? []);
+  const otherTiedNames = tiedParticipants
+    .filter((p) => p.playerId !== selfPlayerId && !p.excludedAt)
+    .map((p) => firstNameOrFallback(p.displayName, p.email));
 
   return (
     <CardFrame title="Tied — Rerolling">
@@ -86,15 +91,18 @@ export function TieBanner({
         ))}
       </div>
 
-      {isTied && ownRoll === null && rollInputMode ? (
-        <RollInputPicker mode={rollInputMode} roundId={roundId} />
-      ) : isTied ? (
-        <p className="mt-3 font-body text-sm text-parchment-dim">
-          Waiting on the other tied player{tiedParticipants.length > 2 ? "s" : ""}&hellip;
-        </p>
-      ) : (
+      {!isTied ? (
         <p className="mt-3 font-body text-sm text-parchment-dim">Spectating &mdash; waiting for the reroll&hellip;</p>
-      )}
+      ) : null}
+
+      {isTied ? (
+        <TieRollModal
+          roundId={roundId}
+          ownRoll={ownRoll}
+          rollInputMode={rollInputMode}
+          otherTiedNames={otherTiedNames}
+        />
+      ) : null}
     </CardFrame>
   );
 }

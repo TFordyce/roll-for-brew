@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstName, firstNameOrFallback } from "@/lib/game/displayName";
+import { firstName, firstNameOrFallback, joinNames } from "@/lib/game/displayName";
 
 describe("firstName", () => {
   it("drops the surname from a two-part name", () => {
@@ -31,5 +31,23 @@ describe("firstNameOrFallback", () => {
 
   it("skips extraction for a null display name, using the fallback as-is", () => {
     expect(firstNameOrFallback(null, "ada@example.com")).toBe("ada@example.com");
+  });
+});
+
+describe("joinNames", () => {
+  it("returns the fallback for an empty list", () => {
+    expect(joinNames([], "nobody")).toBe("nobody");
+  });
+
+  it("returns a single name unchanged", () => {
+    expect(joinNames(["Ada"], "nobody")).toBe("Ada");
+  });
+
+  it("joins two names with 'and', no comma", () => {
+    expect(joinNames(["Ada", "Grace"], "nobody")).toBe("Ada and Grace");
+  });
+
+  it("comma-separates all but the last name, joined with 'and'", () => {
+    expect(joinNames(["Ada", "Grace", "Katherine"], "nobody")).toBe("Ada, Grace and Katherine");
   });
 });
