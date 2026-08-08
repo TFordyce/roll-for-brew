@@ -39,3 +39,15 @@ _Avoid_: review, feedback, score (ambiguous with roll/spell scoring).
 **Rating Window**:
 The period a round's Brew Rating stays submittable or editable: open from the round's resolution until the room's *next* round resolves, then permanently closed — no fixed timer, unlike Modifier Adjustment's 5-minute undo limit. Enforced server-side in `submit_brew_rating`/`withdraw_brew_rating` by checking the target round is still the room's most-recently-resolved one.
 _Avoid_: rating deadline, grace period.
+
+**Usual**:
+A player's saved default for how they take tea and coffee — two independent records per player, one for tea and one for coffee, each holding a milk (`Dairy`/`Oat`/`Soy`/`None`) and sugar (`None`/`Sprinkle`/`Half Tsp`/`1 Tsp`/`1.5 Tsp`/`2 Tsp`/`3 Tsp`) choice. Global across rooms, not room-scoped — written directly by the owning player under RLS, the same shape as `player_settings`, with no security-definer RPC involved.
+_Avoid_: preference, profile, default order (conflates with Order).
+
+**Order**:
+A player's per-round pick of tea or coffee, decoupled from `declare_in` — a separate, optional action available from a round's `open` status onward regardless of whether or when the player has declared in (see [ADR 0004](docs/adr/0004-order-decoupled-from-declare-in.md)). Milk and sugar are never re-specified per Order; they're read live from the player's matching Usual, so editing a Usual retroactively changes how past Orders display (see [ADR 0003](docs/adr/0003-order-milk-sugar-is-a-live-join-not-a-snapshot.md)). Defaults to the player's most recent Order globally when the picker opens. Stays editable through `resolved`, closing only once the room's next round resolves — the same window as the Rating Window.
+_Avoid_: choice, selection, pick.
+
+**Menu**:
+The round-shared, real-time view of every declared participant's Order for a round — live from `open` onward, visible only to that round's `round_participants`, and computed as a join across participants, Orders, and Usuals rather than stored as its own row. Persists after resolution so the brewer can reference it while actually brewing.
+_Avoid_: order list, drinks list.
