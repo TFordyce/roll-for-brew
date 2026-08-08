@@ -317,13 +317,10 @@
   }
 
   // ---------- fixtures ----------
-  // Rowan's chain demonstrates a CHAINED tie (rare, but the rules allow it):
-  // the layer-1 reroll ties again, so a third row nests under the second,
-  // indented further right, before layer 2 finally resolves it. Sulayman's
-  // chain is the ordinary single-reroll case, for contrast in the same view.
-  // (Who Rowan is tied with at layer 1 is left unmodelled here — this fixture
-  // exists purely to demonstrate the nesting visual, not to be a fully
-  // consistent second tied pair.)
+  // Rowan & Sulayman demonstrate a CHAINED tie (rare, but the rules allow
+  // it): tied 14-14 at layer 0, reroll and tie AGAIN at 11-11 (both chains
+  // agree — that's what "tied again" means, so both must land on the same
+  // number), then a third reroll finally resolves it: Sulayman 16, Rowan 9.
   const petra = { id: "petra", name: "Petra", initial: "P", modifier: 4, roll: 12, total: 16 };
   const rowan = {
     id: "rowan", name: "Rowan", initial: "R", modifier: 2, tiedTotal: 14,
@@ -334,7 +331,10 @@
   };
   const sulayman = {
     id: "sulayman", name: "Sulayman", initial: "S", modifier: -1, tiedTotal: 14,
-    chain: [{ tied: false, roll: 17, modifier: -1, total: 16 }],
+    chain: [
+      { tied: true, total: 11 },
+      { tied: false, roll: 17, modifier: -1, total: 16 },
+    ],
   };
 
   const state = { view: "spectator", revealedCount: { rowan: 0, sulayman: 0 } };
