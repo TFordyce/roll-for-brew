@@ -8,6 +8,7 @@ import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
+import { getMyMostRecentOrder, getMyOrderForRound } from "@/lib/supabase/orders";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { closeRoundAction, declareInAction, startRoundAction, withdrawDeclarationAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
@@ -15,6 +16,7 @@ import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
+import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
@@ -67,6 +69,15 @@ export default async function HomePage() {
   const hasDeclared = participants.some((p) => p.playerId === playerId);
   const isStarter = activeRound?.startedBy === playerId;
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
+
+  // Order (issue #226, part of #223): decoupled from declare-in, so this is
+  // independent of hasDeclared above. myOrderForRound wins when set; the
+  // sticky most-recent-across-rooms default only matters as a fallback for
+  // a round the player hasn't explicitly ordered for yet, so it's not
+  // fetched at all once myOrderForRound already answers the question.
+  const myOrderForRound = activeRound ? await getMyOrderForRound(supabase, activeRound.id, playerId) : null;
+  const myMostRecentOrder =
+    activeRound && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
@@ -245,6 +256,15 @@ export default async function HomePage() {
                   ))}
                 </div>
 
+                {/* Declare-in-time cue (issue #226, user story 19): a nudge
+                    toward the Order picker below, not a blocker — Order stays
+                    fully decoupled from declare/withdraw (ADR 0004), so this
+                    only disappears once an Order actually exists for this
+                    round, independent of hasDeclared. */}
+                {myOrderForRound === null ? (
+                  <p className="mt-4 text-xs text-gilt-bright">🫖 Don&rsquo;t forget to set your Order below.</p>
+                ) : null}
+
                 {!hasDeclared ? (
                   <form action={declareInAction} className="mt-4">
                     <input type="hidden" name="roundId" value={activeRound.id} />
@@ -277,6 +297,18 @@ export default async function HomePage() {
               </CardFrame>
             </div>
           )}
+
+          {/* Decoupled from declare/withdraw (ADR 0004) — shown for both
+              round phases the page still tracks as activeRound (open and
+              closed); the Order Window itself stays open all the way
+              through resolved, but this page stops rendering the round at
+              all once it resolves, same as every other round-open surface
+              here. */}
+          <OrderPicker
+            key={activeRound.id}
+            roundId={activeRound.id}
+            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
+          />
 
           {needsRollInput && rollInputMode ? (
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />

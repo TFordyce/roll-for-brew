@@ -8,6 +8,7 @@ import { getRoomRoster, getTestRoomId } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
+import { getMyMostRecentOrder, getMyOrderForRound } from "@/lib/supabase/orders";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { getEffectiveTestRoomPlayerId } from "@/lib/supabase/actingAs";
 import { getExpectedLayerRollerIds, getCurrentLayerRollerIds } from "@/lib/supabase/stall";
@@ -17,6 +18,7 @@ import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
+import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
@@ -112,6 +114,11 @@ export default async function TestRoomPage() {
   const hasDeclared = participants.some((p) => p.playerId === playerId);
   const isStarter = activeRound?.startedBy === playerId;
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
+
+  // Order (issue #226, part of #223) — mirrors page.tsx's own fetch exactly.
+  const myOrderForRound = activeRound ? await getMyOrderForRound(supabase, activeRound.id, playerId) : null;
+  const myMostRecentOrder =
+    activeRound && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
@@ -288,6 +295,10 @@ export default async function TestRoomPage() {
                   ))}
                 </div>
 
+                {myOrderForRound === null ? (
+                  <p className="mt-4 text-xs text-gilt-bright">🫖 Don&rsquo;t forget to set your Order below.</p>
+                ) : null}
+
                 {!hasDeclared ? (
                   <form action={declareInAction} className="mt-4">
                     <input type="hidden" name="roundId" value={activeRound.id} />
@@ -327,6 +338,12 @@ export default async function TestRoomPage() {
               </CardFrame>
             </div>
           )}
+
+          <OrderPicker
+            key={activeRound.id}
+            roundId={activeRound.id}
+            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
+          />
 
           {needsRollInput && rollInputMode ? (
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
