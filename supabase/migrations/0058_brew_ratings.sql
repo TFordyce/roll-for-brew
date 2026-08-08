@@ -23,9 +23,8 @@ create table if not exists public.brew_ratings (
   constraint brew_ratings_round_rater_unique unique (round_id, rater_player_id)
 );
 
--- Powers the "most recent non-brewer round" and "rating window" lookups
--- submit_brew_rating/withdraw_brew_rating both do, and the aggregate views'
--- group-by-brewer scans.
+-- Powers the aggregate stats views' (next ticket, 0059) group-by-brewer
+-- scans and the RLS policy's/existing-row lookups by rater below.
 create index if not exists brew_ratings_brewer_id_idx on public.brew_ratings (brewer_id);
 create index if not exists brew_ratings_rater_player_id_idx on public.brew_ratings (rater_player_id, round_id);
 
