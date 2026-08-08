@@ -61,9 +61,20 @@ export type RoundRevealParticipant = {
  * rich RollCalculation treatment as layer 0 (never a discarded die or
  * effect badge, since #219 fixed spell effects/reactions out of tie-break
  * rerolls entirely). This is layer history, not the live tie phase itself —
- * TieBanner still owns that (piece 3/4 of #220) — so today this only ever
- * has something to show once a chain has fully completed by the time this
- * component reads it.
+ * TieBanner still owns the roll-in prompt for whichever layer is currently
+ * live (issue #220 piece 3) — so a given reroll level only shows up here
+ * once its layer has fully completed.
+ *
+ * page.tsx keeps this component mounted for the round's entire closed
+ * phase now, tie phase included (issue #220 piece 4) — not just after the
+ * final layer resolves, as before. That matters beyond showing the nested
+ * rows live: resolve_round already flips the round to 'resolved' by the
+ * time round-revealed broadcasts (see layerResolution.ts's
+ * applyLayerOutcome), so a round that ever tied would previously vanish
+ * from the next server fetch before this component — the only thing that
+ * actually holds rolls/brewerId/showKettleModal in local state and
+ * deliberately avoids refreshing on round-revealed — ever got a chance to
+ * mount and catch that broadcast at all.
  */
 const RESULTS_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -108,6 +119,13 @@ export function RoundReveal({
   // just leaves every row without its reroll history rather than breaking
   // the reveal.
   const [history, setHistory] = useState<CompletedLayer[]>([]);
+  // Bumped by every layer-rolls-revealed broadcast (any layer, not just 0)
+  // and by round-revealed, to retrigger the history fetch below — issue
+  // #220 piece 4's "the dependent row needs to populate live ... once a
+  // layer's rolls are broadcast" requirement. Plain state instead of
+  // folding into the `rolls` dependency below, since `rolls` itself now
+  // only tracks layer 0's own reveal (see the two handlers further down).
+  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
   const resultsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function clearResultsTimeout() {
@@ -128,6 +146,7 @@ export function RoundReveal({
     setShowKettleModal(false);
     setEffectDetails([]);
     setHistory([]);
+    setHistoryRefreshToken(0);
     clearResultsTimeout();
     return clearResultsTimeout;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -163,14 +182,29 @@ export function RoundReveal({
     return () => {
       cancelled = true;
     };
-  }, [rolls, roundId]);
+    // historyRefreshToken is a deliberate extra trigger (see its own
+    // comment above) — every reroll layer's own completion needs to
+    // refetch this even though `rolls` (layer 0 only, below) doesn't change.
+  }, [rolls, roundId, historyRefreshToken]);
 
   useRoomChannel(roomId, roundId, {
+    // Scoped to layer 0 — this drives the *primary* row's own die (every
+    // other layer's reveal only ever feeds the nested reroll rows via
+    // historyRefreshToken below, never this state, or a mid-tie reroll's
+    // reveal would incorrectly overwrite the primary row's already-known
+    // layer-0 value).
     "layer-rolls-revealed": (payload) => {
-      setRolls(payload.rolls);
+      if (payload.layer === 0) setRolls(payload.rolls);
+      setHistoryRefreshToken((t) => t + 1);
     },
     "round-revealed": (payload: RoundRevealedPayload) => {
-      setRolls(payload.rolls);
+      // Same layer-0 scoping as above: a round that went through one or
+      // more ties can be decided by a reroll layer, and payload.rolls is
+      // whichever layer that was (issue #220 piece 4) — never assume it's
+      // layer 0's. The nested rows pick the final layer up via
+      // historyRefreshToken instead, same as any other layer completion.
+      if (payload.layer === 0) setRolls(payload.rolls);
+      setHistoryRefreshToken((t) => t + 1);
       setBrewerId(payload.brewerId);
       if (payload.brewerId === selfPlayerId) {
         setShowKettleModal(true);

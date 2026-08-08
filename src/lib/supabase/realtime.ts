@@ -6,6 +6,12 @@ export function roomChannelName(roomId: string): string {
 
 export type RoundRevealedPayload = {
   roundId: string;
+  // Which layer decided the brewer — 0 for an ordinary round, or a
+  // tie-break reroll layer if the round ever tied (issue #220 piece 4).
+  // `rolls` below is that layer's rolls, not necessarily layer 0's — a
+  // listener that always shows layer 0's own roll (RoundReveal's primary
+  // row) needs this to know whether payload.rolls is safe to use for that.
+  layer: number;
   brewerId: string;
   cupsMade: number;
   rolls: { playerId: string; value: number; discardedValue: number | null }[];
