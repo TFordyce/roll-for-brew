@@ -271,4 +271,83 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     expect(layer1ReadError).toBeNull();
     expect(casterLayer1Roll!.discarded_value).toBeNull();
   });
+
+  // Mirrors the advantage test above but for the disadvantage branch of
+  // submit_roll — a structurally separate keep-the-lower-d20 code path in
+  // 0060's exists-checks, not just the same branch with a different sign.
+  it("honours an active disadvantage cast on the original roll but ignores it on a tie-break reroll (issue #219)", async () => {
+    const caster = await signUp("tiebreak-disadv-caster");
+    const target = await signUp("tiebreak-disadv-target");
+    await forceHold(admin, caster.googleSub, "Slipped Spoon");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+
+    // Slipped Spoon: target gets disadvantage, caster gets a 1d4 bonus.
+    const { error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: target.googleSub,
+    });
+    expect(castError).toBeNull();
+
+    const { error: closeError } = await caster.client.rpc("close_round", { p_round_id: roundId });
+    expect(closeError).toBeNull();
+
+    // Layer 0: disadvantage still applies here — the original roll draws
+    // two d20s and keeps the lower.
+    const { error: targetRollError } = await target.client.rpc("submit_roll", { p_round_id: roundId });
+    expect(targetRollError).toBeNull();
+
+    const { data: targetLayer0Roll, error: layer0ReadError } = await admin
+      .from("rolls")
+      .select("value, discarded_value")
+      .eq("round_id", roundId)
+      .eq("player_id", target.googleSub)
+      .eq("layer", 0)
+      .single();
+    expect(layer0ReadError).toBeNull();
+    expect(targetLayer0Roll!.discarded_value).not.toBeNull();
+    expect(targetLayer0Roll!.value).toBeLessThanOrEqual(targetLayer0Roll!.discarded_value as number);
+
+    await caster.client.rpc("submit_roll", { p_round_id: roundId });
+
+    // Force a layer-0 tie between the two players regardless of the rolls
+    // submit_roll actually produced, so the round advances into a real
+    // reroll layer.
+    await admin
+      .from("rolls")
+      .update({ value: 10, discarded_value: null })
+      .eq("round_id", roundId)
+      .eq("player_id", target.googleSub)
+      .eq("layer", 0);
+    await admin
+      .from("rolls")
+      .update({ value: 10, discarded_value: null })
+      .eq("round_id", roundId)
+      .eq("player_id", caster.googleSub)
+      .eq("layer", 0);
+
+    const { error: advanceError } = await target.client.rpc("advance_round_layer", {
+      p_round_id: roundId,
+      p_tied_player_ids: [caster.googleSub, target.googleSub],
+    });
+    expect(advanceError).toBeNull();
+
+    // Layer 1 (tie-break reroll): the target's disadvantage cast is still
+    // active, but it must NOT apply — a single, unmodified d20 is rolled
+    // with nothing discarded.
+    const { error: rerollError } = await target.client.rpc("submit_roll", { p_round_id: roundId });
+    expect(rerollError).toBeNull();
+
+    const { data: targetLayer1Roll, error: layer1ReadError } = await admin
+      .from("rolls")
+      .select("value, discarded_value")
+      .eq("round_id", roundId)
+      .eq("player_id", target.googleSub)
+      .eq("layer", 1)
+      .single();
+    expect(layer1ReadError).toBeNull();
+    expect(targetLayer1Roll!.discarded_value).toBeNull();
+  });
 });
