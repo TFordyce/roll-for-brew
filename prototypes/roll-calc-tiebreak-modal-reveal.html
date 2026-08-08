@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<title>PROTOTYPE — Tie-break as a modal + dependent reveal row (issue #162, take 2)</title>
+<title>PROTOTYPE — Tie-break as a modal + dependent reveal row (issue #162, take 2, simplified)</title>
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <style>
   /*
@@ -28,18 +28,26 @@
     Key structural difference from take 1: the reroll's RollCalculation no
     longer has to fit inside PlayerTile's ~96px tile at all — it renders at
     RoundReveal's full row width instead, so #167's rich mode (20px d20,
-    boxed total, animated badges) needs ZERO shrinking. That's the central
-    thing this prototype is checking.
+    boxed total) needs ZERO shrinking. That's the central thing this
+    prototype is checking.
 
-    Confirms spell effects already do apply to tie-break rerolls today
-    (submit_roll/submit_roll_as key off current_layer generically, not
-    just layer 0) — Rowan's reroll below carries a Slipped Spoon
-    disadvantage, Sulayman's a Sugar Rush advantage, both mid-tie-break.
+    SIMPLIFIED after the first pass (2026-08-08): the team confirmed spell
+    effects and reaction casts must NOT apply to tie-break rerolls at all —
+    filed as the real fix in issue #219. The original version of this file
+    put a Slipped Spoon disadvantage on Rowan's reroll and a Sugar Rush
+    advantage on Sulayman's to test badge/discarded-die crowding; both are
+    now removed, since once #219 ships neither can ever happen on a
+    reroll. What's left below is what a tie-break reroll will actually
+    always look like: a plain roll + persistent modifier, still using the
+    d20-icon/boxed-total *rich* visual treatment (that part isn't
+    spell-specific — it's just #167's calc-line styling), purely to test
+    whether the MODAL + DEPENDENT-ROW interaction model reads well on its
+    own, independent of the now-settled spell-effects question.
 
     Use the "Viewing as" control to switch device perspective — a tied
     player sees the roll-in modal; a spectator (or the other tied player)
-    just watches the row update live. "Debug: reveal instantly" is a
-    prototype-only shortcut, not part of the interaction being tested.
+    just watches the row update live. "Debug: reset" is a prototype-only
+    shortcut, not part of the interaction being tested.
 
     Open this file directly in a browser — no server needed.
   */
@@ -171,22 +179,9 @@
   .die-icon { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; color: var(--parchment-dim); width: 20px; height: 20px; }
   .die-icon svg { width: 100%; height: 100%; }
   .die-icon .value { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: var(--parchment); }
-  .discard-strike { color: var(--parchment-dim-60); text-decoration: line-through; }
   .calc-total-box { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; border: 2px solid var(--gilt); background: var(--tavern-panel-dark); font-family: inherit; font-size: 14px; color: var(--parchment); }
-
-  .effect-badge {
-    display: inline-flex; align-items: center; gap: 4px; border-radius: 999px;
-    border: 1px solid var(--gilt-dark); background: var(--tavern-panel-dark);
-    padding: 2px 7px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em;
-    font-family: ui-sans-serif, system-ui, sans-serif;
-  }
-  .effect-badge .card-name { background-size: 200% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; font-weight: 700; }
-  .effect-badge .card-name.boon { background-image: linear-gradient(110deg, #f5c542, #fff2b8, #f5c542); animation: badge-scroll 2.5s ease-in-out infinite alternate, text-pulse-glow-boon 1.8s ease-in-out infinite; }
-  .effect-badge .card-name.bust { background-image: linear-gradient(110deg, #7f1414, #e0433f, #7f1414); animation: badge-scroll 2.5s ease-in-out infinite alternate, text-pulse-glow-bust 1.8s ease-in-out infinite; }
-  .effect-badge .caster-name { color: var(--parchment-dim); }
-  @keyframes badge-scroll { to { background-position: -100% 0; } }
-  @keyframes text-pulse-glow-boon { 0%, 100% { opacity: 1; text-shadow: 0 0 0px rgba(245, 197, 66, 0); } 50% { opacity: 0.85; text-shadow: 0 0 6px rgba(245, 197, 66, 0.85); } }
-  @keyframes text-pulse-glow-bust { 0%, 100% { opacity: 1; text-shadow: 0 0 0px rgba(224, 67, 63, 0); } 50% { opacity: 0.85; text-shadow: 0 0 6px rgba(224, 67, 63, 0.85); } }
+  /* Discarded-die strike and effect-badge styling removed in the simplified pass — #219 means a
+     tie-break reroll can never carry either, so there's nothing left to style them for here. */
 
   /* ---------- modal (tied player's own device only) ---------- */
   .modal-backdrop {
@@ -230,12 +225,13 @@
 <div class="stage">
   <h1 class="display">Prototype — tie-break as a modal + dependent reveal row</h1>
   <p class="intro">
-    Take 2 on issue <strong>#162</strong>, after take 1 (<code>roll-calc-ui-tiebreak.html</code>) squeezed #167's
-    rich UI into <code>PlayerTile</code>'s narrow tie-grid tile. This explores your alternate framing instead:
-    tied players roll via a <strong>modal</strong>, not an inline banner section, and the outcome appears as a
-    <strong>second row directly under the tied player back in the main reveal list</strong>, indented right with a
-    connector to read as dependent on the row above. Switch "Viewing as" below to see a tied player's own device
-    (gets the modal) vs a spectator's (just watches the row fill in).
+    Take 2 on issue <strong>#162</strong>, simplified after the team confirmed (issue #219) that spell effects and
+    reaction casts never apply to a tie-break reroll. What's left to test here is purely the
+    <strong>interaction model</strong>: tied players roll via a <strong>modal</strong>, not an inline banner
+    section, and the outcome appears as a <strong>second row directly under the tied player back in the main
+    reveal list</strong>, indented right with a connector to read as dependent on the row above — both independent
+    of spell effects entirely now. Switch "Viewing as" below to see a tied player's own device (gets the modal) vs
+    a spectator's (just watches the row fill in).
   </p>
 </div>
 
@@ -262,23 +258,23 @@
       <h3>Findings</h3>
       <dl>
         <dt>Does the rich calc line fit without shrinking?</dt>
-        <dd>Yes, trivially — because it never has to live in a 96px tile at all anymore. The reroll renders at the reveal list's full row width, so #167's rich mode (20px d20, boxed total, animated badges) needed <em>zero</em> adaptation from what RoundReveal already ships for layer 0. This sidesteps take 1's entire central problem rather than solving it.</dd>
+        <dd>Yes, trivially — because it never has to live in a 96px tile at all anymore. The reroll renders at the reveal list's full row width, so #167's d20-icon/boxed-total treatment needed <em>zero</em> adaptation from what RoundReveal already ships for layer 0. Now that it's also guaranteed to never carry a discarded die or effect badge (#219), it's an even simpler element than take 1 was squeezing in.</dd>
         <dt>Does the modal work for the tied player, and not get in a spectator's way?</dt>
         <dd>Yes in this fixture — "Viewing as" a tied player shows the modal immediately (blocking, matches how a tied player has no other useful action available); every other perspective (the other tied player, spectators) sees no modal, just the pending row updating live once the broadcast lands. That split maps cleanly onto the existing selfPlayerId-vs-others pattern TieBanner already uses today for showing the roll input only to the tied player it belongs to.</dd>
         <dt>Does the dependent-row connector read as "depends on the row above" at a glance?</dt>
         <dd>Reasonably — the indent plus a short corner-line under the avatar makes the relationship legible without a label, though it's only tested here with one reroll layer. A second tie (rare, but the game allows chained rerolls) would need to decide whether it nests a third indented row or replaces the second one in place — not fixture-tested here.</dd>
-        <dt>Does this still show spell effects on the reroll?</dt>
-        <dd>Yes — Rowan's reroll carries a Slipped Spoon disadvantage (struck discarded die + bust badge), Sulayman's a Sugar Rush advantage (boon badge), both rendered exactly like RoundReveal's layer-0 treatment already does. Confirms the effects data path (submit_roll keys off current_layer generically) already supports this without new plumbing.</dd>
+        <dt>Is there still anything worth "rich" about a tie-break roll now?</dt>
+        <dd>Only the d20 icon and boxed total as decoration — no discarded die, no boon/bust badge, ever, per #219. Worth asking whether that decoration is even worth keeping for a call site this plain, versus just the bare <code>roll + modifier = total</code> text RoundReveal already uses elsewhere for anything that isn't layer 0 — a design call for whoever implements this, not something this prototype needs to settle.</dd>
       </dl>
     </div>
 
     <div class="card-frame decision-frame">
-      <p class="frame-title">Decision, pending your team check</p>
+      <p class="frame-title">Decision</p>
       <ol>
-        <li><strong>This direction looks more promising than take 1's tile-squeeze</strong> — reusing RoundReveal's already-validated rich row instead of adapting it down avoids inventing a second, smaller design language.</li>
-        <li>Real implementation is bigger than #214's scope: <code>RoundReveal.tsx</code> currently has no concept of layer&gt;0 rolls or tie state at all — it'd need to grow both, plus a modal component and its own roll-submission flow separate from <code>TieBanner</code>'s existing one. <code>TieBanner</code>/<code>PlayerTile</code> may end up retired for this call site entirely rather than adapted.</li>
-        <li><strong>Blocked on you confirming with the team</strong> that spell effects are meant to apply to tie-break rerolls at all (issue text flagged this as open) — this prototype shows the data model already allows it, not that it's the intended design.</li>
-        <li>If you want to proceed, next step is superseding #214 (filed against take 1's decision) with a fresh issue scoped to this modal + dependent-row direction, once the spell-effects question is settled.</li>
+        <li><strong>The modal + dependent-row interaction model still looks worth doing</strong> on its own merits — separable from the spell-effects question that originally motivated take 1, and now simpler to build since the reroll content itself is guaranteed plain.</li>
+        <li>Real implementation is still a genuine scope jump from a tile tweak: <code>RoundReveal.tsx</code> currently has no concept of layer&gt;0 rolls or tie state at all — it'd need to grow both, plus a modal component and its own roll-submission flow separate from <code>TieBanner</code>'s existing one. <code>TieBanner</code>/<code>PlayerTile</code> may end up retired for this call site entirely rather than adapted.</li>
+        <li>Depends on <strong>#219 shipping first</strong> — no point building the dependent-row plumbing against a data model that (until #219 lands) still lets a reroll carry a discarded die/effect badge it shouldn't.</li>
+        <li>Not yet filed as its own issue — this file is the reference point for that write-up whenever you're ready to move on it.</li>
       </ol>
     </div>
 
@@ -309,25 +305,18 @@
   function dieIcon(value) {
     return `<span class="die-icon">${d20Svg()}<span class="value">${value}</span></span>`;
   }
+  // A tie-break reroll is always plain now (#219: no spell effects, no
+  // discarded advantage/disadvantage die, no reaction badge can ever apply
+  // past layer 0) — this only ever renders roll + modifier = boxed total.
   function richCalc(p) {
     const op = p.modifier >= 0 ? "+" : "-";
-    let html = `<span class="calc-rich">`;
-    html += dieIcon(p.roll);
-    if (p.discardedRoll !== null) html += `<span class="discard-strike">${p.discardedRoll}</span>`;
-    html += ` ${op} ${Math.abs(p.modifier)} = <span class="calc-total-box">${p.total}</span>`;
-    html += `</span>`;
-    if (p.effects.length) {
-      html += `<span class="calc-rich" style="justify-content:flex-end; margin-top:2px;">` + p.effects.map((e) =>
-        `<span class="effect-badge"><span class="card-name ${e.impact}">${e.cardName}</span><span class="caster-name">${e.casterName}</span></span>`
-      ).join("") + `</span>`;
-    }
-    return html;
+    return `<span class="calc-rich">${dieIcon(p.roll)} ${op} ${Math.abs(p.modifier)} = <span class="calc-total-box">${p.total}</span></span>`;
   }
 
   // ---------- fixtures ----------
-  const petra = { id: "petra", name: "Petra", initial: "P", modifier: 4, roll: 12, total: 16, discardedRoll: null, effects: [] };
-  const rowan = { id: "rowan", name: "Rowan", initial: "R", modifier: 2, tiedTotal: 14, reroll: { modifier: 2, roll: 6, total: 8, discardedRoll: 13, effects: [{ cardName: "Slipped Spoon", casterName: "Oswin", impact: "bust" }] } };
-  const sulayman = { id: "sulayman", name: "Sulayman", initial: "S", modifier: -1, tiedTotal: 14, reroll: { modifier: -1, roll: 17, total: 16, discardedRoll: 9, effects: [{ cardName: "Sugar Rush", casterName: "Sulayman", impact: "boon" }] } };
+  const petra = { id: "petra", name: "Petra", initial: "P", modifier: 4, roll: 12, total: 16 };
+  const rowan = { id: "rowan", name: "Rowan", initial: "R", modifier: 2, tiedTotal: 14, reroll: { modifier: 2, roll: 6, total: 8 } };
+  const sulayman = { id: "sulayman", name: "Sulayman", initial: "S", modifier: -1, tiedTotal: 14, reroll: { modifier: -1, roll: 17, total: 16 } };
 
   const state = { view: "spectator", revealed: { rowan: false, sulayman: false } };
 
