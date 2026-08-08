@@ -25,7 +25,9 @@
     Round 6: tab raised above the panel (was getting hidden once they
     overlapped) plus a few alternate tab looks to react to. Round 7: settled
     on Variant D as the only design going forward — A/B/C dropped — with the
-    winning tab look being A's vertical bookmark-ribbon treatment.
+    winning tab look being A's vertical bookmark-ribbon treatment. Round 8:
+    sign-box copy simplified to just "Rate", and the tab look is swappable
+    again via a picker (bookmark/pin/notch/tag) since bookmark alone wasn't landing.
 
     Open this file directly in a browser — no server needed.
   */
@@ -99,9 +101,12 @@
   [data-open="true"] .tab:hover { transform: translateX(-18px) rotate(-3deg); }
   .pending-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--gilt-bright); }
 
-  /* Round 7: the winning tab look — A's vertical bookmark ribbon — applied
-     to Variant D. Overrides the pin/rotate transform above with its own
-     resting angle since it reads better flat. */
+  /* Round 8: four tab looks to react to, swappable via the on-page picker
+     (visual only — doesn't touch panelState/score/anything else). Each look
+     supplies its own chrome; the base .tab rule above only handles
+     position/animation, shared by all four. */
+
+  /* bookmark — round 7's pick: vertical ribbon, ember, flat resting angle */
   .tab.tab-look-bookmark {
     writing-mode: vertical-rl;
     flex-direction: column;
@@ -117,6 +122,66 @@
   }
   [data-open="true"] .tab.tab-look-bookmark { transform: translateX(-4px) rotate(0deg); }
   [data-open="true"] .tab.tab-look-bookmark:hover { transform: translateX(-8px) rotate(0deg); }
+
+  /* pin — the original pushpin-on-a-pill tab from earlier rounds */
+  .tab.tab-look-pin {
+    padding: 12px 8px 12px 12px;
+    border: 2px solid #8a5a3a;
+    border-right: none;
+    border-radius: 999px 0 0 999px;
+    background: #c9762f;
+    color: var(--parchment);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .tab.tab-look-pin .look-dot {
+    width: 12px; height: 12px; border-radius: 999px;
+    border: 1px solid #5c3a20; background: #e04a3f; flex-shrink: 0;
+  }
+
+  /* notch — a flag/pennant cut into the right edge, pointing back at the page */
+  .tab.tab-look-notch {
+    writing-mode: vertical-rl;
+    flex-direction: column;
+    padding: 16px 10px 16px 6px;
+    border: 2px solid #6e1616;
+    border-right: none;
+    background: #7a1f1f;
+    color: var(--parchment);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    clip-path: polygon(0 10px, 100% 0, 100% 100%, 0 calc(100% - 10px));
+  }
+  [data-open="true"] .tab.tab-look-notch { transform: translateX(-4px) rotate(0deg); }
+  [data-open="true"] .tab.tab-look-notch:hover { transform: translateX(-8px) rotate(0deg); }
+
+  /* tag — a small hanging luggage-tag, rotated, with a punched hole + string */
+  .tab.tab-look-tag {
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 10px 12px;
+    border: 2px solid var(--gilt);
+    border-radius: 4px;
+    background: var(--parchment);
+    color: #3a2a1a;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    transform-origin: top right;
+    box-shadow: 0 4px 12px rgb(0 0 0 / 0.4), inset 0 0 0 1px rgba(138,90,58,0.4);
+  }
+  .tab.tab-look-tag .look-hole {
+    width: 6px; height: 6px; border-radius: 999px;
+    background: var(--tavern-plank); border: 1px solid #8a5a3a;
+  }
+  [data-open="false"] .tab.tab-look-tag { transform: translateX(0) rotate(4deg); }
+  [data-open="true"] .tab.tab-look-tag { transform: translateX(-4px) rotate(4deg); }
+  [data-open="true"] .tab.tab-look-tag:hover { transform: translateX(-8px) rotate(4deg); }
+
+  .tab-look-buttons { margin-top: 8px; display: flex; gap: 8px; }
 
   /* ---------- panel base ---------- */
   .panel {
@@ -136,11 +201,6 @@
      animating independently at two different heights. */
   .tab {
     top: 110px;
-    padding: 12px 8px 12px 12px;
-    border: 2px solid #8a5a3a;
-    border-right: none;
-    border-radius: 999px 0 0 999px;
-    background: #c9762f;
   }
   .pushpin { width: 12px; height: 12px; border-radius: 999px; border: 1px solid #5c3a20; background: #e04a3f; }
   .panel {
@@ -189,19 +249,17 @@
   <div class="stage">
     <h1>Brew Rating — panel prototype</h1>
     <p class="intro">
-      Wayfinder ticket #202. Down to a single design now — pushpin card + tap-per-star + a
-      "sign to lock in" stamp box, with A's vertical bookmark-ribbon tab. Use the buttons to
-      preview the three things the panel needs to say — note "Nothing to rate" hides the tab
-      entirely rather than showing a message. Standalone file, open directly in a browser.
+      Wayfinder ticket #202. A single panel design now — pushpin card + tap-per-star + a
+      "Rate" stamp box. Pick a tab look below to react to it; the state buttons preview the
+      three things the panel needs to say — note "Nothing to rate" hides the tab entirely
+      rather than showing a message. Standalone file, open directly in a browser.
     </p>
     <div class="state-buttons" id="state-buttons"></div>
+    <div class="tab-look-buttons" id="tab-look-buttons"></div>
   </div>
 
   <div id="widget">
-    <button class="tab tab-look-bookmark" data-toggle aria-label="Open brew rating">
-      <span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span>
-      <span>Rate Brew</span>
-    </button>
+    <button class="tab" data-toggle data-tab aria-label="Open brew rating"></button>
     <div class="panel closed" data-panel>
       <div class="panel-inner">
         <span class="pushpin pin-top"></span>
@@ -226,11 +284,23 @@
   var STATE_KEYS = ["none", "pending", "rated"];
   var STATE_LABEL = { none: "Nothing to rate", pending: "Round to rate", rated: "Already rated" };
 
+  // Round 8: tab looks are purely visual — swapping one never touches
+  // panelState/score/anything the rest of the prototype cares about.
+  var TAB_LOOK_KEYS = ["bookmark", "pin", "notch", "tag"];
+  var TAB_LOOK_LABEL = { bookmark: "Bookmark", pin: "Pushpin", notch: "Notch flag", tag: "Hanging tag" };
+  var TAB_LOOK_HTML = {
+    bookmark: '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span><span>Rate Brew</span>',
+    pin: '<span class="look-dot"></span><span>Rate Brew</span><span class="pending-dot" data-pending-dot style="display:none;"></span>',
+    notch: '<span class="pending-dot" data-pending-dot style="writing-mode: horizontal-tb; display:none;"></span><span>Rate Brew</span>',
+    tag: '<span class="look-hole"></span><span>Rate<br/>Brew</span><span class="pending-dot" data-pending-dot style="display:none;"></span>',
+  };
+
   var state = {
     panelState: "pending",
     open: true,
     scoreD: 0,
     confirmedD: false,
+    tabLook: "bookmark",
   };
 
   // ---------- pixel star: 9x8 grid, rendered as an inline SVG built from a text pattern ----------
@@ -288,7 +358,7 @@
       '<div class="stars" data-stars-d>' + starsHtml(state.scoreD, 30, "#f5c542", "#4a4a52", "data-star-d") + "</div>" +
       '<button type="button" data-d-sign class="sign-box' + (state.confirmedD ? " signed" : "") + '"' +
       (!state.confirmedD && state.scoreD === 0 ? " disabled" : "") + ">" +
-      (state.confirmedD ? "✓ " + MOCK_RATER_INITIALS : "Sign to lock in your rating") +
+      (state.confirmedD ? "✓ " + MOCK_RATER_INITIALS : "Rate") +
       "</button>";
 
     function paintStars(n) {
@@ -325,6 +395,13 @@
   }
 
   // ---------- open/close + tab pending dot ----------
+  function renderTab() {
+    var tab = document.querySelector("[data-tab]");
+    if (!tab) return;
+    tab.className = "tab tab-look-" + state.tabLook;
+    tab.innerHTML = TAB_LOOK_HTML[state.tabLook];
+  }
+
   function updatePanel() {
     // "Nothing to rate" (issue #202 feedback) isn't a message inside the panel — the
     // tab itself doesn't appear at all, because the player wasn't in the previous
@@ -341,10 +418,14 @@
   }
 
   function render() {
+    renderTab();
     renderBody();
     updatePanel();
     document.querySelectorAll(".state-btn[data-state]").forEach(function (btn) {
       btn.classList.toggle("active", btn.getAttribute("data-state") === state.panelState);
+    });
+    document.querySelectorAll(".state-btn[data-tab-look]").forEach(function (btn) {
+      btn.classList.toggle("active", btn.getAttribute("data-tab-look") === state.tabLook);
     });
   }
 
@@ -370,6 +451,19 @@
       render();
     });
     stateButtonsEl.appendChild(btn);
+  });
+
+  var tabLookButtonsEl = document.getElementById("tab-look-buttons");
+  TAB_LOOK_KEYS.forEach(function (k) {
+    var btn = document.createElement("button");
+    btn.className = "state-btn";
+    btn.setAttribute("data-tab-look", k);
+    btn.textContent = TAB_LOOK_LABEL[k];
+    btn.addEventListener("click", function () {
+      state.tabLook = k;
+      render();
+    });
+    tabLookButtonsEl.appendChild(btn);
   });
 
   render();
