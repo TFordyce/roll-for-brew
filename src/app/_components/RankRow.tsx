@@ -9,9 +9,10 @@ import type { ReactNode } from "react";
  * per-room round history) where a tile grid would be too tall on mobile.
  * `rank` is omitted for rows that aren't a ranking (e.g. history rounds).
  * `playerId`, when passed, makes the whole row a tap target linking to that
- * player's `/:playerId/collection` (issue #135, moved under the profile
- * page by issue #212) — every place a player's name/row already renders
- * becomes an entry point into their collection.
+ * player's `/:playerId` profile page (issue #135; pointed at the profile
+ * page rather than straight to the collection once #212 introduced it) —
+ * every place a player's name/row already renders becomes an entry point
+ * into their profile.
  */
 export function RankRow({
   rank,
@@ -54,7 +55,7 @@ export function RankRow({
   }
 
   return (
-    <Link href={`/${playerId}/collection`} className="-mx-1 block rounded-md px-1 transition-colors hover:bg-tavern-plank/40">
+    <Link href={`/${playerId}`} className="-mx-1 block rounded-md px-1 transition-colors hover:bg-tavern-plank/40">
       {row}
     </Link>
   );
