@@ -17,8 +17,9 @@ import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
  * in — it renders the roll+modifier calculation alongside the raw modifier,
  * rather than leaving them as two values a player has to add up themselves.
  * `playerId`, when passed, makes the avatar a tap target linking to that
- * player's `/:playerId/collection` (issue #135, moved under the profile
- * page by issue #212) — used for the room roster
+ * player's `/:playerId` profile page (issue #135; pointed at the profile
+ * page rather than straight to the collection once #212 introduced it)
+ * — used for the room roster
  * grids, not the tied-reroll/reveal views that reuse this same tile. Scoped
  * to just the avatar (not the whole tile) so it doesn't compete with the
  * modifier number's own tap target below.
@@ -81,7 +82,7 @@ export function PlayerTile({
           : "border-gilt-dark bg-tavern-panel-dark"
       }`}
     >
-      {playerId ? <Link href={`/${playerId}/collection`}>{avatar}</Link> : avatar}
+      {playerId ? <Link href={`/${playerId}`}>{avatar}</Link> : avatar}
       <span className="w-full truncate text-xs leading-tight text-parchment" title={name}>
         {firstNameOnly}
         {isStarter ? <span className="text-gilt"> ★</span> : null}
