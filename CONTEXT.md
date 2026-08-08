@@ -31,3 +31,11 @@ _Avoid_: purge, reset, wipe.
 **Modifier Adjustment**:
 A one-off, signed, reasoned change any player can log against any player's `room_players.modifier` for today's room (`modifier_adjustments`, append-only — rows are only ever inserted or deleted on undo, never updated). Logged from Settings via `log_modifier_adjustment`, which derives the actor server-side and applies the delta immediately; the actor can undo only their own most-recently-logged adjustment, and only within 5 minutes of logging it, via `delete_modifier_adjustment`.
 _Avoid_: modifier override, manual roll, correction (that conflates it with a spell effect).
+
+**Brew Rating**:
+A 1–5 star score a round's non-brewer participants may give the brewer's tea/coffee (`brew_ratings`, one row per rater per round, upserted on re-rating rather than versioned). Submitted and edited via `submit_brew_rating`, withdrawn via `withdraw_brew_rating` — both derive the rater server-side and are gated by the Rating Window. Only ever visible to the brewer as an aggregate average (`stats_brew_rating_all_time`/`_last_30_days`); individual scores are never exposed to the brewer, by RLS, not just by convention.
+_Avoid_: review, feedback, score (ambiguous with roll/spell scoring).
+
+**Rating Window**:
+The period a round's Brew Rating stays submittable or editable: open from the round's resolution until the room's *next* round resolves, then permanently closed — no fixed timer, unlike Modifier Adjustment's 5-minute undo limit. Enforced server-side in `submit_brew_rating`/`withdraw_brew_rating` by checking the target round is still the room's most-recently-resolved one.
+_Avoid_: rating deadline, grace period.
