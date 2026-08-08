@@ -88,16 +88,27 @@ export async function applyLayerOutcome(
     noModifierGain = override.noModifierGain;
   }
 
-  const effectsByPlayer = await deps.getRoundModifierEffects(supabase, roundId);
-  const outcome = brewerId
-    ? ({ outcome: "brewer", playerId: brewerId } as const)
-    : resolveLayer(
-        rolls.map((r) => ({
-          playerId: r.playerId,
-          roll: r.value,
-          modifier: composeModifier(r.modifierSnapshot, effectsByPlayer.get(r.playerId) ?? []),
-        })),
-      );
+  // Spell effects (fresh casts and lingering multi-round ones alike) only
+  // reach the original roll (layer 0). A tie-break reroll layer resolves on
+  // each player's plain persistent modifier alone — composeModifier is never
+  // consulted for it (issue #219).
+  let outcome: { outcome: "brewer"; playerId: string } | ReturnType<typeof resolveLayer>;
+  if (brewerId) {
+    outcome = { outcome: "brewer", playerId: brewerId };
+  } else if (layer === 0) {
+    const effectsByPlayer = await deps.getRoundModifierEffects(supabase, roundId);
+    outcome = resolveLayer(
+      rolls.map((r) => ({
+        playerId: r.playerId,
+        roll: r.value,
+        modifier: composeModifier(r.modifierSnapshot, effectsByPlayer.get(r.playerId) ?? []),
+      })),
+    );
+  } else {
+    outcome = resolveLayer(
+      rolls.map((r) => ({ playerId: r.playerId, roll: r.value, modifier: r.modifierSnapshot })),
+    );
+  }
 
   const roomId = await deps.getRoundRoomId(supabase, roundId);
 
@@ -215,13 +226,40 @@ export async function finalizeReactionWindow(
 }
 
 /**
+ * resolveCompletedLayerIfAny's dependency seam, same injectable-deps pattern
+ * as ApplyLayerOutcomeDeps/FinalizeReactionWindowDeps above — production
+ * callers get defaultResolveCompletedLayerDeps,
+ * resolveCompletedLayerIfAny.test.ts passes fakes.
+ */
+export type ResolveCompletedLayerDeps = {
+  getCurrentLayerRollsIfComplete: typeof getCurrentLayerRollsIfComplete;
+  getRoundRoomId: typeof getRoundRoomId;
+  broadcastLayerRollsRevealed: typeof broadcastLayerRollsRevealed;
+  openReactionWindow: typeof openReactionWindow;
+  finalizeReactionWindow: typeof finalizeReactionWindow;
+};
+
+const defaultResolveCompletedLayerDeps: ResolveCompletedLayerDeps = {
+  getCurrentLayerRollsIfComplete,
+  getRoundRoomId,
+  broadcastLayerRollsRevealed,
+  openReactionWindow,
+  finalizeReactionWindow,
+};
+
+/**
  * If the round's current layer is complete (get_current_layer_rolls_if_complete
- * returns rows), broadcasts its raw rolls, opens a reaction window for it
- * (issue #68), and — only if nobody is currently eligible to react, so the
- * window closes itself immediately — finalizes it in the same request.
- * Otherwise finalization waits for whichever later action (a reaction cast
- * or a pass) closes the window; see passReactionWindowAction
- * (src/app/rounds/actions.ts).
+ * returns rows), broadcasts its raw rolls, then:
+ *
+ * - Layer 0 (the original roll): opens a reaction window for it (issue #68),
+ *   and — only if nobody is currently eligible to react, so the window
+ *   closes itself immediately — finalizes it in the same request. Otherwise
+ *   finalization waits for whichever later action (a reaction cast or a
+ *   pass) closes the window; see passReactionWindowAction
+ *   (src/app/rounds/actions.ts).
+ * - Any tie-break reroll layer (layer > 0): no reaction window is ever
+ *   opened — a reaction spell cannot be cast against a tie-break reroll —
+ *   and the layer finalizes immediately (issue #219).
  *
  * Used by submitRollAction and submitManualRollAction (#22) — either way,
  * the caller (the player who just rolled) is always themselves an expected
@@ -231,12 +269,13 @@ export async function finalizeReactionWindow(
 export async function resolveCompletedLayerIfAny(
   supabase: SupabaseClient,
   roundId: string,
+  deps: ResolveCompletedLayerDeps = defaultResolveCompletedLayerDeps,
 ): Promise<void> {
-  const completedLayer = await getCurrentLayerRollsIfComplete(supabase, roundId);
+  const completedLayer = await deps.getCurrentLayerRollsIfComplete(supabase, roundId);
   if (!completedLayer) return;
 
-  const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastLayerRollsRevealed(supabase, roomId, {
+  const roomId = await deps.getRoundRoomId(supabase, roundId);
+  await deps.broadcastLayerRollsRevealed(supabase, roomId, {
     roundId,
     layer: completedLayer.layer,
     rolls: completedLayer.rolls.map((r) => ({
@@ -246,8 +285,12 @@ export async function resolveCompletedLayerIfAny(
     })),
   });
 
-  const { isClosed } = await openReactionWindow(supabase, roundId, completedLayer.layer);
-  if (isClosed) {
-    await finalizeReactionWindow(supabase, roundId);
+  if (completedLayer.layer === 0) {
+    const { isClosed } = await deps.openReactionWindow(supabase, roundId, completedLayer.layer);
+    if (isClosed) {
+      await deps.finalizeReactionWindow(supabase, roundId);
+    }
+  } else {
+    await deps.finalizeReactionWindow(supabase, roundId);
   }
 }
