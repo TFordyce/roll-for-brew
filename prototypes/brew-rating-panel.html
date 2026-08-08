@@ -27,7 +27,11 @@
     on Variant D as the only design going forward — A/B/C dropped — with the
     winning tab look being A's vertical bookmark-ribbon treatment. Round 8:
     sign-box copy simplified to just "Rate", and the tab look is swappable
-    again via a picker (bookmark/pin/notch/tag) since bookmark alone wasn't landing.
+    again via a picker (bookmark/pin/notch/tag) since bookmark alone wasn't
+    landing. Round 9: the hanging tag is the pick, defaulted on. It now
+    fully exits off-screen to the right while the note is open (instead of
+    just nudging aside), and clicking the note's background — not just the
+    × — closes it and brings the tag back.
 
     Open this file directly in a browser — no server needed.
   */
@@ -177,9 +181,12 @@
     width: 6px; height: 6px; border-radius: 999px;
     background: var(--tavern-plank); border: 1px solid #8a5a3a;
   }
+  /* Round 9: the tag is the pick — but unlike the other looks (which just
+     nudge left when the note's open), the tag fully exits to the right,
+     off-screen, so it's not competing with the note for attention while
+     it's out. Closing the note is what brings it back. */
   [data-open="false"] .tab.tab-look-tag { transform: translateX(0) rotate(4deg); }
-  [data-open="true"] .tab.tab-look-tag { transform: translateX(-4px) rotate(4deg); }
-  [data-open="true"] .tab.tab-look-tag:hover { transform: translateX(-8px) rotate(4deg); }
+  [data-open="true"] .tab.tab-look-tag { transform: translateX(140%) rotate(4deg); }
 
   .tab-look-buttons { margin-top: 8px; display: flex; gap: 8px; }
 
@@ -250,9 +257,11 @@
     <h1>Brew Rating — panel prototype</h1>
     <p class="intro">
       Wayfinder ticket #202. A single panel design now — pushpin card + tap-per-star + a
-      "Rate" stamp box. Pick a tab look below to react to it; the state buttons preview the
-      three things the panel needs to say — note "Nothing to rate" hides the tab entirely
-      rather than showing a message. Standalone file, open directly in a browser.
+      "Rate" stamp box, opened by a hanging tag that slides fully off-screen while the note
+      is out. Click the note's background (or the ×) to close it and bring the tag back. The
+      state buttons preview the three things the panel needs to say — note "Nothing to rate"
+      hides the tab entirely rather than showing a message. Standalone file, open directly in
+      a browser.
     </p>
     <div class="state-buttons" id="state-buttons"></div>
     <div class="tab-look-buttons" id="tab-look-buttons"></div>
@@ -300,7 +309,7 @@
     open: true,
     scoreD: 0,
     confirmedD: false,
-    tabLook: "bookmark",
+    tabLook: "tag", // round 9: the tag is the pick
   };
 
   // ---------- pixel star: 9x8 grid, rendered as an inline SVG built from a text pattern ----------
@@ -435,6 +444,17 @@
       state.open = !state.open;
       updatePanel();
     });
+  });
+
+  // Round 9: clicking the note's background (not a star, not the sign box,
+  // not the × — anything that isn't a button) closes the panel and sends the
+  // tab back off-screen, same as clicking the × does.
+  document.querySelector('[data-panel]').addEventListener("click", function (e) {
+    if (e.target.closest("button")) return;
+    if (state.open) {
+      state.open = false;
+      updatePanel();
+    }
   });
 
   var stateButtonsEl = document.getElementById("state-buttons");
