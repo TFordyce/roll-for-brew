@@ -168,7 +168,7 @@
   }
   .reroll-header { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--parchment-dim); font-family: ui-sans-serif, system-ui, sans-serif; white-space: nowrap; }
   .reroll-pending { font-size: 11px; color: var(--parchment-dim); font-family: ui-sans-serif, system-ui, sans-serif; display: flex; align-items: center; gap: 6px; }
-  .reroll-pending .spinner { width: 12px; height: 12px; border-radius: 999px; border: 2px solid var(--gilt-dark); border-top-color: var(--gilt-bright); animation: spin 0.8s linear infinite; }
+  .reroll-pending .spinner, .spinner { width: 12px; height: 12px; border-radius: 999px; border: 2px solid var(--gilt-dark); border-top-color: var(--gilt-bright); animation: spin 0.8s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   .reroll-body.revealed { animation: reveal-in 0.4s ease-out; }
@@ -264,7 +264,9 @@
         <dt>Does the modal work for the tied player, and not get in a spectator's way?</dt>
         <dd>Yes in this fixture — "Viewing as" a tied player shows the modal immediately (blocking, matches how a tied player has no other useful action available); every other perspective (the other tied player, spectators) sees no modal, just the pending row updating live once the broadcast lands. That split maps cleanly onto the existing selfPlayerId-vs-others pattern TieBanner already uses today for showing the roll input only to the tied player it belongs to.</dd>
         <dt>Does the dependent-row connector read as "depends on the row above" at a glance?</dt>
-        <dd>Reasonably — the indent plus a short corner-line under the avatar makes the relationship legible without a label. <strong>Decided: chained ties nest a further indented row, not replace the previous one in place</strong> — Rowan's row above demonstrates it, reveal level by level via the modal ("Viewing as" Rowan) or the debug reset. Keeps the whole tie-break history visible rather than losing the fact that a first reroll also tied.</dd>
+        <dd>Reasonably — the indent plus a short corner-line under the avatar makes the relationship legible without a label. <strong>Decided: chained ties nest a further indented row, not replace the previous one in place</strong> — Rowan &amp; Sulayman's rows above demonstrate it, reveal level by level via the modal ("Viewing as" either of them) or the debug reset. Keeps the whole tie-break history visible rather than losing the fact that a first reroll also tied.</dd>
+        <dt>Does a level reveal as soon as one tied player rolls, or only once both have?</dt>
+        <dd>Only once both have — fixed after the first pass showed a bug: rolling Rowan's reroll was instantly painting "tied again" even though Sulayman hadn't rolled yet, which can't be true (a tie is a comparison between two rolls, not a fact about one). The modal now tracks each player's own submission separately from the row's shared reveal state — a player who rolls first sees a "waiting for the other player" state instead of the next prompt, and the row (and both players' modals) only update once both are in.</dd>
         <dt>Is there still anything worth "rich" about a tie-break roll now?</dt>
         <dd><strong>Decided: yes, keep the d20-icon/boxed-total treatment</strong> even though it can never carry a discarded die or effect badge — it's still a nicer read than bare text, and every reroll level in a chain gets it consistently.</dd>
       </dl>
@@ -337,7 +339,12 @@
     ],
   };
 
-  const state = { view: "spectator", revealedCount: { rowan: 0, sulayman: 0 } };
+  // A chain level can't reveal until BOTH tied players have rolled it — a
+  // tie (or its break) is a comparison, not a single player's result. So
+  // `revealedLevels` is shared per pair, and `playerRolled` tracks each
+  // player's own submissions separately; a player who's rolled ahead of
+  // their partner sees a "waiting" state, not the next roll prompt.
+  const state = { view: "spectator", playerRolled: { rowan: 0, sulayman: 0 }, revealedLevels: 0 };
 
   function connectorSvg() {
     return `<svg viewBox="0 0 26 34"><path d="M13 0 V16 Q13 24 21 24 H26" fill="none" stroke="#8a6a2c" stroke-width="2" stroke-dasharray="3 3" /></svg>`;
@@ -349,7 +356,7 @@
   // level indents 30px further right than the last, reading as "depends on
   // the row above" all the way down the chain.
   function chainSlots(p) {
-    const revealed = state.revealedCount[p.id];
+    const revealed = state.revealedLevels;
     let html = "";
     let indent = 30;
     for (let i = 0; i < p.chain.length; i++) {
@@ -425,14 +432,31 @@
       root.innerHTML = "";
       return;
     }
-    const nextLevel = state.revealedCount[player.id];
-    if (nextLevel >= player.chain.length) {
+    const level = state.revealedLevels;
+    if (level >= player.chain.length) {
       root.innerHTML = "";
       return;
     }
+    const other = player.id === "rowan" ? sulayman : rowan;
+    // Rolled ahead of the level's reveal — this player has submitted, but
+    // the row won't update (and no next prompt can appear) until their
+    // partner has too. Waiting, not a fresh roll prompt.
+    const selfRolledAhead = state.playerRolled[player.id] > level;
+    if (selfRolledAhead) {
+      root.innerHTML = `
+        <div class="modal-backdrop">
+          <div class="modal">
+            <div class="avatar-sm modal-avatar" style="width:44px;height:44px;font-size:16px;">${player.initial}</div>
+            <h2>Rolled!</h2>
+            <p class="sub">Waiting for ${other.name} to roll &mdash; the row updates once you're both in.</p>
+            <p class="waiting-note"><span class="spinner" style="display:inline-block;vertical-align:middle;"></span></p>
+          </div>
+        </div>`;
+      return;
+    }
     const sub =
-      nextLevel === 0
-        ? `You and ${player.id === "rowan" ? sulayman.name : rowan.name} both rolled ${player.tiedTotal}. Roll again to break the tie.`
+      level === 0
+        ? `You and ${other.name} both rolled ${player.tiedTotal}. Roll again to break the tie.`
         : `Tied again! Roll once more to break it.`;
     root.innerHTML = `
       <div class="modal-backdrop">
@@ -445,7 +469,11 @@
         </div>
       </div>`;
     document.getElementById("rollNowBtn").addEventListener("click", () => {
-      state.revealedCount[player.id] += 1;
+      state.playerRolled[player.id] += 1;
+      // Both tied players must have rolled this level before it reveals.
+      if (state.playerRolled.rowan > level && state.playerRolled.sulayman > level) {
+        state.revealedLevels += 1;
+      }
       render();
     });
   }
@@ -464,8 +492,9 @@
     });
   });
   document.getElementById("resetBtn").addEventListener("click", () => {
-    state.revealedCount.rowan = 0;
-    state.revealedCount.sulayman = 0;
+    state.playerRolled.rowan = 0;
+    state.playerRolled.sulayman = 0;
+    state.revealedLevels = 0;
     render();
   });
 
