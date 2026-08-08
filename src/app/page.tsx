@@ -23,12 +23,15 @@ import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getMySpellCards, getPendingSpellDraw, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
+import { getMyRateableRound } from "@/lib/supabase/brewRatings";
+import { initialsFrom } from "@/lib/game/initials";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 import { SignOutBadge } from "@/app/_components/SignOutBadge";
 import { SubmitButton } from "@/app/_components/SubmitButton";
+import { BrewRatingPanel } from "@/app/_components/BrewRatingPanel";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -130,6 +133,11 @@ export default async function HomePage() {
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
+  // Independent of the active-round flow above — a player can have a round
+  // to rate whether or not today's room currently has one open (issue #211).
+  const rateableRound = await getMyRateableRound(supabase, playerId);
+  const raterInitials = initialsFrom(player?.display_name ?? null, player?.email ?? user.email ?? "");
+
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={playerId} />
@@ -137,6 +145,7 @@ export default async function HomePage() {
         name={player?.display_name ?? player?.email ?? user.email ?? ""}
         showAdminMenu={showAdminMenu}
       />
+      <BrewRatingPanel round={rateableRound} raterInitials={raterInitials} />
 
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
