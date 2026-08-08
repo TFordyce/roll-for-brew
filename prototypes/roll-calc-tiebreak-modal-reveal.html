@@ -231,7 +231,9 @@
     section, and the outcome appears as a <strong>second row directly under the tied player back in the main
     reveal list</strong>, indented right with a connector to read as dependent on the row above — both independent
     of spell effects entirely now. Switch "Viewing as" below to see a tied player's own device (gets the modal) vs
-    a spectator's (just watches the row fill in).
+    a spectator's (just watches the row fill in). Rowan's row demonstrates a <strong>chained tie</strong> — the
+    layer-1 reroll ties again, nesting a third row further right before layer 2 finally resolves it — reveal it
+    level by level via the modal or the debug reset.
   </p>
 </div>
 
@@ -262,19 +264,20 @@
         <dt>Does the modal work for the tied player, and not get in a spectator's way?</dt>
         <dd>Yes in this fixture — "Viewing as" a tied player shows the modal immediately (blocking, matches how a tied player has no other useful action available); every other perspective (the other tied player, spectators) sees no modal, just the pending row updating live once the broadcast lands. That split maps cleanly onto the existing selfPlayerId-vs-others pattern TieBanner already uses today for showing the roll input only to the tied player it belongs to.</dd>
         <dt>Does the dependent-row connector read as "depends on the row above" at a glance?</dt>
-        <dd>Reasonably — the indent plus a short corner-line under the avatar makes the relationship legible without a label, though it's only tested here with one reroll layer. A second tie (rare, but the game allows chained rerolls) would need to decide whether it nests a third indented row or replaces the second one in place — not fixture-tested here.</dd>
+        <dd>Reasonably — the indent plus a short corner-line under the avatar makes the relationship legible without a label. <strong>Decided: chained ties nest a further indented row, not replace the previous one in place</strong> — Rowan's row above demonstrates it, reveal level by level via the modal ("Viewing as" Rowan) or the debug reset. Keeps the whole tie-break history visible rather than losing the fact that a first reroll also tied.</dd>
         <dt>Is there still anything worth "rich" about a tie-break roll now?</dt>
-        <dd>Only the d20 icon and boxed total as decoration — no discarded die, no boon/bust badge, ever, per #219. Worth asking whether that decoration is even worth keeping for a call site this plain, versus just the bare <code>roll + modifier = total</code> text RoundReveal already uses elsewhere for anything that isn't layer 0 — a design call for whoever implements this, not something this prototype needs to settle.</dd>
+        <dd><strong>Decided: yes, keep the d20-icon/boxed-total treatment</strong> even though it can never carry a discarded die or effect badge — it's still a nicer read than bare text, and every reroll level in a chain gets it consistently.</dd>
       </dl>
     </div>
 
     <div class="card-frame decision-frame">
       <p class="frame-title">Decision</p>
       <ol>
-        <li><strong>The modal + dependent-row interaction model still looks worth doing</strong> on its own merits — separable from the spell-effects question that originally motivated take 1, and now simpler to build since the reroll content itself is guaranteed plain.</li>
-        <li>Real implementation is still a genuine scope jump from a tile tweak: <code>RoundReveal.tsx</code> currently has no concept of layer&gt;0 rolls or tie state at all — it'd need to grow both, plus a modal component and its own roll-submission flow separate from <code>TieBanner</code>'s existing one. <code>TieBanner</code>/<code>PlayerTile</code> may end up retired for this call site entirely rather than adapted.</li>
+        <li><strong>The modal + dependent-row interaction model is confirmed</strong> — filed as issue #220, separable from the spell-effects question that originally motivated take 1, and now simpler to build since the reroll content itself is guaranteed plain.</li>
+        <li><strong>Chained ties nest indented rows</strong> (not in-place replacement) — see Rowan's fixture above.</li>
+        <li><strong>Keep the rich d20/boxed-total decoration</strong> for every reroll level, chained or not.</li>
+        <li>Real implementation is still a genuine scope jump from a tile tweak: <code>RoundReveal.tsx</code> currently has no concept of layer&gt;0 rolls or tie state at all — it'd need to grow both, plus a modal component and its own roll-submission flow separate from <code>TieBanner</code>'s existing one. <code>TieBanner</code>/<code>PlayerTile</code> may end up retired for this call site entirely rather than adapted. Captured in #220.</li>
         <li>Depends on <strong>#219 shipping first</strong> — no point building the dependent-row plumbing against a data model that (until #219 lands) still lets a reroll carry a discarded die/effect badge it shouldn't.</li>
-        <li>Not yet filed as its own issue — this file is the reference point for that write-up whenever you're ready to move on it.</li>
       </ol>
     </div>
 
@@ -314,30 +317,73 @@
   }
 
   // ---------- fixtures ----------
+  // Rowan's chain demonstrates a CHAINED tie (rare, but the rules allow it):
+  // the layer-1 reroll ties again, so a third row nests under the second,
+  // indented further right, before layer 2 finally resolves it. Sulayman's
+  // chain is the ordinary single-reroll case, for contrast in the same view.
+  // (Who Rowan is tied with at layer 1 is left unmodelled here — this fixture
+  // exists purely to demonstrate the nesting visual, not to be a fully
+  // consistent second tied pair.)
   const petra = { id: "petra", name: "Petra", initial: "P", modifier: 4, roll: 12, total: 16 };
-  const rowan = { id: "rowan", name: "Rowan", initial: "R", modifier: 2, tiedTotal: 14, reroll: { modifier: 2, roll: 6, total: 8 } };
-  const sulayman = { id: "sulayman", name: "Sulayman", initial: "S", modifier: -1, tiedTotal: 14, reroll: { modifier: -1, roll: 17, total: 16 } };
+  const rowan = {
+    id: "rowan", name: "Rowan", initial: "R", modifier: 2, tiedTotal: 14,
+    chain: [
+      { tied: true, total: 11 },
+      { tied: false, roll: 7, modifier: 2, total: 9 },
+    ],
+  };
+  const sulayman = {
+    id: "sulayman", name: "Sulayman", initial: "S", modifier: -1, tiedTotal: 14,
+    chain: [{ tied: false, roll: 17, modifier: -1, total: 16 }],
+  };
 
-  const state = { view: "spectator", revealed: { rowan: false, sulayman: false } };
+  const state = { view: "spectator", revealedCount: { rowan: 0, sulayman: 0 } };
 
   function connectorSvg() {
     return `<svg viewBox="0 0 26 34"><path d="M13 0 V16 Q13 24 21 24 H26" fill="none" stroke="#8a6a2c" stroke-width="2" stroke-dasharray="3 3" /></svg>`;
   }
 
-  function tiedRow(p) {
-    const rerollFor = state.revealed[p.id];
-    let rerollHtml;
-    if (rerollFor) {
-      rerollHtml = `<div class="reroll-body revealed">
-          <span class="reroll-header">&#8618; Reroll</span>
-          ${richCalc(p.reroll)}
+  // Renders as many chain levels as have been revealed, plus exactly one
+  // pending row for whichever level comes next — never further ahead than
+  // that, since a level can't roll until the one above it has landed. Each
+  // level indents 30px further right than the last, reading as "depends on
+  // the row above" all the way down the chain.
+  function chainSlots(p) {
+    const revealed = state.revealedCount[p.id];
+    let html = "";
+    let indent = 30;
+    for (let i = 0; i < p.chain.length; i++) {
+      const entry = p.chain[i];
+      const isRevealed = i < revealed;
+      const isPendingNext = i === revealed;
+      if (!isRevealed && !isPendingNext) break;
+
+      let inner;
+      if (!isRevealed) {
+        inner = `<span class="reroll-pending"><span class="spinner"></span>Rerolling&hellip;</span>`;
+      } else if (entry.tied) {
+        inner = `<span class="tied-pill"><span class="pulse-dot"></span>Tied again &mdash; ${entry.total}</span>`;
+      } else {
+        inner = richCalc(entry);
+      }
+
+      html += `
+        <div class="reroll-slot" style="padding-left:${indent}px;">
+          <div class="connector">${connectorSvg()}</div>
+          <div class="reroll-body${isRevealed ? " revealed" : ""}">
+            <span class="reroll-header">&#8618; Reroll ${i + 1}</span>
+            ${inner}
+          </div>
         </div>`;
-    } else {
-      rerollHtml = `<div class="reroll-body">
-          <span class="reroll-header">&#8618; Reroll</span>
-          <span class="reroll-pending"><span class="spinner"></span>Rerolling&hellip;</span>
-        </div>`;
+
+      if (!isRevealed) break; // pending — nothing past this can render yet
+      indent += 30;
+      if (!entry.tied) break; // resolved, not tied again — chain ends here
     }
+    return html;
+  }
+
+  function tiedRow(p) {
     return `
       <li class="row-group">
         <div class="primary-row">
@@ -348,10 +394,7 @@
           </div>
           <span class="tied-pill"><span class="pulse-dot"></span>Tied &mdash; ${p.tiedTotal}</span>
         </div>
-        <div class="reroll-slot">
-          <div class="connector">${connectorSvg()}</div>
-          ${rerollHtml}
-        </div>
+        ${chainSlots(p)}
       </li>`;
   }
 
@@ -378,22 +421,31 @@
   function renderModal() {
     const root = document.getElementById("modalRoot");
     const player = state.view === "rowan" ? rowan : state.view === "sulayman" ? sulayman : null;
-    if (!player || state.revealed[player.id]) {
+    if (!player) {
       root.innerHTML = "";
       return;
     }
+    const nextLevel = state.revealedCount[player.id];
+    if (nextLevel >= player.chain.length) {
+      root.innerHTML = "";
+      return;
+    }
+    const sub =
+      nextLevel === 0
+        ? `You and ${player.id === "rowan" ? sulayman.name : rowan.name} both rolled ${player.tiedTotal}. Roll again to break the tie.`
+        : `Tied again! Roll once more to break it.`;
     root.innerHTML = `
       <div class="modal-backdrop">
         <div class="modal">
           <div class="avatar-sm modal-avatar" style="width:44px;height:44px;font-size:16px;">${player.initial}</div>
           <h2>Tied!</h2>
-          <p class="sub">You and ${player.id === "rowan" ? sulayman.name : rowan.name} both rolled ${player.tiedTotal}. Roll again to break the tie.</p>
+          <p class="sub">${sub}</p>
           <button class="roll-btn" id="rollNowBtn">Roll</button>
           <p class="waiting-note">Only you see this &mdash; everyone else is watching your row.</p>
         </div>
       </div>`;
     document.getElementById("rollNowBtn").addEventListener("click", () => {
-      state.revealed[player.id] = true;
+      state.revealedCount[player.id] += 1;
       render();
     });
   }
@@ -412,8 +464,8 @@
     });
   });
   document.getElementById("resetBtn").addEventListener("click", () => {
-    state.revealed.rowan = false;
-    state.revealed.sulayman = false;
+    state.revealedCount.rowan = 0;
+    state.revealedCount.sulayman = 0;
     render();
   });
 
