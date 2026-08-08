@@ -41,6 +41,7 @@ describe("applyLayerOutcome", () => {
     expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p1", 3);
     expect(deps.broadcastRoundRevealed).toHaveBeenCalledWith(supabase, "room-1", {
       roundId: "round-1",
+      layer: 0,
       brewerId: "p1",
       cupsMade: 3,
       rolls: [
@@ -194,5 +195,13 @@ describe("applyLayerOutcome", () => {
 
     expect(deps.getRoundModifierEffects).not.toHaveBeenCalled();
     expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p2", 3);
+    // The broadcast carries which layer actually decided it (issue #220
+    // piece 4) — a listener showing layer 0's own roll needs this to know
+    // payload.rolls here is layer 1's reroll, not layer 0's original roll.
+    expect(deps.broadcastRoundRevealed).toHaveBeenCalledWith(
+      supabase,
+      "room-1",
+      expect.objectContaining({ layer: 1 }),
+    );
   });
 });

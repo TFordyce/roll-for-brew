@@ -239,6 +239,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
 
     await broadcastRoundRevealed(starter.client, starter.roomId, {
       roundId: roundId as string,
+      layer: 0,
       brewerId,
       cupsMade: 2,
       rolls: complete.map((r) => ({ playerId: r.player_id, value: r.value, discardedValue: null })),

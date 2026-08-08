@@ -131,6 +131,7 @@ export async function applyLayerOutcome(
 
     await deps.broadcastRoundRevealed(supabase, roomId, {
       roundId,
+      layer,
       brewerId: outcome.playerId,
       cupsMade,
       rolls: rolls.map((r) => ({ playerId: r.playerId, value: r.value, discardedValue: r.discardedValue })),

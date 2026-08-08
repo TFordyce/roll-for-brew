@@ -171,6 +171,54 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     expect(roomPlayer!.modifier).toBe(3);
   });
 
+  // Exercises 0061_round_layer_roll_history.sql (issue #220, piece 1 of the
+  // modal + dependent-row RoundReveal rework): unlike
+  // get_current_layer_rolls_if_complete, this RPC isn't gated to the
+  // current layer or to that layer's own expected rollers — a spectator who
+  // never rolled anything should still see every already-revealed layer.
+  it("get_round_layer_history returns every completed layer to a spectator, withholding an incomplete one", async () => {
+    const a = await signUp("history-a");
+    const b = await signUp("history-b");
+    const spectator = await signUp("history-spectator");
+
+    const { data: roundId } = await a.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await b.client.rpc("declare_in", { p_round_id: roundId });
+    await a.client.rpc("close_round", { p_round_id: roundId });
+
+    // Layer 0: a tie, so the round advances to a real layer 1.
+    await seedRoll(roundId, a.googleSub, 0, 10, 0);
+    await seedRoll(roundId, b.googleSub, 0, 10, 0);
+    await a.client.rpc("advance_round_layer", {
+      p_round_id: roundId,
+      p_tied_player_ids: [a.googleSub, b.googleSub],
+    });
+
+    // Layer 1: only a has rolled so far — incomplete.
+    await seedRoll(roundId, a.googleSub, 1, 7, 0);
+
+    const { data: partialHistory, error: partialError } = await spectator.client.rpc(
+      "get_round_layer_history",
+      { p_round_id: roundId },
+    );
+    expect(partialError).toBeNull();
+    const partialRows = partialHistory as { layer: number; player_id: string }[];
+    expect(partialRows.every((r) => r.layer === 0)).toBe(true);
+    expect(partialRows).toHaveLength(2);
+
+    // b completes layer 1 — now both layers are visible to the spectator.
+    await seedRoll(roundId, b.googleSub, 1, 3, 0);
+
+    const { data: fullHistory, error: fullError } = await spectator.client.rpc("get_round_layer_history", {
+      p_round_id: roundId,
+    });
+    expect(fullError).toBeNull();
+    const fullRows = fullHistory as { layer: number; player_id: string }[];
+    expect(fullRows).toHaveLength(4);
+    expect(fullRows.filter((r) => r.layer === 0)).toHaveLength(2);
+    expect(fullRows.filter((r) => r.layer === 1)).toHaveLength(2);
+  });
+
   it("advance_round_layer rejects a player who didn't roll the current layer", async () => {
     const a = await signUp("advance-guard-a");
     const b = await signUp("advance-guard-b");

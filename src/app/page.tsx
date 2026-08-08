@@ -108,7 +108,11 @@ export default async function HomePage() {
       : [];
   const isTied = tiedParticipants.some((p) => p.playerId === playerId);
 
-  const ownRoll = !activeRound
+  // The caller's own roll for whichever layer is *current* right now (0, or
+  // a live reroll) — feeds isPlayersTurnToRoll/rollInputMode/needsRollInput
+  // below regardless of phase, and doubles as TieBanner/TieRollModal's
+  // ownRoll during a tie.
+  const currentLayerOwnRoll = !activeRound
     ? null
     : isTiePhase
       ? isTied
@@ -117,6 +121,20 @@ export default async function HomePage() {
       : activeRound.status === "closed" && hasDeclared
         ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
         : null;
+
+  // RoundReveal's own ownRoll is always specifically layer 0's — issue #220
+  // piece 4 keeps RoundReveal mounted through the tie phase too (not just
+  // after it), so unlike currentLayerOwnRoll above this can't track
+  // whichever layer happens to be current; RoundReveal shows layer 0's row
+  // as its primary row no matter how many reroll layers came after it.
+  // Outside a tie, "the current layer" already *is* layer 0, so
+  // currentLayerOwnRoll above is already the answer — only an actual tie
+  // phase needs its own extra fetch.
+  const layerZeroOwnRoll = !isTiePhase
+    ? currentLayerOwnRoll
+    : activeRound?.status === "closed" && hasDeclared
+      ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
+      : null;
 
   // Whether it's this player's turn to submit a roll right now: they're
   // expected to roll the round's current layer (is_expected_layer_roller,
@@ -129,7 +147,7 @@ export default async function HomePage() {
     activeRound?.status === "closed"
       ? await isExpectedLayerRoller(supabase, activeRound.id, playerId, currentLayer)
       : false;
-  const isPlayersTurnToRoll = isExpectedToRoll && ownRoll === null;
+  const isPlayersTurnToRoll = isExpectedToRoll && currentLayerOwnRoll === null;
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
@@ -176,33 +194,36 @@ export default async function HomePage() {
 
       {activeRound ? (
         <section className="w-full max-w-md">
-          {activeRound.status === "closed" && isTiePhase ? (
-            <TieBanner
-              key={currentLayer}
-              roomId={roomId}
-              roundId={activeRound.id}
-              layer={currentLayer}
-              selfPlayerId={playerId}
-              ownRoll={ownRoll}
-              tiedParticipants={tiedParticipants.map((entry) => ({
-                ...entry,
-                modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
-              }))}
-              rollInputMode={rollInputMode}
-            />
-          ) : activeRound.status === "closed" ? (
-            <RoundReveal
-              roomId={roomId}
-              roundId={activeRound.id}
-              selfPlayerId={playerId}
-              ownRoll={ownRoll}
-              participants={participants.map((entry) => ({
-                playerId: entry.playerId,
-                displayName: entry.displayName,
-                email: entry.email,
-                modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
-              }))}
-            />
+          {activeRound.status === "closed" ? (
+            <div>
+              {isTiePhase && tiedParticipants.length > 0 ? (
+                <TieBanner
+                  key={currentLayer}
+                  roomId={roomId}
+                  roundId={activeRound.id}
+                  selfPlayerId={playerId}
+                  ownRoll={currentLayerOwnRoll}
+                  tiedParticipants={tiedParticipants.map((entry) => ({
+                    ...entry,
+                    modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
+                  }))}
+                  rollInputMode={rollInputMode}
+                />
+              ) : null}
+
+              <RoundReveal
+                roomId={roomId}
+                roundId={activeRound.id}
+                selfPlayerId={playerId}
+                ownRoll={layerZeroOwnRoll}
+                participants={participants.map((entry) => ({
+                  playerId: entry.playerId,
+                  displayName: entry.displayName,
+                  email: entry.email,
+                  modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
+                }))}
+              />
+            </div>
           ) : (
             <div>
               <RoundOpenLive roomId={roomId} roundId={activeRound.id} />
