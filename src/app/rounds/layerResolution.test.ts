@@ -172,4 +172,27 @@ describe("applyLayerOutcome", () => {
 
     expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p1", 3);
   });
+
+  it("ignores an active spell-card modifier effect on a tie-break reroll layer (issue #219)", async () => {
+    const deps = fakeDeps({
+      // Without the effect, p2 wins outright as brewer (5 < 12). A +10 flat
+      // effect on p2 would flip that to p1 if it were wrongly composed in —
+      // proof this reroll layer never consults the effects map at all.
+      getRoundModifierEffects: vi.fn(async () =>
+        new Map<string, ModifierEffect[]>([["p2", [{ kind: "flat", delta: 10 }]]]),
+      ),
+    });
+    const completedLayer: CompletedLayer = {
+      layer: 1,
+      rolls: [
+        { playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p2", value: 5, modifierSnapshot: 0, discardedValue: null },
+      ],
+    };
+
+    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+
+    expect(deps.getRoundModifierEffects).not.toHaveBeenCalled();
+    expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p2", 3);
+  });
 });
