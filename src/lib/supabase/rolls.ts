@@ -125,6 +125,46 @@ export async function getCurrentLayerRollsIfComplete(
 }
 
 /**
+ * Calls the get_round_layer_history RPC (supabase/migrations/
+ * 0061_round_layer_roll_history.sql, issue #220): every already-revealed
+ * layer's rolls for a round, grouped by layer — layer 0 plus any tie-break
+ * reroll layers the round has gone through so far. Unlike
+ * getCurrentLayerRollsIfComplete, this isn't restricted to the current
+ * layer or to that layer's own expected rollers — a pure spectator, or
+ * anyone re-reading history after the round has moved on, gets the same
+ * answer. Feeds RoundReveal's nested dependent-row rendering for chained
+ * ties.
+ */
+export async function getRoundLayerHistory(supabase: SupabaseClient, roundId: string): Promise<CompletedLayer[]> {
+  const { data, error } = await supabase.rpc("get_round_layer_history", { p_round_id: roundId });
+  if (error) throw error;
+
+  const rows = (data ?? []) as {
+    layer: number;
+    player_id: string;
+    value: number;
+    modifier_snapshot: number;
+    discarded_value: number | null;
+  }[];
+
+  const byLayer = new Map<number, LayerRoll[]>();
+  for (const row of rows) {
+    const rolls = byLayer.get(row.layer) ?? [];
+    rolls.push({
+      playerId: row.player_id,
+      value: row.value,
+      modifierSnapshot: row.modifier_snapshot,
+      discardedValue: row.discarded_value,
+    });
+    byLayer.set(row.layer, rolls);
+  }
+
+  return [...byLayer.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([layer, rolls]) => ({ layer, rolls }));
+}
+
+/**
  * Calls the advance_round_layer RPC: persists a tie outcome the caller
  * already computed via resolveLayer, moving the round on to a new reroll
  * layer for just the tied subset. Returns the new layer number.
