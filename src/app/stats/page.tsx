@@ -12,7 +12,7 @@ import {
   getRoomHistory,
   getRoomRounds,
   getRoundsLostLeaderboard,
-  type StatsWindow,
+  windowFromParam,
 } from "@/lib/supabase/stats";
 import { getPlayerSpellCollection } from "@/lib/supabase/spellCards";
 import { formatModifier } from "@/lib/game/rollCalculation";
@@ -21,44 +21,11 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { CompletionGauge } from "@/app/_components/CompletionGauge";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { RankRow } from "@/app/_components/RankRow";
-
-function windowFromParam(value: string | undefined): StatsWindow {
-  return value === "last_30_days" ? "last_30_days" : "all_time";
-}
+import { WindowToggle } from "@/app/_components/WindowToggle";
 
 // Matches ModifierAdjustmentList's (Settings) own formatTime convention.
 function formatAdjustmentTime(createdAt: string): string {
   return new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
-
-function WindowToggle({
-  window,
-  roomId,
-}: {
-  window: StatsWindow;
-  roomId: string | null;
-}) {
-  const roomQuery = roomId ? `&room=${roomId}` : "";
-  return (
-    <div className="flex gap-3 font-display text-xs uppercase tracking-widest">
-      <Link
-        href={`/stats?window=all_time${roomQuery}`}
-        className={
-          window === "all_time" ? "text-gilt-bright" : "text-parchment-dim"
-        }
-      >
-        All-time
-      </Link>
-      <Link
-        href={`/stats?window=last_30_days${roomQuery}`}
-        className={
-          window === "last_30_days" ? "text-gilt-bright" : "text-parchment-dim"
-        }
-      >
-        Last 30 days
-      </Link>
-    </div>
-  );
 }
 
 /**
@@ -168,7 +135,11 @@ export default async function StatsPage({
               <span className="font-display text-sm font-semibold uppercase tracking-widest text-gilt-bright">
                 Leaderboards
               </span>
-              <WindowToggle window={window} roomId={selectedRoomId} />
+              <WindowToggle
+                window={window}
+                basePath="/stats"
+                extraQuery={selectedRoomId ? `&room=${selectedRoomId}` : ""}
+              />
             </div>
           }
         >
