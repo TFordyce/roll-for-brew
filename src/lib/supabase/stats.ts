@@ -231,6 +231,30 @@ export async function getRoomAdjustments(
 }
 
 /**
+ * Reads the stats_brew_rating_{all_time,last_30_days} view
+ * (supabase/migrations/0059_stats_brew_rating.sql) — a single brewer's
+ * average score across their non-test-room brew_ratings, or null if they
+ * have no ratings yet in the given window (per spec, no minimum-sample-size
+ * gate — the average is shown from the first rating, so null only means
+ * "zero ratings", not "not enough").
+ */
+export async function getBrewRatingAverage(
+  supabase: SupabaseClient,
+  playerId: string,
+  window: StatsWindow,
+): Promise<number | null> {
+  const { data, error } = await supabase
+    .from(window === "all_time" ? "stats_brew_rating_all_time" : "stats_brew_rating_last_30_days")
+    .select("average_score")
+    .eq("player_id", playerId)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return data ? Number(data.average_score) : null;
+}
+
+/**
  * Looks up avatar_url straight from `players` (not a stats view) for a set
  * of player ids, so the restyled leaderboards/history rows (issue #79) can
  * show avatars the same way the Room tab's roster does, without touching
