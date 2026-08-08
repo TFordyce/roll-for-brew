@@ -1,0 +1,567 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PROTOTYPE — Roll-calc UI in PlayerTile tie-break tiles (issue #162)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  /*
+    PROTOTYPE — throwaway, standalone. No build step, no framework, no
+    connection to the roll-for-brew app (feedback: prototypes for this repo
+    must NOT be a route inside the Next.js app — its middleware hits real
+    Supabase auth/env even for "unauthenticated" pages).
+
+    Answers issue #162: does #160/#167's validated rich RollCalculation
+    design (icosahedron d20, boxed total, animated boon/bust badges) — built
+    and shipped for RoundReveal.tsx's wide row — also work inside
+    PlayerTile.tsx's narrow tied-reroll tile (as small as 96px wide,
+    multiple side by side in TieBanner.tsx's
+    `grid-cols-[repeat(auto-fit,minmax(96px,1fr))]` grid)?
+
+    Geometry/markup/animation lifted verbatim from the shipped production
+    components (src/app/_components/RollCalculation.tsx, DieIcon.tsx,
+    globals.css) so this prototype is honest about what's actually being
+    tested, not a stylised approximation. Palette/typography approximate
+    the tavern design system with system fonts so this stays a single
+    offline-openable file.
+
+    Open this file directly in a browser — no server needed.
+  */
+  :root {
+    color-scheme: dark;
+    --tavern-plank: #4a3222;
+    --tavern-plank-dark: #3a2718;
+    --tavern-panel: #2a1e14;
+    --tavern-panel-dark: #1c130c;
+    --gilt: #c9a54a;
+    --gilt-bright: #e8ce8f;
+    --gilt-dark: #8a6a2c;
+    --parchment: #f1e6cf;
+    --parchment-dim: #c9bda3;
+    --parchment-dim-60: rgba(201, 189, 163, 0.6);
+    --ember: #7a3b2e;
+    --ember-bright: #b3543f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Georgia, "Iowan Old Style", serif;
+    background: var(--tavern-plank);
+    color: var(--parchment);
+  }
+  .display { font-family: "Trebuchet MS", "Century Gothic", sans-serif; text-transform: uppercase; letter-spacing: 0.08em; }
+  .stage { padding: 24px 24px 8px; }
+  .stage h1.display { margin: 0; font-size: 18px; color: var(--gilt-bright); }
+  .intro { max-width: 760px; font-size: 13px; color: var(--parchment-dim); line-height: 1.5; font-family: ui-sans-serif, system-ui, sans-serif; }
+  .intro code { background: rgba(0,0,0,0.35); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  .stage-body { padding: 8px 24px 140px; display: flex; justify-content: center; }
+  .page-shell { width: 100%; max-width: 900px; }
+
+  .card-frame {
+    border-radius: 10px;
+    border: 4px solid var(--gilt);
+    background: var(--tavern-panel);
+    box-shadow: 0 0 0 1px var(--gilt-dark), 0 8px 24px rgb(0 0 0 / 0.5);
+    padding: 16px;
+    margin-bottom: 18px;
+  }
+  .card-frame > .frame-title {
+    margin: 0 0 4px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gilt-bright);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .card-frame > .frame-sub {
+    margin: 0 0 12px;
+    font-size: 11px;
+    color: var(--parchment-dim);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+
+  /* Phone-width sleeve — forces TieBanner's real
+     grid-cols-[repeat(auto-fit,minmax(96px,1fr))] to actually squeeze,
+     the way it would on a phone with 2-4 tied players, instead of just
+     spreading out across a wide desktop viewport. */
+  .phone-sleeve {
+    width: 340px;
+    max-width: 100%;
+    border-radius: 8px;
+    border: 1px dashed rgba(201,189,163,0.3);
+    padding: 10px;
+  }
+  .phone-sleeve.wide { width: 460px; }
+
+  .tie-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: 12px;
+  }
+
+  /* ---------- PlayerTile, verbatim structure from PlayerTile.tsx ---------- */
+  .tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    border-radius: 6px;
+    border: 2px solid var(--gilt-bright);
+    background: rgba(122, 59, 46, 0.4);
+    box-shadow: 0 0 10px var(--gilt);
+    padding: 12px;
+    text-align: center;
+    min-width: 0;
+  }
+  .tile-avatar {
+    width: 56px; height: 56px; border-radius: 999px; flex-shrink: 0;
+    border: 2px solid var(--gilt); background: var(--tavern-plank-dark);
+    display: flex; align-items: center; justify-content: center;
+    font-family: inherit; font-size: 18px; font-weight: 700; color: var(--gilt-bright);
+  }
+  .tile-name {
+    width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-size: 12px; line-height: 1.1; color: var(--parchment);
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .tile-modifier {
+    font-family: ui-monospace, monospace; font-size: 12px; color: var(--parchment-dim);
+  }
+  .tile-effect-dots { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+  .tile-effect-dots .dot { width: 10px; height: 10px; border-radius: 999px; }
+  .tile-effect-dots .dot.negative { background: #dc2626; }
+  .tile-effect-dots .dot.positive { background: var(--gilt-bright); }
+
+  /* ---------- variant A: rich mode, verbatim from RollCalculation.tsx's
+     `rich` branch, unmodified — used to demonstrate what happens if #167's
+     design is dropped into PlayerTile with zero adaptation. ---------- */
+  .calc-rich {
+    display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 100%;
+  }
+  .calc-rich-line {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px;
+    font-family: ui-monospace, monospace; font-size: 13px; color: var(--parchment-dim);
+    white-space: nowrap;
+  }
+  .die-icon { position: relative; display: inline-flex; flex-shrink: 0; align-items: center; justify-content: center; color: var(--parchment-dim); }
+  .die-icon svg { width: 100%; height: 100%; }
+  .die-icon .value { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--parchment); }
+  .die-icon.d20-lg { width: 20px; height: 20px; }
+  .die-icon.d20-lg .value { font-size: 9px; }
+  .die-icon.d20-sm { width: 14px; height: 14px; }
+  .die-icon.d20-sm .value { font-size: 7px; }
+  .discard-strike { color: var(--parchment-dim-60); text-decoration: line-through; }
+  .calc-total-box {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 34px; height: 34px; border-radius: 6px; border: 2px solid var(--gilt);
+    background: var(--tavern-panel-dark); font-family: inherit; font-size: 15px; color: var(--parchment);
+  }
+  .calc-total-inline { font-size: 14px; font-weight: 700; color: var(--parchment); }
+
+  .effect-badge {
+    display: inline-flex; align-items: center; gap: 4px; border-radius: 999px;
+    border: 1px solid var(--gilt-dark); background: var(--tavern-panel-dark);
+    padding: 2px 6px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.03em;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .effect-badge .card-name {
+    background-size: 200% 100%; background-clip: text; -webkit-background-clip: text; color: transparent; font-weight: 700;
+  }
+  .effect-badge .card-name.boon {
+    background-image: linear-gradient(110deg, #f5c542, #fff2b8, #f5c542);
+    animation: badge-scroll 2.5s ease-in-out infinite alternate, text-pulse-glow-boon 1.8s ease-in-out infinite;
+  }
+  .effect-badge .card-name.bust {
+    background-image: linear-gradient(110deg, #7f1414, #e0433f, #7f1414);
+    animation: badge-scroll 2.5s ease-in-out infinite alternate, text-pulse-glow-bust 1.8s ease-in-out infinite;
+  }
+  .effect-badge .caster-name { color: var(--parchment-dim); }
+  .effect-badge.compact { padding: 1px 5px; font-size: 8px; gap: 3px; }
+
+  @keyframes badge-scroll { to { background-position: -100% 0; } }
+  @keyframes text-pulse-glow-boon {
+    0%, 100% { opacity: 1; text-shadow: 0 0 0px rgba(245, 197, 66, 0); }
+    50% { opacity: 0.85; text-shadow: 0 0 6px rgba(245, 197, 66, 0.85); }
+  }
+  @keyframes text-pulse-glow-bust {
+    0%, 100% { opacity: 1; text-shadow: 0 0 0px rgba(224, 67, 63, 0); }
+    50% { opacity: 0.85; text-shadow: 0 0 6px rgba(224, 67, 63, 0.85); }
+  }
+
+  /* ---------- variant B: adapted-compact rich mode ---------- */
+  .calc-compact { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 100%; }
+  .calc-compact-line {
+    display: flex; align-items: center; justify-content: center; gap: 3px;
+    font-family: ui-monospace, monospace; font-size: 11px; color: var(--parchment-dim); white-space: nowrap;
+  }
+  .discard-tooltip {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 13px; height: 13px; border-radius: 999px; border: 1px solid var(--parchment-dim-60);
+    font-size: 8px; color: var(--parchment-dim-60); cursor: help; flex-shrink: 0;
+  }
+
+  /* ---------- variant C: bare, current production fallback ---------- */
+  .calc-bare { font-family: ui-monospace, monospace; font-size: 12px; color: var(--parchment-dim); white-space: nowrap; }
+  .calc-bare .total { color: var(--parchment); }
+
+  /* ---------- scaffolding ---------- */
+  .scenario-label {
+    margin: 0 0 8px; font-size: 11px; font-weight: 700; color: var(--parchment);
+    font-family: ui-sans-serif, system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  .scenario-block { margin-bottom: 20px; }
+  .scenario-block:last-child { margin-bottom: 0; }
+
+  .findings {
+    margin-top: 4px; border-radius: 8px; border: 2px solid var(--gilt-dark);
+    background: var(--tavern-panel-dark); padding: 12px 14px; font-size: 12px;
+    font-family: ui-sans-serif, system-ui, sans-serif; color: var(--parchment-dim); line-height: 1.55;
+  }
+  .findings h3 { margin: 0 0 8px; font-size: 11px; color: var(--gilt-bright); text-transform: uppercase; letter-spacing: 0.05em; }
+  .findings dl { margin: 0; }
+  .findings dt { font-weight: 700; color: var(--parchment); margin-top: 8px; }
+  .findings dt:first-child { margin-top: 0; }
+  .findings dd { margin: 2px 0 0; }
+  .verdict { display: inline-block; margin-top: 10px; padding: 3px 10px; border-radius: 999px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .verdict.reject { background: rgba(220,38,38,0.25); color: #f87171; border: 1px solid #dc2626; }
+  .verdict.win { background: rgba(232,206,143,0.2); color: var(--gilt-bright); border: 1px solid var(--gilt); }
+
+  /* ---------- switcher bar ---------- */
+  .switcher {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 60;
+    display: flex; align-items: center; gap: 12px;
+    background: rgba(0,0,0,0.85); color: #fff;
+    padding: 8px 16px; border-radius: 999px;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 0.5);
+    font-size: 12px; font-family: ui-sans-serif, system-ui, sans-serif;
+  }
+  .switcher .label { min-width: 300px; text-align: center; font-weight: 600; }
+  .switcher .title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: rgba(255,255,255,0.5); }
+  .switcher button { background: none; border: none; color: #fff; font-size: 18px; cursor: pointer; line-height: 1; font-family: inherit; }
+
+  .variant-section { display: none; }
+  .variant-section.active { display: block; }
+
+  .decision-frame { border-color: var(--gilt-bright); }
+  .decision-frame ol { margin: 0; padding-left: 18px; font-size: 12px; font-family: ui-sans-serif, system-ui, sans-serif; color: var(--parchment-dim); line-height: 1.6; }
+  .decision-frame li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<div class="stage">
+  <h1 class="display">Prototype — roll-calc UI inside PlayerTile tie-break tiles</h1>
+  <p class="intro">
+    Issue <strong>#162</strong>: #160/#167 validated an enlarged, spell-aware <code>RollCalculation</code>
+    design (icosahedron d20, boxed total, animated boon/bust badges) against <code>RoundReveal.tsx</code>'s
+    wide row only. This prototype drops that same design into <code>PlayerTile.tsx</code>'s narrow tied-reroll
+    tile — as used by <code>TieBanner.tsx</code>, laid out in its real
+    <code>grid-cols-[repeat(auto-fit,minmax(96px,1fr))]</code> grid, squeezed inside a phone-width sleeve so the
+    grid actually has to shrink tiles the way it would on a phone with 2&ndash;4 tied players. Three variants,
+    four fixture scenarios each. Switch with the bottom bar or &larr;/&rarr;.
+  </p>
+</div>
+
+<div class="stage-body">
+  <div class="page-shell">
+
+    <!-- ============ VARIANT A — rich mode, unmodified ============ -->
+    <div class="variant-section active" id="variant-A">
+      <div class="card-frame">
+        <p class="frame-title">Variant A — #167's rich mode, dropped in unmodified</p>
+        <p class="frame-sub">Exact same markup/sizing RoundReveal.tsx uses (20px d20, 34px boxed total, full-size animated badges) — no adaptation for the narrower tile.</p>
+
+        <div class="scenario-block">
+          <p class="scenario-label">1. Baseline tie — no spell effects (3 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="a-baseline"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">2. Disadvantage reroll — Slipped Spoon (2 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="a-disadvantage"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">3. Advantage reroll — Sugar Rush (2 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="a-advantage"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">4. Stacked flat/dice modifier + existing effect dots (3 tied)</p>
+          <div class="phone-sleeve wide">
+            <div class="tie-grid" id="a-stacked"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-frame findings">
+        <h3>Findings — Variant A</h3>
+        <dl>
+          <dt>Calc line + boxed total fit?</dt>
+          <dd>No. At a 96&ndash;140px tile the die icon, discarded-die strike, modifier term, boxed total, and any dice-term icons wrap onto 2&ndash;3 lines and the boxed total's fixed 34px square forces the tile visibly wider than its unaffected neighbours in the same row (see scenario 4, tile 1 vs tile 3) — exactly the "forces the tile wider than its neighbours" failure the issue asked about.</dd>
+          <dt>D20 wireframe legible?</dt>
+          <dd>Borderline. At 20px the icosahedron edges are still individually resolvable, but crowded against the name/modifier text above it, it reads as visual noise rather than a die.</dd>
+          <dt>Animated badges vs effect dots?</dt>
+          <dd>Redundant and worse: the tile now carries <em>three</em> separate "this player has an effect" signals — the scrolling-gradient text badge, the boxed total's color is unaffected so no extra cue there, and the existing red/gold dot row below. Two signals for the same fact, competing for the same ~120px width.</dd>
+          <dt>Discarded die at this size?</dt>
+          <dd>Fits but reads as clutter — a struck-through number next to a live one, both tiny, is easy to misread as "two rolls" rather than "one kept, one discarded" without already knowing the convention from RoundReveal's wider row.</dd>
+          <dt>Multiple tiles animating side by side?</dt>
+          <dd>Yes, this is the worst of it — scenario 4's row has two independently-animating scrolling-gradient badges a few px apart, and their glow/pulse timing isn't synced, so the row reads as flickering rather than two clean individual cues.</dd>
+        </dl>
+        <span class="verdict reject">Rejected as-is</span>
+      </div>
+    </div>
+
+    <!-- ============ VARIANT B — adapted compact ============ -->
+    <div class="variant-section" id="variant-B">
+      <div class="card-frame">
+        <p class="frame-title">Variant B — adapted compact rich mode</p>
+        <p class="frame-sub">14px d20, no boxed total (bold inline total instead, matches bare mode's existing weight jump), discarded die collapsed to a tooltip-only "±" glyph, effect badge shrunk and de-scrolled (kept the pulse, dropped the horizontal gradient sweep) to cut down simultaneous motion.</p>
+
+        <div class="scenario-block">
+          <p class="scenario-label">1. Baseline tie — no spell effects (3 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="b-baseline"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">2. Disadvantage reroll — Slipped Spoon (2 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="b-disadvantage"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">3. Advantage reroll — Sugar Rush (2 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="b-advantage"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">4. Stacked flat/dice modifier + existing effect dots (3 tied)</p>
+          <div class="phone-sleeve wide">
+            <div class="tie-grid" id="b-stacked"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-frame findings">
+        <h3>Findings — Variant B</h3>
+        <dl>
+          <dt>Calc line + boxed total fit?</dt>
+          <dd>Yes — dropping the boxed total for a plain bold inline number (same treatment bare mode already uses for its total) removes the one fixed-size element that was forcing tile width. All four scenarios keep tiles the same width as their unaffected neighbours.</dd>
+          <dt>D20 wireframe legible?</dt>
+          <dd>Just barely, at 14px — the icosahedron shape is still recognizably a d20 rather than a blob (this is exactly the "non-scaling-stroke" gotcha DieIcon.tsx already documents: default scaling stroke keeps edges crisp instead of fusing them at small sizes). It's decorative at this size, not something a player would read the vertex pattern of — but that matches how it's already used in RoundReveal too.</dd>
+          <dt>Animated badges vs effect dots?</dt>
+          <dd>Still two signals, but softened: dropping the scrolling gradient (keeping only the slow pulse/glow) makes the text badge read as "this effect is active" rather than fighting for attention, and it sits far enough below the dot row that they don't visually merge. Still recommend the follow-up issue ask whether the dot row should simply be suppressed for a player who already has a text badge showing here, rather than shipping both — that's a design call, not something this prototype can settle with fixture data.</dd>
+          <dt>Discarded die at this size?</dt>
+          <dd>Tooltip-only reads better than inline strike at this width — a small "±12" glyph with a native <code>title</code> tooltip ("Rolled 12, discarded for disadvantage") keeps the primary calc line to one row instead of wrapping to fit a second small number.</dd>
+          <dt>Multiple tiles animating side by side?</dt>
+          <dd>Much calmer — with the gradient sweep removed, two adjacent pulsing badges no longer read as flicker, just a soft synchronized-looking glow.</dd>
+        </dl>
+        <span class="verdict win">Recommended direction</span>
+      </div>
+    </div>
+
+    <!-- ============ VARIANT C — bare fallback (today's production behaviour) ============ -->
+    <div class="variant-section" id="variant-C">
+      <div class="card-frame">
+        <p class="frame-title">Variant C — bare mode (current production, unchanged)</p>
+        <p class="frame-sub">What PlayerTile/TieBanner already render today (RollCalculation's non-`rich` branch) — included as the baseline Variant A/B are being compared against, not a new proposal.</p>
+
+        <div class="scenario-block">
+          <p class="scenario-label">1. Baseline tie — no spell effects (3 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="c-baseline"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">2. Disadvantage reroll — Slipped Spoon (2 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="c-disadvantage"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">3. Advantage reroll — Sugar Rush (2 tied)</p>
+          <div class="phone-sleeve">
+            <div class="tie-grid" id="c-advantage"></div>
+          </div>
+        </div>
+
+        <div class="scenario-block">
+          <p class="scenario-label">4. Stacked flat/dice modifier + existing effect dots (3 tied)</p>
+          <div class="phone-sleeve wide">
+            <div class="tie-grid" id="c-stacked"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card-frame findings">
+        <h3>Findings — Variant C</h3>
+        <dd style="margin:0;">Fits trivially (it's what's already shipped) but this is exactly the gap #162 opened against: a tied player mid disadvantage/advantage reroll gets no visual explanation at all of <em>why</em> their total came out the way it did — no discarded die, no card/caster attribution, nothing beyond the plain dots that were already there for any other active effect. Kept here only as the control.</dd>
+      </div>
+    </div>
+
+    <!-- ============ Decision ============ -->
+    <div class="card-frame decision-frame">
+      <p class="frame-title">Decision — for the follow-up implementation issue</p>
+      <ol>
+        <li><strong>Ship Variant B's adaptation</strong>, not Variant A's unmodified drop-in: a distinct compact rendering path for <code>PlayerTile</code>'s tile, not the same <code>rich</code> prop RoundReveal uses at its current sizing. Concretely: 14px d20 (down from 20px), no boxed total (bold inline number instead), discarded advantage/disadvantage die collapsed to a tooltip-only glyph instead of inline strikethrough, effect badge de-scrolled (pulse/glow kept, horizontal gradient sweep dropped) and sized down to ~8px text.</li>
+        <li><strong>Open question, not resolved here:</strong> whether the effect-dot row (<code>effectBadges</code>) should be suppressed for a player whose active effect is already shown via the new compact badge, to avoid showing the same fact twice. Needs a design call against real dot/badge combinations across more effect types than this prototype's fixtures cover — flag it explicitly in the follow-up issue rather than guessing.</li>
+        <li><strong>No production changes here</strong> — this file is fixture-only, standalone, and never wired into the app. The follow-up issue should copy Variant B's CSS/markup treatment (visible in this file's <code>&lt;style&gt;</code> block under <code>.calc-compact</code> / <code>.discard-tooltip</code> / <code>.effect-badge.compact</code>) as its starting point, the same way #160's own body carried its validated snippets forward.</li>
+      </ol>
+    </div>
+
+  </div>
+</div>
+
+<div class="switcher">
+  <button id="prevBtn" aria-label="Previous variant">&larr;</button>
+  <div class="label">
+    <div class="title">Variant</div>
+    <div id="variantLabel">A — rich mode, unmodified</div>
+  </div>
+  <button id="nextBtn" aria-label="Next variant">&rarr;</button>
+</div>
+
+<script>
+  // ---------- die icon rendering (verbatim geometry from DieIcon.tsx) ----------
+  const ICOSAHEDRON_VERTICES = [
+    [25.99, 63.86], [50.0, 94.86], [50.0, 5.14], [74.01, 36.14], [50.0, 22.28],
+    [11.15, 27.57], [88.85, 72.43], [50.0, 77.72], [74.01, 63.86], [88.85, 27.57],
+    [11.15, 72.43], [25.99, 36.14],
+  ];
+  const ICOSAHEDRON_EDGES = [
+    [0,1],[0,4],[0,5],[0,8],[0,10],[1,6],[1,7],[1,8],[1,10],[2,3],[2,4],[2,5],[2,9],[2,11],
+    [3,6],[3,7],[3,9],[3,11],[4,5],[4,8],[4,9],[5,10],[5,11],[6,7],[6,8],[6,9],[7,10],[7,11],[8,9],[10,11],
+  ];
+  function d20Svg() {
+    const lines = ICOSAHEDRON_EDGES.map(([a, b]) => {
+      const [x1, y1] = ICOSAHEDRON_VERTICES[a];
+      const [x2, y2] = ICOSAHEDRON_VERTICES[b];
+      return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" />`;
+    }).join("");
+    return `<svg viewBox="0 0 100 100" fill="none" stroke="currentColor" stroke-width="1.5"><g stroke="currentColor" stroke-width="1.5" fill="none">${lines}</g></svg>`;
+  }
+  function dieIcon(value, size) {
+    return `<span class="die-icon ${size}">${d20Svg()}<span class="value">${value}</span></span>`;
+  }
+
+  function avatar(initial) {
+    return `<div class="tile-avatar">${initial}</div>`;
+  }
+  function effectDots(dots) {
+    if (!dots.length) return "";
+    return `<div class="tile-effect-dots" aria-label="active effects">${dots.map((p) => `<span class="dot ${p}"></span>`).join("")}</div>`;
+  }
+
+  // ---------- variant A: rich, unmodified ----------
+  function tileA(p) {
+    const op = p.modifier >= 0 ? "+" : "-";
+    let calc = `<div class="calc-rich"><span class="calc-rich-line">`;
+    calc += dieIcon(p.roll, "d20-lg");
+    if (p.discardedRoll !== null) calc += `<span class="discard-strike">${p.discardedRoll}</span>`;
+    calc += ` ${op} ${Math.abs(p.modifier)} `;
+    calc += `</span><span class="calc-rich-line"><span class="calc-total-box">${p.total}</span></span>`;
+    if (p.effects.length) {
+      calc += `<span class="calc-rich-line">` + p.effects.map((e) =>
+        `<span class="effect-badge"><span class="card-name ${e.impact}">${e.cardName}</span><span class="caster-name">${e.casterName}</span></span>`
+      ).join("") + `</span>`;
+    }
+    calc += `</div>`;
+    return `<div class="tile">${avatar(p.initial)}<span class="tile-name">${p.name}</span><span class="tile-modifier">${op}${Math.abs(p.modifier)}</span>${calc}${effectDots(p.dots)}</div>`;
+  }
+
+  // ---------- variant B: adapted compact ----------
+  function tileB(p) {
+    const op = p.modifier >= 0 ? "+" : "-";
+    let calc = `<div class="calc-compact"><span class="calc-compact-line">`;
+    calc += dieIcon(p.roll, "d20-sm");
+    if (p.discardedRoll !== null) {
+      calc += `<span class="discard-tooltip" title="Rolled ${p.discardedRoll}, discarded">&plusmn;</span>`;
+    }
+    calc += ` ${op}${Math.abs(p.modifier)} = <span class="calc-total-inline">${p.total}</span>`;
+    calc += `</span>`;
+    if (p.effects.length) {
+      calc += p.effects.map((e) =>
+        `<span class="effect-badge compact"><span class="card-name ${e.impact}" style="animation: text-pulse-glow-${e.impact} 1.8s ease-in-out infinite;">${e.cardName}</span></span>`
+      ).join("");
+    }
+    calc += `</div>`;
+    return `<div class="tile">${avatar(p.initial)}<span class="tile-name">${p.name}</span><span class="tile-modifier">${op}${Math.abs(p.modifier)}</span>${calc}${effectDots(p.dots)}</div>`;
+  }
+
+  // ---------- variant C: bare (current production) ----------
+  function tileC(p) {
+    const op = p.modifier >= 0 ? "+" : "-";
+    const calc = `<span class="calc-bare">${p.roll} ${op} ${Math.abs(p.modifier)} = <span class="total">${p.total}</span></span>`;
+    return `<div class="tile">${avatar(p.initial)}<span class="tile-name">${p.name}</span><span class="tile-modifier">${op}${Math.abs(p.modifier)}</span>${calc}${effectDots(p.dots)}</div>`;
+  }
+
+  // ---------- fixtures ----------
+  const baseline = [
+    { name: "Rowan", initial: "R", modifier: 2, roll: 14, total: 16, discardedRoll: null, effects: [], dots: [] },
+    { name: "Sulayman", initial: "S", modifier: -1, roll: 17, total: 16, discardedRoll: null, effects: [], dots: [] },
+    { name: "Petra", initial: "P", modifier: 5, roll: 11, total: 16, discardedRoll: null, effects: [], dots: [] },
+  ];
+  const disadvantage = [
+    { name: "Mara", initial: "M", modifier: 3, roll: 6, total: 9, discardedRoll: 13, effects: [{ cardName: "Slipped Spoon", casterName: "Oswin", impact: "bust" }], dots: ["negative"] },
+    { name: "Finn", initial: "F", modifier: 3, roll: 9, total: 9, discardedRoll: null, effects: [], dots: [] },
+  ];
+  const advantage = [
+    { name: "Finn", initial: "F", modifier: 1, roll: 18, total: 19, discardedRoll: 7, effects: [{ cardName: "Sugar Rush", casterName: "Finn", impact: "boon" }], dots: ["positive"] },
+    { name: "Petra", initial: "P", modifier: 4, roll: 15, total: 19, discardedRoll: null, effects: [], dots: [] },
+  ];
+  const stacked = [
+    { name: "Oswin", initial: "O", modifier: 6, roll: 8, total: 14, discardedRoll: null, effects: [{ cardName: "Hearty Stew", casterName: "Oswin", impact: "boon" }], dots: ["positive", "negative"] },
+    { name: "Rowan", initial: "R", modifier: 2, roll: 12, total: 14, discardedRoll: null, effects: [], dots: [] },
+    { name: "Mara", initial: "M", modifier: -3, roll: 17, total: 14, discardedRoll: null, effects: [], dots: ["negative"] },
+  ];
+
+  function render(prefix, tileFn) {
+    document.getElementById(`${prefix}-baseline`).innerHTML = baseline.map(tileFn).join("");
+    document.getElementById(`${prefix}-disadvantage`).innerHTML = disadvantage.map(tileFn).join("");
+    document.getElementById(`${prefix}-advantage`).innerHTML = advantage.map(tileFn).join("");
+    document.getElementById(`${prefix}-stacked`).innerHTML = stacked.map(tileFn).join("");
+  }
+  render("a", tileA);
+  render("b", tileB);
+  render("c", tileC);
+
+  // ---------- variant switcher ----------
+  const variants = [
+    { id: "variant-A", label: "A — rich mode, unmodified" },
+    { id: "variant-B", label: "B — adapted compact (recommended)" },
+    { id: "variant-C", label: "C — bare mode (current production)" },
+  ];
+  let idx = 0;
+  function show(i) {
+    idx = (i + variants.length) % variants.length;
+    variants.forEach((v, j) => document.getElementById(v.id).classList.toggle("active", j === idx));
+    document.getElementById("variantLabel").textContent = variants[idx].label;
+  }
+  document.getElementById("prevBtn").addEventListener("click", () => show(idx - 1));
+  document.getElementById("nextBtn").addEventListener("click", () => show(idx + 1));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowLeft") show(idx - 1);
+    if (e.key === "ArrowRight") show(idx + 1);
+  });
+  show(0);
+</script>
+
+</body>
+</html>
