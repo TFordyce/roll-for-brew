@@ -34,9 +34,14 @@ export function OrderPicker({
   const [selected, setSelected] = useState<DrinkType | null>(initialDrinkType);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Set once submit_order rejects with RFB29/RFB30 (round gone or the Order
+  // Window has closed, 0062) — both are permanent for this picker instance,
+  // not a network blip, so further taps are disabled rather than inviting a
+  // "try again" that would just fail the same way every time.
+  const [windowClosed, setWindowClosed] = useState(false);
 
   async function pick(drinkType: DrinkType) {
-    if (pending || drinkType === selected) return;
+    if (pending || windowClosed || drinkType === selected) return;
     setPending(true);
     setError(null);
     const previous = selected;
@@ -44,9 +49,15 @@ export function OrderPicker({
     try {
       const supabase = createClient();
       await submitOrder(supabase, roundId, drinkType);
-    } catch {
+    } catch (err) {
       setSelected(previous);
-      setError("Couldn't save your Order — try again.");
+      const code = (err as { code?: string } | null)?.code;
+      if (code === "RFB29" || code === "RFB30") {
+        setWindowClosed(true);
+        setError("The Order window for this round has closed.");
+      } else {
+        setError("Couldn't save your Order — try again.");
+      }
     } finally {
       setPending(false);
     }
@@ -58,7 +69,7 @@ export function OrderPicker({
         <button
           type="button"
           onClick={() => pick("tea")}
-          disabled={pending}
+          disabled={pending || windowClosed}
           aria-pressed={selected === "tea"}
           className={`rounded-md border-2 px-4 py-2 font-display text-sm uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-60 ${
             selected === "tea"
@@ -71,7 +82,7 @@ export function OrderPicker({
         <button
           type="button"
           onClick={() => pick("coffee")}
-          disabled={pending}
+          disabled={pending || windowClosed}
           aria-pressed={selected === "coffee"}
           className={`rounded-md border-2 px-4 py-2 font-display text-sm uppercase tracking-widest disabled:cursor-not-allowed disabled:opacity-60 ${
             selected === "coffee"

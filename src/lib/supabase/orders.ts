@@ -50,6 +50,46 @@ export async function getMyMostRecentOrder(
 }
 
 /**
+ * The most recently resolved round in a room whose Order Window (submit_order,
+ * 0062) is still open — mirrors getMyRateableRound's (brewRatings.ts) "most
+ * recent resolved round, unless a newer one has since resolved" shape, minus
+ * the rating window's non-brewer-participant restriction: any player can
+ * Order regardless of role.
+ *
+ * Needed because getActiveRound only ever returns 'open'/'closed' rounds —
+ * the moment a round resolves it stops appearing there, even though the
+ * Order Window itself stays open all the way through 'resolved' (ADR 0004).
+ * Callers should use this only once getActiveRound has already come back
+ * null, to pick up wherever the Order picker needs to keep working through
+ * the rest of the window.
+ */
+export async function getMyOrderableRound(supabase: SupabaseClient, roomId: string): Promise<string | null> {
+  const { data: roundRow, error: roundError } = await supabase
+    .from("rounds")
+    .select("id, resolved_at")
+    .eq("room_id", roomId)
+    .eq("status", "resolved")
+    .order("resolved_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (roundError) throw roundError;
+  if (!roundRow) return null;
+
+  const { count: newerResolvedCount, error: windowError } = await supabase
+    .from("rounds")
+    .select("id", { count: "exact", head: true })
+    .eq("room_id", roomId)
+    .eq("status", "resolved")
+    .gt("resolved_at", roundRow.resolved_at as string);
+
+  if (windowError) throw windowError;
+  if ((newerResolvedCount ?? 0) > 0) return null;
+
+  return roundRow.id as string;
+}
+
+/**
  * Submits or changes (upsert-on-repick) the caller's own Order for a round
  * (submit_order, 0062) — gated server-side by the Order Window (open from
  * the round reaching 'open' through 'resolved', ADR 0004).

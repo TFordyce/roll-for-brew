@@ -8,7 +8,7 @@ import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
-import { getMyMostRecentOrder, getMyOrderForRound } from "@/lib/supabase/orders";
+import { getMyMostRecentOrder, getMyOrderableRound, getMyOrderForRound } from "@/lib/supabase/orders";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { closeRoundAction, declareInAction, startRoundAction, withdrawDeclarationAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
@@ -71,13 +71,16 @@ export default async function HomePage() {
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
 
   // Order (issue #226, part of #223): decoupled from declare-in, so this is
-  // independent of hasDeclared above. myOrderForRound wins when set; the
-  // sticky most-recent-across-rooms default only matters as a fallback for
-  // a round the player hasn't explicitly ordered for yet, so it's not
-  // fetched at all once myOrderForRound already answers the question.
-  const myOrderForRound = activeRound ? await getMyOrderForRound(supabase, activeRound.id, playerId) : null;
+  // independent of hasDeclared above. orderRoundId falls back to
+  // getMyOrderableRound once there's no activeRound — the Order Window
+  // itself stays open through a round's 'resolved' status (ADR 0004), well
+  // past the point getActiveRound stops returning it. myOrderForRound wins
+  // over the sticky most-recent-across-rooms default, which only matters as
+  // a fallback for a round the player hasn't explicitly ordered for yet.
+  const orderRoundId = activeRound ? activeRound.id : await getMyOrderableRound(supabase, roomId);
+  const myOrderForRound = orderRoundId ? await getMyOrderForRound(supabase, orderRoundId, playerId) : null;
   const myMostRecentOrder =
-    activeRound && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
+    orderRoundId && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
@@ -298,21 +301,23 @@ export default async function HomePage() {
             </div>
           )}
 
-          {/* Decoupled from declare/withdraw (ADR 0004) — shown for both
-              round phases the page still tracks as activeRound (open and
-              closed); the Order Window itself stays open all the way
-              through resolved, but this page stops rendering the round at
-              all once it resolves, same as every other round-open surface
-              here. */}
-          <OrderPicker
-            key={activeRound.id}
-            roundId={activeRound.id}
-            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
-          />
-
           {needsRollInput && rollInputMode ? (
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
+        </section>
+      ) : null}
+
+      {/* Decoupled from declare/withdraw (ADR 0004) and from activeRound's
+          own open/closed section above — orderRoundId already covers the
+          rest of the Order Window (through resolved) via
+          getMyOrderableRound once activeRound goes null. */}
+      {orderRoundId ? (
+        <section className="w-full max-w-md">
+          <OrderPicker
+            key={orderRoundId}
+            roundId={orderRoundId}
+            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
+          />
         </section>
       ) : null}
 

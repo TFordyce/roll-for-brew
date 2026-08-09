@@ -8,7 +8,7 @@ import { getRoomRoster, getTestRoomId } from "@/lib/supabase/rooms";
 import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
-import { getMyMostRecentOrder, getMyOrderForRound } from "@/lib/supabase/orders";
+import { getMyMostRecentOrder, getMyOrderableRound, getMyOrderForRound } from "@/lib/supabase/orders";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { getEffectiveTestRoomPlayerId } from "@/lib/supabase/actingAs";
 import { getExpectedLayerRollerIds, getCurrentLayerRollerIds } from "@/lib/supabase/stall";
@@ -115,10 +115,14 @@ export default async function TestRoomPage() {
   const isStarter = activeRound?.startedBy === playerId;
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
 
-  // Order (issue #226, part of #223) — mirrors page.tsx's own fetch exactly.
-  const myOrderForRound = activeRound ? await getMyOrderForRound(supabase, activeRound.id, playerId) : null;
+  // Order (issue #226, part of #223) — mirrors page.tsx's own fetch exactly,
+  // including orderRoundId's fallback to getMyOrderableRound once
+  // activeRound goes null (the Order Window stays open through 'resolved',
+  // past where getActiveRound stops returning the round).
+  const orderRoundId = activeRound ? activeRound.id : await getMyOrderableRound(supabase, roomId);
+  const myOrderForRound = orderRoundId ? await getMyOrderForRound(supabase, orderRoundId, playerId) : null;
   const myMostRecentOrder =
-    activeRound && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
+    orderRoundId && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
@@ -339,17 +343,24 @@ export default async function TestRoomPage() {
             </div>
           )}
 
-          <OrderPicker
-            key={activeRound.id}
-            roundId={activeRound.id}
-            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
-          />
-
           {needsRollInput && rollInputMode ? (
             <RollInputPicker mode={rollInputMode} roundId={activeRound.id} />
           ) : null}
 
           <RollForOthers roundId={activeRound.id} pendingRollers={pendingRollers} inDeckCards={inDeckCards} />
+        </section>
+      ) : null}
+
+      {/* Mirrors page.tsx: decoupled from activeRound's own section, so it
+          still shows during the tail of the Order Window after a round has
+          resolved and activeRound has gone null. */}
+      {orderRoundId ? (
+        <section className="w-full max-w-md">
+          <OrderPicker
+            key={orderRoundId}
+            roundId={orderRoundId}
+            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
+          />
         </section>
       ) : null}
 
