@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Prototype: decaf indicator in live Round Menu (#238)</title>
+<style>
+  /*
+    Standalone HTML prototype — no build, no server, open directly in a
+    browser. Same convention as the sibling prototypes (issues #7, #57,
+    #162, #202, #203): this repo's middleware hits real Supabase auth/env
+    even on "unauthenticated" app routes, so a self-contained file is
+    required instead of a route under src/app (see
+    feedback_prototypes_standalone_not_in_app memory).
+
+    Question this settles (issue #238, blocked-on #237/PR #240 which has
+    since merged and already plumbed `decaf: boolean` onto MenuEntry —
+    src/lib/supabase/menu.ts): how should RoundMenu.tsx present a orderer's
+    decaf flag next to their live milk/sugar line? Three structurally
+    different takes, switchable via the bottom bar or ←/→:
+
+      A — Text suffix: "(decaf)" appended after milk/sugar, exactly
+          matching ProfilePage.tsx's existing plain-text style for the
+          Usual card (src/app/_components/ProfilePage.tsx:111).
+      B — Badge: a small pill chip sitting next to the Tea/Coffee label,
+          visually separate from the milk/sugar prose line.
+      C — Icon glyph: a compact "no caffeine" glyph inline before the
+          drink type, minimal text footprint, native <title> tooltip.
+
+    Colours/fonts/spacing lifted from tailwind.config.ts (tavern/gilt/
+    parchment/ember tokens) and CardFrame.tsx's actual class list, so the
+    variants read like they're sitting in the real app rather than a
+    vacuum, even though the file itself can't import the real component.
+  -->
+  <style></style>
+  <link rel="preconnect" href="about:blank" />
+  <style>
+    :root {
+      --tavern-plank: #4a3222;
+      --tavern-plank-dark: #3a2718;
+      --tavern-panel: #2a1e14;
+      --tavern-panel-dark: #1c130c;
+      --gilt: #c9a54a;
+      --gilt-bright: #e8ce8f;
+      --gilt-dark: #8a6a2c;
+      --parchment: #f1e6cf;
+      --parchment-dim: #c9bda3;
+      --ember: #7a3b2e;
+      --ember-bright: #b3543f;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--tavern-plank-dark);
+      background-image:
+        radial-gradient(circle at 20% 10%, rgba(0,0,0,0.15), transparent 40%),
+        radial-gradient(circle at 80% 90%, rgba(0,0,0,0.2), transparent 45%);
+      font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+      color: var(--parchment);
+      padding: 2rem 1rem 6rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 480px;
+    }
+
+    /* Fake room-page chrome above the Menu card, so the variants aren't
+       judged sitting in an empty page — a mock header + roll section,
+       not part of what's being decided. */
+    .mock-header {
+      font-family: Georgia, "Times New Roman", serif;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      font-size: 0.75rem;
+      color: var(--gilt-dark);
+      text-align: center;
+      margin-bottom: 0.5rem;
+    }
+    .mock-room-title {
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 1.4rem;
+      text-align: center;
+      color: var(--gilt-bright);
+      margin: 0 0 1.25rem;
+    }
+    .mock-card {
+      border-radius: 0.5rem;
+      border: 4px solid var(--gilt-dark);
+      background: var(--tavern-panel);
+      opacity: 0.55;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 0 0 1px var(--gilt-dark), 0 8px 24px rgb(0 0 0 / 0.5);
+    }
+    .mock-card .mock-line {
+      height: 0.6rem;
+      border-radius: 0.2rem;
+      background: var(--parchment-dim);
+      opacity: 0.3;
+      margin: 0.4rem 0;
+    }
+    .mock-card .mock-line.short { width: 40%; }
+
+    /* CardFrame.tsx, reproduced 1:1 from its actual class list */
+    .card-frame {
+      border-radius: 0.5rem;
+      border: 4px solid var(--gilt);
+      background: var(--tavern-panel);
+      padding: 1rem;
+      box-shadow: 0 0 0 1px var(--gilt-dark), 0 8px 24px rgb(0 0 0 / 0.5);
+      margin-top: 1rem;
+    }
+    .card-frame h2 {
+      margin: 0 0 0.75rem;
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--gilt-bright);
+    }
+
+    ul.menu-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+    ul.menu-list li {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid rgba(138, 106, 44, 0.4);
+    }
+    ul.menu-list li:last-child { border-bottom: none; }
+
+    .name { font-size: 0.875rem; color: var(--parchment); }
+    .detail { font-size: 0.75rem; color: var(--parchment-dim); text-align: right; }
+    .no-pref { color: var(--gilt); margin-left: 0.375rem; }
+
+    /* --- Variant A: text suffix --- */
+    .decaf-suffix { color: var(--parchment-dim); }
+
+    /* --- Variant B: badge --- */
+    .drink-row-b { display: flex; align-items: center; justify-content: flex-end; gap: 0.375rem; margin-bottom: 0.1rem; }
+    .badge-decaf {
+      display: inline-block;
+      font-size: 0.625rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--tavern-panel-dark);
+      background: var(--gilt);
+      border-radius: 999px;
+      padding: 0.05rem 0.4rem;
+      line-height: 1.4;
+    }
+
+    /* --- Variant C: icon glyph --- */
+    .decaf-glyph {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1rem;
+      height: 1rem;
+      margin-right: 0.3rem;
+      border-radius: 999px;
+      border: 1px solid var(--gilt);
+      color: var(--gilt-bright);
+      font-size: 0.6rem;
+      font-weight: 700;
+      line-height: 1;
+      vertical-align: -2px;
+      cursor: default;
+    }
+
+    /* variant plumbing */
+    .variant { display: none; }
+    .variant.active { display: block; }
+
+    .variant-note {
+      font-size: 0.7rem;
+      color: var(--parchment-dim);
+      text-align: center;
+      margin-top: 0.5rem;
+      font-style: italic;
+    }
+
+    /* floating switcher */
+    .switcher {
+      position: fixed;
+      left: 50%;
+      bottom: 1.25rem;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #111;
+      color: #fff;
+      border-radius: 999px;
+      padding: 0.5rem 0.75rem;
+      box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+      font-family: ui-sans-serif, system-ui, sans-serif;
+      font-size: 0.8rem;
+      z-index: 50;
+      border: 1px solid #444;
+    }
+    .switcher button {
+      background: #2a2a2a;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 999px;
+      width: 1.75rem;
+      height: 1.75rem;
+      cursor: pointer;
+      font-size: 0.9rem;
+      line-height: 1;
+    }
+    .switcher button:hover { background: #3a3a3a; }
+    .switcher .label { min-width: 15rem; text-align: center; }
+    .switcher .label b { color: #ffd166; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="mock-header">Roll for Brew — Room ABCD</div>
+    <div class="mock-room-title">Round 4</div>
+
+    <div class="mock-card" aria-hidden="true">
+      <div class="mock-line short"></div>
+      <div class="mock-line"></div>
+      <div class="mock-line short"></div>
+    </div>
+
+    <!-- ===================== VARIANT A ===================== -->
+    <div class="variant" id="variant-A">
+      <div class="card-frame">
+        <h2>Menu</h2>
+        <ul class="menu-list">
+          <li>
+            <span class="name">Sulayman</span>
+            <span class="detail">Tea — Dairy, 1 Tsp<span class="decaf-suffix"> (decaf)</span></span>
+          </li>
+          <li>
+            <span class="name">Priya</span>
+            <span class="detail">Coffee — Oat, None</span>
+          </li>
+          <li>
+            <span class="name">Marcus</span>
+            <span class="detail">Tea — Black, 2 Tsp<span class="decaf-suffix"> (decaf)</span></span>
+          </li>
+          <li>
+            <span class="name">Zoë</span>
+            <span class="detail"><span class="no-pref">— no preference set</span></span>
+          </li>
+        </ul>
+      </div>
+      <p class="variant-note">A — text suffix, matching ProfilePage.tsx's "(decaf)" style exactly</p>
+    </div>
+
+    <!-- ===================== VARIANT B ===================== -->
+    <div class="variant" id="variant-B">
+      <div class="card-frame">
+        <h2>Menu</h2>
+        <ul class="menu-list">
+          <li>
+            <span class="name">Sulayman</span>
+            <span class="detail">
+              <div class="drink-row-b">Tea<span class="badge-decaf">Decaf</span></div>
+              Dairy, 1 Tsp
+            </span>
+          </li>
+          <li>
+            <span class="name">Priya</span>
+            <span class="detail">
+              <div class="drink-row-b">Coffee</div>
+              Oat, None
+            </span>
+          </li>
+          <li>
+            <span class="name">Marcus</span>
+            <span class="detail">
+              <div class="drink-row-b">Tea<span class="badge-decaf">Decaf</span></div>
+              Black, 2 Tsp
+            </span>
+          </li>
+          <li>
+            <span class="name">Zoë</span>
+            <span class="detail"><span class="no-pref">— no preference set</span></span>
+          </li>
+        </ul>
+      </div>
+      <p class="variant-note">B — badge chip next to the drink type, separate from the milk/sugar line</p>
+    </div>
+
+    <!-- ===================== VARIANT C ===================== -->
+    <div class="variant" id="variant-C">
+      <div class="card-frame">
+        <h2>Menu</h2>
+        <ul class="menu-list">
+          <li>
+            <span class="name">Sulayman</span>
+            <span class="detail"><span class="decaf-glyph" title="Decaf">D</span>Tea — Dairy, 1 Tsp</span>
+          </li>
+          <li>
+            <span class="name">Priya</span>
+            <span class="detail">Coffee — Oat, None</span>
+          </li>
+          <li>
+            <span class="name">Marcus</span>
+            <span class="detail"><span class="decaf-glyph" title="Decaf">D</span>Tea — Black, 2 Tsp</span>
+          </li>
+          <li>
+            <span class="name">Zoë</span>
+            <span class="detail"><span class="no-pref">— no preference set</span></span>
+          </li>
+        </ul>
+      </div>
+      <p class="variant-note">C — compact icon glyph before the drink type, native tooltip on hover/focus</p>
+    </div>
+  </div>
+
+  <div class="switcher">
+    <button id="prev" aria-label="Previous variant">←</button>
+    <span class="label" id="label"></span>
+    <button id="next" aria-label="Next variant">→</button>
+  </div>
+
+  <script>
+    const variants = [
+      { key: "A", name: "Text suffix" },
+      { key: "B", name: "Badge" },
+      { key: "C", name: "Icon glyph" },
+    ];
+
+    function currentIndex() {
+      const params = new URLSearchParams(location.search);
+      const v = params.get("variant");
+      const i = variants.findIndex((x) => x.key === v);
+      return i === -1 ? 0 : i;
+    }
+
+    function render() {
+      const i = currentIndex();
+      variants.forEach((v, idx) => {
+        document.getElementById("variant-" + v.key).classList.toggle("active", idx === i);
+      });
+      document.getElementById("label").innerHTML =
+        "<b>" + variants[i].key + "</b> — " + variants[i].name;
+    }
+
+    function go(delta) {
+      const i = currentIndex();
+      const next = (i + delta + variants.length) % variants.length;
+      const params = new URLSearchParams(location.search);
+      params.set("variant", variants[next].key);
+      history.replaceState(null, "", "?" + params.toString());
+      render();
+    }
+
+    document.getElementById("prev").addEventListener("click", () => go(-1));
+    document.getElementById("next").addEventListener("click", () => go(1));
+
+    document.addEventListener("keydown", (e) => {
+      const el = document.activeElement;
+      const tag = el && el.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (el && el.isContentEditable)) return;
+      if (e.key === "ArrowLeft") go(-1);
+      if (e.key === "ArrowRight") go(1);
+    });
+
+    render();
+  </script>
+</body>
+</html>
