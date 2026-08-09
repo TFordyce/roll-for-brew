@@ -6,6 +6,10 @@ export type MenuEntry = {
   drinkType: DrinkType;
   milk: string | null;
   sugar: string | null;
+  /** `false` (not `null`) when noPreferenceSet -- decaf defaults false on
+   * usual_drinks (0063_usual_drinks_decaf.sql), so there's no "unset decaf"
+   * state distinct from milk/sugar's null. */
+  decaf: boolean;
   /** True when the player has no `usual_drinks` row for `drinkType` — the
    * Menu still shows their Order, just with no milk/sugar to go with it
    * (issue #223 user story 14). */
@@ -28,7 +32,7 @@ export type MenuEntry = {
 export async function getRoundMenu(supabase: SupabaseClient, roundId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("round_menu")
-    .select("player_id, drink_type, milk, sugar, no_preference_set")
+    .select("player_id, drink_type, milk, sugar, decaf, no_preference_set")
     .eq("round_id", roundId);
 
   if (error) throw error;
@@ -38,6 +42,7 @@ export async function getRoundMenu(supabase: SupabaseClient, roundId: string): P
     drinkType: row.drink_type as DrinkType,
     milk: row.milk as string | null,
     sugar: row.sugar as string | null,
+    decaf: row.decaf as boolean,
     noPreferenceSet: row.no_preference_set as boolean,
   }));
 }

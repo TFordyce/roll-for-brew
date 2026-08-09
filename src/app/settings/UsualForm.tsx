@@ -37,7 +37,7 @@ function UsualDrinkSection({ drinkType, usual }: { drinkType: DrinkType; usual: 
 
       <p className="font-body text-xs text-parchment-dim">
         {usual
-          ? `Currently saved: ${usual.milk} milk, ${usual.sugar} sugar.`
+          ? `Currently saved: ${usual.milk} milk, ${usual.sugar} sugar${usual.decaf ? ", decaf" : ""}.`
           : "No Usual saved yet — choosing and saving below sets one."}
       </p>
 
@@ -61,6 +61,11 @@ function UsualDrinkSection({ drinkType, usual }: { drinkType: DrinkType; usual: 
             </option>
           ))}
         </select>
+      </label>
+
+      <label className="flex items-center gap-2 font-body text-sm text-parchment">
+        <input type="checkbox" name="decaf" defaultChecked={usual?.decaf ?? false} className="h-4 w-4" />
+        Decaf
       </label>
 
       <div className="flex items-center gap-3">

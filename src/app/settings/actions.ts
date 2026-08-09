@@ -53,6 +53,9 @@ export async function updateUsualDrinkAction(
   const drinkType = formData.get("drinkType");
   const milk = formData.get("milk");
   const sugar = formData.get("sugar");
+  // Unchecked checkboxes are simply absent from FormData -- presence, not
+  // value, is what "checked" means here, same as any HTML checkbox.
+  const decaf = formData.get("decaf") !== null;
 
   if (typeof drinkType !== "string" || !DRINK_TYPES.includes(drinkType as DrinkType)) {
     throw new Error("updateUsualDrinkAction: invalid drinkType");
@@ -70,7 +73,7 @@ export async function updateUsualDrinkAction(
     throw new Error("updateUsualDrinkAction: not authenticated");
   }
 
-  await setUsualDrink(supabase, current.playerId, drinkType as DrinkType, milk as Milk, sugar as Sugar);
+  await setUsualDrink(supabase, current.playerId, drinkType as DrinkType, milk as Milk, sugar as Sugar, decaf);
   revalidatePath("/settings");
   return { status: "saved", drinkType: drinkType as DrinkType };
 }

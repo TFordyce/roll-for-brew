@@ -108,7 +108,7 @@ export function ProfilePage({
                 <div key={drinkType} className="flex items-center justify-between py-2 text-sm">
                   <span className="text-parchment-dim">{DRINK_LABELS[drinkType]}</span>
                   <span className="font-mono text-parchment">
-                    {usual ? `${usual.milk}, ${usual.sugar}` : "no preference set"}
+                    {usual ? `${usual.milk}, ${usual.sugar}${usual.decaf ? " (decaf)" : ""}` : "no preference set"}
                   </span>
                 </div>
               );
