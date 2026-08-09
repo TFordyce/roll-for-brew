@@ -12,7 +12,7 @@ export type Sugar = "None" | "Sprinkle" | "Half Tsp" | "1 Tsp" | "1.5 Tsp" | "2 
 
 export const SUGAR_OPTIONS: Sugar[] = ["None", "Sprinkle", "Half Tsp", "1 Tsp", "1.5 Tsp", "2 Tsp", "3 Tsp"];
 
-export type UsualDrink = { milk: Milk; sugar: Sugar };
+export type UsualDrink = { milk: Milk; sugar: Sugar; decaf: boolean };
 
 /**
  * A given player's Usual for both drink types (supabase/migrations/
@@ -23,6 +23,10 @@ export type UsualDrink = { milk: Milk; sugar: Sugar };
  * Settings page (issue #225) just happens to always call it with the
  * current player's own id. A drink type with no saved row comes back as
  * `null` -- leaving a Usual unset is a valid state, not an error.
+ *
+ * `decaf` (0063_usual_drinks_decaf.sql, issue #237) is a hard requirement on
+ * the Usual, tracked independently per drink type -- there's no separate
+ * "decaf" row or global flag.
  */
 export async function getUsualDrinks(
   supabase: SupabaseClient,
@@ -30,7 +34,7 @@ export async function getUsualDrinks(
 ): Promise<Record<DrinkType, UsualDrink | null>> {
   const { data, error } = await supabase
     .from("usual_drinks")
-    .select("drink_type, milk, sugar")
+    .select("drink_type, milk, sugar, decaf")
     .eq("player_id", playerId);
 
   if (error) throw error;
@@ -38,7 +42,7 @@ export async function getUsualDrinks(
   const result: Record<DrinkType, UsualDrink | null> = { tea: null, coffee: null };
   for (const row of data ?? []) {
     const drinkType = row.drink_type as DrinkType;
-    result[drinkType] = { milk: row.milk as Milk, sugar: row.sugar as Sugar };
+    result[drinkType] = { milk: row.milk as Milk, sugar: row.sugar as Sugar, decaf: row.decaf as boolean };
   }
   return result;
 }
@@ -55,11 +59,12 @@ export async function setUsualDrink(
   drinkType: DrinkType,
   milk: Milk,
   sugar: Sugar,
+  decaf: boolean,
 ): Promise<void> {
   const { error } = await supabase
     .from("usual_drinks")
     .upsert(
-      { player_id: playerId, drink_type: drinkType, milk, sugar, updated_at: new Date().toISOString() },
+      { player_id: playerId, drink_type: drinkType, milk, sugar, decaf, updated_at: new Date().toISOString() },
       { onConflict: "player_id,drink_type" },
     );
 

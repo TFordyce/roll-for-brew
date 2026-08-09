@@ -30,47 +30,48 @@ describe.skipIf(!hasAnonTestEnv)("usual_drinks", () => {
 
     const { data: row, error: readError } = await player.client
       .from("usual_drinks")
-      .select("milk, sugar")
+      .select("milk, sugar, decaf")
       .eq("player_id", player.googleSub)
       .eq("drink_type", "tea")
       .single();
     expect(readError).toBeNull();
-    expect(row).toEqual({ milk: "Oat", sugar: "1 Tsp" });
+    // decaf defaults false when omitted from the insert (0063_usual_drinks_decaf.sql).
+    expect(row).toEqual({ milk: "Oat", sugar: "1 Tsp", decaf: false });
 
     const { error: updateError } = await player.client
       .from("usual_drinks")
-      .update({ milk: "Dairy", sugar: "None" })
+      .update({ milk: "Dairy", sugar: "None", decaf: true })
       .eq("player_id", player.googleSub)
       .eq("drink_type", "tea");
     expect(updateError).toBeNull();
 
     const { data: updatedRow } = await player.client
       .from("usual_drinks")
-      .select("milk, sugar")
+      .select("milk, sugar, decaf")
       .eq("player_id", player.googleSub)
       .eq("drink_type", "tea")
       .single();
-    expect(updatedRow).toEqual({ milk: "Dairy", sugar: "None" });
+    expect(updatedRow).toEqual({ milk: "Dairy", sugar: "None", decaf: true });
   });
 
-  it("tea and coffee Usuals are independent rows for the same player", async () => {
+  it("tea and coffee Usuals are independent rows for the same player, including decaf", async () => {
     const player = await signUp("usual-independent");
 
     await player.client
       .from("usual_drinks")
-      .insert({ player_id: player.googleSub, drink_type: "tea", milk: "Dairy", sugar: "1 Tsp" });
+      .insert({ player_id: player.googleSub, drink_type: "tea", milk: "Dairy", sugar: "1 Tsp", decaf: true });
     await player.client
       .from("usual_drinks")
-      .insert({ player_id: player.googleSub, drink_type: "coffee", milk: "Soy", sugar: "None" });
+      .insert({ player_id: player.googleSub, drink_type: "coffee", milk: "Soy", sugar: "None", decaf: false });
 
     const { data: rows } = await player.client
       .from("usual_drinks")
-      .select("drink_type, milk, sugar")
+      .select("drink_type, milk, sugar, decaf")
       .eq("player_id", player.googleSub)
       .order("drink_type", { ascending: true });
     expect(rows).toEqual([
-      { drink_type: "coffee", milk: "Soy", sugar: "None" },
-      { drink_type: "tea", milk: "Dairy", sugar: "1 Tsp" },
+      { drink_type: "coffee", milk: "Soy", sugar: "None", decaf: false },
+      { drink_type: "tea", milk: "Dairy", sugar: "1 Tsp", decaf: true },
     ]);
   });
 
@@ -330,14 +331,15 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
     drinkType: "tea" | "coffee",
     milk: string,
     sugar: string,
+    decaf = false,
   ) {
     const { error } = await player.client
       .from("usual_drinks")
-      .insert({ player_id: player.googleSub, drink_type: drinkType, milk, sugar });
+      .insert({ player_id: player.googleSub, drink_type: drinkType, milk, sugar, decaf });
     if (error) throw error;
   }
 
-  it("returns each participant's Order with their current Usual's milk/sugar", async () => {
+  it("returns each participant's Order with their current Usual's milk/sugar/decaf", async () => {
     const starter = await signUp("menu-happy-starter");
     const other = await signUp("menu-happy-other");
 
@@ -345,15 +347,15 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
     cleanup.trackRound(roundId as string);
     await other.client.rpc("declare_in", { p_round_id: roundId });
 
-    await setUsual(starter, "tea", "Dairy", "1 Tsp");
-    await setUsual(other, "coffee", "Oat", "None");
+    await setUsual(starter, "tea", "Dairy", "1 Tsp", true);
+    await setUsual(other, "coffee", "Oat", "None", false);
 
     await starter.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "tea" });
     await other.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "coffee" });
 
     const { data: rows, error } = await admin
       .from("round_menu")
-      .select("player_id, drink_type, milk, sugar, no_preference_set")
+      .select("player_id, drink_type, milk, sugar, decaf, no_preference_set")
       .eq("round_id", roundId)
       .order("player_id", { ascending: true });
     expect(error).toBeNull();
@@ -364,6 +366,7 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
       drink_type: "tea",
       milk: "Dairy",
       sugar: "1 Tsp",
+      decaf: true,
       no_preference_set: false,
     });
     expect(byPlayer.get(other.googleSub)).toEqual({
@@ -371,6 +374,7 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
       drink_type: "coffee",
       milk: "Oat",
       sugar: "None",
+      decaf: false,
       no_preference_set: false,
     });
   });
@@ -422,11 +426,14 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
 
     const { data: row } = await admin
       .from("round_menu")
-      .select("drink_type, milk, sugar, no_preference_set")
+      .select("drink_type, milk, sugar, decaf, no_preference_set")
       .eq("round_id", roundId)
       .eq("player_id", starter.googleSub)
       .single();
-    expect(row).toEqual({ drink_type: "coffee", milk: null, sugar: null, no_preference_set: true });
+    // decaf comes back false (not null) alongside no_preference_set -- it
+    // has no "unset" state distinct from milk/sugar's null, since the
+    // underlying column defaults false rather than being nullable.
+    expect(row).toEqual({ drink_type: "coffee", milk: null, sugar: null, decaf: false, no_preference_set: true });
   });
 
   it("only matches a Usual for the same drink_type the player ordered", async () => {
