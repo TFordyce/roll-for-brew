@@ -53,5 +53,33 @@ The period a round's Order stays submittable or changeable: open from the round 
 _Avoid_: ordering deadline, grace period.
 
 **Menu**:
-The live, per-round list of who's ordered what (`round_menu`), joining `round_participants` × `orders` × `usual_drinks` × `players`: every participant who has an Order, their drink type, and their current Usual's milk/sugar — or an explicit "no preference set" marker when they've never set a Usual for that drink. A participant with no Order simply doesn't appear; there's no "no drink" row. Stays accurate after the round resolves, since it's always a live join (ADR 0003), never a snapshot.
+The live, per-round list of who's ordered what: every participant who has an Order, their drink type, and their current Usual's milk/sugar — or an explicit "no preference set" marker when they've never set a Usual for that drink. A participant with no Order simply doesn't appear; there's no "no drink" row. Stays accurate after the round resolves, since it's always a live join (ADR 0003), never a snapshot. The `round_menu` DB view itself only joins `round_participants` × `orders` × `usual_drinks`; display names are joined in separately on the client against `round_participants`.
 _Avoid_: drinks list, order summary, roster (that's the round's participant list).
+
+**Layer**:
+A round's roll attempt number, starting at 0 (`rounds.current_layer`, `rolls.layer`): layer 0 is the original roll, layer 1+ is a Tie-Break Reroll. Advantage/disadvantage spell effects are scoped to layer 0 only.
+_Avoid_: round (a round can span several layers), attempt, phase.
+
+**Tie-Break Reroll**:
+A reroll forced when two or more players tie at the current Layer; it always draws a single unmodified d20 — spells and reactions are exempt at any layer above 0.
+_Avoid_: tie-break (ambiguous between the event and the whole resolution phase), reroll (too generic — doesn't imply the spell/reaction exemption).
+
+**Reroll Chain**:
+A player's ordered sequence of rolls across a round's Layers, from the original layer-0 roll through every Tie-Break Reroll that followed it. Rendered in `RoundReveal` as a nested, indented row per layer.
+_Avoid_: reroll history, layer history (that's the raw `get_round_layer_history` data this is built from).
+
+**Modifier Jitter**:
+A purely visual cue on `RollCalculation`'s modifier term: a shake animation that fades in once a player's live `room_players.modifier` crosses +8, intensifying to full at +14. No DB backing — display-only. Thresholds are provisional, pending player feedback.
+_Avoid_: danger cue, warning animation.
+
+**Admin Round Deletion**:
+An admin-gated, reason-required hard delete of a round (`admin_delete_round`) that also reverts the round's `brewer_modifier_gain` from the brewer's modifier before deleting. Logs to its own append-only, service-role-only audit table (`admin_round_deletions`) with no in-app viewer.
+_Avoid_: undo, purge, admin undo.
+
+**Admin Adjustment Deletion**:
+An admin-gated, reason-required hard delete of a Modifier Adjustment (`admin_delete_modifier_adjustment`) that bypasses Modifier Adjustment's own actor-only/5-minute-undo limits — any admin can delete any adjustment, regardless of who logged it or when. Logs to its own append-only, service-role-only audit table (`admin_modifier_adjustment_deletions`) with no in-app viewer, distinct from the player-facing `modifier_adjustments` log itself.
+_Avoid_: undo (that's the player's own `delete_modifier_adjustment`), purge, admin undo.
+
+**Modifier Breakdown**:
+A room-scoped readout (`get_modifier_breakdown`) splitting a player's live modifier into its two known, durable sources — cups made as brewer, and logged Modifier Adjustments — without reconciling against `room_players.modifier` or accounting for spell-effect deltas, which have no durable per-source ledger. Readable by any authenticated player, not just the subject.
+_Avoid_: modifier history, modifier audit (implies completeness it doesn't have).
