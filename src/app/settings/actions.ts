@@ -6,6 +6,15 @@ import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { ROLL_INPUT_MODES, setRollInputMode, type RollInputMode } from "@/lib/supabase/playerSettings";
 import { setAdminModeEnabled } from "@/lib/supabase/adminMode";
 import { deleteModifierAdjustment, logModifierAdjustment } from "@/lib/supabase/modifierAdjustments";
+import {
+  DRINK_TYPES,
+  MILK_OPTIONS,
+  SUGAR_OPTIONS,
+  setUsualDrink,
+  type DrinkType,
+  type Milk,
+  type Sugar,
+} from "@/lib/supabase/usualDrinks";
 
 export type UpdateRollInputModeState = { status: "idle" } | { status: "saved" };
 
@@ -27,6 +36,43 @@ export async function updateRollInputModeAction(
   await setRollInputMode(supabase, current.playerId, mode as RollInputMode);
   revalidatePath("/settings");
   return { status: "saved" };
+}
+
+export type UpdateUsualDrinkState = { status: "idle" } | { status: "saved"; drinkType: DrinkType };
+
+/**
+ * Upserts the caller's own Usual for one drink type (tea/coffee, issue
+ * #225) — mirrors updateRollInputModeAction: a direct table write behind
+ * usual_drinks' own-row RLS policies, no RPC. drinkType travels as a hidden
+ * form field so the same action serves both Usual sections independently.
+ */
+export async function updateUsualDrinkAction(
+  _prevState: UpdateUsualDrinkState,
+  formData: FormData,
+): Promise<UpdateUsualDrinkState> {
+  const drinkType = formData.get("drinkType");
+  const milk = formData.get("milk");
+  const sugar = formData.get("sugar");
+
+  if (typeof drinkType !== "string" || !DRINK_TYPES.includes(drinkType as DrinkType)) {
+    throw new Error("updateUsualDrinkAction: invalid drinkType");
+  }
+  if (typeof milk !== "string" || !MILK_OPTIONS.includes(milk as Milk)) {
+    throw new Error("updateUsualDrinkAction: invalid milk");
+  }
+  if (typeof sugar !== "string" || !SUGAR_OPTIONS.includes(sugar as Sugar)) {
+    throw new Error("updateUsualDrinkAction: invalid sugar");
+  }
+
+  const supabase = await createClient();
+  const current = await getCurrentPlayer(supabase);
+  if (!current) {
+    throw new Error("updateUsualDrinkAction: not authenticated");
+  }
+
+  await setUsualDrink(supabase, current.playerId, drinkType as DrinkType, milk as Milk, sugar as Sugar);
+  revalidatePath("/settings");
+  return { status: "saved", drinkType: drinkType as DrinkType };
 }
 
 /**

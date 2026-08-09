@@ -6,10 +6,12 @@ import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getTodaysModifierAdjustments } from "@/lib/supabase/modifierAdjustments";
+import { getUsualDrinks } from "@/lib/supabase/usualDrinks";
 import { SettingsForm } from "@/app/settings/SettingsForm";
 import { AdminModeToggle } from "@/app/settings/AdminModeToggle";
 import { ModifierAdjustmentForm } from "@/app/settings/ModifierAdjustmentForm";
 import { ModifierAdjustmentList } from "@/app/settings/ModifierAdjustmentList";
+import { UsualForm } from "@/app/settings/UsualForm";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 
@@ -22,6 +24,7 @@ export default async function SettingsPage() {
   }
 
   const rollInputMode = await getRollInputMode(supabase, current.playerId);
+  const usualDrinks = await getUsualDrinks(supabase, current.playerId);
   const isAdmin = await getIsAdmin(supabase, current.playerId);
   const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
 
@@ -41,6 +44,12 @@ export default async function SettingsPage() {
       <section className="w-full max-w-sm">
         <CardFrame title="Roll Input Mode">
           <SettingsForm rollInputMode={rollInputMode} />
+        </CardFrame>
+      </section>
+
+      <section className="w-full max-w-sm">
+        <CardFrame title="Usual">
+          <UsualForm usualDrinks={usualDrinks} />
         </CardFrame>
       </section>
 
