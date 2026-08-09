@@ -41,11 +41,11 @@ The period a round's Brew Rating stays submittable or editable: open from the ro
 _Avoid_: rating deadline, grace period.
 
 **Usual**:
-A player's saved default for how they take tea and how they take coffee — one row per `(player_id, drink_type)` in `usual_drinks`, holding a `milk` (Dairy/Oat/Soy/None) and `sugar` (None/Sprinkle/Half Tsp/1 Tsp/1.5 Tsp/2 Tsp/3 Tsp) pick. Global, not room-scoped; written directly by the owning player under RLS, no RPC involved, matching Player Setting's shape. Tea and coffee are independent rows — a player can have one, both, or neither set.
+A player's saved default for how they take tea and how they take coffee — one row per `(player_id, drink_type)` in `usual_drinks`, holding a `milk` (Dairy/Oat/Soy/None), `sugar` (None/Sprinkle/Half Tsp/1 Tsp/1.5 Tsp/2 Tsp/3 Tsp), and `decaf` (boolean, default false) pick. Global, not room-scoped; written directly by the owning player under RLS, no RPC involved, matching Player Setting's shape. Tea and coffee are independent rows — a player can have one, both, or neither set, and each can be decaf independently of the other.
 _Avoid_: preference, default order, profile.
 
 **Order**:
-A round participant's pick of tea or coffee for a specific round — one row per `(round_id, player_id)` in `orders`, upserted on re-pick via `submit_order`, which derives the acting player server-side and is gated by the Order Window. Decoupled from declaring in (ADR 0004): a player can Order before, after, or without declaring, and can change their Order any time the window is open. Its milk/sugar are never stored on the Order itself — the Menu reads them live from the player's current Usual (ADR 0003).
+A round participant's pick of tea or coffee for a specific round — one row per `(round_id, player_id)` in `orders`, upserted on re-pick via `submit_order`, which derives the acting player server-side and is gated by the Order Window. Decoupled from declaring in (ADR 0004): a player can Order before, after, or without declaring, and can change their Order any time the window is open. Its milk/sugar/decaf are never stored on the Order itself — the Menu reads them live from the player's current Usual (ADR 0003).
 _Avoid_: selection, drink choice, declaration (that's declare-in).
 
 **Order Window**:
@@ -53,7 +53,7 @@ The period a round's Order stays submittable or changeable: open from the round 
 _Avoid_: ordering deadline, grace period.
 
 **Menu**:
-The live, per-round list of who's ordered what: every participant who has an Order, their drink type, and their current Usual's milk/sugar — or an explicit "no preference set" marker when they've never set a Usual for that drink. A participant with no Order simply doesn't appear; there's no "no drink" row. Stays accurate after the round resolves, since it's always a live join (ADR 0003), never a snapshot. The `round_menu` DB view itself only joins `round_participants` × `orders` × `usual_drinks`; display names are joined in separately on the client against `round_participants`.
+The live, per-round list of who's ordered what: every participant who has an Order, their drink type, and their current Usual's milk/sugar/decaf — or an explicit "no preference set" marker when they've never set a Usual for that drink. A participant with no Order simply doesn't appear; there's no "no drink" row. Stays accurate after the round resolves, since it's always a live join (ADR 0003), never a snapshot. The `round_menu` DB view itself only joins `round_participants` × `orders` × `usual_drinks`; display names are joined in separately on the client against `round_participants`.
 _Avoid_: drinks list, order summary, roster (that's the round's participant list).
 
 **Layer**:
