@@ -6,6 +6,7 @@ import {
   roomChannelName,
   type LayerRollsRevealedPayload,
   type LayerTiedPayload,
+  type OrderChangedPayload,
   type PlayerDeclaredInPayload,
   type PlayerWithdrewPayload,
   type ReactionWindowChangedPayload,
@@ -27,6 +28,7 @@ type RoomBroadcastPayloadMap = {
   "player-withdrew": PlayerWithdrewPayload;
   "round-started": RoundStartedPayload;
   "spell-cast-changed": SpellCastChangedPayload;
+  "order-changed": OrderChangedPayload;
 };
 
 export type RoomChannelEventHandlers = {

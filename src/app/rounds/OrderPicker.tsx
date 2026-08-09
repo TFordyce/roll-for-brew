@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { submitOrder, type DrinkType } from "@/lib/supabase/orders";
+import { notifyOrderChangedAction } from "@/app/rounds/actions";
 import { CardFrame } from "@/app/_components/CardFrame";
 
 /**
@@ -15,7 +16,12 @@ import { CardFrame } from "@/app/_components/CardFrame";
  *
  * Talks to submit_order directly via the browser client, same immediate-tap
  * pattern as BrewRatingPanel's stars, rather than a server-action form —
- * there's no other server-rendered state this needs to force a refresh of.
+ * there's no other server-rendered state this needs to force a refresh of...
+ * except the live Menu (issue #227), which every other device's RoundMenu
+ * needs to hear about. notifyOrderChangedAction fires the
+ * broadcast-plus-revalidate that a form action would have gotten for free;
+ * it's called best-effort, after the fact, since a failed notify shouldn't
+ * roll back an Order that already saved successfully.
  */
 export function OrderPicker({
   roundId,
@@ -49,6 +55,14 @@ export function OrderPicker({
     try {
       const supabase = createClient();
       await submitOrder(supabase, roundId, drinkType);
+      try {
+        const fd = new FormData();
+        fd.set("roundId", roundId);
+        await notifyOrderChangedAction(fd);
+      } catch {
+        // Best-effort — the Order itself already saved; other devices just
+        // pick the change up on their next unrelated refresh instead.
+      }
     } catch (err) {
       setSelected(previous);
       const code = (err as { code?: string } | null)?.code;

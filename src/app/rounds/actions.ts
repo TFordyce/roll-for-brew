@@ -5,6 +5,7 @@ import { closeRound, declareIn, getRoundRoomId, startRound, withdrawDeclaration 
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import {
+  broadcastOrderChanged,
   broadcastPlayerDeclaredIn,
   broadcastPlayerWithdrew,
   broadcastReactionWindowChanged,
@@ -432,6 +433,31 @@ export async function passReactionWindowAction(formData: FormData) {
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+}
+
+/**
+ * Broadcasts a round's Menu changing (issue #227) — called by OrderPicker
+ * right after submit_order itself succeeds. submit_order is invoked
+ * directly from the browser client (same immediate-tap pattern
+ * BrewRatingPanel uses, per issue #226), not through a form action, so
+ * unlike every other write in this file the mutation itself already
+ * happened by the time this runs; this action's only job is the broadcast
+ * plus revalidation every other write here gets for free via its own
+ * server-side mutation. Deliberately does not re-derive or re-validate the
+ * Order itself — submit_order already did that server-side, and this is
+ * best-effort notification, not the write path.
+ */
+export async function notifyOrderChangedAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("notifyOrderChangedAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastOrderChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
 }
