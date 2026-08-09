@@ -19,9 +19,11 @@
     decaf flag next to their live milk/sugar line? Three structurally
     different takes, switchable via the bottom bar or ←/→:
 
-      A — Text suffix: "(decaf)" appended after milk/sugar, exactly
-          matching ProfilePage.tsx's existing plain-text style for the
-          Usual card (src/app/_components/ProfilePage.tsx:111).
+      A — Text prefix: "Decaf" prepended to the drink type ("Decaf Tea —
+          Dairy, 1 Tsp"). Started as a suffix matching ProfilePage.tsx's
+          "(decaf)" style (src/app/_components/ProfilePage.tsx:111), moved
+          to a prefix per feedback on that first draft — reads more like a
+          menu ("Decaf Tea") than an afterthought tacked onto the order.
       B — Badge: a small pill chip sitting next to the Tea/Coffee label,
           visually separate from the milk/sugar prose line.
       C — Icon glyph: a compact "no caffeine" glyph inline before the
@@ -246,7 +248,7 @@
         <ul class="menu-list">
           <li>
             <span class="name">Sulayman</span>
-            <span class="detail">Tea — Dairy, 1 Tsp<span class="decaf-suffix"> (decaf)</span></span>
+            <span class="detail"><span class="decaf-suffix">Decaf </span>Tea — Dairy, 1 Tsp</span>
           </li>
           <li>
             <span class="name">Priya</span>
@@ -254,7 +256,7 @@
           </li>
           <li>
             <span class="name">Marcus</span>
-            <span class="detail">Tea — Black, 2 Tsp<span class="decaf-suffix"> (decaf)</span></span>
+            <span class="detail"><span class="decaf-suffix">Decaf </span>Tea — Black, 2 Tsp</span>
           </li>
           <li>
             <span class="name">Zoë</span>
@@ -262,7 +264,7 @@
           </li>
         </ul>
       </div>
-      <p class="variant-note">A — text suffix, matching ProfilePage.tsx's "(decaf)" style exactly</p>
+      <p class="variant-note">A — text prefix ("Decaf Tea"), per feedback on the original suffix draft</p>
     </div>
 
     <!-- ===================== VARIANT B ===================== -->
