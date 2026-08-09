@@ -22,6 +22,12 @@ export type RoundMenuParticipant = {
  * Order simply isn't in `entries`, no explicit "no drink" row (user story
  * 18). Renders nothing (not even the frame) when there's nobody to list yet,
  * so an empty Menu doesn't sit on the page before the first Order comes in.
+ *
+ * A decaf preference (0063, issue #237) renders as a "Decaf " prefix on the
+ * drink type ("Decaf Tea — Dairy, 1 Tsp") rather than a suffix — decided via
+ * a standalone HTML prototype, issue #238. `entry.decaf` is always false
+ * when `noPreferenceSet`, so the prefix only ever shows alongside a real
+ * milk/sugar preference.
  */
 export function RoundMenu({
   entries,
@@ -47,6 +53,7 @@ export function RoundMenu({
             <li key={entry.playerId} className="flex items-center justify-between gap-3 py-2">
               <span className="font-body text-sm text-parchment">{name}</span>
               <span className="font-body text-xs text-parchment-dim">
+                {entry.decaf ? "Decaf " : ""}
                 {entry.drinkType === "tea" ? "Tea" : "Coffee"}
                 {entry.noPreferenceSet ? (
                   <span className="ml-1.5 text-gilt">— no preference set</span>
