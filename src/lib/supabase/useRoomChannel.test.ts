@@ -16,7 +16,15 @@ function fakeSupabase() {
     channel: vi.fn(() => channel),
     removeChannel: vi.fn(),
   };
-  return { supabase, channel, listeners };
+  // Test-only helper: the events under test are always registered via `on()`
+  // before this is called, so the lookup is safe — this just gives tsc proof
+  // of that instead of a possibly-undefined call at each site.
+  const getListener = (event: string): BroadcastListener => {
+    const listener = listeners[event];
+    if (!listener) throw new Error(`no listener registered for "${event}"`);
+    return listener;
+  };
+  return { supabase, channel, listeners, getListener };
 }
 
 describe("subscribeToRoomChannel", () => {
@@ -32,29 +40,29 @@ describe("subscribeToRoomChannel", () => {
   });
 
   it("filters events to the given roundId", () => {
-    const { supabase, listeners } = fakeSupabase();
+    const { supabase, getListener } = fakeSupabase();
     const onRevealed = vi.fn();
 
     subscribeToRoomChannel(supabase, "room-1", "round-1", {
       "round-revealed": onRevealed,
     });
 
-    listeners["round-revealed"]({ payload: { roundId: "round-2", brewerId: "p1", cupsMade: 1, rolls: [] } });
+    getListener("round-revealed")({ payload: { roundId: "round-2", brewerId: "p1", cupsMade: 1, rolls: [] } });
     expect(onRevealed).not.toHaveBeenCalled();
 
-    listeners["round-revealed"]({ payload: { roundId: "round-1", brewerId: "p1", cupsMade: 1, rolls: [] } });
+    getListener("round-revealed")({ payload: { roundId: "round-1", brewerId: "p1", cupsMade: 1, rolls: [] } });
     expect(onRevealed).toHaveBeenCalledTimes(1);
   });
 
   it("passes every event through unfiltered when roundId is null", () => {
-    const { supabase, listeners } = fakeSupabase();
+    const { supabase, getListener } = fakeSupabase();
     const onStarted = vi.fn();
 
     subscribeToRoomChannel(supabase, "room-1", null, {
       "round-started": onStarted,
     });
 
-    listeners["round-started"]({ payload: { roundId: "round-1" } });
+    getListener("round-started")({ payload: { roundId: "round-1" } });
     expect(onStarted).toHaveBeenCalledTimes(1);
   });
 
