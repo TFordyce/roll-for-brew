@@ -61,15 +61,23 @@ A round's roll attempt number, starting at 0 (`rounds.current_layer`, `rolls.lay
 _Avoid_: round (a round can span several layers), attempt, phase.
 
 **Tie-Break Reroll**:
-A reroll forced when two or more players tie at the current Layer; it always draws a single unmodified d20 — spells and reactions are exempt at any layer above 0. A player's full sequence of rolls across layers forms their Reroll Chain, rendered in `RoundReveal` as a nested, indented row per layer.
+A reroll forced when two or more players tie at the current Layer; it always draws a single unmodified d20 — spells and reactions are exempt at any layer above 0.
 _Avoid_: tie-break (ambiguous between the event and the whole resolution phase), reroll (too generic — doesn't imply the spell/reaction exemption).
 
+**Reroll Chain**:
+A player's ordered sequence of rolls across a round's Layers, from the original layer-0 roll through every Tie-Break Reroll that followed it. Rendered in `RoundReveal` as a nested, indented row per layer.
+_Avoid_: reroll history, layer history (that's the raw `get_round_layer_history` data this is built from).
+
 **Modifier Jitter**:
-A purely visual cue on `RollCalculation`'s modifier term: a shake animation that fades in once a player's live `room_players.modifier` crosses +8, intensifying to full at +14. No DB backing — display-only.
+A purely visual cue on `RollCalculation`'s modifier term: a shake animation that fades in once a player's live `room_players.modifier` crosses +8, intensifying to full at +14. No DB backing — display-only. Thresholds are provisional, pending player feedback.
 _Avoid_: danger cue, warning animation.
 
-**Admin Round Deletion** / **Admin Adjustment Deletion**:
-Admin-gated, reason-required hard deletes (`admin_delete_round`, `admin_delete_modifier_adjustment`) that bypass the normal self-serve rules — Admin Round Deletion also reverts the deleted round's `brewer_modifier_gain` from the brewer's modifier; Admin Adjustment Deletion ignores Modifier Adjustment's actor-only/5-minute-undo limits. Each logs to its own append-only, service-role-only audit table (`admin_round_deletions`, `admin_modifier_adjustment_deletions`) with no in-app viewer — distinct from the player-facing `modifier_adjustments` log itself.
+**Admin Round Deletion**:
+An admin-gated, reason-required hard delete of a round (`admin_delete_round`) that also reverts the round's `brewer_modifier_gain` from the brewer's modifier before deleting. Logs to its own append-only, service-role-only audit table (`admin_round_deletions`) with no in-app viewer.
+_Avoid_: undo, purge, admin undo.
+
+**Admin Adjustment Deletion**:
+An admin-gated, reason-required hard delete of a Modifier Adjustment (`admin_delete_modifier_adjustment`) that bypasses Modifier Adjustment's own actor-only/5-minute-undo limits — any admin can delete any adjustment, regardless of who logged it or when. Logs to its own append-only, service-role-only audit table (`admin_modifier_adjustment_deletions`) with no in-app viewer, distinct from the player-facing `modifier_adjustments` log itself.
 _Avoid_: undo (that's the player's own `delete_modifier_adjustment`), purge, admin undo.
 
 **Modifier Breakdown**:
