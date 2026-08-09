@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { googlePlayerId } from "@/lib/supabase/players";
 import { getBrewRatingAverage, getPlayerStatsSnapshot, windowFromParam } from "@/lib/supabase/stats";
+import { getUsualDrinks } from "@/lib/supabase/usualDrinks";
 import { ProfilePage } from "@/app/_components/ProfilePage";
 
 /**
@@ -44,9 +45,10 @@ export default async function PlayerProfilePage({
     notFound();
   }
 
-  const [brewRatingAverage, stats] = await Promise.all([
+  const [brewRatingAverage, stats, usualDrinks] = await Promise.all([
     getBrewRatingAverage(supabase, targetPlayerId, window),
     getPlayerStatsSnapshot(supabase, targetPlayerId, window),
+    getUsualDrinks(supabase, targetPlayerId),
   ]);
 
   return (
@@ -59,6 +61,7 @@ export default async function PlayerProfilePage({
       brewRatingAverage={brewRatingAverage}
       stats={stats}
       window={window}
+      usualDrinks={usualDrinks}
     />
   );
 }
