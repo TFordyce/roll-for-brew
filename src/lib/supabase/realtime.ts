@@ -57,6 +57,10 @@ export type SpellCastChangedPayload = {
   roundId: string;
 };
 
+export type OrderChangedPayload = {
+  roundId: string;
+};
+
 /**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
@@ -282,6 +286,31 @@ export async function broadcastSpellCastChanged(
     const result = await channel.httpSend("spell-cast-changed", payload);
     if (!result.success) {
       throw new Error(`broadcastSpellCastChanged: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts a change to a round's Menu (issue #227) once submit_order has
+ * committed — picking or changing an Order previously had no broadcast at
+ * all, so the live Menu (RoundMenu.tsx, via MenuLive.tsx) went stale until a
+ * manual reload. Same one-event/just-refetch shape as
+ * broadcastSpellCastChanged/broadcastReactionWindowChanged: the receiving
+ * side re-fetches round_menu rather than trying to reconstruct it from the
+ * payload.
+ */
+export async function broadcastOrderChanged(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: OrderChangedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("order-changed", payload);
+    if (!result.success) {
+      throw new Error(`broadcastOrderChanged: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);

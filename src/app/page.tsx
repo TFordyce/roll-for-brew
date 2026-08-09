@@ -9,6 +9,7 @@ import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from 
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { getMyMostRecentOrder, getMyOrderableRound, getMyOrderForRound } from "@/lib/supabase/orders";
+import { getRoundMenu } from "@/lib/supabase/menu";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
 import { closeRoundAction, declareInAction, startRoundAction, withdrawDeclarationAction } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
@@ -17,6 +18,8 @@ import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { OrderPicker } from "@/app/rounds/OrderPicker";
+import { RoundMenu } from "@/app/rounds/RoundMenu";
+import { MenuLive } from "@/app/rounds/MenuLive";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
@@ -81,6 +84,20 @@ export default async function HomePage() {
   const myOrderForRound = orderRoundId ? await getMyOrderForRound(supabase, orderRoundId, playerId) : null;
   const myMostRecentOrder =
     orderRoundId && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
+
+  // Menu (issue #227, part of #223): shares orderRoundId's exact window —
+  // it's built from the same round the Order picker targets, so it stays
+  // visible through the same open/closed/resolved span the Order Window
+  // covers (ADR 0004), not just while activeRound is set. menuParticipants
+  // reuses the participants fetch above when the round in question is still
+  // activeRound; only needs its own fetch for the post-resolve tail where
+  // activeRound has already gone null.
+  const menuEntries = orderRoundId ? await getRoundMenu(supabase, orderRoundId) : [];
+  const menuParticipants = activeRound
+    ? participants
+    : orderRoundId
+      ? await getRoundParticipants(supabase, orderRoundId)
+      : [];
 
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
@@ -313,11 +330,13 @@ export default async function HomePage() {
           getMyOrderableRound once activeRound goes null. */}
       {orderRoundId ? (
         <section className="w-full max-w-md">
+          <MenuLive roomId={roomId} roundId={orderRoundId} />
           <OrderPicker
             key={orderRoundId}
             roundId={orderRoundId}
             initialDrinkType={myOrderForRound ?? myMostRecentOrder}
           />
+          <RoundMenu entries={menuEntries} participants={menuParticipants} />
         </section>
       ) : null}
 
