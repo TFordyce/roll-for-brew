@@ -178,6 +178,16 @@ export async function submitManualRollAction(formData: FormData) {
 /**
  * Resolves a pending keep-or-swap decision (issue #66, user story 6):
  * keeps either the newly-drawn card or the one already held.
+ *
+ * If this decision drops the resolving player out of Reaction-card
+ * eligibility and they were the round's currently-open reaction window's
+ * last eligible holder, resolve_card_swap (0064, issue #251) closes that
+ * window and hands back its round id — finalizing the layer in the same
+ * request the way passReactionWindowAction's own "if closed, finalize" does
+ * below, so the round doesn't get stuck waiting on a player who no longer
+ * has anything to react with. Unlike that action, there's nothing to
+ * broadcast on the non-closing path here — a swap that doesn't change
+ * eligibility never touches the window at all.
  */
 export async function resolveCardSwapAction(formData: FormData) {
   const keepNew = formData.get("keepNew") === "true";
@@ -185,7 +195,15 @@ export async function resolveCardSwapAction(formData: FormData) {
   const roomId = typeof rawRoomId === "string" && rawRoomId ? rawRoomId : undefined;
 
   const supabase = await createClient();
-  await resolveCardSwap(supabase, keepNew, roomId);
+  const closedRoundId = await resolveCardSwap(supabase, keepNew, roomId);
+
+  if (closedRoundId) {
+    await finalizeReactionWindow(supabase, closedRoundId);
+    if (roomId) {
+      await broadcastReactionWindowChanged(supabase, roomId, { roundId: closedRoundId });
+    }
+  }
+
   revalidateRoundSurfaces();
 }
 
