@@ -225,5 +225,11 @@ export function BrewRatingPanel({
   raterInitials: string;
 }) {
   if (!round) return null;
-  return <BrewRatingPanelActive round={round} raterInitials={raterInitials} />;
+  // Keyed on roundId so a change to *which* round is rateable (a newer
+  // round superseding the previous one, per "most recent round only")
+  // remounts this component fresh instead of carrying over the previous
+  // round's committed/preview state (issue #247) — all of committedScore,
+  // score, stamped, and the pending-dot are seeded from useState once per
+  // mount, so a clean remount is what resyncs them to the new round.
+  return <BrewRatingPanelActive key={round.roundId} round={round} raterInitials={raterInitials} />;
 }
