@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { castReactionSpellCardAction, passReactionWindowAction } from "@/app/rounds/actions";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
-import type { ReactionStackEntry } from "@/lib/supabase/reactionWindow";
+import type { ReactionStackEntry, ReactionWindowPendingPlayer } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { orderStackForResolution } from "@/lib/game/reactionStack";
 import { SubmitButton } from "@/app/_components/SubmitButton";
@@ -26,6 +26,7 @@ export function ReactionBanner({
   heldReactionCard,
   stack,
   participants,
+  pendingPlayers,
 }: {
   roomId: string;
   roundId: string;
@@ -35,6 +36,7 @@ export function ReactionBanner({
   heldReactionCard: HeldSpellCard | null;
   stack: ReactionStackEntry[];
   participants: RoundParticipant[];
+  pendingPlayers: ReactionWindowPendingPlayer[];
 }) {
   const router = useRouter();
 
@@ -45,6 +47,9 @@ export function ReactionBanner({
   });
 
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
+  const pendingNames = pendingPlayers
+    .map((p) => (p.playerId === selfPlayerId ? `${p.displayName} (you)` : p.displayName))
+    .join(", ");
   // A CARD-target reaction (contested_negate/redirect) can only target a
   // stack entry that hasn't already been negated by an earlier reaction.
   // Ordered LIFO (most recently cast first, src/lib/game/reactionStack.ts)
@@ -121,10 +126,14 @@ export function ReactionBanner({
             Pass
           </SubmitButton>
         </form>
-      ) : eligible ? (
-        <p className="font-body text-sm text-parchment-dim">Waiting on other players&hellip;</p>
       ) : (
-        <p className="font-body text-sm text-parchment-dim">Waiting for reactions&hellip;</p>
+        <p className="font-body text-sm text-parchment-dim">
+          {pendingNames
+            ? `Waiting on ${pendingNames}…`
+            : eligible
+              ? "Waiting on other players…"
+              : "Waiting for reactions…"}
+        </p>
       )}
     </div>
   );

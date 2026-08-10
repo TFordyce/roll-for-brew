@@ -27,7 +27,7 @@ import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getMySpellCards, getPendingSpellDraw, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
-import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
+import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
 import { getMyRateableRound } from "@/lib/supabase/brewRatings";
 import { initialsFrom } from "@/lib/game/initials";
 import { Nav } from "@/app/Nav";
@@ -116,6 +116,8 @@ export default async function HomePage() {
       : null;
   const reactionStack =
     openReactionWindow && activeRound ? await getReactionStack(supabase, activeRound.id) : [];
+  const reactionWindowPendingPlayers =
+    openReactionWindow && activeRound ? await getReactionWindowPendingPlayers(supabase, activeRound.id) : [];
 
   const dispellableEffects =
     activeRound && activeRound.status === "open"
@@ -351,6 +353,7 @@ export default async function HomePage() {
           heldReactionCard={heldReactionCard}
           stack={reactionStack}
           participants={participants}
+          pendingPlayers={reactionWindowPendingPlayers}
         />
       ) : null}
 
