@@ -7,6 +7,7 @@ import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { ReactionStackEntry, ReactionWindowPendingPlayer } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { orderStackForResolution } from "@/lib/game/reactionStack";
+import { joinNames } from "@/lib/game/displayName";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 
 /**
@@ -47,9 +48,11 @@ export function ReactionBanner({
   });
 
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
-  const pendingNames = pendingPlayers
-    .map((p) => (p.playerId === selfPlayerId ? `${p.displayName} (you)` : p.displayName))
-    .join(", ");
+  // pendingPlayers only ever includes players who are both eligible and not
+  // yet passed this poll round, so — given the branch below only renders
+  // this text when the caller isn't in that state themselves — selfPlayerId
+  // never appears here; no "(you)" marker needed.
+  const pendingNames = joinNames(pendingPlayers.map((p) => p.displayName), "");
   // A CARD-target reaction (contested_negate/redirect) can only target a
   // stack entry that hasn't already been negated by an earlier reaction.
   // Ordered LIFO (most recently cast first, src/lib/game/reactionStack.ts)
