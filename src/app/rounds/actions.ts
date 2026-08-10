@@ -24,8 +24,8 @@ import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reacti
 import {
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
+  resolveSpellCastError,
   revalidateRoundSurfaces,
-  spellCastActionError,
   type SpellCastActionState,
 } from "@/app/rounds/roundActionHelpers";
 
@@ -314,11 +314,7 @@ export async function castSpellCardAction(
       declaredNumber,
     });
   } catch (error) {
-    if (isStaleRoundError(error)) {
-      revalidateRoundSurfaces();
-      return { status: "idle" };
-    }
-    return spellCastActionError(error);
+    return resolveSpellCastError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
@@ -357,11 +353,7 @@ export async function setSpellCastTargetAction(
   try {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
   } catch (error) {
-    if (isStaleRoundError(error)) {
-      revalidateRoundSurfaces();
-      return { status: "idle" };
-    }
-    return spellCastActionError(error);
+    return resolveSpellCastError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
@@ -396,11 +388,7 @@ export async function endActiveEffectAction(
   try {
     await endActiveEffect(supabase, roundId, effectId);
   } catch (error) {
-    if (isStaleRoundError(error)) {
-      revalidateRoundSurfaces();
-      return { status: "idle" };
-    }
-    return spellCastActionError(error);
+    return resolveSpellCastError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
@@ -436,11 +424,7 @@ export async function castReactionSpellCardAction(
   try {
     await castReactionSpellCard(supabase, roundId, { targetPlayerId, targetCastId });
   } catch (error) {
-    if (isStaleRoundError(error)) {
-      revalidateRoundSurfaces();
-      return { status: "idle" };
-    }
-    return spellCastActionError(error);
+    return resolveSpellCastError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);

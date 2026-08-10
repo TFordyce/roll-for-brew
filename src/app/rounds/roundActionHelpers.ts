@@ -132,3 +132,20 @@ export function spellCastActionError(error: unknown): { status: "error"; message
     message: message ? message.replace(/^[a-z_]+: /, "") : "Something went wrong casting that card — try again.",
   };
 }
+
+/**
+ * The full catch-block behavior shared by castSpellCardAction,
+ * setSpellCastTargetAction, endActiveEffectAction, and
+ * castReactionSpellCardAction: a stale-round race still revalidates
+ * silently and reports "idle" (matching every other action's stale-round
+ * handling above), while anything else becomes the inline typed error via
+ * spellCastActionError. Pulled out once these four actions all needed the
+ * exact same two-branch shape, rather than repeating it at each call site.
+ */
+export function resolveSpellCastError(error: unknown): SpellCastActionState {
+  if (isStaleRoundError(error)) {
+    revalidateRoundSurfaces();
+    return { status: "idle" };
+  }
+  return spellCastActionError(error);
+}

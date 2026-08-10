@@ -14,10 +14,14 @@ import type { ButtonHTMLAttributes } from "react";
  * catch thrown action errors, so there's no local pending-reset-on-error
  * logic here.
  *
- * Not used for forms that already manage their own pending state via
- * useActionState (CardAssignmentRow, SettingsForm, the manual spell-draw
- * form in SpellDrawChoicePanel) — those need the action's result, not just
- * its pending flag.
+ * Pairs fine with useActionState forms too (SpellCardForms.tsx,
+ * ReactionBanner.tsx, issue #244) — useFormStatus's pending flag is
+ * orthogonal to useActionState's returned result, so a form can use this
+ * for the pending indicator while separately rendering that result (e.g. a
+ * typed inline error) itself. CardAssignmentRow/SettingsForm/the manual
+ * spell-draw form in SpellDrawChoicePanel use a plain `<button>` instead
+ * only because they also need `isPending` to change the button's own label
+ * text, which this component doesn't expose.
  */
 export function SubmitButton({
   children,
