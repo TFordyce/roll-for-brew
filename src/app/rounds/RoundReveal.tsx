@@ -288,6 +288,7 @@ export function RoundReveal({
                         discardedRoll={discardedValue}
                         diceTerms={built.diceTerms}
                         effects={built.effects}
+                        modifierTerms={built.modifierTerms}
                       />
                     ) : null}
                   </div>

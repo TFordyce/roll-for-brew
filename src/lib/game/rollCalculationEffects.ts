@@ -1,4 +1,4 @@
-import { classifyEffectImpact, composeModifier, type ImpactEffect, type ModifierEffect } from "@/lib/game/modifierBucket";
+import { classifyEffectImpact, composeModifier, composeModifierTerms, type ImpactEffect, type ModifierEffect } from "@/lib/game/modifierBucket";
 import { parseDieShape, type DieShape } from "@/lib/game/dieShape";
 import type { ModifierEffectDetail } from "@/lib/supabase/spellCasts";
 
@@ -13,6 +13,14 @@ export type RollCalculationDiceTerm = {
   value: number;
 };
 
+/** One labeled term in the calc line's modifier breakdown (issue #243) —
+ * either the persistent modifier itself (`label: "mod"`) or a spell effect's
+ * own marginal contribution (`label` is that effect's card name). */
+export type RollCalculationModifierTerm = {
+  label: string;
+  value: number;
+};
+
 export type BuiltRollCalculation = {
   /** The true round modifier — persistentModifier composed with every
    * composable effect below, matching what the server actually resolved
@@ -21,6 +29,15 @@ export type BuiltRollCalculation = {
    * this for display, so RollCalculation's rich mode needs it recomputed
    * client-side. */
   composedModifier: number;
+  /** composedModifier broken into its individually labeled parts (issue
+   * #243) — always starts with the persistent modifier itself (`"mod"`),
+   * even when it's zero, followed by one term per flat/multiplier/set
+   * spell effect in ordinal order. A `dice_modifier` effect never gets a
+   * term here (see diceTerms) even though its value is already folded into
+   * composedModifier, so this array's sum only equals composedModifier when
+   * no dice_modifier effect is active — matching today's icon-only
+   * treatment of it. */
+  modifierTerms: RollCalculationModifierTerm[];
   diceTerms: RollCalculationDiceTerm[];
   effects: RollCalculationEffectBadge[];
 };
@@ -92,8 +109,17 @@ export function buildRollCalculation(
     impact: impacts[i]!,
   }));
 
+  const termValues = composeModifierTerms(persistentModifier, impactEffects);
+  const modifierTerms: RollCalculationModifierTerm[] = [
+    { label: "mod", value: persistentModifier },
+    ...effectsForPlayer
+      .map((detail, i) => (termValues[i] === null ? null : { label: detail.cardName, value: termValues[i]! }))
+      .filter((term): term is RollCalculationModifierTerm => term !== null),
+  ];
+
   return {
     composedModifier: composeModifier(persistentModifier, composableEffects),
+    modifierTerms,
     diceTerms,
     effects,
   };

@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { classifyEffectImpact, composeModifier, type ImpactEffect, type ModifierEffect } from "./modifierBucket";
+import {
+  classifyEffectImpact,
+  composeModifier,
+  composeModifierTerms,
+  type ImpactEffect,
+  type ModifierEffect,
+} from "./modifierBucket";
 
 describe("composeModifier", () => {
   it("returns the persistent modifier untouched with no active effects", () => {
@@ -126,5 +132,46 @@ describe("classifyEffectImpact", () => {
       { kind: "set_modifier", value: 0 },
     ];
     expect(classifyEffectImpact(99, effects)).toEqual(["boon", "bust"]);
+  });
+});
+
+describe("composeModifierTerms", () => {
+  it("returns null for advantage/disadvantage/dice_modifier — no numeric term", () => {
+    const effects: ImpactEffect[] = [
+      { kind: "dice_modifier", delta: 3 },
+      { kind: "advantage" },
+      { kind: "disadvantage" },
+    ];
+    expect(composeModifierTerms(4, effects)).toEqual([null, null, null]);
+  });
+
+  it("returns a flat_modifier's own delta as its term", () => {
+    const effects: ImpactEffect[] = [{ kind: "flat_modifier", delta: 3 }];
+    expect(composeModifierTerms(4, effects)).toEqual([3]);
+  });
+
+  it("returns a multiplier's marginal contribution, not the raw multiplier", () => {
+    const effects: ImpactEffect[] = [{ kind: "modifier_multiplier", multiplier: 2 }];
+    // -4 x 2 = -8, a marginal contribution of -4 relative to the -4 it replaced.
+    expect(composeModifierTerms(-4, effects)).toEqual([-4]);
+  });
+
+  it("returns a set_modifier's marginal contribution relative to what it replaced", () => {
+    const effects: ImpactEffect[] = [{ kind: "set_modifier", value: 0 }];
+    expect(composeModifierTerms(-10, effects)).toEqual([10]);
+    expect(composeModifierTerms(10, effects)).toEqual([-10]);
+  });
+
+  it("gives each effect in a stack its own marginal term, summing to the whole-stack diff", () => {
+    const effects: ImpactEffect[] = [
+      { kind: "flat_modifier", delta: 10 },
+      { kind: "flat_modifier", delta: -20 },
+    ];
+    const terms = composeModifierTerms(0, effects);
+    expect(terms).toEqual([10, -20]);
+    expect(terms.reduce((sum, t) => sum! + (t ?? 0), 0)).toBe(composeModifier(0, [
+      { kind: "flat", delta: 10 },
+      { kind: "flat", delta: -20 },
+    ]));
   });
 });
