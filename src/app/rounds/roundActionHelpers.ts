@@ -100,3 +100,35 @@ export function isStaleRoundError(error: unknown): boolean {
     code === "RFB05"
   );
 }
+
+/**
+ * Shared result shape for the spell-cast form actions (issue #244):
+ * cast_spell_card/cast_reaction_spell_card/set_spell_cast_target/
+ * end_active_effect validate most of their preconditions with a plain
+ * `raise exception` (target-shape rules, declared-number range, casting_time
+ * mismatch, caster/target round-participant checks) rather than a dedicated
+ * errcode — isStaleRoundError above already carves out the "round moved on
+ * under you" family, so anything left over here is a real precondition
+ * failure the caller did something to trigger, not a race. Mirrors
+ * DrawPendingSpellCardManualState's shape so the panels/forms rendering
+ * these can use the same useActionState + inline-error pattern
+ * (SpellDrawChoicePanel.tsx) instead of letting the throw reach the root
+ * error boundary (src/app/error.tsx).
+ */
+export type SpellCastActionState = { status: "idle" } | { status: "error"; message: string };
+
+/**
+ * Turns a non-stale precondition failure from one of the spell-cast RPCs
+ * into a SpellCastActionState the calling action can return. Strips the
+ * `function_name: ` prefix every `raise exception` in those RPCs uses
+ * (e.g. "cast_spell_card: this card requires at least one chosen player")
+ * so the message reads naturally inline near the cast controls, without
+ * needing to special-case each RPC's exception text individually.
+ */
+export function spellCastActionError(error: unknown): { status: "error"; message: string } {
+  const message = (error as { message?: string } | null)?.message;
+  return {
+    status: "error",
+    message: message ? message.replace(/^[a-z_]+: /, "") : "Something went wrong casting that card — try again.",
+  };
+}

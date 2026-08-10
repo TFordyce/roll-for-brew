@@ -21,7 +21,13 @@ import {
 } from "@/lib/supabase/spellCards";
 import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
-import { isStaleRoundError, maybeRecordPendingSpellDraw, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
+import {
+  isStaleRoundError,
+  maybeRecordPendingSpellDraw,
+  revalidateRoundSurfaces,
+  spellCastActionError,
+  type SpellCastActionState,
+} from "@/app/rounds/roundActionHelpers";
 
 /**
  * True for start_round's own version of the same "moved on under you" race:
@@ -284,7 +290,10 @@ export async function drawPendingSpellCardManualAction(
  * #205) so other players — who may now be targeted, or see a new active
  * effect — pick it up without a manual reload.
  */
-export async function castSpellCardAction(formData: FormData) {
+export async function castSpellCardAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
   const roundId = formData.get("roundId");
   const rawTarget = formData.get("targetPlayerId");
   const targetPlayerId = typeof rawTarget === "string" && rawTarget ? rawTarget : undefined;
@@ -305,15 +314,18 @@ export async function castSpellCardAction(formData: FormData) {
       declaredNumber,
     });
   } catch (error) {
-    if (!isStaleRoundError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
+    if (isStaleRoundError(error)) {
+      revalidateRoundSurfaces();
+      return { status: "idle" };
+    }
+    return spellCastActionError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastSpellCastChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
+  return { status: "idle" };
 }
 
 /**
@@ -323,7 +335,10 @@ export async function castSpellCardAction(formData: FormData) {
  * changes the caster/target/advantage data other players see in RoundReveal
  * (PR #176).
  */
-export async function setSpellCastTargetAction(formData: FormData) {
+export async function setSpellCastTargetAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
   const castId = formData.get("castId");
   const targetPlayerId = formData.get("targetPlayerId");
   const roundId = formData.get("roundId");
@@ -342,15 +357,18 @@ export async function setSpellCastTargetAction(formData: FormData) {
   try {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
   } catch (error) {
-    if (!isStaleRoundError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
+    if (isStaleRoundError(error)) {
+      revalidateRoundSurfaces();
+      return { status: "idle" };
+    }
+    return spellCastActionError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastSpellCastChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
+  return { status: "idle" };
 }
 
 /**
@@ -360,7 +378,10 @@ export async function setSpellCastTargetAction(formData: FormData) {
  * castSpellCardAction. Broadcasts spell-cast-changed (issue #205) so the
  * dispelled player sees their effect end without a manual reload.
  */
-export async function endActiveEffectAction(formData: FormData) {
+export async function endActiveEffectAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
   const roundId = formData.get("roundId");
   const effectId = formData.get("effectId");
 
@@ -375,15 +396,18 @@ export async function endActiveEffectAction(formData: FormData) {
   try {
     await endActiveEffect(supabase, roundId, effectId);
   } catch (error) {
-    if (!isStaleRoundError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
+    if (isStaleRoundError(error)) {
+      revalidateRoundSurfaces();
+      return { status: "idle" };
+    }
+    return spellCastActionError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastSpellCastChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
+  return { status: "idle" };
 }
 
 /**
@@ -394,7 +418,10 @@ export async function endActiveEffectAction(formData: FormData) {
  * banner (ReactionBanner.tsx) re-fetches the reopened poll immediately,
  * rather than waiting for its own next unrelated refresh.
  */
-export async function castReactionSpellCardAction(formData: FormData) {
+export async function castReactionSpellCardAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
   const roundId = formData.get("roundId");
   const rawTargetPlayer = formData.get("targetPlayerId");
   const targetPlayerId = typeof rawTargetPlayer === "string" && rawTargetPlayer ? rawTargetPlayer : undefined;
@@ -409,15 +436,18 @@ export async function castReactionSpellCardAction(formData: FormData) {
   try {
     await castReactionSpellCard(supabase, roundId, { targetPlayerId, targetCastId });
   } catch (error) {
-    if (!isStaleRoundError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
+    if (isStaleRoundError(error)) {
+      revalidateRoundSurfaces();
+      return { status: "idle" };
+    }
+    return spellCastActionError(error);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
+  return { status: "idle" };
 }
 
 /**
