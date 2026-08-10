@@ -38,7 +38,14 @@ export type RoundRevealParticipant = {
  * forced-reroll-in-place effect it resolves into, can sit between them with
  * no timeout of its own. Also listens for layer-tied (issue #20): if layer 0
  * itself ties, every device needs to swap this roster for the tie banner, so
- * it refreshes just like a reveal does.
+ * it refreshes just like a reveal does. And listens for
+ * reaction-window-changed (issue #245): this component is mounted for the
+ * round's entire closed/tie phase, ahead of ReactionBanner ever existing, so
+ * it's the only thing that can catch a reaction window's first-open
+ * broadcast and refresh the page to bring the banner into existence — once
+ * mounted, the banner's own listener takes over for every later change to
+ * that same window (hasOpenReactionWindow guards against both refreshing at
+ * once).
  *
  * On round-revealed, the losing player (the brewer) gets a full-screen
  * "Get the kettle on" modal covering the result until they dismiss it (a
@@ -96,12 +103,20 @@ export function RoundReveal({
   participants,
   selfPlayerId,
   ownRoll,
+  hasOpenReactionWindow,
 }: {
   roomId: string;
   roundId: string;
   participants: RoundRevealParticipant[];
   selfPlayerId: string;
   ownRoll: number | null;
+  // Issue #245: whether page.tsx's own server-side read already sees an
+  // open reaction window (i.e. whether ReactionBanner is currently
+  // mounted alongside this component). Lets the reaction-window-changed
+  // handler below refresh only for a window's *first* appearance — once
+  // the banner is mounted it owns every subsequent refresh for that same
+  // event itself, so this stays a no-op rather than double-refreshing.
+  hasOpenReactionWindow: boolean;
 }) {
   const router = useRouter();
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
@@ -214,6 +229,19 @@ export function RoundReveal({
     },
     "layer-tied": () => router.refresh(),
     "round-cancelled": () => router.refresh(),
+    // Issue #245: this component is the only thing mounted for the round's
+    // closed/reveal/tie phase ahead of a reaction window ever opening — the
+    // banner itself (ReactionBanner.tsx, rendered by page.tsx only once the
+    // server already sees an open window) has no chance to catch its own
+    // first-open broadcast. Refreshing here re-fetches openReactionWindow
+    // server-side so the banner mounts live instead of waiting for a manual
+    // reload. Guarded on hasOpenReactionWindow so this only fires for the
+    // window's first appearance — once the banner is mounted it owns every
+    // subsequent refresh for this same event via its own listener, so this
+    // becomes a no-op rather than double-refreshing alongside it.
+    "reaction-window-changed": () => {
+      if (!hasOpenReactionWindow) router.refresh();
+    },
   });
 
   function dismissKettleModal() {

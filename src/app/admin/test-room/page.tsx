@@ -283,6 +283,7 @@ export default async function TestRoomPage() {
                 roundId={activeRound.id}
                 selfPlayerId={playerId}
                 ownRoll={layerZeroOwnRoll}
+                hasOpenReactionWindow={openReactionWindow !== null}
                 participants={participants.map((entry) => ({
                   playerId: entry.playerId,
                   displayName: entry.displayName,
