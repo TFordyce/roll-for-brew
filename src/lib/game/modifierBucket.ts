@@ -130,9 +130,12 @@ export function composeModifierTerms(
   effects: ImpactEffect[],
 ): (number | null)[] {
   return effects.map((effect, index) => {
-    if (effect.kind !== "flat_modifier" && effect.kind !== "modifier_multiplier" && effect.kind !== "set_modifier") {
-      return null;
-    }
+    // dice_modifier reuses toModifierEffect's "flat" conversion for
+    // composeModifier's own math (it's a real composable delta there), but
+    // deliberately gets no term here — its value is display-time-decorative
+    // via the die icon instead (rollCalculationEffects.ts's diceTerms), not
+    // a signed number of its own.
+    if (effect.kind === "dice_modifier" || toModifierEffect(effect) === null) return null;
     return marginalDiff(persistentModifier, effects, index);
   });
 }

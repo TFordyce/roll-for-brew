@@ -80,8 +80,10 @@ export function RollCalculation({
   const jitter = getModifierJitterIntensity(calc.modifier);
   // Falls back to today's single unlabeled term (the whole modifier) when
   // the caller has no per-effect breakdown to offer — see the doc comment
-  // above on `modifierTerms`.
-  const terms = modifierTerms ?? [{ label: null, value: calc.modifier }];
+  // above on `modifierTerms`. The fallback term's `label: null` is the one
+  // case an individual term goes unlabeled, hence the wider `DisplayTerm`
+  // type below rather than reusing `RollCalculationModifierTerm` verbatim.
+  const terms: DisplayTerm[] = modifierTerms ?? [{ label: null, value: calc.modifier }];
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -134,13 +136,11 @@ const JITTER_MIN_PERIOD_SECONDS = 0.25;
  * "danger" here, deliberately — the issue asks for a jitter cue, not an
  * additional color change layered on top.
  */
-function ModifierTerms({
-  terms,
-  jitter,
-}: {
-  terms: { label: string | null; value: number }[];
-  jitter: number;
-}) {
+/** A modifier term as actually rendered — `RollCalculationModifierTerm`
+ * widened to allow the unlabeled legacy fallback (see `terms` above). */
+type DisplayTerm = { label: string | null; value: number };
+
+function ModifierTerms({ terms, jitter }: { terms: DisplayTerm[]; jitter: number }) {
   const content = terms.map((term, i) => {
     const operator = term.value >= 0 ? "+" : "-";
     return (
