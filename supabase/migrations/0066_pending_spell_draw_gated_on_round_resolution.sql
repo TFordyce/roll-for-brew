@@ -19,10 +19,15 @@
 -- open/closed round aren't counted as "waiting" — they haven't earned
 -- their moment yet.
 --
--- Mirrors get_my_rateable_round's (0058) pattern of its own dedicated,
--- activeRound-independent query rather than reusing an existing
--- round-scoped RPC, since getActiveRound (src/lib/supabase/rounds.ts)
--- never returns a resolved round to hang this off of.
+-- Mirrors the *design* getMyRateableRound (src/lib/supabase/brewRatings.ts)
+-- already established: its own dedicated, activeRound-independent query
+-- rather than reusing an existing round-scoped lookup, since getActiveRound
+-- (src/lib/supabase/rounds.ts) never returns a resolved round to hang this
+-- off of. Unlike getMyRateableRound (a plain client-side read — every table
+-- it touches is already readable under existing RLS), this one goes through
+-- a security-definer RPC instead: pending_spell_draws' own RLS policy is
+-- round-scoped (current_player_id(round_id)), which has no round to check
+-- against when finding the oldest eligible row across every round at once.
 create or replace function public.get_my_pending_spell_draw()
 returns table (round_id uuid, trigger text, other_count bigint)
 language plpgsql

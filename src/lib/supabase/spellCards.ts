@@ -88,22 +88,6 @@ export async function recordPendingSpellDraw(
   if (error) throw error;
 }
 
-/**
- * Calls the get_pending_spell_draw RPC: the caller's own pending trigger
- * for this round, if any — feeds the "how did you draw?" prompt
- * (SpellDrawChoicePanel.tsx).
- */
-export async function getPendingSpellDraw(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<"nat1" | "nat20" | null> {
-  const { data, error } = await supabase.rpc("get_pending_spell_draw", { p_round_id: roundId });
-  if (error) throw error;
-
-  const rows = (data ?? []) as { trigger: "nat1" | "nat20" }[];
-  return rows[0]?.trigger ?? null;
-}
-
 export type MyPendingSpellDraw = {
   roundId: string;
   trigger: "nat1" | "nat20";
