@@ -25,7 +25,7 @@ import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
-import { getMySpellCards, getPendingSpellDraw, getSpellCardCatalog } from "@/lib/supabase/spellCards";
+import { getMyPendingSpellDraw, getMySpellCards, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
 import { getMyRateableRound } from "@/lib/supabase/brewRatings";
@@ -102,8 +102,12 @@ export default async function HomePage() {
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
   const heldSpellCards = await getMySpellCards(supabase, roomId);
-  const pendingSpellDrawTrigger = activeRound ? await getPendingSpellDraw(supabase, activeRound.id) : null;
-  const spellCardCatalog = pendingSpellDrawTrigger ? await getSpellCardCatalog(supabase) : [];
+  // The Spell Draw Window gate (issue #248): only offer the "how did you
+  // draw?" choice once the earning round has actually resolved or been
+  // cancelled — independent of activeRound, same as rateableRound below,
+  // since getActiveRound never returns a resolved round to hang this off of.
+  const myPendingSpellDraw = await getMyPendingSpellDraw(supabase);
+  const spellCardCatalog = myPendingSpellDraw ? await getSpellCardCatalog(supabase) : [];
   const pendingSpellCasts =
     activeRound && activeRound.status === "closed"
       ? await getMyPendingCasts(supabase, activeRound.id)
@@ -198,6 +202,15 @@ export default async function HomePage() {
       />
       <BrewRatingPanel round={rateableRound} raterInitials={raterInitials} />
 
+      {myPendingSpellDraw ? (
+        <SpellDrawChoicePanel
+          roundId={myPendingSpellDraw.roundId}
+          trigger={myPendingSpellDraw.trigger}
+          catalogNames={spellCardCatalog.map((c) => c.name)}
+          otherCount={myPendingSpellDraw.otherCount}
+        />
+      ) : null}
+
       <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
         Roll for Brew
       </h1>
@@ -216,14 +229,6 @@ export default async function HomePage() {
         selfPlayerId={playerId}
         roomId={roomId}
       />
-
-      {activeRound && pendingSpellDrawTrigger ? (
-        <SpellDrawChoicePanel
-          roundId={activeRound.id}
-          trigger={pendingSpellDrawTrigger}
-          catalogNames={spellCardCatalog.map((c) => c.name)}
-        />
-      ) : null}
 
       {activeRound ? (
         <section className="w-full max-w-md">
