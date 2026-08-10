@@ -212,20 +212,32 @@ export async function getInDeckSpellCards(supabase: SupabaseClient, roomId: stri
 }
 
 /**
- * Calls the resolve_card_swap RPC: resolves a pending keep-or-swap decision,
- * keeping either the newly-drawn card or the one already held. The other
- * instance is reshuffled back to in_deck, never removed.
+ * Calls the resolve_card_swap RPC (supabase/migrations/0064_reaction_window_close_on_swap.sql,
+ * issue #251): resolves a pending keep-or-swap decision, keeping either the
+ * newly-drawn card or the one already held. The other instance is
+ * reshuffled back to in_deck, never removed.
+ *
+ * Returns the id of the round whose open reaction window this decision just
+ * closed (the resolving player was its last eligible Reaction-card holder),
+ * or null if nothing closed — either because no window needed closing, or
+ * roomId wasn't passed so there was no round context to check. Callers
+ * should finalize that round's layer the same way passReactionWindowAction
+ * (src/app/rounds/actions.ts) already does when its own pass closes the
+ * window, since resolve_card_swap only closes the window — it never
+ * finalizes.
  */
 export async function resolveCardSwap(
   supabase: SupabaseClient,
   keepNew: boolean,
   roomId?: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("resolve_card_swap", {
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc("resolve_card_swap", {
     p_keep_new: keepNew,
     p_room_id: roomId ?? null,
   });
   if (error) throw error;
+
+  return (data as string | null) ?? null;
 }
 
 /**
