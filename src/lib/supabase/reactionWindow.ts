@@ -75,6 +75,31 @@ export async function getOpenReactionWindow(
   };
 }
 
+export type ReactionWindowPendingPlayer = {
+  playerId: string;
+  displayName: string;
+};
+
+/**
+ * Calls get_reaction_window_pending_players (0065): every round participant
+ * currently eligible for the round's open reaction window (holding a usable
+ * Reaction card) who hasn't yet passed or cast this poll round — the ribbon
+ * banner (ReactionBanner.tsx) names these players instead of showing a
+ * generic "waiting" message. Empty if no window is open.
+ */
+export async function getReactionWindowPendingPlayers(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<ReactionWindowPendingPlayer[]> {
+  const { data, error } = await supabase.rpc("get_reaction_window_pending_players", { p_round_id: roundId });
+  if (error) throw error;
+
+  return ((data ?? []) as { player_id: string; display_name: string }[]).map((row) => ({
+    playerId: row.player_id,
+    displayName: row.display_name,
+  }));
+}
+
 /** Calls get_reaction_stack: the open window's casts so far, oldest first. */
 export async function getReactionStack(
   supabase: SupabaseClient,

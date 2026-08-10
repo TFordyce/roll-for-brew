@@ -28,7 +28,7 @@ import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getInDeckSpellCards, getMySpellCards } from "@/lib/supabase/spellCards";
 import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
-import { getOpenReactionWindow, getReactionStack } from "@/lib/supabase/reactionWindow";
+import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 import { ActingAsSwitcher, type ActingAsOption } from "@/app/admin/test-room/ActingAsSwitcher";
@@ -150,6 +150,8 @@ export default async function TestRoomPage() {
       : null;
   const reactionStack =
     openReactionWindow && activeRound ? await getReactionStack(supabase, activeRound.id) : [];
+  const reactionWindowPendingPlayers =
+    openReactionWindow && activeRound ? await getReactionWindowPendingPlayers(supabase, activeRound.id) : [];
 
   const dispellableEffects =
     activeRound && activeRound.status === "open"
@@ -388,6 +390,7 @@ export default async function TestRoomPage() {
           heldReactionCard={heldReactionCard}
           stack={reactionStack}
           participants={participants}
+          pendingPlayers={reactionWindowPendingPlayers}
         />
       ) : null}
 
