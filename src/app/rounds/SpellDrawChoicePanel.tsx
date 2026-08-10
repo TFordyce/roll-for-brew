@@ -13,21 +13,27 @@ const initialState: DrawPendingSpellCardManualState = { status: "idle" };
 
 /**
  * The "how did you draw?" prompt (issue: physical-deck draw override —
- * "players will definitely prefer drawing from the deck IRL") — shown
- * whenever the caller has a pending spell draw for the active round
- * (getPendingSpellDraw, recorded by maybeRecordPendingSpellDraw in place of
- * the old immediate auto-draw). Offers the same two paths dice rolling
- * already offers (#22): let the app generate the result, or trust a
+ * "players will definitely prefer drawing from the deck IRL") — shown once
+ * the caller's earning round has resolved or been cancelled
+ * (getMyPendingSpellDraw, the Spell Draw Window gate, issue #248),
+ * regardless of whether that round is still activeRound. The trigger
+ * itself is recorded immediately at roll time (maybeRecordPendingSpellDraw)
+ * in place of the old immediate auto-draw; this panel only gates when the
+ * choice is *offered*. Offers the same two paths dice rolling already
+ * offers (#22): let the app generate the result, or trust a
  * physically-obtained one typed in by hand.
  */
 export function SpellDrawChoicePanel({
   roundId,
   trigger,
   catalogNames,
+  otherCount = 0,
 }: {
   roundId: string;
   trigger: "nat1" | "nat20";
   catalogNames: string[];
+  /** How many other eligible draws are queued behind this one (issue #248). */
+  otherCount?: number;
 }) {
   const [state, formAction, isPending] = useActionState(drawPendingSpellCardManualAction, initialState);
 
@@ -37,6 +43,11 @@ export function SpellDrawChoicePanel({
         <p className="font-body text-sm text-parchment">
           You rolled a natural {trigger === "nat1" ? "1" : "20"} — draw a card.
         </p>
+        {otherCount > 0 ? (
+          <p className="mt-1 font-body text-xs text-parchment-dim">
+            {otherCount} more waiting after this one.
+          </p>
+        ) : null}
 
         <form action={drawPendingSpellCardAction} className="mt-3">
           <input type="hidden" name="roundId" value={roundId} />

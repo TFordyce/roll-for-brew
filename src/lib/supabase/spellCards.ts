@@ -88,20 +88,35 @@ export async function recordPendingSpellDraw(
   if (error) throw error;
 }
 
+export type MyPendingSpellDraw = {
+  roundId: string;
+  trigger: "nat1" | "nat20";
+  /** How many other eligible (resolved/cancelled-round) draws are queued behind this one. */
+  otherCount: number;
+};
+
 /**
- * Calls the get_pending_spell_draw RPC: the caller's own pending trigger
- * for this round, if any — feeds the "how did you draw?" prompt
- * (SpellDrawChoicePanel.tsx).
+ * Calls the get_my_pending_spell_draw RPC (supabase/migrations/
+ * 0066_pending_spell_draw_gated_on_round_resolution.sql, issue #248): the
+ * caller's own oldest outstanding Pending Spell Draw whose earning round
+ * has actually resolved or been cancelled — the gate SpellDrawChoicePanel's
+ * *render* is keyed off of, so the "how did you draw?" prompt no longer
+ * fires while the round is still open/closed, mid-tie-break, or mid-
+ * reaction-window. Independent of activeRound, same pattern as
+ * getMyRateableRound (brewRatings.ts) — getActiveRound never returns a
+ * resolved round to hang this off of. Returns null when nothing is
+ * eligible yet; otherCount reflects how many more eligible draws are
+ * queued behind the one returned, for the "N more waiting" cue.
  */
-export async function getPendingSpellDraw(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<"nat1" | "nat20" | null> {
-  const { data, error } = await supabase.rpc("get_pending_spell_draw", { p_round_id: roundId });
+export async function getMyPendingSpellDraw(supabase: SupabaseClient): Promise<MyPendingSpellDraw | null> {
+  const { data, error } = await supabase.rpc("get_my_pending_spell_draw");
   if (error) throw error;
 
-  const rows = (data ?? []) as { trigger: "nat1" | "nat20" }[];
-  return rows[0]?.trigger ?? null;
+  const rows = (data ?? []) as { round_id: string; trigger: "nat1" | "nat20"; other_count: number }[];
+  const [row] = rows;
+  if (!row) return null;
+
+  return { roundId: row.round_id, trigger: row.trigger, otherCount: row.other_count };
 }
 
 /**
