@@ -1,9 +1,13 @@
 import type { CSSProperties } from "react";
 import { classifyRollCalculation, getModifierJitterIntensity } from "@/lib/game/rollCalculation";
 import { DieIcon } from "@/app/_components/DieIcon";
-import type { RollCalculationDiceTerm, RollCalculationEffectBadge } from "@/lib/game/rollCalculationEffects";
+import type {
+  RollCalculationDiceTerm,
+  RollCalculationEffectBadge,
+  RollCalculationModifierTerm,
+} from "@/lib/game/rollCalculationEffects";
 
-export type { RollCalculationDiceTerm, RollCalculationEffectBadge };
+export type { RollCalculationDiceTerm, RollCalculationEffectBadge, RollCalculationModifierTerm };
 
 /**
  * Renders the roll+modifier calculation that actually decides a layer
@@ -16,7 +20,14 @@ export type { RollCalculationDiceTerm, RollCalculationEffectBadge };
  * roll, animated boon/bust badges) — off by default so PlayerTile/TieBanner
  * (issue #162's narrower tie-break layout, out of #167's scope) keep
  * today's bare rendering unchanged. Only RoundReveal.tsx passes `rich`.
- * `discardedRoll`/`diceTerms`/`effects` are ignored unless `rich` is set.
+ * `discardedRoll`/`diceTerms`/`effects`/`modifierTerms` are ignored unless
+ * `rich` is set.
+ *
+ * `modifierTerms` (issue #243) breaks the modifier into its individually
+ * labeled parts (persistent modifier + each spell effect's own marginal
+ * contribution) instead of showing `modifier` as one collapsed number —
+ * omit it (RoundReveal's reroll-chain rows do, having no per-effect detail
+ * to break down) to fall back to today's single unlabeled term.
  */
 export function RollCalculation({
   roll,
@@ -25,6 +36,7 @@ export function RollCalculation({
   discardedRoll = null,
   diceTerms = [],
   effects = [],
+  modifierTerms,
 }: {
   roll: number;
   modifier: number;
@@ -32,6 +44,7 @@ export function RollCalculation({
   discardedRoll?: number | null;
   diceTerms?: RollCalculationDiceTerm[];
   effects?: RollCalculationEffectBadge[];
+  modifierTerms?: RollCalculationModifierTerm[];
 }) {
   const calc = classifyRollCalculation(roll, modifier);
 
@@ -65,6 +78,10 @@ export function RollCalculation({
   }
 
   const jitter = getModifierJitterIntensity(calc.modifier);
+  // Falls back to today's single unlabeled term (the whole modifier) when
+  // the caller has no per-effect breakdown to offer — see the doc comment
+  // above on `modifierTerms`.
+  const terms = modifierTerms ?? [{ label: null, value: calc.modifier }];
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -73,7 +90,7 @@ export function RollCalculation({
         {discardedRoll !== null ? (
           <span className="text-parchment-dim/60 line-through">{discardedRoll}</span>
         ) : null}
-        <ModifierTerm operator={operator} value={Math.abs(calc.modifier)} jitter={jitter} />
+        <ModifierTerms terms={terms} jitter={jitter} />
         {diceTerms.map((term, i) => (
           <DieIcon key={i} shape={term.shape} value={term.value} className="h-4 w-4" />
         ))}
@@ -100,10 +117,15 @@ const JITTER_MAX_PERIOD_SECONDS = 0.5;
 const JITTER_MIN_PERIOD_SECONDS = 0.25;
 
 /**
- * The modifier term of the calc line ("+ 8"), isolated into its own element
- * so the issue #196 "danger" jitter can target it without disturbing the
- * roll or total — the acceptance criteria is explicit that those two must
- * stay legible regardless of how high the modifier climbs.
+ * The modifier terms of the calc line ("+ 0[mod] + 1[LUCKY SIP] - 2
+ * [CALAMI-TEA]", issue #243), wrapped in one element so the issue #196
+ * "danger" jitter can target the whole group without disturbing the roll or
+ * total — the acceptance criteria is explicit that those two must stay
+ * legible regardless of how high the modifier climbs. Jitter keys off the
+ * combined value the caller passed to `getModifierJitterIntensity`, same as
+ * before #243 split the modifier into terms — which term(s) the shake
+ * visually touches isn't load-bearing, only that a high modifier still cues
+ * danger somewhere in the line.
  *
  * `jitter` is the 0-1 intensity from `getModifierJitterIntensity` — 0 (below
  * +8) renders today's static text; anything above scales both the shake's
@@ -112,13 +134,27 @@ const JITTER_MIN_PERIOD_SECONDS = 0.25;
  * "danger" here, deliberately — the issue asks for a jitter cue, not an
  * additional color change layered on top.
  */
-function ModifierTerm({ operator, value, jitter }: { operator: string; value: number; jitter: number }) {
-  if (jitter <= 0) {
+function ModifierTerms({
+  terms,
+  jitter,
+}: {
+  terms: { label: string | null; value: number }[];
+  jitter: number;
+}) {
+  const content = terms.map((term, i) => {
+    const operator = term.value >= 0 ? "+" : "-";
     return (
-      <>
-        {operator} {value}
-      </>
+      <span key={i} className="inline-flex items-baseline gap-0.5">
+        {operator} {Math.abs(term.value)}
+        {term.label ? (
+          <span className="text-[9px] uppercase tracking-wide text-parchment-dim/70">[{term.label}]</span>
+        ) : null}
+      </span>
     );
+  });
+
+  if (jitter <= 0) {
+    return <span className="inline-flex flex-wrap items-baseline gap-1">{content}</span>;
   }
 
   const amplitude = JITTER_MIN_AMPLITUDE_PX + jitter * (JITTER_MAX_AMPLITUDE_PX - JITTER_MIN_AMPLITUDE_PX);
@@ -126,7 +162,7 @@ function ModifierTerm({ operator, value, jitter }: { operator: string; value: nu
 
   return (
     <span
-      className="inline-block"
+      className="inline-flex flex-wrap items-baseline gap-1"
       style={
         {
           animation: `modifier-jitter ${period}s ease-in-out infinite`,
@@ -134,7 +170,7 @@ function ModifierTerm({ operator, value, jitter }: { operator: string; value: nu
         } as CSSProperties
       }
     >
-      {operator} {value}
+      {content}
     </span>
   );
 }

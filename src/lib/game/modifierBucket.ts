@@ -93,15 +93,46 @@ export function classifyEffectImpact(
     if (effect.kind === "disadvantage") return "bust";
     if (effect.kind === "advantage" || effect.kind === "dice_modifier") return "boon";
 
-    const prefix = effects.slice(0, index + 1);
-    const withEffect = composeModifier(persistentModifier, toComposable(prefix));
-    const withoutEffect = composeModifier(
-      persistentModifier,
-      toComposable(prefix.filter((_, i) => i !== index)),
-    );
+    const diff = marginalDiff(persistentModifier, effects, index);
 
     // A no-op (zero marginal diff) resolves in the target's favor rather
     // than being penalized as a bust.
-    return withEffect >= withoutEffect ? "boon" : "bust";
+    return diff >= 0 ? "boon" : "bust";
+  });
+}
+
+function marginalDiff(persistentModifier: number, effects: ImpactEffect[], index: number): number {
+  const prefix = effects.slice(0, index + 1);
+  const withEffect = composeModifier(persistentModifier, toComposable(prefix));
+  const withoutEffect = composeModifier(
+    persistentModifier,
+    toComposable(prefix.filter((_, i) => i !== index)),
+  );
+  return withEffect - withoutEffect;
+}
+
+/**
+ * The numeric term each effect in `effects` (ordinal order) contributes to
+ * the composed modifier, for issue #243's per-term display: the same
+ * before/after marginal diff classifyEffectImpact uses for its boon/bust
+ * sign, but returning the magnitude so the calc line can show each effect
+ * as its own labeled term (e.g. "-2[CALAMI-TEA]") while still summing to
+ * composeModifier's total.
+ *
+ * advantage/disadvantage never touch the numeric modifier, and dice_modifier
+ * is rendered as its own decorative die icon rather than a signed term
+ * (rollCalculationEffects.ts's diceTerms) even though it composes into the
+ * total the same as a flat delta — so both return `null` here, and callers
+ * exclude them from the visible term list rather than double-showing them.
+ */
+export function composeModifierTerms(
+  persistentModifier: number,
+  effects: ImpactEffect[],
+): (number | null)[] {
+  return effects.map((effect, index) => {
+    if (effect.kind !== "flat_modifier" && effect.kind !== "modifier_multiplier" && effect.kind !== "set_modifier") {
+      return null;
+    }
+    return marginalDiff(persistentModifier, effects, index);
   });
 }
