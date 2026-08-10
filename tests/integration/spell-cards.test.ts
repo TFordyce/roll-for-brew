@@ -229,6 +229,23 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     expect(error).not.toBeNull();
   });
 
+  it("rejects casting when the caller is not a participant in the round (issue #244)", async () => {
+    const { client: starterClient } = await signUpSignInAndEnter("cast-non-participant-starter");
+    const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-non-participant-caster");
+    await forceHold(admin, casterSub, "Lucky Sip");
+
+    const { data: roundId } = await starterClient.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    // casterClient deliberately never declares into this round.
+
+    const { error } = await casterClient.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: null,
+    });
+    expect(error).not.toBeNull();
+    expect(error?.message).toContain("caller is not a participant in this round");
+  });
+
   it("rejects casting once the round has closed (RFB03)", async () => {
     const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-after-close");
     const { client: otherClient } = await signUpSignInAndEnter("cast-after-close-other");

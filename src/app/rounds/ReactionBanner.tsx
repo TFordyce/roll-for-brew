@@ -1,13 +1,17 @@
 "use client";
 
+import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { castReactionSpellCardAction, passReactionWindowAction } from "@/app/rounds/actions";
+import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { ReactionStackEntry } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { orderStackForResolution } from "@/lib/game/reactionStack";
 import { SubmitButton } from "@/app/_components/SubmitButton";
+
+const initialCastState: SpellCastActionState = { status: "idle" };
 
 /**
  * The reaction window's ribbon banner (issue #68): a bottom bar over the
@@ -37,6 +41,7 @@ export function ReactionBanner({
   participants: RoundParticipant[];
 }) {
   const router = useRouter();
+  const [castState, castFormAction] = useActionState(castReactionSpellCardAction, initialCastState);
 
   useRoomChannel(roomId, roundId, {
     "reaction-window-changed": () => router.refresh(),
@@ -71,7 +76,7 @@ export function ReactionBanner({
       ) : null}
 
       {eligible && heldReactionCard && !alreadyPassed ? (
-        <form action={castReactionSpellCardAction} className="mb-2 flex flex-wrap items-center gap-2">
+        <form action={castFormAction} className="mb-2 flex flex-wrap items-center gap-2">
           <input type="hidden" name="roundId" value={roundId} />
           <span className="font-body text-sm text-parchment">
             React with <strong className="text-gilt-bright">{heldReactionCard.cardName}</strong>?
@@ -111,6 +116,12 @@ export function ReactionBanner({
           >
             Cast
           </SubmitButton>
+
+          {castState.status === "error" ? (
+            <p role="alert" className="w-full font-body text-xs text-red-500">
+              {castState.message}
+            </p>
+          ) : null}
         </form>
       ) : null}
 
