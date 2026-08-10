@@ -83,3 +83,11 @@ _Avoid_: undo (that's the player's own `delete_modifier_adjustment`), purge, adm
 **Modifier Breakdown**:
 A room-scoped readout (`get_modifier_breakdown`) splitting a player's live modifier into its two known, durable sources — cups made as brewer, and logged Modifier Adjustments — without reconciling against `room_players.modifier` or accounting for spell-effect deltas, which have no durable per-source ledger. Readable by any authenticated player, not just the subject.
 _Avoid_: modifier history, modifier audit (implies completeness it doesn't have).
+
+**Pending Spell Draw**:
+A player's earned-but-undrawn card slot after rolling a natural 1 or 20 (`pending_spell_draws`, one row per `(round_id, player_id)`). Recorded immediately at roll time via `record_pending_spell_draw`, regardless of round status — resolved later, in-app or against the physical deck, via `draw_pending_spell_card`/`draw_pending_spell_card_manual`. Never expires and is never voided by a later round resolving; a player who doesn't act can accumulate more than one across different rounds.
+_Avoid_: pending draw (ambiguous with a keep-or-swap decision), spell trigger.
+
+**Spell Draw Window**:
+The gate on when a Pending Spell Draw's choice prompt (`SpellDrawChoicePanel`) is shown to the player who earned it: never before the earning round reaches `resolved` or `cancelled` (issue #248) — unlike the Rating/Order Windows, this window only ever opens, it never closes. Gates the prompt's *render* only; `record_pending_spell_draw` itself is ungated and always fires the instant the crit lands. Since `getActiveRound` never returns a `resolved` round, the prompt can't hang off `activeRound` — it's driven by its own query for the caller's oldest outstanding Pending Spell Draw, mirroring how `getMyRateableRound` looks up a resolved round independently of `activeRound`. When more than one Pending Spell Draw is outstanding, shown oldest-first, one at a time, with a count of others waiting.
+_Avoid_: draw window (ambiguous with drawing from the deck itself), draw gate, resolution gate.
