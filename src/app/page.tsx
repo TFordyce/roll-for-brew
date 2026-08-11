@@ -243,6 +243,7 @@ export default async function HomePage() {
         showAdminMenu={showAdminMenu}
       />
       <BrewRatingPanel round={rateableRound} raterInitials={raterInitials} />
+      {orderRoundId ? <RoundMenu entries={menuEntries} participants={menuParticipants} /> : null}
 
       {myPendingSpellDraw ? (
         <SpellDrawChoicePanel
@@ -408,7 +409,6 @@ export default async function HomePage() {
             roundId={orderRoundId}
             initialDrinkType={myOrderForRound ?? myMostRecentOrder}
           />
-          <RoundMenu entries={menuEntries} participants={menuParticipants} />
         </section>
       ) : null}
 
