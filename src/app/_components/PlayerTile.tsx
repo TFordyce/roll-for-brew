@@ -1,10 +1,12 @@
 import Link from "next/link";
 import type { ActiveEffectBadge } from "@/lib/supabase/spellCasts";
+import type { DrinkType } from "@/lib/supabase/orders";
 import { formatModifier } from "@/lib/game/rollCalculation";
 import { firstNameOrFallback } from "@/lib/game/displayName";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 import { EffectBadgePopover } from "@/app/_components/EffectBadgePopover";
+import { AvatarOrderPicker } from "@/app/_components/AvatarOrderPicker";
 
 /**
  * A single player's tile — avatar, name, modifier — inside its own small
@@ -30,6 +32,12 @@ import { EffectBadgePopover } from "@/app/_components/EffectBadgePopover";
  * Each effect badge dot is itself a tap/click target opening a popover with
  * that effect's card name, tier, and rounds remaining (issue #249) — see
  * `EffectBadgePopover`.
+ * `selfPlayerId` + `orderRoundId` (issue #267) together flank *this* tile's
+ * avatar with small Tea/Coffee buttons when `playerId === selfPlayerId` —
+ * i.e. only ever on the viewer's own tile, never a teammate's. Replaces the
+ * standalone "Your Order" card; see `AvatarOrderPicker`. `orderInitialDrinkType`
+ * is the same resolved starting selection the old card took (this round's
+ * Order, else the player's most recent Order anywhere, else null).
  */
 export function PlayerTile({
   displayName,
@@ -43,6 +51,9 @@ export function PlayerTile({
   revealedRoll = null,
   playerId,
   roomId,
+  selfPlayerId,
+  orderRoundId,
+  orderInitialDrinkType = null,
 }: {
   displayName: string | null;
   email: string;
@@ -55,6 +66,9 @@ export function PlayerTile({
   revealedRoll?: number | null;
   playerId?: string;
   roomId?: string;
+  selfPlayerId?: string;
+  orderRoundId?: string;
+  orderInitialDrinkType?: DrinkType | null;
 }) {
   const name = displayName ?? email;
   // First name only — a long full name wraps to two lines in the tile's
@@ -78,6 +92,20 @@ export function PlayerTile({
     </div>
   );
 
+  const avatarLinked = playerId ? <Link href={`/${playerId}`}>{avatar}</Link> : avatar;
+  const isSelf = Boolean(playerId) && playerId === selfPlayerId;
+  const avatarWithOrderControls =
+    isSelf && orderRoundId ? (
+      // Keyed on orderRoundId so a new round's fresh initial selection
+      // replaces stale client state instead of the two fighting each other
+      // (mirrors OrderPicker's own `key={orderRoundId}` at its old call site).
+      <AvatarOrderPicker key={orderRoundId} roundId={orderRoundId} initialDrinkType={orderInitialDrinkType}>
+        {avatarLinked}
+      </AvatarOrderPicker>
+    ) : (
+      avatarLinked
+    );
+
   return (
     <div
       className={`flex flex-col items-center gap-1.5 rounded-md border-2 p-3 text-center transition-colors ${
@@ -86,7 +114,7 @@ export function PlayerTile({
           : "border-gilt-dark bg-tavern-panel-dark"
       }`}
     >
-      {playerId ? <Link href={`/${playerId}`}>{avatar}</Link> : avatar}
+      {avatarWithOrderControls}
       <span className="w-full truncate text-xs leading-tight text-parchment" title={name}>
         {firstNameOnly}
         {isStarter ? <span className="text-gilt"> ★</span> : null}

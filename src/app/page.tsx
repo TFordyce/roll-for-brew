@@ -28,7 +28,6 @@ import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
-import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { RoundMenu } from "@/app/rounds/RoundMenu";
 import { MenuLive } from "@/app/rounds/MenuLive";
 import { TieBanner } from "@/app/rounds/TieBanner";
@@ -352,17 +351,21 @@ export default async function HomePage() {
                       joined={participants.some((p) => p.playerId === entry.playerId)}
                       isStarter={entry.playerId === activeRound.startedBy}
                       effectBadges={effectBadgesByPlayerId.get(entry.playerId) ?? []}
+                      selfPlayerId={playerId}
+                      orderRoundId={orderRoundId ?? undefined}
+                      orderInitialDrinkType={myOrderForRound ?? myMostRecentOrder}
                     />
                   ))}
                 </div>
 
                 {/* Declare-in-time cue (issue #226, user story 19): a nudge
-                    toward the Order picker below, not a blocker — Order stays
-                    fully decoupled from declare/withdraw (ADR 0004), so this
-                    only disappears once an Order actually exists for this
-                    round, independent of hasDeclared. */}
+                    toward the Tea/Coffee buttons on your own avatar above
+                    (issue #267), not a blocker — Order stays fully decoupled
+                    from declare/withdraw (ADR 0004), so this only disappears
+                    once an Order actually exists for this round, independent
+                    of hasDeclared. */}
                 {myOrderForRound === null ? (
-                  <p className="mt-4 text-xs text-gilt-bright">🫖 Don&rsquo;t forget to set your Order below.</p>
+                  <p className="mt-4 text-xs text-gilt-bright">🫖 Don&rsquo;t forget to set your Order above.</p>
                 ) : null}
 
                 {!hasDeclared ? (
@@ -407,15 +410,12 @@ export default async function HomePage() {
       {/* Decoupled from declare/withdraw (ADR 0004) and from activeRound's
           own open/closed section above — orderRoundId already covers the
           rest of the Order Window (through resolved) via
-          getMyOrderableRound once activeRound goes null. */}
+          getMyOrderableRound once activeRound goes null. The Order picker
+          itself now lives on your own avatar (issue #267, see PlayerTile /
+          AvatarOrderPicker) rather than as a card here. */}
       {orderRoundId ? (
         <section className="w-full max-w-md">
           <MenuLive roomId={roomId} roundId={orderRoundId} />
-          <OrderPicker
-            key={orderRoundId}
-            roundId={orderRoundId}
-            initialDrinkType={myOrderForRound ?? myMostRecentOrder}
-          />
         </section>
       ) : null}
 
@@ -449,6 +449,9 @@ export default async function HomePage() {
                     avatarUrl={entry.avatarUrl}
                     modifier={entry.modifier}
                     effectBadges={effectBadgesByPlayerId.get(entry.playerId) ?? []}
+                    selfPlayerId={playerId}
+                    orderRoundId={orderRoundId ?? undefined}
+                    orderInitialDrinkType={myOrderForRound ?? myMostRecentOrder}
                   />
                 ))}
               </div>
