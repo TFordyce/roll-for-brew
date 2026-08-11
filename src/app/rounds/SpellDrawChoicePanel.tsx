@@ -52,7 +52,7 @@ export function SpellDrawChoicePanel({
     <div
       role="dialog"
       aria-label="Draw a Spell Card"
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-5"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-5"
     >
       <div className="w-full max-w-sm">
         <p className="mb-1 text-center font-body text-xs uppercase tracking-widest text-ember-bright">
