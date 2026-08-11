@@ -135,6 +135,21 @@ export async function getCompletedLayerRollsForStallResolution(
 }
 
 /**
+ * Calls the resolve_stalled_pending_spell_dice RPC (0069, issue #252):
+ * auto-resolves every still-unresolved dice_modifier spell cast for the
+ * round (Cold Tea/Slipped Spoon's pre-roll casts — a Reaction-timed one
+ * like Six Sugars is already covered by the reaction window's own recovery)
+ * once enforceStallTimeout's own hasStalled check has already fired.
+ * Returns how many casts it resolved, so the caller only bothers re-running
+ * layer resolution when there was actually something to recover.
+ */
+export async function resolveStalledPendingSpellDice(supabase: SupabaseClient, roundId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("resolve_stalled_pending_spell_dice", { p_round_id: roundId });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
  * Calls the cancel_round RPC: cancels a stalled round (issue #21). A no-op
  * if the round has already left 'open'/'closed' by the time this runs.
  */

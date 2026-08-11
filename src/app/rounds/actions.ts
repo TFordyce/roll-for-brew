@@ -26,9 +26,16 @@ import {
   getSpellCardCatalog,
   resolveCardSwap,
 } from "@/lib/supabase/spellCards";
-import { castSpellCard, endActiveEffect, setSpellCastTarget } from "@/lib/supabase/spellCasts";
+import {
+  castSpellCard,
+  endActiveEffect,
+  resolvePendingSpellDieInApp,
+  resolvePendingSpellDieManual,
+  setSpellCastTarget,
+} from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
+  afterPendingSpellDieResolved,
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
   resolveSpellCastError,
@@ -217,6 +224,76 @@ export async function submitManualRollAction(formData: FormData) {
   await resolveCompletedLayerIfAny(supabase, roundId);
 
   revalidateRoundSurfaces();
+}
+
+/**
+ * Resolves a Pending Spell Die (issue #252) with the app's own
+ * server-generated roll — the dice_modifier counterpart to submitRollAction.
+ * afterPendingSpellDieResolved re-enters layer resolution afterward, since
+ * get_current_layer_rolls_if_complete's gate (0069) may have been blocking
+ * on exactly this cast the whole time it sat pending.
+ */
+export async function resolvePendingSpellDieInAppAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  const castId = formData.get("castId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("resolvePendingSpellDieInAppAction: missing roundId");
+  }
+  if (typeof castId !== "string" || !castId) {
+    throw new Error("resolvePendingSpellDieInAppAction: missing castId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await resolvePendingSpellDieInApp(supabase, castId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidateRoundSurfaces();
+    return;
+  }
+  await afterPendingSpellDieResolved(supabase, roundId);
+
+  revalidateRoundSurfaces();
+}
+
+/**
+ * Resolves a Pending Spell Die (issue #252) with a value the player
+ * physically rolled — the dice_modifier counterpart to
+ * submitManualRollAction. The value is trusted client input, range-checked
+ * against the card's own dice spec by resolve_pending_spell_die_manual
+ * itself; a failed check comes back as an inline typed error
+ * (resolveSpellCastError) rather than the root error boundary, same as the
+ * spell-cast form actions.
+ */
+export async function resolvePendingSpellDieManualAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
+  const roundId = formData.get("roundId");
+  const castId = formData.get("castId");
+  const rawValue = formData.get("value");
+  const value = typeof rawValue === "string" ? Number(rawValue) : NaN;
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("resolvePendingSpellDieManualAction: missing roundId");
+  }
+  if (typeof castId !== "string" || !castId) {
+    throw new Error("resolvePendingSpellDieManualAction: missing castId");
+  }
+  if (!Number.isInteger(value)) {
+    return { status: "error", message: "Enter the whole number you rolled." };
+  }
+
+  const supabase = await createClient();
+  try {
+    await resolvePendingSpellDieManual(supabase, castId, value);
+  } catch (error) {
+    return resolveSpellCastError(error);
+  }
+  await afterPendingSpellDieResolved(supabase, roundId);
+
+  revalidateRoundSurfaces();
+  return { status: "idle" };
 }
 
 /**
