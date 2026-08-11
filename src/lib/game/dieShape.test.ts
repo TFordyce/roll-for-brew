@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDieShape } from "./dieShape";
+import { parseDiceRange, parseDieShape } from "./dieShape";
 
 describe("parseDieShape", () => {
   it("parses a d4 dice string", () => {
@@ -20,5 +20,20 @@ describe("parseDieShape", () => {
 
   it("returns null for a non-dice string", () => {
     expect(parseDieShape("not-a-die")).toBeNull();
+  });
+});
+
+describe("parseDiceRange", () => {
+  it("ranges a single die from 1 through its side count", () => {
+    expect(parseDiceRange("1d6")).toEqual({ min: 1, max: 6 });
+    expect(parseDiceRange("1d4")).toEqual({ min: 1, max: 4 });
+  });
+
+  it("scales both bounds by the die count", () => {
+    expect(parseDiceRange("2d6")).toEqual({ min: 2, max: 12 });
+  });
+
+  it("returns null for a non-dice string", () => {
+    expect(parseDiceRange("not-a-die")).toBeNull();
   });
 });

@@ -48,6 +48,18 @@ export type DispellableEffect = {
 };
 
 /**
+ * A dice_modifier spell cast still awaiting its value (issue #252) — the
+ * caller's own outstanding roll from a card like Six Sugars/Cold Tea/Slipped
+ * Spoon, cast but not yet resolved by resolvePendingSpellDieInApp/Manual.
+ * `dice` is the card's raw spec (e.g. "1d6"), used to size the roll picker.
+ */
+export type PendingSpellDie = {
+  castId: string;
+  cardName: string;
+  dice: string;
+};
+
+/**
  * Calls the cast_spell_card RPC (supabase/migrations/0019_spell_casts_pre_roll.sql,
  * grew chosenPlayerIds/declaredNumber in 0033 for CHOSEN_PLAYERS/Inscribed
  * Saucer): casts the caller's currently-held Action card during a round's
@@ -268,6 +280,81 @@ export async function endActiveEffect(
     p_effect_id: effectId,
   });
   if (error) throw error;
+}
+
+/**
+ * Calls the get_my_pending_spell_dice RPC (0068, issue #252): the caller's
+ * own dice_modifier casts for this round still awaiting a value — drives
+ * PendingSpellDiePanel.tsx, the same "own outstanding thing to resolve"
+ * shape as getMyPendingCasts above (a deferred OPPONENT/PLAYER target)
+ * rather than a global lookup, since this must resolve before *this*
+ * round's own layer can finalize (get_current_layer_rolls_if_complete's new
+ * gate, same migration).
+ */
+export async function getMyPendingSpellDice(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<PendingSpellDie[]> {
+  const { data, error } = await supabase.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+  if (error) throw error;
+
+  return ((data ?? []) as { cast_id: string; card_name: string; dice: string }[]).map((row) => ({
+    castId: row.cast_id,
+    cardName: row.card_name,
+    dice: row.dice,
+  }));
+}
+
+/**
+ * Calls resolve_pending_spell_die_in_app: the app rolls the die
+ * server-side and resolves the cast in one step (issue #252), mirroring
+ * submitRoll. Returns the raw rolled value (pre-sign) for display.
+ */
+export async function resolvePendingSpellDieInApp(
+  supabase: SupabaseClient,
+  castId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("resolve_pending_spell_die_in_app", { p_cast_id: castId });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
+ * Calls resolve_pending_spell_die_manual: resolves the cast with a
+ * physically-rolled value the player types in (issue #252), mirroring
+ * submitManualRoll. The value is trusted client input, range-checked
+ * against the card's own dice spec by resolve_pending_spell_die_manual
+ * itself.
+ */
+export async function resolvePendingSpellDieManual(
+  supabase: SupabaseClient,
+  castId: string,
+  value: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("resolve_pending_spell_die_manual", {
+    p_cast_id: castId,
+    p_value: value,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Calls round_layer_zero_reaction_window_exists (0068): whether resolving
+ * this round's last pending spell die should re-enter the flow via
+ * finalizeReactionWindow (a layer-0 window already exists, open or closed-
+ * but-blocked) or resolveCompletedLayerIfAny (no window yet — a pre-roll
+ * cast like Cold Tea, where opening one is still this round's next step).
+ * See afterPendingSpellDieResolved (src/app/rounds/actions.ts).
+ */
+export async function hasLayerZeroReactionWindow(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<boolean> {
+  const { data, error } = await supabase.rpc("round_layer_zero_reaction_window_exists", {
+    p_round_id: roundId,
+  });
+  if (error) throw error;
+  return data as boolean;
 }
 
 function toModifierEffect(row: RawModifierEffectRow): ModifierEffect | null {

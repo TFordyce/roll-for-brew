@@ -35,12 +35,14 @@ import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
+import { PendingSpellDiePanel } from "@/app/rounds/PendingSpellDiePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getMyPendingSpellDraw, getMySpellCards, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import {
   type ActiveEffectBadge,
   getDispellableActiveEffects,
   getMyPendingCasts,
+  getMyPendingSpellDice,
   getRoomActiveEffects,
 } from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
@@ -141,6 +143,19 @@ export default async function HomePage() {
       : [];
   const heldReactionCard = heldSpellCards.find((c) => c.location === "held" && c.castingTime === "R") ?? null;
 
+  // Pending Spell Die (issue #252): unlike the Spell Draw Window above, this
+  // has no resolved/cancelled gate — the round's own layer-0 resolution is
+  // already blocked on it (get_current_layer_rolls_if_complete's gate,
+  // migration 0068), so it's shown the moment it exists, for either an
+  // 'open' round (a pre-roll Action cast, e.g. Cold Tea) or a 'closed' one
+  // (a Reaction cast made mid-window, e.g. Slipped Spoon). spellDieRollInputMode
+  // is fetched independently of rollInputMode below, which stays scoped to
+  // whether it's this player's *own* turn to roll the main d20 — a pending
+  // die can be outstanding regardless of that.
+  const myPendingSpellDice = activeRound ? await getMyPendingSpellDice(supabase, activeRound.id) : [];
+  const spellDieRollInputMode =
+    myPendingSpellDice.length > 0 ? await getRollInputMode(supabase, playerId) : null;
+
   const openReactionWindow =
     activeRound && activeRound.status === "closed"
       ? await getOpenReactionWindow(supabase, activeRound.id)
@@ -235,6 +250,14 @@ export default async function HomePage() {
           trigger={myPendingSpellDraw.trigger}
           catalogNames={spellCardCatalog.map((c) => c.name)}
           otherCount={myPendingSpellDraw.otherCount}
+        />
+      ) : null}
+
+      {activeRound && spellDieRollInputMode ? (
+        <PendingSpellDiePanel
+          roundId={activeRound.id}
+          pendingDice={myPendingSpellDice}
+          rollInputMode={spellDieRollInputMode}
         />
       ) : null}
 

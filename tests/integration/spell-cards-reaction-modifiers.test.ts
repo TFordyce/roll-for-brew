@@ -16,6 +16,11 @@ import {
 // proving that a numeric-kind Reaction cast composes into
 // get_round_modifier_effects the same way a pre-roll Action cast already
 // does (the modifier bucket doesn't distinguish how a cast was made).
+//
+// Six Sugars' dice_modifier casts with resolved_value left null until the
+// caster resolves it (issue #252, migration 0068) — resolved here via
+// resolve_pending_spell_die_in_app immediately after casting, same as the
+// compound-card tests (spell-cards-compound.test.ts).
 describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers (issue #70)", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
@@ -55,6 +60,13 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     });
     expect(castError).toBeNull();
     expect(castId).toBeTruthy();
+
+    const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+    const pendingCastId = (pending as { cast_id: string }[])[0]!.cast_id;
+    const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: pendingCastId,
+    });
+    expect(resolveError).toBeNull();
 
     const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: roundId,

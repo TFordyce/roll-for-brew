@@ -17,6 +17,12 @@ import {
 // spell_card_effects now lets a card carry more than one simultaneous
 // effect, each with its own target role — these tests confirm both halves
 // of a compound cast now compose into get_round_modifier_effects.
+//
+// Both cards' caster-facing half is a dice_modifier (1d4), which since
+// issue #252 (migration 0068) casts with resolved_value left null until the
+// caster resolves it via resolve_pending_spell_die_in_app — these tests call
+// that immediately after casting so the rest of each assertion (the
+// non-dice half, and the resolved die's 1-4 range) is unaffected.
 describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped Spoon)", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
@@ -47,6 +53,13 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     });
     expect(castError).toBeNull();
     expect(castId).toBeTruthy();
+
+    const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+    const pendingCastId = (pending as { cast_id: string }[])[0]!.cast_id;
+    const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: pendingCastId,
+    });
+    expect(resolveError).toBeNull();
 
     const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: roundId,
@@ -106,6 +119,13 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     });
     expect(castError).toBeNull();
     expect(castId).toBeTruthy();
+
+    const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+    const pendingCastId = (pending as { cast_id: string }[])[0]!.cast_id;
+    const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: pendingCastId,
+    });
+    expect(resolveError).toBeNull();
 
     const { data: casts, error: castsError } = await admin
       .from("spell_casts")
