@@ -248,6 +248,8 @@ export default async function TestRoomPage() {
         Test Room
       </h1>
 
+      {orderRoundId ? <RoundMenu entries={menuEntries} participants={menuParticipants} /> : null}
+
       <section className="w-full max-w-md">
         <ActingAsSwitcher options={switcherOptions} currentPlayerId={playerId} />
       </section>
@@ -381,7 +383,6 @@ export default async function TestRoomPage() {
             roundId={orderRoundId}
             initialDrinkType={myOrderForRound ?? myMostRecentOrder}
           />
-          <RoundMenu entries={menuEntries} participants={menuParticipants} />
         </section>
       ) : null}
 
