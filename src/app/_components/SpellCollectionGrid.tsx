@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { SpellCollectionCard as SpellCollectionCardData } from "@/lib/supabase/spellCards";
 import { cardTileView, groupByTier, isDiscovered, TIER_LABEL, TIER_ORDER, tierFractions, type Tier } from "@/lib/spellCollection";
 import { SpellCollectionCard } from "@/app/_components/SpellCollectionCard";
+import { CardInspectModal } from "@/app/_components/CardInspectModal";
 
 /**
  * The dense Balatro-joker-style card grid + tap-to-inspect modal (issue
@@ -51,47 +52,39 @@ export function SpellCollectionGrid({ cards }: { cards: SpellCollectionCardData[
       </div>
 
       {inspecting && inspectingView ? (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setInspecting(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs rounded-lg border-4 border-gilt bg-tavern-panel p-4 shadow-[0_0_0_1px_theme(colors.gilt.dark),0_8px_24px_rgb(0_0_0_/_0.6)]"
-          >
-            <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={inspectingView.artPath}
-                alt=""
-                className={`h-full w-full object-cover ${inspectingView.artClassName}`}
-              />
-            </div>
-            <p className="font-display text-sm font-semibold uppercase tracking-wide text-gilt-bright">
-              {inspecting.name}
-            </p>
-            {isDiscovered(inspecting) ? (
-              <>
-                <p className="mt-0.5 font-mono text-xs text-parchment-dim">
-                  {TIER_LABEL[inspecting.tier]} · {inspecting.castingTime === "A" ? "Action" : "Reaction"} ·{" "}
-                  {inspecting.target} · drawn ×{inspecting.drawCount}
-                </p>
-                <p className="mt-2 font-body text-sm text-parchment">{inspecting.effectText}</p>
-              </>
-            ) : (
-              <p className="mt-1 font-body text-sm text-parchment-dim">
-                {TIER_LABEL[inspecting.tier]} · not yet drawn.
-              </p>
-            )}
-            <button
-              type="button"
-              onClick={() => setInspecting(null)}
-              className="mt-3 w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
-            >
-              Close
-            </button>
+        <CardInspectModal onClose={() => setInspecting(null)}>
+          <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={inspectingView.artPath}
+              alt=""
+              className={`h-full w-full object-cover ${inspectingView.artClassName}`}
+            />
           </div>
-        </div>
+          <p className="font-display text-sm font-semibold uppercase tracking-wide text-gilt-bright">
+            {inspecting.name}
+          </p>
+          {isDiscovered(inspecting) ? (
+            <>
+              <p className="mt-0.5 font-mono text-xs text-parchment-dim">
+                {TIER_LABEL[inspecting.tier]} · {inspecting.castingTime === "A" ? "Action" : "Reaction"} ·{" "}
+                {inspecting.target} · drawn ×{inspecting.drawCount}
+              </p>
+              <p className="mt-2 font-body text-sm text-parchment">{inspecting.effectText}</p>
+            </>
+          ) : (
+            <p className="mt-1 font-body text-sm text-parchment-dim">
+              {TIER_LABEL[inspecting.tier]} · not yet drawn.
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => setInspecting(null)}
+            className="mt-3 w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
+          >
+            Close
+          </button>
+        </CardInspectModal>
       ) : null}
     </div>
   );

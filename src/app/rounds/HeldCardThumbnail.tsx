@@ -6,10 +6,11 @@ import type { DispellableEffect } from "@/lib/supabase/spellCasts";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { cardTileView, TIER_BORDER, TIER_LABEL } from "@/lib/spellCollection";
 import { CastForm, DispelForm } from "@/app/rounds/SpellCardForms";
+import { CardInspectModal } from "@/app/_components/CardInspectModal";
 
 const MAX_TILT_DEG = 16;
 
-type ArmEligibility = { kind: "dispel" | "cast"; roundId: string };
+type ArmedAction = { kind: "dispel" | "cast"; roundId: string };
 
 /**
  * The docked held-card widget (issue #266's split of the old `SpellCardPanel`
@@ -66,7 +67,7 @@ export function HeldCardThumbnail({
 
   const view = cardTileView({ name: held.cardName, tier: held.tier, drawCount: 1 });
 
-  const armEligibility: ArmEligibility | null =
+  const armedAction: ArmedAction | null =
     held.castingTime === "A" && held.effectKind === "dispel" && roundId && roundIsOpen
       ? { kind: "dispel", roundId }
       : held.castingTime === "A" && held.target !== "CARD" && roundId && roundIsOpen
@@ -111,75 +112,67 @@ export function HeldCardThumbnail({
       </button>
 
       {open ? (
-        <div
-          className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-xs rounded-lg border-4 border-gilt bg-tavern-panel p-4 shadow-[0_0_0_1px_theme(colors.gilt.dark),0_8px_24px_rgb(0_0_0_/_0.6)]"
-          >
-            <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={view.artPath} alt="" className={`h-full w-full object-cover ${view.artClassName}`} />
-            </div>
-            <p className="font-display text-sm font-semibold uppercase tracking-wide text-gilt-bright">
-              {held.cardName}
-            </p>
-            <p className="mt-0.5 font-mono text-xs text-parchment-dim">
-              {TIER_LABEL[held.tier]} · {held.castingTime === "A" ? "Action" : "Reaction"} · {held.target}
-            </p>
-            <p className="mt-2 font-body text-sm text-parchment">{held.effectText}</p>
+        <CardInspectModal onClose={() => setOpen(false)}>
+          <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={view.artPath} alt="" className={`h-full w-full object-cover ${view.artClassName}`} />
+          </div>
+          <p className="font-display text-sm font-semibold uppercase tracking-wide text-gilt-bright">
+            {held.cardName}
+          </p>
+          <p className="mt-0.5 font-mono text-xs text-parchment-dim">
+            {TIER_LABEL[held.tier]} · {held.castingTime === "A" ? "Action" : "Reaction"} · {held.target}
+          </p>
+          <p className="mt-2 font-body text-sm text-parchment">{held.effectText}</p>
 
-            {armEligibility ? (
-              armed ? (
-                <>
-                  {armEligibility.kind === "dispel" ? (
-                    dispellableEffects.length > 0 ? (
-                      <DispelForm
-                        roundId={armEligibility.roundId}
-                        cardName={held.cardName}
-                        dispellableEffects={dispellableEffects}
-                      />
-                    ) : (
-                      <p className="mt-2 font-body text-xs text-parchment-dim">Nothing eligible to end right now.</p>
-                    )
-                  ) : (
-                    <CastForm
-                      roundId={armEligibility.roundId}
-                      held={held}
-                      participants={participants}
-                      selfPlayerId={selfPlayerId}
+          {armedAction ? (
+            armed ? (
+              <>
+                {armedAction.kind === "dispel" ? (
+                  dispellableEffects.length > 0 ? (
+                    <DispelForm
+                      roundId={armedAction.roundId}
+                      cardName={held.cardName}
+                      dispellableEffects={dispellableEffects}
                     />
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setArmed(false)}
-                    className="mt-2 w-full rounded-md border-2 border-gilt-dark px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment-dim hover:bg-tavern-panel-dark"
-                  >
-                    Disarm
-                  </button>
-                </>
-              ) : (
+                  ) : (
+                    <p className="mt-2 font-body text-xs text-parchment-dim">Nothing eligible to end right now.</p>
+                  )
+                ) : (
+                  <CastForm
+                    roundId={armedAction.roundId}
+                    held={held}
+                    participants={participants}
+                    selfPlayerId={selfPlayerId}
+                  />
+                )}
                 <button
                   type="button"
-                  onClick={() => setArmed(true)}
-                  className="mt-3 w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
+                  onClick={() => setArmed(false)}
+                  className="mt-2 w-full rounded-md border-2 border-gilt-dark px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment-dim hover:bg-tavern-panel-dark"
                 >
-                  Arm
+                  Disarm
                 </button>
-              )
-            ) : null}
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setArmed(true)}
+                className="mt-3 w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright"
+              >
+                Arm
+              </button>
+            )
+          ) : null}
 
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              className="mt-3 w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
-            >
-              Close
-            </button>
-          </div>
-        </div>
+          <button
+            type="button"
+            onClick={() => setOpen(false)}
+            className="mt-3 w-full rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark"
+          >
+            Close
+          </button>
+        </CardInspectModal>
       ) : null}
     </>
   );
