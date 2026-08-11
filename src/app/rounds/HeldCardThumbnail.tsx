@@ -102,13 +102,7 @@ export function HeldCardThumbnail({
         <div className="relative aspect-[3/4] w-full overflow-hidden bg-tavern-plank-dark">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={view.artPath} alt="" className={`h-full w-full object-cover ${view.artClassName}`} />
-          <span className="absolute left-0.5 top-0.5 rounded bg-black/60 px-1 py-0.5 font-display text-[7px] uppercase tracking-widest text-gilt-bright">
-            {TIER_LABEL[held.tier]}
-          </span>
         </div>
-        <p className="truncate px-1 py-1 font-display text-[9px] uppercase tracking-wide text-parchment">
-          {held.cardName}
-        </p>
       </button>
 
       {open ? (
