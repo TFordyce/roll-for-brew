@@ -27,7 +27,12 @@ import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { getInDeckSpellCards, getMySpellCards } from "@/lib/supabase/spellCards";
-import { getDispellableActiveEffects, getMyPendingCasts, getRoomActiveEffects } from "@/lib/supabase/spellCasts";
+import {
+  type ActiveEffectBadge,
+  getDispellableActiveEffects,
+  getMyPendingCasts,
+  getRoomActiveEffects,
+} from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
@@ -159,11 +164,11 @@ export default async function TestRoomPage() {
       : [];
 
   const activeEffects = await getRoomActiveEffects(supabase, roomId);
-  const effectBadgesByPlayerId = new Map<string, ("positive" | "negative")[]>();
+  const effectBadgesByPlayerId = new Map<string, ActiveEffectBadge[]>();
   for (const effect of activeEffects) {
     if (effect.polarity === null) continue;
     const existing = effectBadgesByPlayerId.get(effect.targetPlayerId) ?? [];
-    existing.push(effect.polarity);
+    existing.push(effect);
     effectBadgesByPlayerId.set(effect.targetPlayerId, existing);
   }
 
