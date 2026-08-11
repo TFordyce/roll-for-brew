@@ -13,6 +13,41 @@ const MAX_TILT_DEG = 16;
 type ArmedAction = { kind: "dispel" | "cast"; roundId: string };
 
 /**
+ * Pointer-driven 3D tilt (`perspective` + `rotateX`/`rotateY`, springing
+ * back flat on mouseleave via the CSS transition) — shared by the collapsed
+ * thumbnail and the modal's full-size art card, each tracking its own
+ * element's bounds independently. Desktop/pointer devices only: touch
+ * devices never get `canTiltRef.current` set true, so the transform stays
+ * at rest (0,0) and there's no `deviceorientation` motion-permission flow.
+ */
+function useCardTilt() {
+  const [tilt, setTilt] = useState({ rotateX: 0, rotateY: 0 });
+  const canTiltRef = useRef(false);
+
+  useEffect(() => {
+    canTiltRef.current = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+  }, []);
+
+  function handleMouseMove(event: MouseEvent<HTMLElement>) {
+    if (!canTiltRef.current) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const dx = (event.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
+    const dy = (event.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
+    setTilt({ rotateX: -dy * MAX_TILT_DEG, rotateY: dx * MAX_TILT_DEG });
+  }
+
+  function handleMouseLeave() {
+    setTilt({ rotateX: 0, rotateY: 0 });
+  }
+
+  return {
+    style: { transform: `perspective(600px) rotateX(${tilt.rotateX}deg) rotateY(${tilt.rotateY}deg)` },
+    handleMouseMove,
+    handleMouseLeave,
+  };
+}
+
+/**
  * The docked held-card widget (issue #266's split of the old `SpellCardPanel`
  * "Your Spell Card" block): a mini card tile fixed bottom-right, tilting
  * toward the pointer, that opens a modal for the full art/text and — once
@@ -49,12 +84,8 @@ export function HeldCardThumbnail({
   const held = heldCards.find((c) => c.location === "held");
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
-  const [tilt, setTilt] = useState({ rotateX: 0, rotateY: 0 });
-  const canTiltRef = useRef(false);
-
-  useEffect(() => {
-    canTiltRef.current = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
-  }, []);
+  const thumbTilt = useCardTilt();
+  const modalTilt = useCardTilt();
 
   // A different held card (a new draw, or this one just got spent) starts
   // fresh — armed/open state from the previous card shouldn't leak forward.
@@ -74,26 +105,14 @@ export function HeldCardThumbnail({
         ? { kind: "cast", roundId }
         : null;
 
-  function handleMouseMove(event: MouseEvent<HTMLButtonElement>) {
-    if (!canTiltRef.current) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const dx = (event.clientX - (rect.left + rect.width / 2)) / (rect.width / 2);
-    const dy = (event.clientY - (rect.top + rect.height / 2)) / (rect.height / 2);
-    setTilt({ rotateX: -dy * MAX_TILT_DEG, rotateY: dx * MAX_TILT_DEG });
-  }
-
-  function handleMouseLeave() {
-    setTilt({ rotateX: 0, rotateY: 0 });
-  }
-
   return (
     <>
       <button
         type="button"
         onClick={() => setOpen(true)}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
-        style={{ transform: `perspective(600px) rotateX(${tilt.rotateX}deg) rotateY(${tilt.rotateY}deg)` }}
+        onMouseMove={thumbTilt.handleMouseMove}
+        onMouseLeave={thumbTilt.handleMouseLeave}
+        style={thumbTilt.style}
         aria-label={`View held card: ${held.cardName}`}
         className={`fixed bottom-4 right-4 z-30 w-16 overflow-hidden rounded-md border-[3px] bg-tavern-panel-dark text-left transition-transform duration-150 ease-out ${TIER_BORDER[held.tier]} ${
           armed ? "shadow-[0_0_18px_4px_rgb(212_175_55_/_0.85)]" : ""
@@ -107,7 +126,12 @@ export function HeldCardThumbnail({
 
       {open ? (
         <CardInspectModal onClose={() => setOpen(false)}>
-          <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
+          <div
+            onMouseMove={modalTilt.handleMouseMove}
+            onMouseLeave={modalTilt.handleMouseLeave}
+            style={modalTilt.style}
+            className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark transition-transform duration-150 ease-out"
+          >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={view.artPath} alt="" className={`h-full w-full object-cover ${view.artClassName}`} />
           </div>
