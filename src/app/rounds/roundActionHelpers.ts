@@ -66,7 +66,7 @@ export async function maybeDrawSpellCardAs(
  * Re-enters layer resolution once a Pending Spell Die (issue #252) has just
  * been resolved — the counterpart to submitRollAction/submitManualRollAction's
  * own resolveCompletedLayerIfAny call, needed here because
- * get_current_layer_rolls_if_complete's new gate (0068) may have left the
+ * get_current_layer_rolls_if_complete's new gate (0069) may have left the
  * round's layer-0 rolls "complete but blocked" the whole time this die was
  * outstanding. Which function re-drives it depends on whether a layer-0
  * reaction window already exists for this round:

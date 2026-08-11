@@ -13,7 +13,7 @@ import { SpellDieBothPicker } from "@/app/rounds/SpellDieBothPicker";
  * pre-roll Action cast, or 'closed', for a Reaction cast made mid-window) —
  * unlike SpellDrawChoicePanel, there's no Spell Draw Window-style gate here:
  * the round's own layer-0 resolution is already blocked on this being
- * resolved (get_current_layer_rolls_if_complete's gate, migration 0068), so
+ * resolved (get_current_layer_rolls_if_complete's gate, migration 0069), so
  * showing the prompt as soon as it exists is the whole point.
  */
 export function PendingSpellDiePanel({

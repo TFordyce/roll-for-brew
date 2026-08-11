@@ -135,7 +135,7 @@ export async function getCompletedLayerRollsForStallResolution(
 }
 
 /**
- * Calls the resolve_stalled_pending_spell_dice RPC (0068, issue #252):
+ * Calls the resolve_stalled_pending_spell_dice RPC (0069, issue #252):
  * auto-resolves every still-unresolved dice_modifier spell cast for the
  * round (Cold Tea/Slipped Spoon's pre-roll casts — a Reaction-timed one
  * like Six Sugars is already covered by the reaction window's own recovery)

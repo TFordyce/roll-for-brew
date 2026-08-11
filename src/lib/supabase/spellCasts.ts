@@ -283,7 +283,7 @@ export async function endActiveEffect(
 }
 
 /**
- * Calls the get_my_pending_spell_dice RPC (0068, issue #252): the caller's
+ * Calls the get_my_pending_spell_dice RPC (0069, issue #252): the caller's
  * own dice_modifier casts for this round still awaiting a value — drives
  * PendingSpellDiePanel.tsx, the same "own outstanding thing to resolve"
  * shape as getMyPendingCasts above (a deferred OPPONENT/PLAYER target)
@@ -339,7 +339,7 @@ export async function resolvePendingSpellDieManual(
 }
 
 /**
- * Calls round_layer_zero_reaction_window_exists (0068): whether resolving
+ * Calls round_layer_zero_reaction_window_exists (0069): whether resolving
  * this round's last pending spell die should re-enter the flow via
  * finalizeReactionWindow (a layer-0 window already exists, open or closed-
  * but-blocked) or resolveCompletedLayerIfAny (no window yet — a pre-roll

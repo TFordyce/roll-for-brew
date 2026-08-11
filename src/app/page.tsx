@@ -146,7 +146,7 @@ export default async function HomePage() {
   // Pending Spell Die (issue #252): unlike the Spell Draw Window above, this
   // has no resolved/cancelled gate — the round's own layer-0 resolution is
   // already blocked on it (get_current_layer_rolls_if_complete's gate,
-  // migration 0068), so it's shown the moment it exists, for either an
+  // migration 0069), so it's shown the moment it exists, for either an
   // 'open' round (a pre-roll Action cast, e.g. Cold Tea) or a 'closed' one
   // (a Reaction cast made mid-window, e.g. Slipped Spoon). spellDieRollInputMode
   // is fetched independently of rollInputMode below, which stays scoped to

@@ -19,7 +19,7 @@ import {
 // of a compound cast now compose into get_round_modifier_effects.
 //
 // Both cards' caster-facing half is a dice_modifier (1d4), which since
-// issue #252 (migration 0068) casts with resolved_value left null until the
+// issue #252 (migration 0069) casts with resolved_value left null until the
 // caster resolves it via resolve_pending_spell_die_in_app — these tests call
 // that immediately after casting so the rest of each assertion (the
 // non-dice half, and the resolved die's 1-4 range) is unaffected.

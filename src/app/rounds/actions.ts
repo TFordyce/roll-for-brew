@@ -230,7 +230,7 @@ export async function submitManualRollAction(formData: FormData) {
  * Resolves a Pending Spell Die (issue #252) with the app's own
  * server-generated roll — the dice_modifier counterpart to submitRollAction.
  * afterPendingSpellDieResolved re-enters layer resolution afterward, since
- * get_current_layer_rolls_if_complete's gate (0068) may have been blocking
+ * get_current_layer_rolls_if_complete's gate (0069) may have been blocking
  * on exactly this cast the whole time it sat pending.
  */
 export async function resolvePendingSpellDieInAppAction(formData: FormData) {

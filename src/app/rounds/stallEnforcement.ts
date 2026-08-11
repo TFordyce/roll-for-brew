@@ -80,7 +80,7 @@ export async function enforceStallTimeout(
 
   if (stalledPlayerIds.length === 0) {
     // Every expected roller has rolled, yet get_current_layer_rolls_if_complete
-    // (migration 0068) still won't treat layer 0 as complete when a Pending
+    // (migration 0069) still won't treat layer 0 as complete when a Pending
     // Spell Die is outstanding — the exclude-a-non-roller logic below has
     // nothing to do here, so this is the recovery path for that shape
     // instead (see this function's own doc comment above).

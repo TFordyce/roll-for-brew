@@ -18,7 +18,7 @@ import {
 // does (the modifier bucket doesn't distinguish how a cast was made).
 //
 // Six Sugars' dice_modifier casts with resolved_value left null until the
-// caster resolves it (issue #252, migration 0068) — resolved here via
+// caster resolves it (issue #252, migration 0069) — resolved here via
 // resolve_pending_spell_die_in_app immediately after casting, same as the
 // compound-card tests (spell-cards-compound.test.ts).
 describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers (issue #70)", () => {
