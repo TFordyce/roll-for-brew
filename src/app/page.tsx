@@ -5,13 +5,24 @@ import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
 import { canAccessTestRoom } from "@/lib/game/testRoomAccess";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
-import { getActiveRound, getRoundLayerParticipants, getRoundParticipants } from "@/lib/supabase/rounds";
+import {
+  getActiveRound,
+  getRoundLayerParticipants,
+  getRoundParticipants,
+  roundHasAnyRolls,
+} from "@/lib/supabase/rounds";
 import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { getMyMostRecentOrder, getMyOrderableRound, getMyOrderForRound } from "@/lib/supabase/orders";
 import { getRoundMenu } from "@/lib/supabase/menu";
 import { isExpectedLayerRoller } from "@/lib/supabase/stall";
-import { closeRoundAction, declareInAction, startRoundAction, withdrawDeclarationAction } from "@/app/rounds/actions";
+import {
+  closeRoundAction,
+  declareInAction,
+  declareInLateAction,
+  startRoundAction,
+  withdrawDeclarationAction,
+} from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
 import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
@@ -72,6 +83,17 @@ export default async function HomePage() {
   const hasDeclared = participants.some((p) => p.playerId === playerId);
   const isStarter = activeRound?.startedBy === playerId;
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
+
+  // Late Declare (issue #246): "Add me in!" only ever needs to render for a
+  // closed round the caller hasn't already joined — declare_in_late's own
+  // window (no roll yet for this round) is checked here too, so the button
+  // never renders for a state where the RPC would just reject it. Skips the
+  // extra roundHasAnyRolls round-trip entirely once either of those is
+  // already false.
+  const canDeclareLate =
+    activeRound?.status === "closed" &&
+    !hasDeclared &&
+    !(await roundHasAnyRolls(supabase, activeRound.id));
 
   // Order (issue #226, part of #223): decoupled from declare-in, so this is
   // independent of hasDeclared above. orderRoundId falls back to
@@ -262,6 +284,20 @@ export default async function HomePage() {
                   modifier: modifierByPlayerId.get(entry.playerId) ?? 0,
                 }))}
               />
+
+              {/* Late Declare (issue #246): same "I'm in" button/placement
+                  as the open-round path below, reused here for the window
+                  between close_round and the round's first roll. Not shown
+                  once it would just error (canDeclareLate already checks
+                  both hasDeclared and roundHasAnyRolls). */}
+              {canDeclareLate ? (
+                <form action={declareInLateAction} className="mt-4">
+                  <input type="hidden" name="roundId" value={activeRound.id} />
+                  <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
+                    Add me in!
+                  </SubmitButton>
+                </form>
+              ) : null}
             </div>
           ) : (
             <div>

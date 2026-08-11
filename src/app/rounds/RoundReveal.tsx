@@ -229,6 +229,14 @@ export function RoundReveal({
     },
     "layer-tied": () => router.refresh(),
     "round-cancelled": () => router.refresh(),
+    // Issue #246 (Late Declare): unlike ordinary declare-in, which only ever
+    // happens while RoundOpenLive (not this component) is mounted, a Late
+    // Declare adds a participant *after* the round has closed — the phase
+    // this component owns. Without this, only the actor's own device (via
+    // its server action's revalidation) would ever see the new roster;
+    // everyone else's closed-round view would stay stale until their next
+    // unrelated refresh.
+    "player-declared-in": () => router.refresh(),
     // Issue #245: this component is the only thing mounted for the round's
     // closed/reveal/tie phase ahead of a reaction window ever opening — the
     // banner itself (ReactionBanner.tsx, rendered by page.tsx only once the

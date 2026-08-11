@@ -88,7 +88,10 @@ export async function maybeDrawSpellCardAs(
  * close_round already closed between render and submit is the same race,
  * one phase earlier than RFB01. submit_roll_as/submit_manual_roll_as
  * (0029_admin_roll_as.sql) reuse the same RFB01/RFB02 codes for the admin
- * "roll for others" actions, so this check covers them too.
+ * "roll for others" actions, so this check covers them too. RFB31
+ * (supabase/migrations/0068_declare_in_late.sql, issue #246) extends it
+ * once more to declareInLateAction: a Late Declare racing against the
+ * round's first roll landing is the same race, one phase later than RFB05.
  */
 export function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
@@ -97,7 +100,8 @@ export function isStaleRoundError(error: unknown): boolean {
     code === "RFB02" ||
     code === "RFB03" ||
     code === "RFB04" ||
-    code === "RFB05"
+    code === "RFB05" ||
+    code === "RFB31"
   );
 }
 

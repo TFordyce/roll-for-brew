@@ -47,6 +47,33 @@ export async function declareIn(supabase: SupabaseClient, roundId: string): Prom
 }
 
 /**
+ * Calls the declare_in_late RPC (supabase/migrations/0068_declare_in_late.sql,
+ * issue #246 — the "Late Declare" glossary entry). Declares the caller in
+ * for a round that's already closed but hasn't rolled yet; idempotent on
+ * repeat calls, same as declareIn. Raises RFB31 (isStaleRoundError) if a
+ * roll lands before this actually runs.
+ */
+export async function declareInLate(supabase: SupabaseClient, roundId: string): Promise<void> {
+  const { error } = await supabase.rpc("declare_in_late", { p_round_id: roundId });
+  if (error) throw error;
+}
+
+/**
+ * Calls the round_has_any_rolls RPC (supabase/migrations/0068_declare_in_late.sql)
+ * — whether any layer of this round has a roll yet, regardless of whose.
+ * Used to gate the "Add me in!" (Late Declare) button: once true, the round
+ * is past declare_in_late's window and the button should stop rendering.
+ * Needs its own security-definer check rather than a plain rolls count — a
+ * player who hasn't declared in yet has no rolls of their own to read under
+ * RLS (0005_rolls_and_resolution.sql).
+ */
+export async function roundHasAnyRolls(supabase: SupabaseClient, roundId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc("round_has_any_rolls", { p_round_id: roundId });
+  if (error) throw error;
+  return data as boolean;
+}
+
+/**
  * Calls the withdraw_declaration RPC (supabase/migrations/
  * 0043_withdraw_declaration.sql) — undoes an accidental "I'm in" while the
  * round is still open. The starter can't withdraw this way; their

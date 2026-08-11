@@ -1,7 +1,14 @@
 "use server";
 
 import { createClient } from "@/lib/supabase/server";
-import { closeRound, declareIn, getRoundRoomId, startRound, withdrawDeclaration } from "@/lib/supabase/rounds";
+import {
+  closeRound,
+  declareIn,
+  declareInLate,
+  getRoundRoomId,
+  startRound,
+  withdrawDeclaration,
+} from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import {
@@ -87,6 +94,37 @@ export async function declareInAction(formData: FormData) {
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+}
+
+/**
+ * Declares the caller in after the round has already closed (issue #246,
+ * the "Late Declare" glossary entry, CONTEXT.md) — only valid up to the
+ * round's first submitted roll (declare_in_late, 0068). Broadcasts both
+ * player-declared-in, same as declareInAction, so the closed-round view
+ * (RoundReveal) picks up the new participant, and spell-cast-changed, so any
+ * still-deferred (null-target) Action-card cast becomes targetable at them
+ * without a manual reload.
+ */
+export async function declareInLateAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("declareInLateAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await declareInLate(supabase, roundId);
+  } catch (error) {
+    if (!isStaleRoundError(error)) throw error;
+    revalidateRoundSurfaces();
+    return;
+  }
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
+  await broadcastSpellCastChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
 }
