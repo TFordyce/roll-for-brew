@@ -79,10 +79,13 @@ export function RoundMenu({
         onClick={() => setOpen((wasOpen) => !wasOpen)}
         aria-label={open ? "Close Menu" : "Open Menu"}
         aria-expanded={open}
-        className={`fixed right-0 top-[190px] z-[55] flex flex-col items-center gap-1 rounded border-2 border-gilt bg-parchment px-2.5 py-2.5 font-display text-[10px] uppercase leading-tight tracking-wider text-tavern-panel shadow-lg transition-transform duration-300 ease-out ${
+        className={`fixed right-0 top-[210px] z-[55] flex flex-col items-center gap-1 rounded border-2 border-gilt bg-parchment px-2.5 py-2.5 font-display text-[10px] uppercase leading-tight tracking-wider text-tavern-panel shadow-lg transition-transform duration-300 ease-out ${
           open ? "translate-x-[140%] rotate-[4deg]" : "translate-x-0 rotate-[4deg] hover:-translate-x-1"
         }`}
       >
+        {/* "Menu" is a single word, so unlike "Rate\nBrew" it can't literally
+            span two lines — kept single-line rather than forcing an
+            arbitrary break, same font/case treatment as Rate Brew's label. */}
         <span>Menu</span>
       </button>
 
@@ -91,7 +94,7 @@ export function RoundMenu({
         aria-label="Menu"
         aria-hidden={!open}
         onClick={handleBackgroundClick}
-        className={`fixed right-4 top-[190px] z-50 w-64 rounded border-2 border-gilt-dark bg-parchment text-tavern-panel shadow-2xl transition-all duration-300 ease-out ${
+        className={`fixed right-4 top-[210px] z-50 w-64 rounded border-2 border-gilt-dark bg-parchment text-tavern-panel shadow-2xl transition-all duration-300 ease-out ${
           open ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-[140%] opacity-0"
         }`}
       >
