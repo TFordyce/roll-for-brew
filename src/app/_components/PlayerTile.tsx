@@ -4,6 +4,7 @@ import { formatModifier } from "@/lib/game/rollCalculation";
 import { firstNameOrFallback } from "@/lib/game/displayName";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
+import { EffectBadgePopover } from "@/app/_components/EffectBadgePopover";
 
 /**
  * A single player's tile — avatar, name, modifier — inside its own small
@@ -26,6 +27,9 @@ import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
  * `roomId`, when passed alongside `playerId`, additionally makes the
  * modifier number itself a tap/click target opening the modifier breakdown
  * popover (issue #184).
+ * Each effect badge dot is itself a tap/click target opening a popover with
+ * that effect's card name, tier, and rounds remaining (issue #249) — see
+ * `EffectBadgePopover`.
  */
 export function PlayerTile({
   displayName,
@@ -47,7 +51,7 @@ export function PlayerTile({
   joined?: boolean;
   isStarter?: boolean;
   isTest?: boolean;
-  effectBadges?: Exclude<ActiveEffectBadge["polarity"], null>[];
+  effectBadges?: ActiveEffectBadge[];
   revealedRoll?: number | null;
   playerId?: string;
   roomId?: string;
@@ -100,13 +104,8 @@ export function PlayerTile({
       {revealedRoll !== null ? <RollCalculation roll={revealedRoll} modifier={modifier} /> : null}
       {effectBadges.length > 0 ? (
         <div className="flex flex-wrap justify-center gap-1" aria-label="active effects">
-          {effectBadges.map((polarity, index) => (
-            <span
-              key={index}
-              className={`h-2.5 w-2.5 rounded-full ${
-                polarity === "negative" ? "bg-red-600" : "bg-gilt-bright"
-              }`}
-            />
+          {effectBadges.map((effect) => (
+            <EffectBadgePopover key={effect.effectId} effect={effect} />
           ))}
         </div>
       ) : null}
