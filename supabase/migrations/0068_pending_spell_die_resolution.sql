@@ -389,8 +389,10 @@ grant execute on function public.cast_spell_card(uuid, text, text[], integer) to
 
 -- Same "leave dice_modifier's resolved_value null" change as cast_spell_card
 -- above, applied to cast_reaction_spell_card's own CASTER/TARGET-role branch
--- (Slipped Spoon's 1d4 today). Its TABLE/ALL_OTHER_PLAYERS dice_modifier fan-
--- out branch is left eagerly-resolving, same rationale as cast_spell_card's.
+-- (Six Sugars' 1d6 today — the catalog's only Reaction-timed dice_modifier
+-- card; Cold Tea/Slipped Spoon are both Action-timed and go through
+-- cast_spell_card above instead). Its TABLE/ALL_OTHER_PLAYERS dice_modifier
+-- fan-out branch is left eagerly-resolving, same rationale as cast_spell_card's.
 create or replace function public.cast_reaction_spell_card(
   p_round_id uuid, p_target_player_id text default null, p_target_cast_id uuid default null
 )
@@ -549,7 +551,7 @@ begin
       v_row_target := case when v_effect.target_role = 'CASTER' then v_player_id else v_final_target end;
     end if;
 
-    -- dice_modifier (CASTER/TARGET role, e.g. Slipped Spoon's 1d4) is left
+    -- dice_modifier (CASTER/TARGET role, e.g. Six Sugars' 1d6) is left
     -- resolved_value = null here (issue #252) — resolved afterward via
     -- resolve_pending_spell_die_in_app/_manual below.
     v_resolved_value := null;
@@ -604,12 +606,23 @@ grant execute on function public.cast_reaction_spell_card(uuid, text, uuid) to a
 -- (resolved_value is null) — resolving the layer with that effect silently
 -- worth 0 would be wrong, not just incomplete. Scoped to layer 0 only, since
 -- spell effects never reach a tie-break reroll layer (Layer's own glossary
--- entry, CONTEXT.md). No new stall-timeout is added for this (issue #252's
--- explicit scope) — a pending pre-roll cast (Cold Tea) simply waits for its
--- caster with no expiry, same as a Pending Spell Draw; a pending reaction
--- cast (Slipped Spoon) rides the existing reaction-window machinery once
--- resolved (see resolve_pending_spell_die_in_app/_manual below and
--- src/app/rounds/actions.ts's afterPendingSpellDieResolved).
+-- entry, CONTEXT.md).
+--
+-- No *new* timeout mechanism is added for this (issue #252's explicit
+-- scope) — but this gate does mean the existing lazy stall-timeout check
+-- (enforceStallTimeout, src/app/rounds/stallEnforcement.ts, issue #21/#155)
+-- needs to reach a case it never had to before: every expected roller has
+-- already rolled (nothing for its usual exclude-the-non-roller logic to
+-- do), yet the layer still can't resolve because a caster hasn't submitted
+-- their pending die (Cold Tea/Slipped Spoon, cast pre-roll via
+-- cast_spell_card) — a Reaction-cast pending die (Six Sugars, cast via
+-- cast_reaction_spell_card) is fine as-is, since it's still gated behind
+-- the reaction window's own existing stall recovery. resolve_stalled_
+-- pending_spell_dice below is that same existing 5-minute-closed-round
+-- timer's new branch, not a separate clock: it auto-resolves any
+-- dice_modifier cast still pending once that timer has already fired, the
+-- same "trust the caller's already-checked timing, do the state change"
+-- shape exclude_round_participant (0009) already uses.
 create or replace function public.get_current_layer_rolls_if_complete(p_round_id uuid)
 returns table (layer integer, player_id text, value integer, modifier_snapshot integer, discarded_value integer)
 language plpgsql
@@ -767,7 +780,10 @@ begin
     raise exception 'resolve_pending_spell_die_in_app: cast not found';
   end if;
 
-  v_player_id := public.current_player_id();
+  -- Threaded through v_row.round_id (not a bare current_player_id() call)
+  -- so an admin Acting As a Test Player (CONTEXT.md) resolves the die as
+  -- that player, matching every other RPC in this migration.
+  v_player_id := public.current_player_id(v_row.round_id);
 
   if v_row.target_player_id <> v_player_id then
     raise exception 'resolve_pending_spell_die_in_app: only the affected player can resolve this die';
@@ -814,7 +830,10 @@ begin
     raise exception 'resolve_pending_spell_die_manual: cast not found';
   end if;
 
-  v_player_id := public.current_player_id();
+  -- Threaded through v_row.round_id (not a bare current_player_id() call)
+  -- so an admin Acting As a Test Player (CONTEXT.md) resolves the die as
+  -- that player, matching every other RPC in this migration.
+  v_player_id := public.current_player_id(v_row.round_id);
 
   if v_row.target_player_id <> v_player_id then
     raise exception 'resolve_pending_spell_die_manual: only the affected player can resolve this die';
@@ -863,3 +882,57 @@ $$;
 
 revoke execute on function public.round_layer_zero_reaction_window_exists(uuid) from public, anon;
 grant execute on function public.round_layer_zero_reaction_window_exists(uuid) to authenticated;
+
+-- resolve_stalled_pending_spell_dice: the stall-timeout recovery path for a
+-- pending spell die that would otherwise block layer 0 forever (issue #252)
+-- — see the get_current_layer_rolls_if_complete comment above for why this
+-- is needed and why it's the *existing* 5-minute-closed-round stall timer's
+-- own new branch rather than a separate mechanism. Auto-resolves every
+-- still-pending dice_modifier cast for the round with an in-app-style roll,
+-- exactly like resolve_pending_spell_die_in_app's own random() + sign math,
+-- since a stalled caster's preferred input mode is no longer knowable/
+-- relevant once the timer has fired. Grantable to any authenticated caller
+-- (not just the affected player) and does no timing check of its own — same
+-- "trust the caller's already-verified elapsed time" posture as
+-- exclude_round_participant (0009), called only from enforceStallTimeout
+-- (src/app/rounds/stallEnforcement.ts) after its own hasStalled check
+-- already passed. Returns the number of casts it resolved, so the caller
+-- can tell whether there was anything to recover.
+create function public.resolve_stalled_pending_spell_dice(p_round_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cast record;
+  v_dice_count integer;
+  v_dice_sides integer;
+  v_dice_sign integer;
+  v_roll_total integer;
+  v_resolved_count integer := 0;
+begin
+  for v_cast in
+    select id, effect_params from public.spell_casts
+     where round_id = p_round_id and effect_kind = 'dice_modifier' and resolved_value is null
+       for update
+  loop
+    v_dice_count := (regexp_match(v_cast.effect_params ->> 'dice', '^(\d+)d(\d+)$'))[1]::integer;
+    v_dice_sides := (regexp_match(v_cast.effect_params ->> 'dice', '^(\d+)d(\d+)$'))[2]::integer;
+    v_dice_sign := coalesce((v_cast.effect_params ->> 'sign')::integer, 1);
+
+    v_roll_total := 0;
+    for i in 1..v_dice_count loop
+      v_roll_total := v_roll_total + floor(random() * v_dice_sides + 1)::integer;
+    end loop;
+
+    update public.spell_casts set resolved_value = v_roll_total * v_dice_sign where id = v_cast.id;
+    v_resolved_count := v_resolved_count + 1;
+  end loop;
+
+  return v_resolved_count;
+end;
+$$;
+
+revoke execute on function public.resolve_stalled_pending_spell_dice(uuid) from public, anon;
+grant execute on function public.resolve_stalled_pending_spell_dice(uuid) to authenticated;

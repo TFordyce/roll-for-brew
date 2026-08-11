@@ -8,6 +8,7 @@ import {
   getCurrentLayerRollerIds,
   getExpectedLayerRollerIds,
   getLayerEnteredAt,
+  resolveStalledPendingSpellDice,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
 import { applyLayerOutcome } from "@/app/rounds/layerResolution";
@@ -15,7 +16,8 @@ import { applyLayerOutcome } from "@/app/rounds/layerResolution";
 export type StallOutcome =
   | { action: "none" }
   | { action: "cancelled" }
-  | { action: "excluded"; playerIds: string[] };
+  | { action: "excluded"; playerIds: string[] }
+  | { action: "diceAutoResolved" };
 
 /**
  * Lazy check-on-read stall-timeout enforcement (issue #21): called from
@@ -25,13 +27,26 @@ export type StallOutcome =
  * injectable so tests can simulate ~5 minutes elapsing without sleeping it
  * out for real.
  *
- * Three stall points, one per round phase:
+ * Four stall points, one per round phase:
  *  - status 'open': the starter never closed declarations -> cancel.
  *  - status 'closed', layer 0: a declared player never rolled -> exclude
  *    them and let the remaining participants' resolution proceed.
  *  - status 'closed', layer > 0: a tied player never submitted their
  *    reroll -> exclude them from that layer and let the remaining tied
  *    players' resolution proceed.
+ *  - status 'closed', layer 0, every expected roller already rolled but a
+ *    Pending Spell Die (issue #252, e.g. Cold Tea/Slipped Spoon's caster)
+ *    is still unresolved -> auto-resolve it and let resolution proceed. Not
+ *    a fourth independent clock — it's this same 5-minute-since-closed
+ *    timer catching a stall shape the "did they roll" check above can't see
+ *    (the caster already rolled; they just never gave their die a value).
+ *    In practice this is the recovery path for a *pre-roll* pending die
+ *    (Cold Tea/Slipped Spoon) — a Reaction-timed one (Six Sugars) is usually
+ *    already resolved by the time its still-open reaction window would
+ *    otherwise leave this same query blocked, but resolving it here too if
+ *    it somehow isn't is harmless: applyLayerOutcome below is exactly what
+ *    the ordinary (non-stalled) reaction-window-closes path already calls
+ *    too, just via finalizeReactionWindow instead of directly.
  * Any exclusion that drops the layer's active (non-excluded) participant
  * count below 2 cancels the round outright instead of resolving it.
  */
@@ -63,7 +78,24 @@ export async function enforceStallTimeout(
   const rolledPlayerIds = await getCurrentLayerRollerIds(supabase, roundId);
   const stalledPlayerIds = [...expectedPlayerIds].filter((playerId) => !rolledPlayerIds.has(playerId));
 
-  if (stalledPlayerIds.length === 0) return { action: "none" };
+  if (stalledPlayerIds.length === 0) {
+    // Every expected roller has rolled, yet get_current_layer_rolls_if_complete
+    // (migration 0068) still won't treat layer 0 as complete when a Pending
+    // Spell Die is outstanding — the exclude-a-non-roller logic below has
+    // nothing to do here, so this is the recovery path for that shape
+    // instead (see this function's own doc comment above).
+    if (layer === 0) {
+      const resolvedCount = await resolveStalledPendingSpellDice(supabase, roundId);
+      if (resolvedCount > 0) {
+        const completedLayer = await getCompletedLayerRollsForStallResolution(supabase, roundId);
+        if (completedLayer) {
+          await applyLayerOutcome(supabase, roundId, completedLayer);
+        }
+        return { action: "diceAutoResolved" };
+      }
+    }
+    return { action: "none" };
+  }
 
   for (const playerId of stalledPlayerIds) {
     await excludeRoundParticipant(supabase, roundId, playerId, layer);
