@@ -1,13 +1,7 @@
 "use client";
 
 import type { SpellCollectionCard as SpellCollectionCardData } from "@/lib/supabase/spellCards";
-import { cardTileView, TIER_LABEL, type Tier } from "@/lib/spellCollection";
-
-const TIER_BORDER: Record<Tier, string> = {
-  common: "border-gilt-dark",
-  rare: "border-gilt",
-  epic: "border-ember-bright shadow-[0_0_16px_rgb(179_84_63_/_0.55)]",
-};
+import { cardTileView, TIER_BORDER, TIER_LABEL } from "@/lib/spellCollection";
 
 /**
  * One grid tile — discovered cards show full-color art, name, tier badge,

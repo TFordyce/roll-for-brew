@@ -33,6 +33,7 @@ import { RoundMenu } from "@/app/rounds/RoundMenu";
 import { MenuLive } from "@/app/rounds/MenuLive";
 import { TieBanner } from "@/app/rounds/TieBanner";
 import { SpellCardPanel } from "@/app/rounds/SpellCardPanel";
+import { HeldCardThumbnail } from "@/app/rounds/HeldCardThumbnail";
 import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { PendingSpellDiePanel } from "@/app/rounds/PendingSpellDiePanel";
@@ -272,13 +273,19 @@ export default async function HomePage() {
       <SpellCardPanel
         heldCards={heldSpellCards}
         pendingCasts={pendingSpellCasts}
-        dispellableEffects={dispellableEffects}
         roundId={activeRound?.id ?? null}
-        roundIsOpen={activeRound?.status === "open"}
         roundIsClosed={activeRound?.status === "closed"}
         participants={participants}
         selfPlayerId={playerId}
         roomId={roomId}
+      />
+      <HeldCardThumbnail
+        heldCards={heldSpellCards}
+        dispellableEffects={dispellableEffects}
+        roundId={activeRound?.id ?? null}
+        roundIsOpen={activeRound?.status === "open"}
+        participants={participants}
+        selfPlayerId={playerId}
       />
 
       {activeRound ? (

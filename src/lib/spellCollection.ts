@@ -19,8 +19,20 @@ export const TIER_LABEL: Record<Tier, string> = {
   epic: "Epic",
 };
 
+/**
+ * Tier-border treatment for a mini-card tile (grid tiles and the held-card
+ * thumbnail, issue #266) — hoisted out of `SpellCollectionCard` so both
+ * consumers share one source of truth instead of duplicating the tier→class
+ * mapping.
+ */
+export const TIER_BORDER: Record<Tier, string> = {
+  common: "border-gilt-dark",
+  rare: "border-gilt",
+  epic: "border-ember-bright shadow-[0_0_16px_rgb(179_84_63_/_0.55)]",
+};
+
 /** A card counts as discovered once it's been drawn at least once (#133: no separate boolean column). */
-export function isDiscovered(card: SpellCollectionCard): boolean {
+export function isDiscovered(card: { drawCount: number }): boolean {
   return card.drawCount > 0;
 }
 
@@ -43,11 +55,19 @@ export type CardTileView = {
 };
 
 /**
+ * The minimal shape `cardTileView` needs — narrower than the full
+ * `SpellCollectionCard` so the held-card thumbnail (issue #266), which has
+ * no `drawCount` of its own (a held card is inherently discovered), can
+ * build a compatible view-model input without a fake catalog row.
+ */
+export type CardTileInput = Pick<SpellCollectionCard, "name" | "tier" | "drawCount">;
+
+/**
  * The discovered/undiscovered rendering decisions a grid tile makes (art
  * dimming, badge visibility) — extracted so those decisions are
  * unit-testable independent of JSX (issue #134 acceptance criteria).
  */
-export function cardTileView(card: SpellCollectionCard): CardTileView {
+export function cardTileView(card: CardTileInput): CardTileView {
   const discovered = isDiscovered(card);
   return {
     discovered,
