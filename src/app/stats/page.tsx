@@ -251,7 +251,11 @@ export default async function StatsPage({
                   />
                   <p className="pl-10 text-xs text-parchment-dim">
                     Brewer: {round.brewerDisplayName ?? round.brewerEmail}
-                    {round.hasProxyRoll ? (
+                    {round.backfilled ? (
+                      <span className="ml-2 inline-flex items-center rounded-full border border-ember-bright bg-ember/25 px-2 py-0.5 font-display text-[10px] uppercase tracking-widest text-parchment">
+                        Backfilled
+                      </span>
+                    ) : round.hasProxyRoll ? (
                       <span
                         className="ml-2 rounded-sm border border-gilt-dark px-1 font-display text-[9px] uppercase tracking-widest text-parchment-dim"
                         title="At least one roll in this round was entered by an admin on a player's behalf"
