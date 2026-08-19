@@ -249,3 +249,33 @@ $$;
 
 revoke execute on function public.get_round_layer_history(uuid) from public, anon;
 grant execute on function public.get_round_layer_history(uuid) to authenticated;
+
+-- Surfaces the same provenance flag on the stats surface (issue #273's
+-- "flagged in round history and stats" behaviour) — stats_room_rounds
+-- (0025_stats_exclude_test_room.sql) is the only stats view listing
+-- individual rounds, so a room's Proxy-Roll-touched rounds get a plain
+-- boolean rather than duplicating rolls.entered_by_admin per-player through
+-- a view that otherwise never names individual rolls at all.
+create or replace view public.stats_room_rounds as
+select
+  r.room_id,
+  r.id as round_id,
+  r.resolved_at,
+  r.cups_made,
+  starter.id as starter_id,
+  starter.display_name as starter_display_name,
+  starter.email as starter_email,
+  brewer.id as brewer_id,
+  brewer.display_name as brewer_display_name,
+  brewer.email as brewer_email,
+  exists (
+    select 1 from public.rolls pr where pr.round_id = r.id and pr.entered_by_admin
+  ) as has_proxy_roll
+from public.rounds r
+join public.rooms ro on ro.id = r.room_id
+join public.players starter on starter.id = r.started_by
+join public.players brewer on brewer.id = r.brewer_id
+where r.status = 'resolved' and not ro.is_test
+order by r.resolved_at desc;
+
+alter view public.stats_room_rounds set (security_invoker = on);

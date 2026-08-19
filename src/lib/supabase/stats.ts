@@ -42,6 +42,10 @@ export type RoomRoundEntry = {
   brewerId: string;
   brewerDisplayName: string | null;
   brewerEmail: string;
+  // Whether any of this round's rolls was admin-entered (issue #273's Proxy
+  // Roll) — stats_room_rounds' own provenance flag, distinct from any
+  // player-level detail, since this view never names individual rolls.
+  hasProxyRoll: boolean;
 };
 
 export type RoomAdjustmentEntry = {
@@ -226,7 +230,7 @@ export async function getRoomRounds(
   const { data, error } = await supabase
     .from("stats_room_rounds")
     .select(
-      "round_id, resolved_at, cups_made, starter_id, starter_display_name, starter_email, brewer_id, brewer_display_name, brewer_email",
+      "round_id, resolved_at, cups_made, starter_id, starter_display_name, starter_email, brewer_id, brewer_display_name, brewer_email, has_proxy_roll",
     )
     .eq("room_id", roomId)
     .order("resolved_at", { ascending: false });
@@ -243,6 +247,7 @@ export async function getRoomRounds(
     brewerId: row.brewer_id as string,
     brewerDisplayName: row.brewer_display_name as string | null,
     brewerEmail: row.brewer_email as string,
+    hasProxyRoll: row.has_proxy_roll as boolean,
   }));
 }
 
