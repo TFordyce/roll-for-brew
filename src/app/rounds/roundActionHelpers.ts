@@ -124,6 +124,10 @@ export async function afterPendingSpellDieResolved(
  * (supabase/migrations/0068_declare_in_late.sql, issue #246) extends it
  * once more to declareInLateAction: a Late Declare racing against the
  * round's first roll landing is the same race, one phase later than RFB05.
+ * RFB32 (supabase/migrations/0071_admin_proxy_roll.sql, issue #273) extends
+ * it once more to adminProxyRollAction: a Proxy Roll racing against the
+ * round's first roll landing is the exact same race as RFB31, just for an
+ * admin entering the roll rather than the player declaring in.
  */
 export function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
@@ -133,7 +137,8 @@ export function isStaleRoundError(error: unknown): boolean {
     code === "RFB03" ||
     code === "RFB04" ||
     code === "RFB05" ||
-    code === "RFB31"
+    code === "RFB31" ||
+    code === "RFB32"
   );
 }
 

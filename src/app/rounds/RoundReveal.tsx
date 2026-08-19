@@ -259,6 +259,10 @@ export function RoundReveal({
 
   const revealedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.value]) ?? []);
   const discardedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.discardedValue]) ?? []);
+  // Issue #273's Proxy Roll provenance flag — carried on every rolls
+  // broadcast now (layer-rolls-revealed/round-revealed), same map shape as
+  // discardedValueByPlayerId above.
+  const enteredByAdminByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.enteredByAdmin]) ?? []);
   const brewer = participants.find((p) => p.playerId === brewerId);
   const displayNameByPlayerId = new Map(participants.map((p) => [p.playerId, p.displayName ?? p.email]));
   const casterName = (playerId: string) => displayNameByPlayerId.get(playerId) ?? playerId;
@@ -292,6 +296,7 @@ export function RoundReveal({
             // window there's no discarded-roll data yet, so it's just
             // withheld until the real broadcast corrects it moments later.
             const discardedValue = discardedValueByPlayerId.get(p.playerId) ?? null;
+            const enteredByAdmin = enteredByAdminByPlayerId.get(p.playerId) ?? false;
             const isBrewer = brewerId === p.playerId;
             const effectsForPlayer = effectDetails.filter((d) => d.targetPlayerId === p.playerId);
             // p.modifier is the player's persistent room modifier, not the
@@ -316,6 +321,14 @@ export function RoundReveal({
                     <span className="font-body text-sm text-parchment" title={p.displayName ?? p.email}>
                       {firstNameOrFallback(p.displayName, p.email)}
                     </span>
+                    {enteredByAdmin ? (
+                      <span
+                        className="w-fit rounded-sm border border-gilt-dark px-1 font-display text-[9px] uppercase tracking-widest text-parchment-dim"
+                        title="Entered by an admin on this player's behalf"
+                      >
+                        Proxy
+                      </span>
+                    ) : null}
                     {value !== null ? (
                       <RollCalculation
                         roll={value}

@@ -61,6 +61,12 @@ export function SignOutBadge({ name, showAdminMenu = false }: { name: string; sh
           >
             Allocate Cards
           </Link>
+          <Link
+            href="/admin/proxy-roll"
+            className="rounded-md px-3 py-1.5 text-right font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember/40"
+          >
+            Proxy Roll
+          </Link>
           <form
             action="/auth/signout"
             method="post"

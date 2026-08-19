@@ -134,7 +134,12 @@ export async function applyLayerOutcome(
       layer,
       brewerId: outcome.playerId,
       cupsMade,
-      rolls: rolls.map((r) => ({ playerId: r.playerId, value: r.value, discardedValue: r.discardedValue })),
+      rolls: rolls.map((r) => ({
+        playerId: r.playerId,
+        value: r.value,
+        discardedValue: r.discardedValue,
+        enteredByAdmin: r.enteredByAdmin,
+      })),
     });
   } else {
     const nextLayer = await deps.advanceRoundLayer(supabase, roundId, outcome.tiedPlayerIds);
@@ -283,6 +288,7 @@ export async function resolveCompletedLayerIfAny(
       playerId: r.playerId,
       value: r.value,
       discardedValue: r.discardedValue,
+      enteredByAdmin: r.enteredByAdmin,
     })),
   });
 

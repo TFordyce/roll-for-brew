@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unwrapJoinedPlayer } from "./playerRow";
+import { getRealPlayers, type RealPlayer } from "./players";
 
 export type RosterEntry = {
   playerId: string;
@@ -48,6 +49,24 @@ export async function getRoomRoster(
       isTest: player?.is_test === true,
     };
   });
+}
+
+/**
+ * Every real player who has no room_players row in the given room yet —
+ * i.e. hasn't opened the app today at all — for the /admin/proxy-roll
+ * picker (issue #273's Proxy Roll). Deliberately narrower than "not in
+ * getRoomRoster": a player present today but not yet in this round is
+ * already reachable via ordinary Late Declare (#246) once they log in
+ * themselves, so Proxy Roll only needs to offer the ones who genuinely
+ * can't do that.
+ */
+export async function getAbsentRealPlayers(
+  supabase: SupabaseClient,
+  roomId: string,
+): Promise<RealPlayer[]> {
+  const [players, roster] = await Promise.all([getRealPlayers(supabase), getRoomRoster(supabase, roomId)]);
+  const presentIds = new Set(roster.map((r) => r.playerId));
+  return players.filter((p) => !presentIds.has(p.id));
 }
 
 /**

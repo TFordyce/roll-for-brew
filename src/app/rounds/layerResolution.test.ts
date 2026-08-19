@@ -30,9 +30,9 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p3", value: 20, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p3", value: 20, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -45,9 +45,9 @@ describe("applyLayerOutcome", () => {
       brewerId: "p1",
       cupsMade: 3,
       rolls: [
-        { playerId: "p1", value: 5, discardedValue: null },
-        { playerId: "p2", value: 12, discardedValue: null },
-        { playerId: "p3", value: 20, discardedValue: null },
+        { playerId: "p1", value: 5, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 12, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p3", value: 20, discardedValue: null, enteredByAdmin: false },
       ],
     });
     expect(deps.advanceRoundLayer).not.toHaveBeenCalled();
@@ -66,8 +66,8 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 1,
       rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -81,9 +81,9 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 10, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 10, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p3", value: 15, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 10, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 10, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p3", value: 15, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -105,8 +105,8 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 1, modifierSnapshot: 5, discardedValue: null },
-        { playerId: "p2", value: 2, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 1, modifierSnapshot: 5, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 2, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -120,8 +120,8 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -141,8 +141,8 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -164,8 +164,8 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
       rolls: [
-        { playerId: "p1", value: 1, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 2, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 1, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 2, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 
@@ -186,8 +186,8 @@ describe("applyLayerOutcome", () => {
     const completedLayer: CompletedLayer = {
       layer: 1,
       rolls: [
-        { playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 5, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
 

@@ -8,6 +8,10 @@ export type LayerRoll = {
   // issue #164/#167) — the d20 rolled a second time and not kept, shown
   // struck-through next to the kept value.
   discardedValue: number | null;
+  // True for a value an admin entered on the player's behalf (issue #273's
+  // Proxy Roll) rather than the player submitting it themselves — surfaced
+  // as a provenance badge in round history, never hidden from it.
+  enteredByAdmin: boolean;
 };
 
 export type CompletedLayer = {
@@ -90,6 +94,30 @@ export async function submitManualRollAs(
 }
 
 /**
+ * Calls the admin_proxy_roll RPC (supabase/migrations/0071_admin_proxy_roll.sql,
+ * issue #273 — the "Proxy Roll" glossary entry): an admin entering a value
+ * on behalf of a player who's physically present but hasn't opened the app
+ * today, folding them into the round as a full participant. Unlike
+ * submitRollAs/submitManualRollAs, this isn't Test-Room-only — it's for a
+ * genuinely live real-room round — and it implicitly creates the target's
+ * room_players row rather than requiring one to already exist. Raises
+ * RFB32 (isStaleRoundError) if the round moves on before this lands.
+ */
+export async function adminProxyRoll(
+  supabase: SupabaseClient,
+  roundId: string,
+  playerId: string,
+  value: number,
+): Promise<void> {
+  const { error } = await supabase.rpc("admin_proxy_roll", {
+    p_round_id: roundId,
+    p_player_id: playerId,
+    p_value: value,
+  });
+  if (error) throw error;
+}
+
+/**
  * Calls the get_current_layer_rolls_if_complete RPC. Returns the round's
  * current layer number and every expected roller's roll for it once
  * everyone has rolled, or null if the round is still waiting on someone.
@@ -109,6 +137,7 @@ export async function getCurrentLayerRollsIfComplete(
     value: number;
     modifier_snapshot: number;
     discarded_value: number | null;
+    entered_by_admin: boolean;
   }[];
   const [first] = rows;
   if (!first) return null;
@@ -120,6 +149,7 @@ export async function getCurrentLayerRollsIfComplete(
       value: row.value,
       modifierSnapshot: row.modifier_snapshot,
       discardedValue: row.discarded_value,
+      enteredByAdmin: row.entered_by_admin,
     })),
   };
 }
@@ -145,6 +175,7 @@ export async function getRoundLayerHistory(supabase: SupabaseClient, roundId: st
     value: number;
     modifier_snapshot: number;
     discarded_value: number | null;
+    entered_by_admin: boolean;
   }[];
 
   const byLayer = new Map<number, LayerRoll[]>();
@@ -155,6 +186,7 @@ export async function getRoundLayerHistory(supabase: SupabaseClient, roundId: st
       value: row.value,
       modifierSnapshot: row.modifier_snapshot,
       discardedValue: row.discarded_value,
+      enteredByAdmin: row.entered_by_admin,
     });
     byLayer.set(row.layer, rolls);
   }

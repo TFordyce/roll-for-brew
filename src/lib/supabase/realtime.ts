@@ -14,7 +14,7 @@ export type RoundRevealedPayload = {
   layer: number;
   brewerId: string;
   cupsMade: number;
-  rolls: { playerId: string; value: number; discardedValue: number | null }[];
+  rolls: { playerId: string; value: number; discardedValue: number | null; enteredByAdmin: boolean }[];
 };
 
 export type LayerTiedPayload = {
@@ -34,7 +34,7 @@ export type RoundClosedPayload = {
 export type LayerRollsRevealedPayload = {
   roundId: string;
   layer: number;
-  rolls: { playerId: string; value: number; discardedValue: number | null }[];
+  rolls: { playerId: string; value: number; discardedValue: number | null; enteredByAdmin: boolean }[];
 };
 
 export type ReactionWindowChangedPayload = {

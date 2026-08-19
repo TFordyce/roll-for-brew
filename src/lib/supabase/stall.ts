@@ -119,6 +119,7 @@ export async function getCompletedLayerRollsForStallResolution(
     value: number;
     modifier_snapshot: number;
     discarded_value: number | null;
+    entered_by_admin: boolean;
   }[];
   const [first] = rows;
   if (!first) return null;
@@ -130,6 +131,7 @@ export async function getCompletedLayerRollsForStallResolution(
       value: row.value,
       modifierSnapshot: row.modifier_snapshot,
       discardedValue: row.discarded_value,
+      enteredByAdmin: row.entered_by_admin,
     })),
   };
 }
