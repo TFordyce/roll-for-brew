@@ -46,6 +46,9 @@ export type RoomRoundEntry = {
   // Roll) — stats_room_rounds' own provenance flag, distinct from any
   // player-level detail, since this view never names individual rolls.
   hasProxyRoll: boolean;
+  // Whether this round was bulk-recorded after the fact via Round Backfill
+  // (issue #274) rather than played live — rounds.backfilled_by is not null.
+  backfilled: boolean;
 };
 
 export type RoomAdjustmentEntry = {
@@ -230,7 +233,7 @@ export async function getRoomRounds(
   const { data, error } = await supabase
     .from("stats_room_rounds")
     .select(
-      "round_id, resolved_at, cups_made, starter_id, starter_display_name, starter_email, brewer_id, brewer_display_name, brewer_email, has_proxy_roll",
+      "round_id, resolved_at, cups_made, starter_id, starter_display_name, starter_email, brewer_id, brewer_display_name, brewer_email, has_proxy_roll, backfilled",
     )
     .eq("room_id", roomId)
     .order("resolved_at", { ascending: false });
@@ -248,6 +251,7 @@ export async function getRoomRounds(
     brewerDisplayName: row.brewer_display_name as string | null,
     brewerEmail: row.brewer_email as string,
     hasProxyRoll: row.has_proxy_roll as boolean,
+    backfilled: row.backfilled as boolean,
   }));
 }
 
