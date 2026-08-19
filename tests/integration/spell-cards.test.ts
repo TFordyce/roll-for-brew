@@ -87,10 +87,33 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     expect(locations).toEqual(["held", "pending_swap"]);
   });
 
+  it("draw_spell_card forces the swap on nat1 when the player already holds a card (issue #267)", async () => {
+    const { client, googleSub } = await signUpSignInAndEnter("draw-forced-nat1");
+    const oldInstanceId = await forceHold(admin, googleSub, "Lucky Sip");
+
+    const { data, error } = await client.rpc("draw_spell_card", { p_trigger: "nat1" });
+    expect(error).toBeNull();
+    const [row] = data as { instance_id: string; needs_swap_decision: boolean }[];
+    expect(row!.needs_swap_decision).toBe(false);
+
+    const { data: oldInstance } = await admin
+      .from("spell_deck_instances")
+      .select("location, held_by_player")
+      .eq("id", oldInstanceId)
+      .single();
+    expect(oldInstance).toEqual({ location: "in_deck", held_by_player: null });
+
+    const { data: myCards } = await client.rpc("get_my_spell_cards");
+    expect(myCards).toHaveLength(1);
+    const [held] = myCards as { location: string; instance_id: string }[];
+    expect(held!.location).toBe("held");
+    expect(held!.instance_id).toBe(row!.instance_id);
+  });
+
   it("resolve_card_swap keeping the new card reshuffles the old one back to in_deck", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("swap-keep-new");
     const oldInstanceId = await forceHold(admin, googleSub, "Lucky Sip");
-    await client.rpc("draw_spell_card", { p_trigger: "nat1" });
+    await client.rpc("draw_spell_card", { p_trigger: "nat20" });
 
     const { error } = await client.rpc("resolve_card_swap", { p_keep_new: true });
     expect(error).toBeNull();
@@ -110,7 +133,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
   it("resolve_card_swap keeping the old card reshuffles the new one back to in_deck", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("swap-keep-old");
     await forceHold(admin, googleSub, "Lucky Sip");
-    const { data: drawData } = await client.rpc("draw_spell_card", { p_trigger: "nat1" });
+    const { data: drawData } = await client.rpc("draw_spell_card", { p_trigger: "nat20" });
     const [drawRow] = drawData as { instance_id: string }[];
     const newInstanceId = drawRow!.instance_id;
 

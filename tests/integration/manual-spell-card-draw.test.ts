@@ -85,12 +85,65 @@ describe.skipIf(!hasAnonTestEnv)("manual spell card draw: pending draw + physica
     expect(myCards).toHaveLength(1);
   });
 
+  it("draw_pending_spell_card forces the swap on nat1 when the player already holds a card (issue #267)", async () => {
+    const { client, googleSub } = await signUpSignInAndEnter("draw-in-app-forced-nat1");
+    const oldInstanceId = await forceHold(admin, googleSub, "Lucky Sip");
+    const roundId = await startRoundFor(client);
+    await client.rpc("record_pending_spell_draw", { p_round_id: roundId, p_trigger: "nat1" });
+
+    const { data, error } = await client.rpc("draw_pending_spell_card", { p_round_id: roundId });
+    expect(error).toBeNull();
+    const [row] = data as { instance_id: string; needs_swap_decision: boolean }[];
+    expect(row!.needs_swap_decision).toBe(false);
+
+    const { data: oldInstance } = await admin
+      .from("spell_deck_instances")
+      .select("location, held_by_player")
+      .eq("id", oldInstanceId)
+      .single();
+    expect(oldInstance).toEqual({ location: "in_deck", held_by_player: null });
+
+    const { data: myCards } = await client.rpc("get_my_spell_cards");
+    expect(myCards).toHaveLength(1);
+    expect((myCards as { location: string }[])[0]!.location).toBe("held");
+  });
+
   it("draw_pending_spell_card rejects when there is no pending draw for the round", async () => {
     const { client } = await signUpSignInAndEnter("draw-in-app-no-pending");
     const roundId = await startRoundFor(client);
 
     const { error } = await client.rpc("draw_pending_spell_card", { p_round_id: roundId });
     expect(error).not.toBeNull();
+  });
+
+  it("draw_pending_spell_card_manual forces the swap on nat1 when the player already holds a card (issue #267)", async () => {
+    const { client, googleSub } = await signUpSignInAndEnter("draw-manual-forced-nat1");
+    const oldInstanceId = await forceHold(admin, googleSub, "Lucky Sip");
+    const roundId = await startRoundFor(client);
+    await client.rpc("record_pending_spell_draw", { p_round_id: roundId, p_trigger: "nat1" });
+    const cardId = await cardIdFor("Cold Tea");
+
+    const { data, error } = await client.rpc("draw_pending_spell_card_manual", {
+      p_round_id: roundId,
+      p_card_id: cardId,
+    });
+    expect(error).toBeNull();
+    const [row] = data as { instance_id: string; needs_swap_decision: boolean }[];
+    expect(row!.needs_swap_decision).toBe(false);
+
+    const { data: oldInstance } = await admin
+      .from("spell_deck_instances")
+      .select("location, held_by_player")
+      .eq("id", oldInstanceId)
+      .single();
+    expect(oldInstance).toEqual({ location: "in_deck", held_by_player: null });
+
+    const { data: myCards } = await client.rpc("get_my_spell_cards");
+    expect(myCards).toHaveLength(1);
+    expect((myCards as { location: string; card_name: string }[])[0]).toMatchObject({
+      location: "held",
+      card_name: "Cold Tea",
+    });
   });
 
   it("draw_pending_spell_card_manual draws the named card and clears the pending row", async () => {
