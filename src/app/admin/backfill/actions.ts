@@ -9,14 +9,14 @@ export type BackfillRoundState =
   | { status: "error"; message: string }
   | { status: "success"; roundId: string };
 
-const KNOWN_ERROR_CODES = new Set(["RFB32", "RFB33", "RFB34", "RFB35", "RFB36", "RFB37", "RFB38", "RFB39"]);
+const KNOWN_ERROR_CODES = new Set(["RFB33", "RFB34", "RFB35", "RFB36", "RFB37", "RFB38", "RFB39", "RFB40"]);
 
 /**
  * Submits a fully-built Round Backfill payload (issue #274) — the wizard in
  * BackfillRoundForm.tsx has already walked the admin through every layer
  * client-side via resolveLayer.ts, so by the time this fires,
  * `participantIds`/`layers` are the complete, resolved round. Keyed off the
- * RFB32–RFB39 codes admin_backfill_round raises (0071), same "strip the
+ * RFB33–RFB40 codes admin_backfill_round raises (0072), same "strip the
  * RPC's own prefix, surface the rest" handling deleteRoundAction
  * (src/app/admin/rounds/actions.ts) already models.
  */

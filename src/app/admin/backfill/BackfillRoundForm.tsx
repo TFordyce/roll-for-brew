@@ -19,7 +19,7 @@ type Step = "participants" | "layers";
  * real outcome before confirming it — a tie reveals the next reroll layer's
  * roster automatically, and a single winner surfaces a final "Record this
  * round" step. The full layer-by-layer payload this wizard builds is only
- * ever sent once, on that final submit — admin_backfill_round (0071)
+ * ever sent once, on that final submit — admin_backfill_round (0072)
  * recomputes the same precedence server-side and rejects anything that
  * doesn't match, so this preview is a UX convenience, not the source of
  * truth.

@@ -252,7 +252,13 @@ export default async function StatsPage({
                   <p className="pl-10 text-xs text-parchment-dim">
                     Brewer: {round.brewerDisplayName ?? round.brewerEmail}
                     {round.backfilled ? (
-                      <span className="ml-2 inline-flex items-center rounded-full border border-ember-bright bg-ember/25 px-2 py-0.5 font-display text-[10px] uppercase tracking-widest text-parchment">
+                      // Same visual as Proxy Roll's own badge below (issue #274's
+                      // "same visual manually/admin-entered flag as Proxy Roll"),
+                      // just worded for "the whole round", not one roll.
+                      <span
+                        className="ml-2 rounded-sm border border-gilt-dark px-1 font-display text-[9px] uppercase tracking-widest text-parchment-dim"
+                        title="This entire round was bulk-recorded after the fact by an admin"
+                      >
                         Backfilled
                       </span>
                     ) : round.hasProxyRoll ? (
