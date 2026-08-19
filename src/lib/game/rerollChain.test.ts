@@ -7,6 +7,7 @@ const roll = (playerId: string, value: number, modifierSnapshot = 0) => ({
   value,
   modifierSnapshot,
   discardedValue: null,
+  enteredByAdmin: false,
 });
 
 describe("buildRerollChain", () => {

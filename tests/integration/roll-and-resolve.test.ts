@@ -242,7 +242,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
       layer: 0,
       brewerId,
       cupsMade: 2,
-      rolls: complete.map((r) => ({ playerId: r.player_id, value: r.value, discardedValue: null })),
+      rolls: complete.map((r) => ({ playerId: r.player_id, value: r.value, discardedValue: null, enteredByAdmin: false })),
     });
 
     const payload = await received;

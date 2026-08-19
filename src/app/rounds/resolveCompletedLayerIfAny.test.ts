@@ -29,7 +29,7 @@ describe("resolveCompletedLayerIfAny", () => {
   it("opens a reaction window for a completed layer-0 (original roll) and finalizes immediately once it self-closes", async () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
-      rolls: [{ playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null }],
+      rolls: [{ playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false }],
     };
     const deps = fakeDeps({
       getCurrentLayerRollsIfComplete: vi.fn(async () => completedLayer),
@@ -45,7 +45,7 @@ describe("resolveCompletedLayerIfAny", () => {
   it("leaves finalization to the later reaction/pass action when a layer-0 window stays open", async () => {
     const completedLayer: CompletedLayer = {
       layer: 0,
-      rolls: [{ playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null }],
+      rolls: [{ playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false }],
     };
     const deps = fakeDeps({
       getCurrentLayerRollsIfComplete: vi.fn(async () => completedLayer),
@@ -61,8 +61,8 @@ describe("resolveCompletedLayerIfAny", () => {
     const completedLayer: CompletedLayer = {
       layer: 1,
       rolls: [
-        { playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null },
+        { playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
       ],
     };
     const deps = fakeDeps({
@@ -78,7 +78,7 @@ describe("resolveCompletedLayerIfAny", () => {
   it("still broadcasts the raw rolls for a tie-break reroll layer before finalizing", async () => {
     const completedLayer: CompletedLayer = {
       layer: 2,
-      rolls: [{ playerId: "p1", value: 7, modifierSnapshot: 0, discardedValue: 3 }],
+      rolls: [{ playerId: "p1", value: 7, modifierSnapshot: 0, discardedValue: 3, enteredByAdmin: false }],
     };
     const deps = fakeDeps({
       getCurrentLayerRollsIfComplete: vi.fn(async () => completedLayer),
@@ -89,7 +89,7 @@ describe("resolveCompletedLayerIfAny", () => {
     expect(deps.broadcastLayerRollsRevealed).toHaveBeenCalledWith(supabase, "room-1", {
       roundId: "round-1",
       layer: 2,
-      rolls: [{ playerId: "p1", value: 7, discardedValue: 3 }],
+      rolls: [{ playerId: "p1", value: 7, discardedValue: 3, enteredByAdmin: false }],
     });
   });
 });
