@@ -96,6 +96,30 @@ export async function signUpSignInAndEnterRoom(
 }
 
 /**
+ * The 39 non-working spell cards parked at location 'benched' by migration
+ * 0074 (issue #284) so draw_spell_card skips them. Kept in sync with that
+ * migration's name list by hand. A test that force-holds one of these must
+ * return it to the bench, not the deck, on cleanup — releaseHeldCards below
+ * does that.
+ */
+export const BENCHED_SPELL_CARDS = [
+  // No effect rows (37)
+  "Bes-Tea", "Tea Party Revolt", "Last Drip", "Saving Steep",
+  "Brew-tal Swap", "Yorkshire Terror",
+  "Tea Cosy", "Tea Leaf", "Spillage", "Chai-nge of Heart", "Bag for Life",
+  "Loose Leaf", "Stir the Pot", "PG Tipped", "Jinxed Biscuit",
+  "Marked for Brew", "Sleeping Camomile", "Steaming Mug Bond",
+  "Tea-tally Spent", "Loaf of Lipton", "Brew IOU", "Tea Heist",
+  "Stale Biscuit", "Saucerer's Apprentice", "Bitter Leech", "Liquid Courage",
+  "Eternal Steep", "The Last Cuppa", "Earl of Earl Grey", "Prophe-Tea",
+  "Genie in the Teapot",
+  "Gambler's Infusion", "Steady Hand", "Brew-merang", "Tea for Two",
+  "Cast-Iron Kettle", "Brewmageddon",
+  // Dead effect kind (2)
+  "Cloud of Cream", "Kettle Crash",
+] as const;
+
+/**
  * Forces a specific catalog card into a player's hand directly (admin
  * bypasses RLS) rather than relying on a random draw landing on the exact
  * card a test needs.
@@ -212,6 +236,38 @@ export function createTestCleanup(admin: SupabaseClient) {
       .update({ location: "in_deck", held_by_player: null })
       .eq("held_by_player", playerId);
     if (error) throw error;
+
+    // A test that force-held a benched card (e.g. Cloud of Cream) just sent
+    // it back to 'in_deck' above, quietly un-benching it for the rest of
+    // the run. Re-park any benched card sitting loose in the deck so the
+    // non-working-card pool stays out of draw_spell_card (issue #284).
+    //
+    // Gated on an existing 'benched' row so this is a no-op — and, crucially,
+    // won't trip the pre-0074 three-value location check constraint — when
+    // run against a DB where migration 0074 hasn't been applied.
+    const { data: benchedProbe } = await admin
+      .from("spell_deck_instances")
+      .select("id")
+      .eq("location", "benched")
+      .limit(1);
+    if (benchedProbe && benchedProbe.length > 0) {
+      const { data: benchedCards, error: benchedErr } = await admin
+        .from("spell_cards")
+        .select("id")
+        .in("name", [...BENCHED_SPELL_CARDS]);
+      if (benchedErr) throw benchedErr;
+
+      const { error: reBenchErr } = await admin
+        .from("spell_deck_instances")
+        .update({ location: "benched", held_by_player: null })
+        .is("held_by_player", null)
+        .eq("location", "in_deck")
+        .in(
+          "card_id",
+          (benchedCards ?? []).map((c) => c.id),
+        );
+      if (reBenchErr) throw reBenchErr;
+    }
   }
 
   /**
