@@ -107,3 +107,15 @@ _Avoid_: manual roll (ambiguous with a player's own manually-entered value), rol
 **Round Backfill**:
 An admin-gated, same-day-only bulk action (`admin_backfill_round`) that records an entire round nobody ever opened the app for — every participant's roll, and any tie-break reroll layer in full, entered up front in one transaction rather than replayed live. Distinct from Proxy Roll (`admin_proxy_roll`), which folds one absent-but-present player into an already-live round; here there's no live round at all. Spell casting is out of scope: only the roll-off/tie-break mechanics are replayed, reusing `advance_round_layer`/`resolve_round` unchanged so the result is indistinguishable from a live round's final shape. Implicitly creates each participant's `room_players` row for today, same as Proxy Roll. Shares Proxy Roll's per-roll `rolls.entered_by_admin` provenance flag, plus its own round-level `rounds.backfilled_by`/`backfilled_at`, surfaced on `/stats` as `stats_room_rounds.backfilled`.
 _Avoid_: proxy roll (that's the single-player, live-round mechanic), retroactive round, manual round entry.
+
+**Effect Kind**:
+The classification of a single spell effect — one of the authoritative values on `spell_card_effects.effect_kind` (e.g. `flat_modifier`, `advantage`, `forced_reroll`, `roll_swap`, `tea_maker_override`, `contested_negate`). A catalog card maps to zero or more effects, each with its own kind, target role, params, and ordinal; the kind is what decides how the resolver applies it.
+_Avoid_: effect type, spell type, effect_params (that's the per-effect config, not the classification).
+
+**Cast Log**:
+The append-only record of every spell cast in a round — `spell_casts` (one row per effect of a cast) plus the `spell_active_effects` it promotes. Under ADR 0005 (rebuild in progress) it is the authoritative input to round resolution: a round's outcome is a pure, deterministic function of its rolls, its Cast Log, and active effects, with nothing applied by side-effect that can't be reconstructed from the log.
+_Avoid_: cast history, spell audit, effect log.
+
+**Resolution Trace**:
+The ordered, structured record a rebuilt `resolve_round` emits (ADR 0005) — one step per applied effect, carrying its kind, source cast, target, and before/after values. The game resolves the round from it, and the player-clarity surface renders it directly; there is no second explanation path.
+_Avoid_: roll calculation (that's the current per-player display), effect breakdown, resolution log.
