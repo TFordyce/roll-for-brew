@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { submitBrewRating, withdrawBrewRating, type RateableRound } from "@/lib/supabase/brewRatings";
+import { PixelStar } from "@/app/_components/PixelStar";
 
 // A hanging luggage-tag tab pinned to the screen edge that opens a pushpin
 // notepad panel — the real-data wiring (issue #211, part of #208) for the
@@ -11,40 +12,6 @@ import { submitBrewRating, withdrawBrewRating, type RateableRound } from "@/lib/
 // settling on the hanging tag + pushpin-card combination reproduced here;
 // only that final pick is kept, none of the prototype's other variants or
 // its manual state buttons.
-
-const STAR_PATTERN = [
-  "....X....",
-  "....X....",
-  "...XXX...",
-  "XXXXXXXXX",
-  ".XXXXXXX.",
-  "..XXXXX..",
-  ".XX...XX.",
-  "XX.....XX",
-];
-
-/** A single pixel-art star, lit (gold) or unlit (dim) — copied verbatim from the prototype's grid. */
-function PixelStar({ lit, size = 26 }: { lit: boolean; size?: number }) {
-  const cols = STAR_PATTERN[0]!.length;
-  const rows = STAR_PATTERN.length;
-  const fill = lit ? "#e8ce8f" : "#8a7a5c";
-  return (
-    <svg
-      width={size}
-      height={(size / cols) * rows}
-      viewBox={`0 0 ${cols} ${rows}`}
-      shapeRendering="crispEdges"
-      aria-hidden="true"
-    >
-      {STAR_PATTERN.flatMap((row, y) =>
-        [...row].map((cell, x) =>
-          cell === "X" ? <rect key={`${x}-${y}`} x={x} y={y} width={1} height={1} fill={fill} /> : null,
-        ),
-      )}
-      {lit ? <rect x={4} y={3} width={1} height={1} fill="#fff2c2" /> : null}
-    </svg>
-  );
-}
 
 // Matches ModifierAdjustmentList's (Settings) and stats/page.tsx's own
 // formatTime convention.

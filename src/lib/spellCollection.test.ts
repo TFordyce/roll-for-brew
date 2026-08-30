@@ -9,6 +9,8 @@ function card(overrides: Partial<SpellCollectionCard> & { name: string; tier: Sp
     target: null,
     effectText: null,
     drawCount: 0,
+    myRating: null,
+    isCastEligible: false,
     ...overrides,
   };
 }

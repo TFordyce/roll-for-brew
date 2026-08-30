@@ -5,6 +5,7 @@ import type { SpellCollectionCard as SpellCollectionCardData } from "@/lib/supab
 import { cardTileView, groupByTier, isDiscovered, TIER_LABEL, TIER_ORDER, tierFractions, type Tier } from "@/lib/spellCollection";
 import { SpellCollectionCard } from "@/app/_components/SpellCollectionCard";
 import { CardInspectModal } from "@/app/_components/CardInspectModal";
+import { SpellCardRatingRow } from "@/app/_components/SpellCardRatingRow";
 
 /**
  * The dense Balatro-joker-style card grid + tap-to-inspect modal (issue
@@ -14,7 +15,14 @@ import { CardInspectModal } from "@/app/_components/CardInspectModal";
  * the shared `CardFrame`/gold-border visual language instead of prototype-
  * only chrome.
  */
-export function SpellCollectionGrid({ cards }: { cards: SpellCollectionCardData[] }) {
+export function SpellCollectionGrid({
+  cards,
+  ownCollection = false,
+}: {
+  cards: SpellCollectionCardData[];
+  /** True only on the viewer's own collection — gates the spell-card rating row (issue #300). */
+  ownCollection?: boolean;
+}) {
   const [tierFilter, setTierFilter] = useState<Tier>("common");
   const [inspecting, setInspecting] = useState<SpellCollectionCardData | null>(null);
 
@@ -77,6 +85,14 @@ export function SpellCollectionGrid({ cards }: { cards: SpellCollectionCardData[
               {TIER_LABEL[inspecting.tier]} · not yet drawn.
             </p>
           )}
+          {ownCollection ? (
+            <SpellCardRatingRow
+              key={inspecting.cardId}
+              cardId={inspecting.cardId}
+              myRating={inspecting.myRating}
+              isCastEligible={inspecting.isCastEligible}
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => setInspecting(null)}

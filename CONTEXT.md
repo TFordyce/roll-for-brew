@@ -40,6 +40,10 @@ _Avoid_: review, feedback, score (ambiguous with roll/spell scoring).
 The period a round's Brew Rating stays submittable or editable: open from the round's resolution until the room's *next* round resolves, then permanently closed — no fixed timer, unlike Modifier Adjustment's 5-minute undo limit. Enforced server-side in `submit_brew_rating`/`withdraw_brew_rating` by checking the target round is still the room's most-recently-resolved one.
 _Avoid_: rating deadline, grace period.
 
+**Spell Card Rating**:
+A 1–5 star score a player privately gives a catalog spell card (`spell_card_ratings`, one row per `(card_id, rater_player_id)`, upserted on re-rating, hard-deleted on withdrawal). Set from the card inspector in the rater's own Spell Collection via `rate_spell_card` / `withdraw_spell_card_rating`, both deriving the rater server-side. A card is rateable only when the rater has at least one non-negated cast of it in a resolved round of a non-test room; the rating row persists even if that eligibility later disappears (e.g. admin round deletion), and the inspector then shows the stars read-only. Unlike Brew Rating there is no in-app aggregate at all — no average, count, badge, or other-player view; RLS exposes a row only to its own rater. "Which spells are liked/disliked" is analysed straight off the table.
+_Avoid_: spell review, spell feedback, spell score (ambiguous with roll/spell effect scoring).
+
 **Usual**:
 A player's saved default for how they take tea and how they take coffee — one row per `(player_id, drink_type)` in `usual_drinks`, holding a `milk` (Dairy/Oat/Soy/None), `sugar` (None/Sprinkle/Half Tsp/1 Tsp/1.5 Tsp/2 Tsp/3 Tsp), and `decaf` (boolean, default false) pick. Global, not room-scoped; written directly by the owning player under RLS, no RPC involved, matching Player Setting's shape. Tea and coffee are independent rows — a player can have one, both, or neither set, and each can be decaf independently of the other.
 _Avoid_: preference, default order, profile.

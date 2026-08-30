@@ -12,13 +12,18 @@ import { Nav } from "@/app/Nav";
  * rendering. `viewerPlayerId` always seeds the backdrop's daily prop shuffle
  * off the signed-in viewer (not the collection being looked at), so the
  * background doesn't change depending on whose collection you're viewing.
+ * `targetPlayerId` is whose collection this is (equal to `viewerPlayerId`
+ * on `/collection`, the URL param on `/:playerId/collection`) — it gates
+ * the own-collection-only spell-card rating row (issue #300).
  */
 export function SpellCollectionPage({
   viewerPlayerId,
+  targetPlayerId,
   heading,
   cards,
 }: {
   viewerPlayerId: string;
+  targetPlayerId: string;
   heading: string;
   cards: SpellCollectionCardData[];
 }) {
@@ -43,7 +48,7 @@ export function SpellCollectionPage({
             </div>
           }
         >
-          <SpellCollectionGrid cards={cards} />
+          <SpellCollectionGrid cards={cards} ownCollection={viewerPlayerId === targetPlayerId} />
         </CardFrame>
       </section>
     </main>
