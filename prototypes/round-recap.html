@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Round Recap — prototype (#283)</title>
+<!--
+  THROWAWAY PROTOTYPE — #283 / T4 of the spell-casting review map (#278).
+
+  Three structurally different renderings of the ROUND RECAP: the canonical
+  "what happened this round and why" surface, rendered from the Resolution
+  Trace (ADR 0005). Switchable via ?variant= and the floating bottom bar.
+
+    A — Ledger .......... the literal ordered step list, phase-grouped
+    B — Threaded casts .. one card per cast, reactions threaded onto targets
+    C — Narrative feed .. prose feed + per-player lens
+
+  Standalone: open this file directly, no build step, no app, no auth.
+
+  One fixed scenario: Round 47 at The Crooked Kettle, 5 players, exercising
+  a persistent (flat) modifier, a dice_modifier (Six Sugars 1d6), an
+  advantage roll (Lucky Sip), a hidden_modifier, a NEGATED reaction cast
+  (Cold Kettle negates Scalding Pour), a WARDED cast that no-ops, a REDIRECT
+  that no-ops (its target was already gone), and a lowest-total tie that
+  goes to a tie-break layer.
+
+  Controls (top bar):
+    Live / Resolved ... Q2 — pending vs resolved step styling + the
+                        reorder-on-resolve cue (cast order -> resolution order)
+    Narrow ............ Q3 — per-tile calc + Recap + reduced ReactionBanner
+                        stacked on one phone-width column, window open
+    Timeline ......... Q4 — three prior rounds' Recaps stacked as a
+                        cross-round history
+-->
+<style>
+  :root {
+    --panel-dark: #1c130c;
+    --panel: #2a1e14;
+    --panel-hi: #33251844;
+    --plank: #4a3222;
+    --plank-dark: #3a2718;
+    --gilt: #c9a54a;
+    --gilt-bright: #e8ce8f;
+    --gilt-dark: #8a6a2c;
+    --parchment: #f1e6cf;
+    --parchment-dim: #c9bda3;
+    --ember: #7a3b2e;
+    --ember-bright: #b3543f;
+    --boon: #f5c542;
+    --bust: #e0433f;
+    --bust-deep: #7f1414;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background:
+      radial-gradient(120% 60% at 50% -10%, #241a10 0%, var(--panel-dark) 60%),
+      var(--panel-dark);
+    color: var(--parchment);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding-bottom: 96px;
+  }
+  .display {
+    font-family: "Trajan Pro", "Optima", "Palatino Linotype", Georgia, serif;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace; }
+
+  /* ---- shell ---------------------------------------------------------- */
+  .wrap {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 28px 20px 0;
+    transition: max-width 0.25s ease;
+  }
+  body.narrow .wrap { max-width: 390px; }
+  body.narrow .wrap { padding-left: 12px; padding-right: 12px; }
+
+  .roomhead {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    border-bottom: 1px solid var(--gilt-dark);
+    padding-bottom: 10px;
+    margin-bottom: 6px;
+  }
+  .roomhead h1 {
+    font-size: 15px;
+    margin: 0;
+    color: var(--gilt-bright);
+  }
+  .roomhead .rnd { font-size: 12px; color: var(--parchment-dim); letter-spacing: 0.12em; }
+
+  .blurb {
+    font-size: 12.5px;
+    color: var(--parchment-dim);
+    margin: 10px 0 18px;
+    border-left: 2px solid var(--gilt-dark);
+    padding-left: 12px;
+  }
+  .blurb b { color: var(--parchment); font-weight: 600; }
+
+  /* ---- card frame --------------------------------------------------- */
+  .frame {
+    border: 3px solid var(--gilt-dark);
+    border-radius: 8px;
+    background: linear-gradient(180deg, var(--panel) 0%, var(--panel-dark) 100%);
+    box-shadow: 0 0 0 1px #000, inset 0 0 22px #0007, 0 10px 28px #0008;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .frame > .frame-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    background: linear-gradient(180deg, var(--plank) 0%, var(--plank-dark) 100%);
+    border-bottom: 2px solid var(--gilt-dark);
+    padding: 8px 14px;
+    font-size: 12px;
+  }
+  .frame > .frame-title .display { font-size: 12px; color: var(--gilt-bright); }
+  .frame > .frame-body { padding: 14px; }
+  body.narrow .frame > .frame-body { padding: 11px; }
+
+  /* ---- generic chips ---------------------------------------------------- */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--gilt-dark);
+    border-radius: 999px;
+    background: var(--panel-dark);
+    padding: 2px 8px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .kind {
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--parchment-dim);
+    border: 1px solid var(--gilt-dark);
+    border-radius: 4px;
+    padding: 1px 5px;
+    white-space: nowrap;
+  }
+  .card-name {
+    font-weight: 700;
+    background-image: linear-gradient(110deg, var(--gilt), var(--gilt-bright), var(--gilt));
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .card-name.bust {
+    background-image: linear-gradient(110deg, var(--bust-deep), var(--bust), var(--bust-deep));
+  }
+  .caster { color: var(--parchment-dim); font-size: 10px; }
+
+  /* status colour language, shared across variants */
+  .st { font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 700; }
+  .st-applied    { color: var(--boon); }
+  .st-negated    { color: var(--bust); }
+  .st-redirected { color: #6fb0d8; }
+  .st-noop       { color: var(--parchment-dim); }
+  .st-pending    { color: var(--gilt-bright); }
+
+  .beforeafter {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 11px;
+    color: var(--parchment-dim);
+    white-space: nowrap;
+  }
+  .beforeafter .to { opacity: 0.55; margin: 0 3px; }
+  .beforeafter .after { color: var(--parchment); font-weight: 700; }
+  .strike { text-decoration: line-through; opacity: 0.5; }
+
+  /* pending shimmer */
+  @keyframes shimmer { 0%,100% { opacity: 0.45; } 50% { opacity: 0.9; } }
+  .is-pending { animation: shimmer 1.6s ease-in-out infinite; }
+  @keyframes slidein {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .reordered { animation: slidein 0.45s ease; }
+
+  .reorder-note {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    font-size: 10.5px;
+    color: var(--gilt-bright);
+    letter-spacing: 0.06em;
+    margin: 2px 0 12px;
+  }
+  body.resolved .reorder-note { display: flex; }
+  .reorder-note .arr { color: var(--parchment-dim); }
+
+  /* highlight a player's steps when their tile is tapped */
+  .step.lit, .castcard.lit, .feedline.lit {
+    outline: 2px solid var(--gilt-bright);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* ---- reduced ReactionBanner ------------------------------------------ */
+  .rbanner {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    border: 2px solid var(--ember-bright);
+    background: linear-gradient(180deg, #3a201a, #24140f);
+    border-radius: 8px;
+    padding: 9px 12px;
+    margin-bottom: 18px;
+  }
+  body:not(.resolved) .rbanner { display: flex; }
+  .rbanner .lbl { font-size: 11px; color: var(--parchment); letter-spacing: 0.06em; }
+  .rbanner .waiting { font-size: 10.5px; color: var(--parchment-dim); }
+  .rbanner .spacer { flex: 1; }
+  .rbanner button {
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    border: 2px solid var(--gilt);
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    color: var(--parchment);
+  }
+  .rbanner button.cast { background: var(--ember); }
+  .rbanner button.cast:hover { background: var(--ember-bright); }
+  .rbanner button.pass { background: transparent; }
+  .rbanner .note { width: 100%; font-size: 9.5px; color: var(--parchment-dim); font-style: italic; }
+
+  /* ---- per-player calc tiles ----------------------------------------- */
+  .calc-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 6px;
+    border-bottom: 1px solid #8a6a2c40;
+    cursor: pointer;
+  }
+  .calc-row:last-child { border-bottom: 0; }
+  .calc-row:hover { background: var(--panel-hi); }
+  .calc-row .who { font-size: 12.5px; width: 46px; flex-shrink: 0; }
+  .calc-row .expr {
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 12px;
+    color: var(--parchment-dim);
+    flex: 1;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 5px;
+  }
+  .calc-row .expr .tag { font-size: 8.5px; letter-spacing: 0.06em; color: #a99a7d; text-transform: uppercase; }
+  .calc-row .expr .total { color: var(--parchment); font-weight: 700; font-size: 14px; }
+  .calc-row .die {
+    width: 26px; height: 26px; flex-shrink: 0;
+    border: 2px solid var(--gilt);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700;
+    background: var(--panel-dark);
+  }
+  .calc-row.brewer .die { border-color: var(--gilt-bright); background: var(--ember); box-shadow: 0 0 10px var(--gilt); }
+  .calc-row .badge {
+    width: 30px; height: 30px; flex-shrink: 0;
+    border: 2px solid var(--gilt);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700;
+    background: var(--panel-dark);
+  }
+  .calc-row.brewer .badge { border-color: var(--gilt-bright); background: var(--ember); box-shadow: 0 0 10px var(--gilt); }
+
+  /* ---- tie-break footer (unchanged existing rendering) --------------- */
+  .tiebreak {
+    margin-top: 10px;
+    border-top: 1px dashed var(--gilt-dark);
+    padding-top: 10px;
+  }
+  .tiebreak .tb-head {
+    font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--parchment-dim);
+    margin-bottom: 8px;
+  }
+  .tb-row {
+    display: flex; align-items: center; gap: 10px;
+    border-left: 2px dashed var(--gilt-dark);
+    margin-left: 18px;
+    padding: 5px 0 5px 12px;
+    font-size: 12px;
+  }
+  .tb-row .mono { font-size: 11px; color: var(--parchment-dim); }
+  .tb-row .tbdie {
+    width: 24px; height: 24px;
+    border: 2px solid var(--gilt); border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700;
+    background: var(--panel-dark);
+  }
+  .tb-row.win .tbdie { border-color: var(--gilt-bright); background: var(--ember); }
+
+  /* =================================================================== */
+  /* VARIANT A — LEDGER                                                    */
+  /* =================================================================== */
+  .a-caststrip {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    padding-bottom: 12px; margin-bottom: 12px;
+    border-bottom: 1px solid #8a6a2c40;
+  }
+  .a-castchip {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--gilt-dark); border-radius: 6px;
+    background: var(--panel-dark);
+    padding: 4px 8px; font-size: 10px; cursor: pointer;
+  }
+  .a-castchip.dim { opacity: 0.45; }
+  .a-castchip .dot {
+    width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0;
+    background: var(--parchment-dim);
+  }
+  .a-castchip[data-st="applied"]    .dot { background: var(--boon); }
+  .a-castchip[data-st="negated"]    .dot { background: var(--bust); }
+  .a-castchip[data-st="redirected"] .dot { background: #6fb0d8; }
+  .a-castchip[data-st="noop"]       .dot { background: var(--parchment-dim); }
+  .a-castchip[data-st="pending"]    .dot { background: var(--gilt-bright); animation: shimmer 1.4s infinite; }
+
+  .a-phase {
+    font-size: 9.5px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gilt-dark);
+    margin: 14px 0 4px;
+  }
+  .a-phase:first-child { margin-top: 0; }
+  .step {
+    display: grid;
+    grid-template-columns: 20px 1fr auto;
+    gap: 10px;
+    align-items: start;
+    padding: 8px 6px;
+    border-bottom: 1px solid #8a6a2c26;
+  }
+  .step:nth-child(even) { background: #ffffff05; }
+  .step .ix {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 10px; color: var(--parchment-dim); padding-top: 2px;
+  }
+  .step .body { min-width: 0; }
+  .step .line1 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .step .sentence { font-size: 12.5px; }
+  .step .sentence .nm { color: var(--gilt-bright); }
+  .step .rhs { text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  body.narrow .step { grid-template-columns: 16px 1fr; }
+  body.narrow .step .rhs { grid-column: 2; align-items: flex-start; text-align: left; margin-top: 4px; }
+
+  /* =================================================================== */
+  /* VARIANT B — THREADED CASTS                                           */
+  /* =================================================================== */
+  .castcard {
+    display: grid;
+    grid-template-columns: 92px 1fr;
+    gap: 12px;
+    border: 1px solid var(--gilt-dark);
+    border-radius: 8px;
+    background: #ffffff06;
+    padding: 10px;
+    margin-bottom: 8px;
+  }
+  .castcard.thread {
+    margin-left: 26px;
+    border-left: 3px solid var(--ember-bright);
+    position: relative;
+  }
+  .castcard.thread::before {
+    content: "";
+    position: absolute;
+    left: -26px; top: -8px;
+    width: 23px; height: 26px;
+    border-left: 2px solid var(--ember-bright);
+    border-bottom: 2px solid var(--ember-bright);
+    border-bottom-left-radius: 8px;
+  }
+  .castcard .rail { display: flex; flex-direction: column; gap: 4px; font-size: 8.5px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .castcard .rail .node { display: flex; align-items: center; gap: 5px; color: #7d7259; }
+  .castcard .rail .node .n {
+    width: 8px; height: 8px; border-radius: 999px; border: 1px solid #7d7259; flex-shrink: 0;
+  }
+  .castcard .rail .node.on { color: var(--parchment); }
+  .castcard .rail .node.on .n { background: var(--gilt); border-color: var(--gilt); }
+  .castcard .rail .node.on.pending .n { background: var(--gilt-bright); border-color: var(--gilt-bright); animation: shimmer 1.4s infinite; }
+  .castcard .rail .node.on.applied .n { background: var(--boon); border-color: var(--boon); }
+  .castcard .rail .node.on.negated .n { background: var(--bust); border-color: var(--bust); }
+  .castcard .rail .node.on.noop .n { background: var(--parchment-dim); }
+  .castcard .cbody { min-width: 0; }
+  .castcard .chead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .castcard .csentence { font-size: 12.5px; margin-bottom: 6px; }
+  .castcard .csentence .nm { color: var(--gilt-bright); }
+  .castcard .substep {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    font-size: 11px;
+    border-top: 1px solid #8a6a2c30;
+    padding-top: 5px; margin-top: 5px;
+    color: var(--parchment-dim);
+  }
+  .castcard.collapsed .csentence,
+  .castcard.collapsed .substep { display: none; }
+  .castcard.collapsed { opacity: 0.72; }
+  .castcard .collapsehint { font-size: 9px; color: var(--gilt-dark); cursor: pointer; letter-spacing: 0.1em; text-transform: uppercase; }
+  body.narrow .castcard { grid-template-columns: 1fr; }
+  body.narrow .castcard .rail { flex-direction: row; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  body.narrow .castcard.thread { margin-left: 14px; }
+  body.narrow .castcard.thread::before { left: -14px; width: 11px; }
+
+  /* =================================================================== */
+  /* VARIANT C — NARRATIVE FEED + LENS                                    */
+  /* =================================================================== */
+  .c-lens { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .c-lens button {
+    font: inherit; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase;
+    border: 1px solid var(--gilt-dark); border-radius: 999px;
+    background: var(--panel-dark); color: var(--parchment-dim);
+    padding: 4px 11px; cursor: pointer;
+  }
+  .c-lens button.on { background: var(--ember); color: var(--parchment); border-color: var(--gilt); }
+  .c-lenscalc {
+    display: none;
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 12px;
+    border: 1px solid var(--gilt-dark); border-radius: 6px;
+    background: var(--panel-dark);
+    padding: 8px 10px; margin-bottom: 12px;
+    color: var(--parchment-dim);
+  }
+  .c-lenscalc.show { display: block; }
+  .c-lenscalc .total { color: var(--parchment); font-weight: 700; }
+
+  .feedline {
+    display: flex; gap: 10px;
+    padding: 9px 4px;
+    border-bottom: 1px solid #8a6a2c26;
+    font-size: 12.5px;
+  }
+  .feedline .tick {
+    font-family: ui-monospace, Menlo, monospace;
+    font-size: 9.5px; color: var(--gilt-dark);
+    flex-shrink: 0; width: 34px; padding-top: 2px;
+  }
+  .feedline .txt .nm { color: var(--gilt-bright); }
+  .feedline .txt .ba {
+    display: block; margin-top: 3px;
+    font-family: ui-monospace, Menlo, monospace; font-size: 10.5px;
+    color: var(--parchment-dim);
+  }
+  .feedline.dim-out { display: none; }
+  .c-tray {
+    margin-top: 12px;
+    border: 1px dashed var(--gilt-dark);
+    border-radius: 6px;
+    padding: 8px 10px;
+  }
+  .c-tray .tray-head { font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gilt-bright); margin-bottom: 6px; }
+  body.resolved .c-tray { display: none; }
+
+  /* ---- cross-round timeline ---------------------------------------- */
+  .tl-round {
+    border: 1px solid var(--gilt-dark);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+  }
+  .tl-round > summary {
+    list-style: none;
+    cursor: pointer;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 12px;
+    background: #ffffff06;
+    font-size: 11.5px;
+  }
+  .tl-round > summary::-webkit-details-marker { display: none; }
+  .tl-round > summary .rn { color: var(--gilt-bright); letter-spacing: 0.1em; }
+  .tl-round > summary .sm { color: var(--parchment-dim); flex: 1; }
+  .tl-round > summary .cnt { font-size: 9.5px; color: var(--parchment-dim); text-transform: uppercase; letter-spacing: 0.08em; }
+  .tl-round[open] > summary { border-bottom: 1px solid var(--gilt-dark); }
+  .tl-round .tl-body { padding: 12px; }
+  .tl-mini { font-size: 11.5px; color: var(--parchment-dim); padding: 4px 0; border-bottom: 1px solid #8a6a2c26; display: flex; gap: 8px; }
+  .tl-mini:last-child { border-bottom: 0; }
+  .tl-mini .nm { color: var(--gilt-bright); }
+  .tl-daterule { font-size: 9px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gilt-dark); margin: 16px 0 8px; }
+
+  .section-only { display: none; }
+  body.timeline .recap-view { display: none; }
+  body.timeline .timeline-view { display: block; }
+  .timeline-view { display: none; }
+
+  /* ---- floating switcher bar --------------------------------------- */
+  .switcher {
+    position: fixed;
+    left: 50%;
+    bottom: 16px;
+    transform: translateX(-50%);
+    z-index: 100;
+    display: flex;
+    align-items: stretch;
+    gap: 1px;
+    background: #000;
+    border: 2px solid var(--gilt);
+    border-radius: 999px;
+    box-shadow: 0 8px 30px #000b;
+    overflow: hidden;
+    font-size: 11px;
+  }
+  .switcher button {
+    font: inherit;
+    background: linear-gradient(180deg, var(--plank), var(--plank-dark));
+    color: var(--parchment);
+    border: 0;
+    padding: 8px 12px;
+    cursor: pointer;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .switcher button:hover { background: var(--plank); }
+  .switcher .vlabel {
+    display: flex; align-items: center;
+    padding: 0 14px;
+    background: var(--panel-dark);
+    color: var(--gilt-bright);
+    min-width: 150px;
+    justify-content: center;
+    letter-spacing: 0.1em;
+  }
+  .switcher .toggle.on { background: var(--ember); color: var(--parchment); }
+  .switcher .sep { width: 2px; background: var(--gilt-dark); }
+  @media (max-width: 560px) {
+    .switcher { flex-wrap: wrap; border-radius: 14px; max-width: 94vw; }
+    .switcher .vlabel { min-width: 0; flex: 1; }
+  }
+</style>
+</head>
+<body class="resolved">
+
+<div class="wrap">
+  <div class="roomhead">
+    <h1 class="display">The Crooked Kettle</h1>
+    <span class="rnd mono">Round 47 · 30 Aug</span>
+  </div>
+
+  <p class="blurb" id="blurb"></p>
+
+  <!-- reduced ReactionBanner: only its action controls remain; the stack
+       list it used to carry now lives in the Recap (see #282) -->
+  <div class="rbanner">
+    <span class="lbl">Reaction window open</span>
+    <span class="waiting">· waiting on Ada, Cass</span>
+    <span class="spacer"></span>
+    <button class="cast">Cast a reaction</button>
+    <button class="pass">Pass</button>
+    <span class="note">3 eligible · 1 cast · 1 passed — the stack &amp; outcomes are in the Recap below</span>
+  </div>
+
+  <!-- ============ RECAP VIEW ============ -->
+  <div class="recap-view">
+    <div class="frame">
+      <div class="frame-title">
+        <span class="display" id="recap-title">Round Recap</span>
+        <span class="mono" style="font-size:10px;color:var(--parchment-dim)" id="recap-sub"></span>
+      </div>
+      <div class="frame-body">
+        <div class="reorder-note">
+          <span>Cast order</span><span class="arr">→</span><span>resolution order</span>
+          <span style="color:var(--parchment-dim);text-transform:none;letter-spacing:0">— steps settle into the order they actually resolved</span>
+        </div>
+        <div id="recap-mount"></div>
+      </div>
+    </div>
+
+    <div class="frame">
+      <div class="frame-title"><span class="display">Where it landed</span><span style="font-size:10px;color:var(--parchment-dim)">tap a row to find them in the Recap</span></div>
+      <div class="frame-body">
+        <div id="calc-mount"></div>
+        <div class="tiebreak">
+          <div class="tb-head">↳ Tied for lowest at 11 → tie-break (layer 1)</div>
+          <div class="tb-row win">
+            <span style="width:40px">Ben</span>
+            <span class="mono">d20 7 = 7</span>
+            <span class="tbdie">7</span>
+            <span style="font-size:10px;color:var(--gilt-bright);letter-spacing:0.12em">BREWS</span>
+          </div>
+          <div class="tb-row">
+            <span style="width:40px">Erin</span>
+            <span class="mono">d20 13 = 13</span>
+            <span class="tbdie">13</span>
+          </div>
+          <div style="font-size:10px;color:var(--parchment-dim);font-style:italic;margin-top:6px;margin-left:18px">
+            No spells or reactions apply at a tie-break (per #219) — the Recap ends here.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ TIMELINE VIEW ============ -->
+  <div class="timeline-view">
+    <div class="frame">
+      <div class="frame-title"><span class="display">Room history — The Crooked Kettle</span></div>
+      <div class="frame-body" id="timeline-mount"></div>
+    </div>
+  </div>
+</div>
+
+<div class="switcher" id="switcher">
+  <button id="prev">◀</button>
+  <div class="vlabel" id="vlabel">A — Ledger</div>
+  <button id="next">▶</button>
+  <div class="sep"></div>
+  <button class="toggle" data-cls="resolved" id="t-live">Live / Resolved</button>
+  <button class="toggle" data-cls="narrow" id="t-narrow">Narrow</button>
+  <button class="toggle" data-cls="timeline" id="t-timeline">Timeline</button>
+</div>
+
+<script>
+/* ============================================================
+   SHARED SCENARIO DATA — Round 47, The Crooked Kettle
+   ============================================================ */
+
+const P = {
+  ada:  { first: "Ada",  full: "Ada Whitlock",  pmod: 2 },
+  ben:  { first: "Ben",  full: "Ben Osei",      pmod: 0 },
+  cass: { first: "Cass", full: "Cass Iyer",     pmod: 0 },
+  dev:  { first: "Dev",  full: "Dev Marchetti", pmod: 0 },
+  erin: { first: "Erin", full: "Erin Vale",     pmod: 0 },
+};
+const nm = id => P[id].first;
+
+/* The casts, in the order they were made live (cast order). */
+const CASTS = [
+  { id:"C1", caster:"cass", card:"Lucky Sip",        kind:"advantage",        target:{player:"cass"}, phase:"preroll",
+    status:"applied", impact:"boon" },
+  { id:"C2", caster:"dev",  card:"Sleight of Saucer", kind:"hidden_modifier",  target:{player:"dev"},  phase:"preroll",
+    status:"applied", impact:"boon", hidden:true },
+  { id:"C3", caster:"ben",  card:"Six Sugars",       kind:"dice_modifier",     target:{player:"ben"},  phase:"preroll",
+    status:"applied", impact:"boon" },
+  { id:"C4", caster:"dev",  card:"Scalding Pour",    kind:"flat_modifier",     target:{player:"ada"},  phase:"reaction",
+    status:"negated", impact:"bust" },
+  { id:"C5", caster:"ben",  card:"Bitter Dregs",     kind:"flat_modifier",     target:{player:"cass"}, phase:"reaction",
+    status:"noop", impact:"bust" },
+  { id:"C6", caster:"ada",  card:"Cold Kettle",      kind:"contested_negate",  target:{cast:"C4"},     phase:"reaction",
+    status:"applied", impact:"boon" },
+  { id:"C7", caster:"erin", card:"Mug Mirror",       kind:"redirect",          target:{cast:"C4"},     phase:"reaction",
+    status:"noop", impact:"boon" },
+];
+const castById = Object.fromEntries(CASTS.map(c => [c.id, c]));
+
+/* Resolution Trace steps, in RESOLUTION ORDER (what #290 will pin down;
+   the prototype picks a plausible order: input-mutating shims, then the
+   reaction stack resolving negate/redirect ahead of the cast they hit,
+   then remaining modifier math, then ward checks, then hidden reveal). */
+const STEPS = [
+  { cast:"C1", kind:"advantage",       who:"cass",
+    sentence: (h)=>`<span class="nm">Cass</span>'s <b>Lucky Sip</b> — rolled again (8 &amp; 15), kept the 15`,
+    ba:{label:"roll", from:"8 / 15", to:"15"}, status:"applied" },
+
+  { cast:"C3", kind:"dice_modifier",   who:"ben",
+    sentence: ()=>`<span class="nm">Ben</span>'s <b>Six Sugars</b> — 1d6 rolled a 4`,
+    ba:{label:"modifier", from:"+0", to:"+4"}, status:"applied" },
+
+  { cast:"C6", kind:"contested_negate", who:"ada",
+    sentence: ()=>`<span class="nm">Ada</span>'s <b>Cold Kettle</b> contested <span class="nm">Dev</span>'s <b>Scalding Pour</b> — d20 17 vs 6, Ada wins`,
+    ba:{label:"target", from:"Scalding Pour", to:"negated"}, status:"applied" },
+
+  { cast:"C7", kind:"redirect",        who:"erin",
+    sentence: ()=>`<span class="nm">Erin</span>'s <b>Mug Mirror</b> tried to bounce <b>Scalding Pour</b> — but it was already negated`,
+    ba:{label:"", from:"—", to:"no effect"}, status:"noop" },
+
+  { cast:"C4", kind:"flat_modifier",   who:"dev", targetPlayer:"ada",
+    sentence: ()=>`<span class="nm">Dev</span>'s <b>Scalding Pour</b> on <span class="nm">Ada</span> — negated by Cold Kettle, never applied`,
+    ba:{label:"modifier", from:"+2", to:"+2"}, status:"negated" },
+
+  { cast:"C5", kind:"ward",            who:"cass", targetPlayer:"cass",
+    sentence: ()=>`<span class="nm">Cass</span>'s <b>Ceramic Ward</b> warded off <span class="nm">Ben</span>'s <b>Bitter Dregs</b> — no effect`,
+    ba:{label:"modifier", from:"+0", to:"+0"}, status:"noop" },
+
+  { cast:"C2", kind:"hidden_modifier", who:"dev", targetPlayer:"dev",
+    sentence: ()=>`<span class="nm">Dev</span>'s <b>Sleight of Saucer</b> — <em>was hidden until the round resolved</em>`,
+    ba:{label:"modifier", from:"+0", to:"+1"}, status:"applied", hidden:true },
+];
+
+/* CAST ORDER for the same steps (live view): just the cast sequence,
+   one step per cast, C1..C7. */
+const STEP_BY_CAST = Object.fromEntries(STEPS.map(s => [s.cast, s]));
+const CAST_ORDER_STEPS = CASTS.map(c => STEP_BY_CAST[c.id]);
+
+const PHASE_LABEL = { preroll: "Before the roll", reaction: "Reaction window" };
+
+/* Per-player final calc, layer 0. */
+const CALC = [
+  { id:"ada",  die:12, disc:null, terms:[["+2","mod"]],            total:14, strike:"Scalding Pour −3 (negated)" },
+  { id:"ben",  die:7,  disc:null, terms:[["+4","Six Sugars"]],     total:11 },
+  { id:"cass", die:15, disc:8,    terms:[["+0",""]],               total:15, strike:"Bitter Dregs −2 (warded)" },
+  { id:"dev",  die:13, disc:null, terms:[["+1","hidden"]],         total:14 },
+  { id:"erin", die:11, disc:null, terms:[["+0",""]],               total:11 },
+];
+/* brewer decided at tie-break — nobody is the layer-0 brewer */
+
+const BLURB = `<b>Round Recap</b> — one ordered, table-wide account of the round's spell story,
+rendered straight from the Resolution Trace. Additive: a round with no casts shows exactly
+today's per-tile calc and nothing else. This scenario has <b>7 casts</b> — a persistent modifier,
+Six Sugars' 1d6, a Lucky Sip advantage roll, a hidden modifier, a <b>negated</b> Scalding Pour,
+a <b>warded</b> Bitter Dregs, a <b>redirect that no-ops</b>, and a lowest-total tie.`;
+
+/* Cross-round timeline: 3 prior rounds, collapsed; Round 47 expanded. */
+const TIMELINE = [
+  { n:47, date:"30 Aug", summary:"7 casts · went to a tie-break · Ben brewed", open:true, current:true },
+  { n:46, date:"29 Aug", summary:"2 casts · Cass brewed",
+    lines:["<span class='nm'>Cass</span>'s <b>Warm Refill</b> — +2 to herself, applied",
+           "<span class='nm'>Dev</span>'s <b>Bitter Dregs</b> on <span class='nm'>Ben</span> — −2, applied"] },
+  { n:45, date:"28 Aug", summary:"no casts · Erin brewed", lines:["No spells cast — the plain roster."] },
+  { n:44, date:"27 Aug", summary:"4 casts · Ada brewed",
+    lines:["<span class='nm'>Ben</span>'s <b>Lucky Sip</b> — advantage, kept 18",
+           "<span class='nm'>Ada</span>'s <b>Kettle Crash</b> on the room — everyone −1, applied",
+           "<span class='nm'>Cass</span>'s <b>Mug Mirror</b> bounced Kettle Crash off herself — redirected",
+           "<span class='nm'>Dev</span>'s <b>Cold Kettle</b> contested Kettle Crash — d20 4 vs 12, failed"] },
+];
+
+/* ============================================================
+   RENDERERS
+   ============================================================ */
+
+const $ = s => document.querySelector(s);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; };
+
+function isLive() { return !document.body.classList.contains("resolved"); }
+
+/* status a cast/step shows in the current (live vs resolved) mode */
+function effStatus(obj) { return isLive() ? "pending" : obj.status; }
+function stClass(s) { return "st-" + (s === "no-op" ? "noop" : s); }
+function stLabel(s) {
+  return { pending:"on stack", applied:"applied", negated:"negated", redirected:"redirected", noop:"no effect" }[s] || s;
+}
+
+function castChipLabel(c) {
+  const t = c.target.player ? `→ ${nm(c.target.player)}` : `→ ${c.target.cast} (${castById[c.target.cast].card})`;
+  return `${c.card} · ${nm(c.caster)} ${t}`;
+}
+
+/* ---------- Variant A: Ledger ---------- */
+function renderA(mount) {
+  mount.innerHTML = "";
+
+  // cast strip
+  const strip = el("div", "a-caststrip");
+  CASTS.forEach(c => {
+    const s = effStatus(c);
+    const chip = el("div", "a-castchip");
+    chip.dataset.st = s === "no-op" ? "noop" : s;
+    chip.dataset.cast = c.id;
+    chip.innerHTML = `<span class="dot"></span>
+      <span><span class="card-name${c.impact==='bust'?' bust':''}">${c.card}</span>
+      <span class="caster"> ${nm(c.caster)}</span></span>
+      <span class="st ${stClass(s)}">${stLabel(s)}</span>`;
+    chip.onclick = () => filterA(c.id);
+    strip.appendChild(chip);
+  });
+  mount.appendChild(strip);
+
+  const steps = isLive() ? CAST_ORDER_STEPS : STEPS;
+  let lastPhase = null;
+  steps.forEach((s, i) => {
+    const c = castById[s.cast];
+    if (c.phase !== lastPhase) {
+      mount.appendChild(el("div", "a-phase", PHASE_LABEL[c.phase]));
+      lastPhase = c.phase;
+    }
+    const st = effStatus(s);
+    const row = el("div", "step" + (document.body.classList.contains("resolved") ? " reordered" : ""));
+    row.dataset.cast = s.cast;
+    row.style.animationDelay = (i * 40) + "ms";
+    const baTxt = s.ba.from === s.ba.to
+      ? `<span class="beforeafter">${s.ba.label ? s.ba.label + " " : ""}${s.ba.from} <span class="to">→</span> <span class="after">${s.ba.to}</span> · unchanged</span>`
+      : `<span class="beforeafter">${s.ba.label ? s.ba.label + " " : ""}${s.ba.from} <span class="to">→</span> <span class="after">${s.ba.to}</span></span>`;
+    row.innerHTML = `
+      <div class="ix">${isLive() ? "·" : (i + 1)}</div>
+      <div class="body">
+        <div class="line1">
+          <span class="kind">${s.kind.replace(/_/g, " ")}</span>
+          <span class="st ${stClass(st)}">${stLabel(st)}</span>
+          ${s.hidden ? '<span class="kind" style="border-color:var(--ember-bright);color:var(--ember-bright)">was hidden</span>' : ""}
+        </div>
+        <div class="sentence ${st === "pending" ? "is-pending" : ""}">${s.sentence()}</div>
+      </div>
+      <div class="rhs">${baTxt}</div>`;
+    mount.appendChild(row);
+  });
+
+  mount.appendChild(el("div", "a-phase", "Outcome"));
+  mount.appendChild(el("div", null,
+    `<div style="font-size:12px;color:var(--parchment-dim);padding:4px 6px">
+      Layer-0 totals: Ada 14 · Ben 11 · Cass 15 · Dev 14 · Erin 11 —
+      <span style="color:var(--parchment)">Ben &amp; Erin tie for lowest</span>, round goes to a tie-break.
+     </div>`));
+}
+function filterA(castId) {
+  document.querySelectorAll(".a-castchip").forEach(c => c.classList.toggle("dim", castId && c.dataset.cast !== castId));
+  document.querySelectorAll("#recap-mount .step").forEach(s => {
+    s.style.display = (!castId || s.dataset.cast === castId) ? "" : "none";
+  });
+}
+
+/* ---------- Variant B: Threaded casts ---------- */
+function renderB(mount) {
+  mount.innerHTML = "";
+  const ordered = isLive()
+    ? CASTS.slice()
+    : STEPS.map(s => castById[s.cast]);
+
+  ordered.forEach(c => {
+    const st = effStatus(c);
+    const step = STEP_BY_CAST[c.id];
+    const isThread = !!c.target.cast;
+    const card = el("div", "castcard" + (isThread ? " thread" : "") +
+      (!isLive() && (c.status === "noop") ? " collapsed" : ""));
+    card.dataset.cast = c.id;
+
+    const nodeState = n => {
+      if (n === "armed") return "on";
+      if (n === "stack") return "on" + (st === "pending" ? " pending" : "");
+      if (n === "resolved") return st === "pending" ? "" : "on " + (st === "no-op" ? "noop" : st);
+    };
+    const railHtml = ["armed", "stack", "resolved"].map(n =>
+      `<div class="node ${nodeState(n)}"><span class="n"></span>${n === "stack" ? "on stack" : n}</div>`).join("");
+
+    const tgt = c.target.player
+      ? `on <span class="nm">${nm(c.target.player)}</span>`
+      : `vs <span class="nm">${nm(castById[c.target.cast].caster)}</span>'s <b>${castById[c.target.cast].card}</b>`;
+
+    card.innerHTML = `
+      <div class="rail">${railHtml}</div>
+      <div class="cbody">
+        <div class="chead">
+          <span class="card-name${c.impact === 'bust' ? ' bust' : ''}">${c.card}</span>
+          <span class="caster">${nm(c.caster)} · ${c.phase === "preroll" ? "pre-roll action" : "reaction"}</span>
+          <span class="kind">${c.kind.replace(/_/g, " ")}</span>
+          <span class="st ${stClass(st)}">${stLabel(st)}</span>
+          ${c.hidden ? '<span class="kind" style="border-color:var(--ember-bright);color:var(--ember-bright)">was hidden</span>' : ""}
+          ${(!isLive() && c.status === "noop") ? '<span class="collapsehint" data-toggle>show</span>' : ""}
+        </div>
+        <div class="csentence ${st === "pending" ? "is-pending" : ""}">${step.sentence()} <span style="color:var(--parchment-dim)">${c.target.player ? tgt : ""}</span></div>
+        <div class="substep">
+          <span class="kind">${step.kind.replace(/_/g, " ")}</span>
+          <span class="beforeafter">${step.ba.label ? step.ba.label + " " : ""}${step.ba.from} <span class="to">→</span> <span class="after">${step.ba.to}</span></span>
+          ${step.ba.from === step.ba.to ? '<span style="font-size:9px;color:var(--parchment-dim)">unchanged — shown anyway</span>' : ""}
+        </div>
+      </div>`;
+    const th = card.querySelector("[data-toggle]");
+    if (th) th.onclick = () => { card.classList.toggle("collapsed"); th.textContent = card.classList.contains("collapsed") ? "show" : "hide"; };
+    mount.appendChild(card);
+  });
+}
+
+/* ---------- Variant C: Narrative feed + lens ---------- */
+let cLens = null;
+function renderC(mount) {
+  mount.innerHTML = "";
+
+  const lens = el("div", "c-lens");
+  const mk = (id, label) => {
+    const b = el("button", cLens === id ? "on" : null, label);
+    b.onclick = () => { cLens = (cLens === id ? null : id); renderC(mount); };
+    return b;
+  };
+  lens.appendChild(mk(null, "Whole table"));
+  Object.keys(P).forEach(id => lens.appendChild(mk(id, nm(id))));
+  mount.appendChild(lens);
+
+  if (cLens) {
+    const c = CALC.find(x => x.id === cLens);
+    const termTxt = c.terms.map(t => `${t[0]}${t[1] ? ` [${t[1]}]` : ""}`).join(" ");
+    mount.appendChild(el("div", "c-lenscalc show",
+      `<b style="color:var(--gilt-bright)">${P[cLens].full}</b> &nbsp; d20 ${c.die}${c.disc ? ` (adv, dropped ${c.disc})` : ""} ${termTxt} = <span class="total">${c.total}</span>` +
+      (c.strike ? `<br><span class="strike">${c.strike}</span>` : "")));
+  }
+
+  const resolvedFeed = STEPS;
+  const liveFeed = CAST_ORDER_STEPS.filter(s => castById[s.cast].phase === "preroll" || !isLive());
+  const shown = isLive() ? liveFeed : resolvedFeed;
+
+  shown.forEach((s, i) => {
+    const touches = s.who === cLens || s.targetPlayer === cLens || castById[s.cast].target.player === cLens;
+    const line = el("div", "feedline" + (cLens && !touches ? " dim-out" : "") + (document.body.classList.contains("resolved") ? " reordered" : ""));
+    line.dataset.cast = s.cast;
+    line.style.animationDelay = (i * 45) + "ms";
+    const st = effStatus(s);
+    line.innerHTML = `
+      <div class="tick">${isLive() ? "cast " + (i + 1) : "step " + (i + 1)}</div>
+      <div class="txt ${st === "pending" ? "is-pending" : ""}">
+        ${s.sentence()}
+        <span class="st ${stClass(st)}" style="margin-left:4px">${stLabel(st)}</span>
+        <span class="ba">${s.ba.label ? s.ba.label + " " : ""}${s.ba.from} → <b>${s.ba.to}</b></span>
+      </div>`;
+    mount.appendChild(line);
+  });
+
+  if (isLive()) {
+    const tray = el("div", "c-tray");
+    tray.appendChild(el("div", "tray-head", "Still on the stack — resolving"));
+    CASTS.filter(c => c.phase === "reaction").forEach(c => {
+      const step = STEP_BY_CAST[c.id];
+      tray.appendChild(el("div", "feedline is-pending",
+        `<div class="tick">?</div><div class="txt">${step.sentence()} <span class="st st-pending">on stack</span></div>`));
+    });
+    tray.appendChild(el("div", null,
+      `<div style="font-size:9.5px;color:var(--parchment-dim);font-style:italic;margin-top:6px">
+       On resolve these fly up into step order — which can differ from the order they were cast.</div>`));
+    mount.appendChild(tray);
+  }
+}
+
+/* ---------- per-player calc (shared, all variants) ---------- */
+function renderCalc(mount) {
+  mount.innerHTML = "";
+  CALC.forEach(c => {
+    const row = el("div", "calc-row");
+    row.dataset.player = c.id;
+    const termTxt = c.terms.map(t =>
+      `<span>${t[0]}</span>${t[1] ? `<span class="tag">${t[1]}</span>` : ""}`).join(" ");
+    row.innerHTML = `
+      <span class="who">${P[c.id].first}</span>
+      <span class="die">${c.die}</span>
+      <span class="expr">
+        ${c.disc ? `<span class="strike">${c.disc}</span>` : ""}
+        ${termTxt}
+        <span>=</span><span class="total">${c.total}</span>
+        ${c.strike ? `<span class="strike" style="font-size:10px">${c.strike}</span>` : ""}
+      </span>
+      <span class="badge">${c.total}</span>`;
+    row.onclick = () => jumpToPlayer(c.id);
+    mount.appendChild(row);
+  });
+}
+function jumpToPlayer(pid) {
+  document.querySelectorAll(".step.lit,.castcard.lit,.feedline.lit").forEach(n => n.classList.remove("lit"));
+  const castsForPlayer = CASTS.filter(c => c.caster === pid || c.target.player === pid).map(c => c.id);
+  let first = null;
+  document.querySelectorAll("#recap-mount [data-cast]").forEach(n => {
+    if (castsForPlayer.includes(n.dataset.cast)) { n.classList.add("lit"); first = first || n; }
+  });
+  if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+/* ---------- cross-round timeline ---------- */
+function renderTimeline(mount) {
+  mount.innerHTML = "";
+  mount.appendChild(el("div", "tl-daterule", "This week"));
+  TIMELINE.forEach(r => {
+    const d = el("details", "tl-round");
+    if (r.open) d.open = true;
+    const badge = r.current ? '<span class="cnt" style="color:var(--gilt-bright)">now</span>' : `<span class="cnt">Round ${r.n}</span>`;
+    d.innerHTML = `<summary><span class="rn">R${r.n}</span><span class="sm">${r.summary}</span>${badge}</summary>`;
+    const body = el("div", "tl-body");
+    if (r.current) {
+      body.innerHTML = `<div style="font-size:11px;color:var(--parchment-dim);margin-bottom:8px">
+        ↓ the full Recap for this round renders inline here — same component as the results screen, collapsed by default in history</div>`;
+      const inner = el("div"); renderA(inner); body.appendChild(inner);
+    } else {
+      (r.lines || []).forEach(l => body.appendChild(el("div", "tl-mini", `<span>·</span><span>${l}</span>`)));
+    }
+    d.appendChild(body);
+    mount.appendChild(d);
+  });
+}
+
+/* ============================================================
+   SWITCHER + WIRING
+   ============================================================ */
+
+const VARIANTS = {
+  A: { label: "A — Ledger",         render: renderA },
+  B: { label: "B — Threaded casts", render: renderB },
+  C: { label: "C — Narrative feed", render: renderC },
+};
+const ORDER = ["A", "B", "C"];
+
+function currentVariant() {
+  const p = new URLSearchParams(location.search).get("variant");
+  return ORDER.includes(p) ? p : "A";
+}
+function setVariant(v) {
+  const u = new URL(location);
+  u.searchParams.set("variant", v);
+  history.replaceState(null, "", u);
+  draw();
+}
+
+function draw() {
+  const v = currentVariant();
+  $("#vlabel").textContent = VARIANTS[v].label;
+  $("#blurb").innerHTML = BLURB;
+  $("#recap-title").textContent = "Round Recap";
+  $("#recap-sub").textContent = isLive() ? "live · window open" : "resolved";
+
+  VARIANTS[v].render($("#recap-mount"));
+  renderCalc($("#calc-mount"));
+  renderTimeline($("#timeline-mount"));
+
+  // toggle button states
+  document.querySelectorAll(".switcher .toggle").forEach(b => {
+    b.classList.toggle("on", document.body.classList.contains(b.dataset.cls));
+  });
+  $("#t-live").textContent = isLive() ? "Live ▸ Resolved" : "◂ Live · Resolved";
+}
+
+$("#prev").onclick = () => setVariant(ORDER[(ORDER.indexOf(currentVariant()) + ORDER.length - 1) % ORDER.length]);
+$("#next").onclick = () => setVariant(ORDER[(ORDER.indexOf(currentVariant()) + 1) % ORDER.length]);
+document.querySelectorAll(".switcher .toggle").forEach(b => {
+  b.onclick = () => { document.body.classList.toggle(b.dataset.cls); draw(); };
+});
+
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  if (e.key === "ArrowLeft") $("#prev").click();
+  if (e.key === "ArrowRight") $("#next").click();
+});
+
+draw();
+</script>
+</body>
+</html>
