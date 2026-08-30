@@ -351,4 +351,54 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     const { error } = await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
     expect(error).not.toBeNull();
   });
+
+  it("Kettle Crash (TABLE/reset_persistent_modifier) zeroes every room modifier at cast time (#285)", async () => {
+    const caster = await signUp("kettle-crash-caster");
+    const target = await signUp("kettle-crash-target");
+    const bystander = await signUp("kettle-crash-bystander");
+    await forceHold(admin, caster.googleSub, "Kettle Crash");
+
+    // Non-zero modifiers across the table, including a room member who never
+    // declares into the round — the reset is room-wide, not round-scoped.
+    for (const [player, modifier] of [
+      [caster, 5],
+      [target, -4],
+      [bystander, 9],
+    ] as const) {
+      await admin
+        .from("room_players")
+        .update({ modifier })
+        .eq("room_id", caster.roomId)
+        .eq("player_id", player.googleSub);
+    }
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+
+    const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+    });
+    expect(castError).toBeNull();
+    expect(castId).toBeTruthy();
+
+    const { data: roomPlayers, error: rpError } = await admin
+      .from("room_players")
+      .select("player_id, modifier")
+      .eq("room_id", caster.roomId);
+    expect(rpError).toBeNull();
+    expect(roomPlayers!.length).toBeGreaterThanOrEqual(3);
+    for (const row of roomPlayers!) {
+      expect(row.modifier).toBe(0);
+    }
+
+    // The audit spell_casts row is still written.
+    const { data: auditRows } = await admin
+      .from("spell_casts")
+      .select("effect_kind, target_role")
+      .eq("round_id", roundId)
+      .eq("effect_kind", "reset_persistent_modifier");
+    expect(auditRows).toHaveLength(1);
+    expect(auditRows![0]!.target_role).toBe("TABLE");
+  });
 });
