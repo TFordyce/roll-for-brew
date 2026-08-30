@@ -308,6 +308,32 @@ describe.skipIf(!hasAnonTestEnv)("spell card ratings: rate, withdraw, eligibilit
     expect(other.is_cast_eligible).toBe(false);
   });
 
+  it("get_player_spell_collection never exposes another player's rating or cast-eligibility", async () => {
+    const owner = await signUp("spellrate-cross-owner");
+    const viewer = await signUp("spellrate-cross-viewer");
+    const roundId = await seedRound({
+      roomId: owner.roomId,
+      startedBy: owner.googleSub,
+      status: "resolved",
+      participantIds: [owner.googleSub],
+    });
+    await seedCast({ roundId, casterId: owner.googleSub, instanceId: cardA.instanceId });
+    await owner.client.rpc("rate_spell_card", { p_card_id: cardA.cardId, p_score: 5 });
+
+    // The viewer loads the owner's collection — my_rating / is_cast_eligible
+    // are scoped to the caller server-side, so the owner's score and cast
+    // history must not appear in the payload at all.
+    const { data, error } = await viewer.client.rpc("get_player_spell_collection", {
+      p_player_id: owner.googleSub,
+    });
+    expect(error).toBeNull();
+
+    const rows = data as { card_id: string; my_rating: number | null; is_cast_eligible: boolean }[];
+    const rated = rows.find((r) => r.card_id === cardA.cardId)!;
+    expect(rated.my_rating).toBeNull();
+    expect(rated.is_cast_eligible).toBe(false);
+  });
+
   it("a rating survives deletion of the round its qualifying cast belonged to; eligibility flips off", async () => {
     const rater = await signUp("spellrate-round-deleted");
     const roundId = await seedRound({

@@ -62,6 +62,11 @@ grant select on public.spell_card_ratings to authenticated;
 -- spell_cards for the card identity. Shared by rate_spell_card's guard and
 -- get_player_spell_collection's is_cast_eligible column so the rule has one
 -- definition.
+--
+-- Internal only: both callers are themselves security definer and invoke it
+-- as the function owner, so it needs no execute grant to authenticated.
+-- Deliberately NOT exposed as a PostgREST endpoint -- an authenticated
+-- caller could otherwise probe "did player X cast card Y?" for any pair.
 create or replace function public.player_has_eligible_spell_cast(
   p_player_id text,
   p_card_id uuid
@@ -87,7 +92,9 @@ as $$
 $$;
 
 revoke execute on function public.player_has_eligible_spell_cast(text, uuid) from public, anon;
-grant execute on function public.player_has_eligible_spell_cast(text, uuid) to authenticated;
+
+comment on function public.player_has_eligible_spell_cast(text, uuid) is
+  'Internal eligibility predicate for spell-card rating: true when the player has a non-negated cast of the card in a resolved round of a non-test room. Called only by rate_spell_card and get_player_spell_collection; not granted to authenticated.';
 
 -- Submits or edits (upsert-on-conflict) the caller's own rating of a spell
 -- card. Enforces, in order: score in 1-5; the card exists; the caller has
@@ -167,16 +174,19 @@ comment on function public.withdraw_spell_card_rating(uuid) is
   'Hard-deletes the caller''s own rating for a spell card (no-op if none exists). No eligibility re-check -- a rating can always be withdrawn by its owner.';
 
 -- Extends get_player_spell_collection (0039) with two per-card columns the
--- Spell Collection page preloads: my_rating (the target player's own 1-5
--- score for the card, or null) and is_cast_eligible (whether that player
--- has a rateable cast of it). Adding columns to a "returns table" signature
--- is a return-type change, so the old function has to be dropped first
--- (same as 0050's rebuild of get_round_modifier_effects).
+-- Spell Collection page preloads: my_rating (the caller's own 1-5 score for
+-- the card, or null) and is_cast_eligible (whether the caller has a
+-- rateable cast of it). Adding columns to a "returns table" signature is a
+-- return-type change, so the old function has to be dropped first (same as
+-- 0050's rebuild of get_round_modifier_effects).
 --
--- my_rating is the *target* player's rating, surfaced to any caller the
--- same way draw_count already is -- only the viewer's own collection view
--- renders the star row, so this never leaks one player's ratings into
--- another player's UI.
+-- Both new columns are scoped to the caller (current_player_id()), not to
+-- p_player_id: this function is security definer and serves any viewer for
+-- any target, so returning the *target* player's score / cast history would
+-- ship one player's private ratings (and a "did X cast Y?" signal) in every
+-- other viewer's payload, defeating spell_card_ratings' rater-only RLS. On
+-- someone else's collection both columns are simply null / false -- the
+-- rating row never renders there anyway.
 drop function if exists public.get_player_spell_collection(text);
 
 create function public.get_player_spell_collection(p_player_id text)
@@ -204,7 +214,8 @@ as $$
     case when coalesce(d.draw_count, 0) > 0 then sc.effect_text end,
     coalesce(d.draw_count, 0)::integer,
     scr.score,
-    public.player_has_eligible_spell_cast(p_player_id, sc.id)
+    p_player_id = public.current_player_id()
+      and public.player_has_eligible_spell_cast(p_player_id, sc.id)
   from public.spell_cards sc
   left join (
     select sdi.card_id, count(*) as draw_count
@@ -215,8 +226,11 @@ as $$
        and not p.is_test
      group by sdi.card_id
   ) d on d.card_id = sc.id
+  -- Joined on the caller, never p_player_id: my_rating is the *viewer's*
+  -- rating, and is non-null only when they're looking at their own
+  -- collection (nobody rates a card in someone else's).
   left join public.spell_card_ratings scr
-    on scr.card_id = sc.id and scr.rater_player_id = p_player_id
+    on scr.card_id = sc.id and scr.rater_player_id = public.current_player_id()
   order by sc.tier, sc.name;
 $$;
 

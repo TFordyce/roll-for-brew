@@ -17,11 +17,11 @@ import { SpellCardRatingRow } from "@/app/_components/SpellCardRatingRow";
  */
 export function SpellCollectionGrid({
   cards,
-  ownCollection = false,
+  ownCollection,
 }: {
   cards: SpellCollectionCardData[];
   /** True only on the viewer's own collection — gates the spell-card rating row (issue #300). */
-  ownCollection?: boolean;
+  ownCollection: boolean;
 }) {
   const [tierFilter, setTierFilter] = useState<Tier>("common");
   const [inspecting, setInspecting] = useState<SpellCollectionCardData | null>(null);
@@ -86,6 +86,9 @@ export function SpellCollectionGrid({
             </p>
           )}
           {ownCollection ? (
+            // key by card so switching which card is inspected remounts the
+            // row fresh — its committed-score state is seeded from props
+            // once per mount (issue #300).
             <SpellCardRatingRow
               key={inspecting.cardId}
               cardId={inspecting.cardId}
