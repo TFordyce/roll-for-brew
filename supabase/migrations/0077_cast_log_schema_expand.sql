@@ -4,6 +4,11 @@
 -- against, with nothing yet reading the new shape. Every existing test stays
 -- green; no RPC or TS path reads the new columns.
 --
+-- Numbered 0077: it is the first migration on the shared integration branch
+-- `rebuild/effect-resolver` (#303), sitting directly after master's current
+-- highest (0076). Later rebuild slices number upward from here; the integrator
+-- renumbers the whole branch past master's highest at the integrate step.
+--
 -- Deliberately NOT in this migration -- these belong to the contract slice
 -- (#312), which carries the only behaviour-relevant diff of the rebuild:
 --   * no backfill of spell_casts.resolved_value into cast_inputs
@@ -66,7 +71,7 @@ alter table public.spell_reaction_windows
 -- The retired kinds (hidden_modifier, persistent_modifier_delta,
 -- persistent_modifier_swap) stay in every list -- #312 removes them.
 
-alter table public.spell_card_effects drop constraint spell_card_effects_effect_kind_check;
+alter table public.spell_card_effects drop constraint if exists spell_card_effects_effect_kind_check;
 alter table public.spell_card_effects add constraint spell_card_effects_effect_kind_check
   check (effect_kind in (
     'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
@@ -79,7 +84,7 @@ alter table public.spell_card_effects add constraint spell_card_effects_effect_k
     'round_replay', 'draw_redirect'
   ));
 
-alter table public.spell_casts drop constraint spell_casts_effect_kind_check;
+alter table public.spell_casts drop constraint if exists spell_casts_effect_kind_check;
 alter table public.spell_casts add constraint spell_casts_effect_kind_check
   check (effect_kind is null or effect_kind in (
     'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
@@ -94,7 +99,7 @@ alter table public.spell_casts add constraint spell_casts_effect_kind_check
 
 -- spell_active_effects additionally gains advantage / disadvantage (Tier A
 -- primitive 4, Prophe-Tea -- persistent advantage as an active effect).
-alter table public.spell_active_effects drop constraint spell_active_effects_effect_kind_check;
+alter table public.spell_active_effects drop constraint if exists spell_active_effects_effect_kind_check;
 alter table public.spell_active_effects add constraint spell_active_effects_effect_kind_check
   check (effect_kind in (
     'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier', 'hidden_modifier',
