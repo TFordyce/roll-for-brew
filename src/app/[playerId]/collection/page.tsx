@@ -51,5 +51,12 @@ export default async function PlayerCollectionPage({
       ? "Spell Collection"
       : `${targetPlayer.display_name ?? targetPlayer.email}'s Collection`;
 
-  return <SpellCollectionPage viewerPlayerId={viewerPlayerId} heading={heading} cards={cards} />;
+  return (
+    <SpellCollectionPage
+      viewerPlayerId={viewerPlayerId}
+      targetPlayerId={targetPlayerId}
+      heading={heading}
+      cards={cards}
+    />
+  );
 }

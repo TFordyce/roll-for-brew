@@ -26,5 +26,12 @@ export default async function CollectionPage() {
   const playerId = googlePlayerId(user);
   const cards = await getPlayerSpellCollection(supabase, playerId);
 
-  return <SpellCollectionPage viewerPlayerId={playerId} heading="Spell Collection" cards={cards} />;
+  return (
+    <SpellCollectionPage
+      viewerPlayerId={playerId}
+      targetPlayerId={playerId}
+      heading="Spell Collection"
+      cards={cards}
+    />
+  );
 }

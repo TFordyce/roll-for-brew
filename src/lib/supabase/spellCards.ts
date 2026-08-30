@@ -296,18 +296,35 @@ export type SpellCollectionCard = {
   tier: "common" | "rare" | "epic";
   effectText: string | null;
   drawCount: number;
+  /**
+   * The signed-in viewer's own 1-5 rating of this card, or null if unrated
+   * (issue #300). Always scoped to the caller server-side, never the
+   * collection's owner — it's null on anyone else's collection.
+   */
+  myRating: number | null;
+  /**
+   * Whether the signed-in viewer has a rateable cast of this card — a
+   * non-negated `spell_casts` row in a resolved round of a non-test room
+   * (issue #300). Drives whether the card inspector shows the star row at
+   * all, and (with myRating set) whether it's read-only. Always false on
+   * anyone else's collection.
+   */
+  isCastEligible: boolean;
 };
 
 /**
  * Calls the get_player_spell_collection RPC (supabase/migrations/
- * 0039_player_spell_collection.sql): the full 71+-card catalog left-joined
- * against the given player's own draw counts (issue #133, child of the
- * Spell Collection page spec #130). Takes an explicit playerId, not
- * implicit-self like getMySpellCards, since the same call path serves both
- * "my collection" and viewing someone else's — spell names/effects aren't
- * secret (0017/0032), only which physical instance a player currently holds
- * is. castingTime/target/effectText are null until drawCount > 0; the page
- * derives "discovered" as drawCount > 0 rather than a separate flag.
+ * 0039_player_spell_collection.sql, extended by 0073): the full 71+-card
+ * catalog left-joined against the given player's own draw counts (issue
+ * #133, child of the Spell Collection page spec #130), plus the signed-in
+ * viewer's own spell-card rating and cast-eligibility per card (issue #300,
+ * always null/false when viewing someone else's collection). Takes
+ * an explicit playerId, not implicit-self like getMySpellCards, since the
+ * same call path serves both "my collection" and viewing someone else's —
+ * spell names/effects aren't secret (0017/0032), only which physical
+ * instance a player currently holds is. castingTime/target/effectText are
+ * null until drawCount > 0; the page derives "discovered" as drawCount > 0
+ * rather than a separate flag.
  */
 export async function getPlayerSpellCollection(
   supabase: SupabaseClient,
@@ -326,6 +343,8 @@ export async function getPlayerSpellCollection(
     tier: "common" | "rare" | "epic";
     effect_text: string | null;
     draw_count: number;
+    my_rating: number | null;
+    is_cast_eligible: boolean;
   }[]).map((row) => ({
     cardId: row.card_id,
     name: row.name,
@@ -334,5 +353,7 @@ export async function getPlayerSpellCollection(
     tier: row.tier,
     effectText: row.effect_text,
     drawCount: row.draw_count,
+    myRating: row.my_rating,
+    isCastEligible: row.is_cast_eligible,
   }));
 }
