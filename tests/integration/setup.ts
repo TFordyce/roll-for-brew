@@ -229,6 +229,10 @@ export function createTestCleanup(admin: SupabaseClient) {
    * silently no-ops on error and permanently leaks both the orphaned
    * player row and the card's held state into later tests/runs (issue
    * #175).
+   *
+   * Second pass: any card that migration 0074 parks at 'benched' (issue
+   * #284) but a test force-held is sent back to 'in_deck' by the reset
+   * above — re-park it so the non-working-card pool stays out of the draw.
    */
   async function releaseHeldCards(playerId: string) {
     const { error } = await admin
@@ -245,11 +249,12 @@ export function createTestCleanup(admin: SupabaseClient) {
     // Gated on an existing 'benched' row so this is a no-op — and, crucially,
     // won't trip the pre-0074 three-value location check constraint — when
     // run against a DB where migration 0074 hasn't been applied.
-    const { data: benchedProbe } = await admin
+    const { data: benchedProbe, error: probeErr } = await admin
       .from("spell_deck_instances")
       .select("id")
       .eq("location", "benched")
       .limit(1);
+    if (probeErr) throw probeErr;
     if (benchedProbe && benchedProbe.length > 0) {
       const { data: benchedCards, error: benchedErr } = await admin
         .from("spell_cards")

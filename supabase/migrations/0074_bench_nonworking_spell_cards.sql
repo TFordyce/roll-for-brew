@@ -21,7 +21,7 @@
 -- filed; the rest wait on T2). Collection/catalog pages read spell_cards,
 -- not the deck, so they are unaffected and keep showing all 71.
 
-alter table public.spell_deck_instances drop constraint spell_deck_instances_location_check;
+alter table public.spell_deck_instances drop constraint if exists spell_deck_instances_location_check;
 alter table public.spell_deck_instances add constraint spell_deck_instances_location_check
   check (location in ('in_deck', 'held', 'pending_swap', 'benched'));
 
@@ -74,6 +74,6 @@ begin
      );
 
   get diagnostics v_benched = row_count;
-  raise notice 'benched % of % non-working spell-card instances (rest currently held)',
-    v_benched, array_length(v_benched_names, 1);
+  raise notice 'benched % deck instances; % of the % non-working cards were held and left alone',
+    v_benched, array_length(v_benched_names, 1) - v_benched, array_length(v_benched_names, 1);
 end $$;

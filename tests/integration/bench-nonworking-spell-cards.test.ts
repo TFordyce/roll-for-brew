@@ -42,6 +42,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
   }
 
   it("benches only cards from the documented non-working list", async () => {
+    // Guards against the setup.ts list drifting from migration 0074's,
+    // which enumerates 39 names (37 with no effect rows + 2 dead kinds).
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(39);
+
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();
 
