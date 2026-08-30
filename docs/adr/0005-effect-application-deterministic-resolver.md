@@ -2,7 +2,7 @@
 
 ## Status
 
-proposed — decided by the Spell-casting review wayfinder map (#278), ticket #280; feeds a rebuild spec whose sub-decisions are #290–#295. Not yet built.
+accepted — rebuild spec #302 picked up 2026-08-30. Decided by the Spell-casting review wayfinder map (#278), ticket #280; sub-decisions #290–#295. Being built via #304–#321 on the shared integration branch `rebuild/effect-resolver` (branching strategy recorded in #303).
 
 ## Decision
 
