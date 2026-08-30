@@ -592,23 +592,7 @@
       <div class="frame-title"><span class="display">Where it landed</span><span style="font-size:10px;color:var(--parchment-dim)">tap a row to find them in the Recap</span></div>
       <div class="frame-body">
         <div id="calc-mount"></div>
-        <div class="tiebreak">
-          <div class="tb-head">↳ Tied for lowest at 11 → tie-break (layer 1)</div>
-          <div class="tb-row win">
-            <span style="width:40px">Ben</span>
-            <span class="mono">d20 7 = 7</span>
-            <span class="tbdie">7</span>
-            <span style="font-size:10px;color:var(--gilt-bright);letter-spacing:0.12em">BREWS</span>
-          </div>
-          <div class="tb-row">
-            <span style="width:40px">Erin</span>
-            <span class="mono">d20 13 = 13</span>
-            <span class="tbdie">13</span>
-          </div>
-          <div style="font-size:10px;color:var(--parchment-dim);font-style:italic;margin-top:6px;margin-left:18px">
-            No spells or reactions apply at a tie-break (per #219) — the Recap ends here.
-          </div>
-        </div>
+        <div id="tiebreak-mount"></div>
       </div>
     </div>
   </div>
@@ -627,6 +611,7 @@
   <div class="vlabel" id="vlabel">A — Ledger</div>
   <button id="next">▶</button>
   <div class="sep"></div>
+  <button id="t-scenario">Scenario: Full</button>
   <button class="toggle" data-cls="resolved" id="t-live">Live / Resolved</button>
   <button class="toggle" data-cls="narrow" id="t-narrow">Narrow</button>
   <button class="toggle" data-cls="timeline" id="t-timeline">Timeline</button>
@@ -634,95 +619,145 @@
 
 <script>
 /* ============================================================
-   SHARED SCENARIO DATA — Round 47, The Crooked Kettle
+   SCENARIOS — pick from the bottom bar ("Scenario: …")
+     full   — Round 47, 7 casts, every hard case
+     simple — Round 48, 1 reaction cast + a tie-break
    ============================================================ */
 
-const P = {
-  ada:  { first: "Ada",  full: "Ada Whitlock",  pmod: 2 },
-  ben:  { first: "Ben",  full: "Ben Osei",      pmod: 0 },
-  cass: { first: "Cass", full: "Cass Iyer",     pmod: 0 },
-  dev:  { first: "Dev",  full: "Dev Marchetti", pmod: 0 },
-  erin: { first: "Erin", full: "Erin Vale",     pmod: 0 },
-};
-const nm = id => P[id].first;
-
-/* The casts, in the order they were made live (cast order). */
-const CASTS = [
-  { id:"C1", caster:"cass", card:"Lucky Sip",        kind:"advantage",        target:{player:"cass"}, phase:"preroll",
-    status:"applied", impact:"boon" },
-  { id:"C2", caster:"dev",  card:"Sleight of Saucer", kind:"hidden_modifier",  target:{player:"dev"},  phase:"preroll",
-    status:"applied", impact:"boon", hidden:true },
-  { id:"C3", caster:"ben",  card:"Six Sugars",       kind:"dice_modifier",     target:{player:"ben"},  phase:"preroll",
-    status:"applied", impact:"boon" },
-  { id:"C4", caster:"dev",  card:"Scalding Pour",    kind:"flat_modifier",     target:{player:"ada"},  phase:"reaction",
-    status:"negated", impact:"bust" },
-  { id:"C5", caster:"ben",  card:"Bitter Dregs",     kind:"flat_modifier",     target:{player:"cass"}, phase:"reaction",
-    status:"noop", impact:"bust" },
-  { id:"C6", caster:"ada",  card:"Cold Kettle",      kind:"contested_negate",  target:{cast:"C4"},     phase:"reaction",
-    status:"applied", impact:"boon" },
-  { id:"C7", caster:"erin", card:"Mug Mirror",       kind:"redirect",          target:{cast:"C4"},     phase:"reaction",
-    status:"noop", impact:"boon" },
-];
-const castById = Object.fromEntries(CASTS.map(c => [c.id, c]));
-
-/* Resolution Trace steps, in RESOLUTION ORDER (what #290 will pin down;
-   the prototype picks a plausible order: input-mutating shims, then the
-   reaction stack resolving negate/redirect ahead of the cast they hit,
-   then remaining modifier math, then ward checks, then hidden reveal). */
-const STEPS = [
-  { cast:"C1", kind:"advantage",       who:"cass",
-    sentence: (h)=>`<span class="nm">Cass</span>'s <b>Lucky Sip</b> — rolled again (8 &amp; 15), kept the 15`,
-    ba:{label:"roll", from:"8 / 15", to:"15"}, status:"applied" },
-
-  { cast:"C3", kind:"dice_modifier",   who:"ben",
-    sentence: ()=>`<span class="nm">Ben</span>'s <b>Six Sugars</b> — 1d6 rolled a 4`,
-    ba:{label:"modifier", from:"+0", to:"+4"}, status:"applied" },
-
-  { cast:"C6", kind:"contested_negate", who:"ada",
-    sentence: ()=>`<span class="nm">Ada</span>'s <b>Cold Kettle</b> contested <span class="nm">Dev</span>'s <b>Scalding Pour</b> — d20 17 vs 6, Ada wins`,
-    ba:{label:"target", from:"Scalding Pour", to:"negated"}, status:"applied" },
-
-  { cast:"C7", kind:"redirect",        who:"erin",
-    sentence: ()=>`<span class="nm">Erin</span>'s <b>Mug Mirror</b> tried to bounce <b>Scalding Pour</b> — but it was already negated`,
-    ba:{label:"", from:"—", to:"no effect"}, status:"noop" },
-
-  { cast:"C4", kind:"flat_modifier",   who:"dev", targetPlayer:"ada",
-    sentence: ()=>`<span class="nm">Dev</span>'s <b>Scalding Pour</b> on <span class="nm">Ada</span> — negated by Cold Kettle, never applied`,
-    ba:{label:"modifier", from:"+2", to:"+2"}, status:"negated" },
-
-  { cast:"C5", kind:"ward",            who:"cass", targetPlayer:"cass",
-    sentence: ()=>`<span class="nm">Cass</span>'s <b>Ceramic Ward</b> warded off <span class="nm">Ben</span>'s <b>Bitter Dregs</b> — no effect`,
-    ba:{label:"modifier", from:"+0", to:"+0"}, status:"noop" },
-
-  { cast:"C2", kind:"hidden_modifier", who:"dev", targetPlayer:"dev",
-    sentence: ()=>`<span class="nm">Dev</span>'s <b>Sleight of Saucer</b> — <em>was hidden until the round resolved</em>`,
-    ba:{label:"modifier", from:"+0", to:"+1"}, status:"applied", hidden:true },
-];
-
-/* CAST ORDER for the same steps (live view): just the cast sequence,
-   one step per cast, C1..C7. */
-const STEP_BY_CAST = Object.fromEntries(STEPS.map(s => [s.cast, s]));
-const CAST_ORDER_STEPS = CASTS.map(c => STEP_BY_CAST[c.id]);
-
-const PHASE_LABEL = { preroll: "Before the roll", reaction: "Reaction window" };
-
-/* Per-player final calc, layer 0. */
-const CALC = [
-  { id:"ada",  die:12, disc:null, terms:[["+2","mod"]],            total:14, strike:"Scalding Pour −3 (negated)" },
-  { id:"ben",  die:7,  disc:null, terms:[["+4","Six Sugars"]],     total:11 },
-  { id:"cass", die:15, disc:8,    terms:[["+0",""]],               total:15, strike:"Bitter Dregs −2 (warded)" },
-  { id:"dev",  die:13, disc:null, terms:[["+1","hidden"]],         total:14 },
-  { id:"erin", die:11, disc:null, terms:[["+0",""]],               total:11 },
-];
-/* brewer decided at tie-break — nobody is the layer-0 brewer */
-
-const BLURB = `<b>Round Recap</b> — one ordered, table-wide account of the round's spell story,
+const SCENARIOS = {
+  full: {
+    key: "full", label: "Full",
+    room: "The Crooked Kettle", roundNo: 47, date: "30 Aug",
+    players: {
+      ada:  { first: "Ada",  full: "Ada Whitlock" },
+      ben:  { first: "Ben",  full: "Ben Osei" },
+      cass: { first: "Cass", full: "Cass Iyer" },
+      dev:  { first: "Dev",  full: "Dev Marchetti" },
+      erin: { first: "Erin", full: "Erin Vale" },
+    },
+    casts: [
+      { id:"C1", caster:"cass", card:"Lucky Sip",        kind:"advantage",        target:{player:"cass"}, phase:"preroll",
+        status:"applied", impact:"boon" },
+      { id:"C2", caster:"dev",  card:"Sleight of Saucer", kind:"hidden_modifier",  target:{player:"dev"},  phase:"preroll",
+        status:"applied", impact:"boon", hidden:true },
+      { id:"C3", caster:"ben",  card:"Six Sugars",       kind:"dice_modifier",     target:{player:"ben"},  phase:"preroll",
+        status:"applied", impact:"boon" },
+      { id:"C4", caster:"dev",  card:"Scalding Pour",    kind:"flat_modifier",     target:{player:"ada"},  phase:"reaction",
+        status:"negated", impact:"bust" },
+      { id:"C5", caster:"ben",  card:"Bitter Dregs",     kind:"flat_modifier",     target:{player:"cass"}, phase:"reaction",
+        status:"noop", impact:"bust" },
+      { id:"C6", caster:"ada",  card:"Cold Kettle",      kind:"contested_negate",  target:{cast:"C4"},     phase:"reaction",
+        status:"applied", impact:"boon" },
+      { id:"C7", caster:"erin", card:"Mug Mirror",       kind:"redirect",          target:{cast:"C4"},     phase:"reaction",
+        status:"noop", impact:"boon" },
+    ],
+    /* Resolution Trace steps, in RESOLUTION ORDER (what #290 will pin down;
+       the prototype picks a plausible order: input-mutating shims, then the
+       reaction stack resolving negate/redirect ahead of the cast they hit,
+       then remaining modifier math, then ward checks, then hidden reveal). */
+    steps: [
+      { cast:"C1", kind:"advantage",       who:"cass",
+        sentence: ()=>`<span class="nm">Cass</span>'s <b>Lucky Sip</b> — rolled again (8 &amp; 15), kept the 15`,
+        ba:{label:"roll", from:"8 / 15", to:"15"}, status:"applied" },
+      { cast:"C3", kind:"dice_modifier",   who:"ben",
+        sentence: ()=>`<span class="nm">Ben</span>'s <b>Six Sugars</b> — 1d6 rolled a 4`,
+        ba:{label:"modifier", from:"+0", to:"+4"}, status:"applied" },
+      { cast:"C6", kind:"contested_negate", who:"ada",
+        sentence: ()=>`<span class="nm">Ada</span>'s <b>Cold Kettle</b> contested <span class="nm">Dev</span>'s <b>Scalding Pour</b> — d20 17 vs 6, Ada wins`,
+        ba:{label:"target", from:"Scalding Pour", to:"negated"}, status:"applied" },
+      { cast:"C7", kind:"redirect",        who:"erin",
+        sentence: ()=>`<span class="nm">Erin</span>'s <b>Mug Mirror</b> tried to bounce <b>Scalding Pour</b> — but it was already negated`,
+        ba:{label:"", from:"—", to:"no effect"}, status:"noop" },
+      { cast:"C4", kind:"flat_modifier",   who:"dev", targetPlayer:"ada",
+        sentence: ()=>`<span class="nm">Dev</span>'s <b>Scalding Pour</b> on <span class="nm">Ada</span> — negated by Cold Kettle, never applied`,
+        ba:{label:"modifier", from:"+2", to:"+2"}, status:"negated" },
+      { cast:"C5", kind:"ward",            who:"cass", targetPlayer:"cass",
+        sentence: ()=>`<span class="nm">Cass</span>'s <b>Ceramic Ward</b> warded off <span class="nm">Ben</span>'s <b>Bitter Dregs</b> — no effect`,
+        ba:{label:"modifier", from:"+0", to:"+0"}, status:"noop" },
+      { cast:"C2", kind:"hidden_modifier", who:"dev", targetPlayer:"dev",
+        sentence: ()=>`<span class="nm">Dev</span>'s <b>Sleight of Saucer</b> — <em>was hidden until the round resolved</em>`,
+        ba:{label:"modifier", from:"+0", to:"+1"}, status:"applied", hidden:true },
+    ],
+    calc: [
+      { id:"ada",  die:12, disc:null, terms:[["+2","mod"]],        total:14, strike:"Scalding Pour −3 (negated)" },
+      { id:"ben",  die:7,  disc:null, terms:[["+4","Six Sugars"]], total:11 },
+      { id:"cass", die:15, disc:8,    terms:[["+0",""]],           total:15, strike:"Bitter Dregs −2 (warded)" },
+      { id:"dev",  die:13, disc:null, terms:[["+1","hidden"]],     total:14 },
+      { id:"erin", die:11, disc:null, terms:[["+0",""]],           total:11 },
+    ],
+    outcome: `Layer-0 totals: Ada 14 · Ben 11 · Cass 15 · Dev 14 · Erin 11 — <span style="color:var(--parchment)">Ben &amp; Erin tie for lowest</span>, round goes to a tie-break.`,
+    tiebreak: {
+      at: 11, layer: 1,
+      rows: [
+        { who:"Ben",  expr:"d20 7 = 7",   val:7,  win:true },
+        { who:"Erin", expr:"d20 13 = 13", val:13 },
+      ],
+    },
+    blurb: `<b>Round Recap</b> — one ordered, table-wide account of the round's spell story,
 rendered straight from the Resolution Trace. Additive: a round with no casts shows exactly
 today's per-tile calc and nothing else. This scenario has <b>7 casts</b> — a persistent modifier,
 Six Sugars' 1d6, a Lucky Sip advantage roll, a hidden modifier, a <b>negated</b> Scalding Pour,
-a <b>warded</b> Bitter Dregs, a <b>redirect that no-ops</b>, and a lowest-total tie.`;
+a <b>warded</b> Bitter Dregs, a <b>redirect that no-ops</b>, and a lowest-total tie.`,
+  },
 
-/* Cross-round timeline: 3 prior rounds, collapsed; Round 47 expanded. */
+  simple: {
+    key: "simple", label: "Simple",
+    room: "The Crooked Kettle", roundNo: 48, date: "31 Aug",
+    players: {
+      ada: { first: "Ada", full: "Ada Whitlock" },
+      ben: { first: "Ben", full: "Ben Osei" },
+      cass:{ first: "Cass", full: "Cass Iyer" },
+      dev: { first: "Dev", full: "Dev Marchetti" },
+    },
+    casts: [
+      { id:"C1", caster:"cass", card:"Scalding Pour", kind:"flat_modifier", target:{player:"ada"}, phase:"reaction",
+        status:"applied", impact:"bust" },
+    ],
+    steps: [
+      { cast:"C1", kind:"flat_modifier", who:"cass", targetPlayer:"ada",
+        sentence: ()=>`<span class="nm">Cass</span>'s <b>Scalding Pour</b> on <span class="nm">Ada</span> — −3`,
+        ba:{label:"total", from:"14", to:"11"}, status:"applied" },
+    ],
+    calc: [
+      { id:"ada",  die:14, disc:null, terms:[["−3","Scalding Pour"]], total:11 },
+      { id:"ben",  die:9,  disc:null, terms:[["+0",""]],              total:9  },
+      { id:"cass", die:12, disc:null, terms:[["+0",""]],              total:12 },
+      { id:"dev",  die:9,  disc:null, terms:[["+0",""]],              total:9  },
+    ],
+    outcome: `Layer-0 totals: Ada 11 · Ben 9 · Cass 12 · Dev 9 — <span style="color:var(--parchment)">Ben &amp; Dev tie for lowest</span>, round goes to a tie-break.`,
+    tiebreak: {
+      at: 9, layer: 1,
+      rows: [
+        { who:"Ben", expr:"d20 6 = 6",   val:6,  win:true },
+        { who:"Dev", expr:"d20 14 = 14", val:14 },
+      ],
+    },
+    blurb: `<b>Round Recap</b> — the simplest real case: <b>one reaction cast</b>, then a tie.
+Strip the cast and this screen is exactly today's per-tile calc, no new chrome. The Recap
+ends with a one-line pointer into the existing tie-break rows.`,
+  },
+};
+
+/* ---- mutable bindings, re-pointed by applyScenario() ---- */
+let SC, P, CASTS, STEPS, castById, STEP_BY_CAST, CAST_ORDER_STEPS, CALC, BLURB;
+const nm = id => P[id].first;
+const PHASE_LABEL = { preroll: "Before the roll", reaction: "Reaction window" };
+
+function applyScenario(key) {
+  SC = SCENARIOS[key];
+  P = SC.players;
+  CASTS = SC.casts;
+  STEPS = SC.steps;
+  castById = Object.fromEntries(CASTS.map(c => [c.id, c]));
+  STEP_BY_CAST = Object.fromEntries(STEPS.map(s => [s.cast, s]));
+  CAST_ORDER_STEPS = CASTS.map(c => STEP_BY_CAST[c.id]);
+  CALC = SC.calc;
+  BLURB = SC.blurb;
+}
+applyScenario("full");
+
+/* Cross-round timeline: always the full room's history, independent of the
+   scenario toggle (which only swaps the *focused* round's Recap). */
 const TIMELINE = [
   { n:47, date:"30 Aug", summary:"7 casts · went to a tie-break · Ben brewed", open:true, current:true },
   { n:46, date:"29 Aug", summary:"2 casts · Cass brewed",
@@ -808,10 +843,25 @@ function renderA(mount) {
 
   mount.appendChild(el("div", "a-phase", "Outcome"));
   mount.appendChild(el("div", null,
-    `<div style="font-size:12px;color:var(--parchment-dim);padding:4px 6px">
-      Layer-0 totals: Ada 14 · Ben 11 · Cass 15 · Dev 14 · Erin 11 —
-      <span style="color:var(--parchment)">Ben &amp; Erin tie for lowest</span>, round goes to a tie-break.
-     </div>`));
+    `<div style="font-size:12px;color:var(--parchment-dim);padding:4px 6px">${SC.outcome}</div>`));
+}
+
+/* ---------- tie-break footer (shared; existing #219/#220 rendering) ---------- */
+function renderTiebreak(mount) {
+  const tb = SC.tiebreak;
+  mount.innerHTML = `<div class="tiebreak">
+    <div class="tb-head">↳ Tied for lowest at ${tb.at} → tie-break (layer ${tb.layer})</div>
+    ${tb.rows.map(r => `
+      <div class="tb-row${r.win ? " win" : ""}">
+        <span style="width:40px">${r.who}</span>
+        <span class="mono">${r.expr}</span>
+        <span class="tbdie">${r.val}</span>
+        ${r.win ? '<span style="font-size:10px;color:var(--gilt-bright);letter-spacing:0.12em">BREWS</span>' : ""}
+      </div>`).join("")}
+    <div style="font-size:10px;color:var(--parchment-dim);font-style:italic;margin-top:6px;margin-left:18px">
+      No spells or reactions apply at a tie-break (per #219) — the Recap ends here.
+    </div>
+  </div>`;
 }
 function filterA(castId) {
   document.querySelectorAll(".a-castchip").forEach(c => c.classList.toggle("dim", castId && c.dataset.cast !== castId));
@@ -969,7 +1019,11 @@ function renderTimeline(mount) {
     const d = el("details", "tl-round");
     if (r.open) d.open = true;
     const badge = r.current ? '<span class="cnt" style="color:var(--gilt-bright)">now</span>' : `<span class="cnt">Round ${r.n}</span>`;
-    d.innerHTML = `<summary><span class="rn">R${r.n}</span><span class="sm">${r.summary}</span>${badge}</summary>`;
+    const rn = r.current ? SC.roundNo : r.n;
+    const summary = r.current
+      ? `${CASTS.length} cast${CASTS.length === 1 ? "" : "s"} · went to a tie-break · ${SC.tiebreak.rows.find(x => x.win).who} brewed`
+      : r.summary;
+    d.innerHTML = `<summary><span class="rn">R${rn}</span><span class="sm">${summary}</span>${badge}</summary>`;
     const body = el("div", "tl-body");
     if (r.current) {
       body.innerHTML = `<div style="font-size:11px;color:var(--parchment-dim);margin-bottom:8px">
@@ -1009,22 +1063,28 @@ function draw() {
   const v = currentVariant();
   $("#vlabel").textContent = VARIANTS[v].label;
   $("#blurb").innerHTML = BLURB;
+  document.querySelector(".roomhead h1").textContent = SC.room;
+  document.querySelector(".roomhead .rnd").textContent = `Round ${SC.roundNo} · ${SC.date}`;
   $("#recap-title").textContent = "Round Recap";
   $("#recap-sub").textContent = isLive() ? "live · window open" : "resolved";
+  $("#t-scenario").textContent = "Scenario: " + SC.label;
 
   VARIANTS[v].render($("#recap-mount"));
   renderCalc($("#calc-mount"));
+  renderTiebreak($("#tiebreak-mount"));
   renderTimeline($("#timeline-mount"));
 
   // toggle button states
   document.querySelectorAll(".switcher .toggle").forEach(b => {
     b.classList.toggle("on", document.body.classList.contains(b.dataset.cls));
   });
+  $("#t-scenario").classList.toggle("on", SC.key === "simple");
   $("#t-live").textContent = isLive() ? "Live ▸ Resolved" : "◂ Live · Resolved";
 }
 
 $("#prev").onclick = () => setVariant(ORDER[(ORDER.indexOf(currentVariant()) + ORDER.length - 1) % ORDER.length]);
 $("#next").onclick = () => setVariant(ORDER[(ORDER.indexOf(currentVariant()) + 1) % ORDER.length]);
+$("#t-scenario").onclick = () => { applyScenario(SC.key === "full" ? "simple" : "full"); draw(); };
 document.querySelectorAll(".switcher .toggle").forEach(b => {
   b.onclick = () => { document.body.classList.toggle(b.dataset.cls); draw(); };
 });
