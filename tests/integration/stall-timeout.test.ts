@@ -75,9 +75,11 @@ describe.skipIf(!hasAnonTestEnv)("stall-timeout enforcement", () => {
   });
 
   it("excludes a declared player who never rolls and resolves the round off the rest", async () => {
-    const a = await signUp("stall-roll-a");
-    const b = await signUp("stall-roll-b");
-    const c = await signUp("stall-roll-c");
+    const [a, b, c] = await Promise.all([
+      signUp("stall-roll-a"),
+      signUp("stall-roll-b"),
+      signUp("stall-roll-c"),
+    ]);
 
     const { data: roundId } = await a.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -112,9 +114,11 @@ describe.skipIf(!hasAnonTestEnv)("stall-timeout enforcement", () => {
   });
 
   it("excludes a stalled tie-break reroller and resolves off the remaining tied players", async () => {
-    const a = await signUp("stall-tie-a");
-    const b = await signUp("stall-tie-b");
-    const c = await signUp("stall-tie-c");
+    const [a, b, c] = await Promise.all([
+      signUp("stall-tie-a"),
+      signUp("stall-tie-b"),
+      signUp("stall-tie-c"),
+    ]);
 
     const { data: roundId } = await a.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -165,8 +169,7 @@ describe.skipIf(!hasAnonTestEnv)("stall-timeout enforcement", () => {
   });
 
   it("cancels the round instead of resolving when a stall exclusion drops active participants below 2", async () => {
-    const a = await signUp("stall-cancel-a");
-    const b = await signUp("stall-cancel-b");
+    const [a, b] = await Promise.all([signUp("stall-cancel-a"), signUp("stall-cancel-b")]);
 
     const { data: roundId } = await a.client.rpc("start_round");
     cleanup.trackRound(roundId as string);

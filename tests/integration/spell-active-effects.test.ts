@@ -58,8 +58,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
   }
 
   it("Caffeine Crash composes into the modifier bucket for exactly its 2 remaining rounds, then expires", async () => {
-    const caster = await signUp("crash-caster");
-    const target = await signUp("crash-target");
+    const [caster, target] = await Promise.all([signUp("crash-caster"), signUp("crash-target")]);
     await forceHold(admin, caster.googleSub, "Caffeine Crash");
 
     // Round 1: cast with an immediate target (target already declared in).
@@ -192,10 +191,12 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
   });
 
   it("Lesser Detox ends a Common-tier active effect early, but is rejected against a Rare one", async () => {
-    const cloudCaster = await signUp("detox-cloud-caster");
-    const crashCaster = await signUp("detox-crash-caster");
-    const crashTarget = await signUp("detox-crash-target");
-    const detoxer = await signUp("detox-detoxer");
+    const [cloudCaster, crashCaster, crashTarget, detoxer] = await Promise.all([
+      signUp("detox-cloud-caster"),
+      signUp("detox-crash-caster"),
+      signUp("detox-crash-target"),
+      signUp("detox-detoxer"),
+    ]);
 
     await forceHold(admin, cloudCaster.googleSub, "Cloud of Cream");
     await forceHold(admin, crashCaster.googleSub, "Caffeine Crash");
@@ -290,10 +291,12 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
   });
 
   it("Greater Detox (issue #70) ends a Rare-tier active effect early, but is rejected against a Common one", async () => {
-    const cloudCaster = await signUp("greater-detox-cloud-caster");
-    const crashCaster = await signUp("greater-detox-crash-caster");
-    const crashTarget = await signUp("greater-detox-crash-target");
-    const detoxer = await signUp("greater-detox-detoxer");
+    const [cloudCaster, crashCaster, crashTarget, detoxer] = await Promise.all([
+      signUp("greater-detox-cloud-caster"),
+      signUp("greater-detox-crash-caster"),
+      signUp("greater-detox-crash-target"),
+      signUp("greater-detox-detoxer"),
+    ]);
 
     await forceHold(admin, cloudCaster.googleSub, "Cloud of Cream");
     await forceHold(admin, crashCaster.googleSub, "Caffeine Crash");

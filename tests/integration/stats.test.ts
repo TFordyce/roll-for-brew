@@ -94,8 +94,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   }
 
   it("stats_cups_made_{all_time,last_30_days} sum a brewer's cups_made, filtered by resolved_at", async () => {
-    const a = await signUp("cups-a");
-    const b = await signUp("cups-b");
+    const [a, b] = await Promise.all([signUp("cups-a"), signUp("cups-b")]);
     const now = new Date();
     const fortyDaysAgo = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
@@ -144,8 +143,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_rounds_lost_{all_time,last_30_days} counts brewer occurrences, includes zero-loss participants, and filters by resolved_at", async () => {
-    const a = await signUp("lost-a");
-    const b = await signUp("lost-b");
+    const [a, b] = await Promise.all([signUp("lost-a"), signUp("lost-b")]);
     const now = new Date();
     const fortyDaysAgo = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
@@ -186,8 +184,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_loss_percentage_{all_time,last_30_days} divides rounds_lost by rounds_played per player, filtered by resolved_at", async () => {
-    const a = await signUp("pct-a");
-    const b = await signUp("pct-b");
+    const [a, b] = await Promise.all([signUp("pct-a"), signUp("pct-b")]);
     const now = new Date();
     const fortyDaysAgo = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
@@ -244,8 +241,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_modifier_peak_{all_time,last_30_days} is the running sum of a brewer's cups_made within one room, filtered by resolved_at", async () => {
-    const c = await signUp("peak-c");
-    const other = await signUp("peak-other");
+    const [c, other] = await Promise.all([signUp("peak-c"), signUp("peak-other")]);
     const fortyDaysAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
     const recent = new Date();
 
@@ -284,8 +280,10 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_modifier_peak_{all_time,last_30_days} interleaves round losses and adjustments chronologically, not adjustments-on-top (issue #185)", async () => {
-    const c = await signUp("peak-interleave-c");
-    const other = await signUp("peak-interleave-other");
+    const [c, other] = await Promise.all([
+      signUp("peak-interleave-c"),
+      signUp("peak-interleave-other"),
+    ]);
     const t1 = new Date(Date.now() - 3 * 60 * 1000);
     const t2 = new Date(Date.now() - 2 * 60 * 1000);
     const t3 = new Date(Date.now() - 1 * 60 * 1000);
@@ -339,8 +337,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_modifier_peak_last_30_days filters round losses and adjustments independently by their own timestamp", async () => {
-    const c = await signUp("peak-filter-c");
-    const other = await signUp("peak-filter-other");
+    const [c, other] = await Promise.all([signUp("peak-filter-c"), signUp("peak-filter-other")]);
     const fortyDaysAgo = new Date(Date.now() - 40 * 24 * 60 * 60 * 1000);
     const recent = new Date();
 
@@ -384,8 +381,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_room_adjustments exposes a room's adjustments (actor, target, delta, reason, timestamp)", async () => {
-    const a = await signUp("room-adj-a");
-    const b = await signUp("room-adj-b");
+    const [a, b] = await Promise.all([signUp("room-adj-a"), signUp("room-adj-b")]);
     const createdAt = new Date();
 
     const adjustmentId = await seedAdjustment({
@@ -418,8 +414,7 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
   });
 
   it("stats_room_history and stats_room_rounds expose per-room resolved-round drill-down", async () => {
-    const a = await signUp("room-a");
-    const b = await signUp("room-b");
+    const [a, b] = await Promise.all([signUp("room-a"), signUp("room-b")]);
     const now = new Date();
 
     const roundId = await seedResolvedRound({

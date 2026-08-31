@@ -192,8 +192,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
   });
 
   it("an opponent-targeted card can be armed with no target while the round is still open, then targeted after close", async () => {
-    const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-opp-caster");
-    const { client: targetClient, googleSub: targetSub } = await signUpSignInAndEnter("cast-opp-target");
+    const [{ client: casterClient, googleSub: casterSub }, { client: targetClient, googleSub: targetSub }] = await Promise.all([
+      signUpSignInAndEnter("cast-opp-caster"),
+      signUpSignInAndEnter("cast-opp-target"),
+    ]);
     await forceHold(admin, casterSub, "Milky Brew");
 
     const { data: roundId } = await casterClient.rpc("start_round");
@@ -253,8 +255,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
   });
 
   it("rejects casting when the caller is not a participant in the round (issue #244)", async () => {
-    const { client: starterClient } = await signUpSignInAndEnter("cast-non-participant-starter");
-    const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-non-participant-caster");
+    const [{ client: starterClient }, { client: casterClient, googleSub: casterSub }] = await Promise.all([
+      signUpSignInAndEnter("cast-non-participant-starter"),
+      signUpSignInAndEnter("cast-non-participant-caster"),
+    ]);
     await forceHold(admin, casterSub, "Lucky Sip");
 
     const { data: roundId } = await starterClient.rpc("start_round");
@@ -270,8 +274,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
   });
 
   it("rejects casting once the round has closed (RFB03)", async () => {
-    const { client: casterClient, googleSub: casterSub } = await signUpSignInAndEnter("cast-after-close");
-    const { client: otherClient } = await signUpSignInAndEnter("cast-after-close-other");
+    const [{ client: casterClient, googleSub: casterSub }, { client: otherClient }] = await Promise.all([
+      signUpSignInAndEnter("cast-after-close"),
+      signUpSignInAndEnter("cast-after-close-other"),
+    ]);
     await forceHold(admin, casterSub, "Lucky Sip");
 
     const { data: roundId } = await casterClient.rpc("start_round");

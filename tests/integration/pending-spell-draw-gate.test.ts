@@ -58,8 +58,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyPendingSpellDraw: the Spell Draw Window g
   });
 
   it("returns null while the earning round is closed (mid-roll/tie-break/reaction-window)", async () => {
-    const player = await signUp("draw-gate-closed");
-    const other = await signUp("draw-gate-closed-other");
+    const [player, other] = await Promise.all([
+      signUp("draw-gate-closed"),
+      signUp("draw-gate-closed-other"),
+    ]);
     const roundId = await startRoundFor(player.client);
     await other.client.rpc("declare_in", { p_round_id: roundId });
     await recordTrigger(player.client, roundId, "nat1");
@@ -129,8 +131,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyPendingSpellDraw: the Spell Draw Window g
   });
 
   it("never returns another player's pending spell draw", async () => {
-    const brewer = await signUp("draw-gate-isolation-a");
-    const other = await signUp("draw-gate-isolation-b");
+    const [brewer, other] = await Promise.all([
+      signUp("draw-gate-isolation-a"),
+      signUp("draw-gate-isolation-b"),
+    ]);
 
     const roundId = await startRoundFor(brewer.client);
     await recordTrigger(brewer.client, roundId, "nat20");

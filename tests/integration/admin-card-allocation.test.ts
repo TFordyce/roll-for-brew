@@ -44,9 +44,11 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("admin_allocate_spell_card assigns the card, held_by_player, and a spell_draws row", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("allocator");
+    const [{ client, googleSub }, { googleSub: targetSub }] = await Promise.all([
+      signUpSignInAndEnter("allocator"),
+      signUpSignInAndEnter("allocatee"),
+    ]);
     await makeAdmin(googleSub);
-    const { googleSub: targetSub } = await signUpSignInAndEnter("allocatee");
     const cardId = await cardIdFor("Lucky Sip");
 
     const { data, error } = await client.rpc("admin_allocate_spell_card", {
@@ -72,9 +74,12 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("appears in the assigned player's spell collection as discovered", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("allocator-collection");
+    const [{ client, googleSub }, { client: targetClient, googleSub: targetSub }] =
+      await Promise.all([
+        signUpSignInAndEnter("allocator-collection"),
+        signUpSignInAndEnter("allocatee-collection"),
+      ]);
     await makeAdmin(googleSub);
-    const { client: targetClient, googleSub: targetSub } = await signUpSignInAndEnter("allocatee-collection");
     const cardId = await cardIdFor("Six Sugars");
 
     const allocResult = await client.rpc("admin_allocate_spell_card", { p_card_id: cardId, p_player_id: targetSub });
@@ -89,11 +94,14 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("rejects assigning a card that's already held by someone else (RFB07)", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("allocator-conflict");
+    const [{ client, googleSub }, { googleSub: holderSub }, { googleSub: targetSub }] =
+      await Promise.all([
+        signUpSignInAndEnter("allocator-conflict"),
+        signUpSignInAndEnter("holder-conflict"),
+        signUpSignInAndEnter("target-conflict"),
+      ]);
     await makeAdmin(googleSub);
-    const { googleSub: holderSub } = await signUpSignInAndEnter("holder-conflict");
     await forceHold(admin, holderSub, "Caffeinated Focus");
-    const { googleSub: targetSub } = await signUpSignInAndEnter("target-conflict");
     const cardId = await cardIdFor("Caffeinated Focus");
 
     const { error } = await client.rpc("admin_allocate_spell_card", {
@@ -113,9 +121,11 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("rejects assigning to a player who already holds a different card (RFB08)", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("allocator-target-conflict");
+    const [{ client, googleSub }, { googleSub: targetSub }] = await Promise.all([
+      signUpSignInAndEnter("allocator-target-conflict"),
+      signUpSignInAndEnter("target-already-holding"),
+    ]);
     await makeAdmin(googleSub);
-    const { googleSub: targetSub } = await signUpSignInAndEnter("target-already-holding");
     await forceHold(admin, targetSub, "Double Dunk");
     const otherCardId = await cardIdFor("Milk First?");
 
@@ -128,9 +138,11 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("admin_unassign_spell_card returns a held card to in_deck without touching spell_draws", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("unassigner");
+    const [{ client, googleSub }, { googleSub: holderSub }] = await Promise.all([
+      signUpSignInAndEnter("unassigner"),
+      signUpSignInAndEnter("held-then-unassigned"),
+    ]);
     await makeAdmin(googleSub);
-    const { googleSub: holderSub } = await signUpSignInAndEnter("held-then-unassigned");
     const instanceId = await forceHold(admin, holderSub, "Slipped Spoon");
     const cardId = await cardIdFor("Slipped Spoon");
 
@@ -156,11 +168,14 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("after unassign, the card can be reassigned to a different player", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("reassigner");
+    const [{ client, googleSub }, { googleSub: firstHolder }, { googleSub: secondHolder }] =
+      await Promise.all([
+        signUpSignInAndEnter("reassigner"),
+        signUpSignInAndEnter("first-holder"),
+        signUpSignInAndEnter("second-holder"),
+      ]);
     await makeAdmin(googleSub);
-    const { googleSub: firstHolder } = await signUpSignInAndEnter("first-holder");
     await forceHold(admin, firstHolder, "Sugar Rush");
-    const { googleSub: secondHolder } = await signUpSignInAndEnter("second-holder");
     const cardId = await cardIdFor("Sugar Rush");
 
     await client.rpc("admin_unassign_spell_card", { p_card_id: cardId });
@@ -179,9 +194,11 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation: assign/unassign real pl
   });
 
   it("admin_get_card_assignments reports every catalog card with its holder", async () => {
-    const { client, googleSub } = await signUpSignInAndEnter("lister");
+    const [{ client, googleSub }, { googleSub: holderSub }] = await Promise.all([
+      signUpSignInAndEnter("lister"),
+      signUpSignInAndEnter("listed-holder"),
+    ]);
     await makeAdmin(googleSub);
-    const { googleSub: holderSub } = await signUpSignInAndEnter("listed-holder");
     await forceHold(admin, holderSub, "Tea Party Revolt");
 
     const { data, error } = await client.rpc("admin_get_card_assignments");

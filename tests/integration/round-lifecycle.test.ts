@@ -88,8 +88,10 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("rejects a close attempt from anyone other than the round's starter", async () => {
-    const { client: starterClient } = await signUpSignInAndEnter("close-auth-starter");
-    const { client: otherClient } = await signUpSignInAndEnter("close-auth-other");
+    const [{ client: starterClient }, { client: otherClient }] = await Promise.all([
+      signUpSignInAndEnter("close-auth-starter"),
+      signUpSignInAndEnter("close-auth-other"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -120,8 +122,10 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("lets the starter close once at least 2 players have declared in", async () => {
-    const { client: starterClient } = await signUpSignInAndEnter("gate-pass-starter");
-    const { client: otherClient } = await signUpSignInAndEnter("gate-pass-other");
+    const [{ client: starterClient }, { client: otherClient }] = await Promise.all([
+      signUpSignInAndEnter("gate-pass-starter"),
+      signUpSignInAndEnter("gate-pass-other"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -137,8 +141,10 @@ describe.skipIf(!hasAnonTestEnv)("round lifecycle (start_round / declare_in / cl
   });
 
   it("does not retroactively add a player who logs in mid-day to an already-open round", async () => {
-    const { client: starterClient } = await signUpSignInAndEnter("mid-day-starter");
-    const { googleSub: lateSub } = await signUpSignInAndEnter("mid-day-late");
+    const [{ client: starterClient }, { googleSub: lateSub }] = await Promise.all([
+      signUpSignInAndEnter("mid-day-starter"),
+      signUpSignInAndEnter("mid-day-late"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);

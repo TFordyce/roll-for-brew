@@ -68,8 +68,10 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
   });
 
   it("sums modifier_adjustments.delta, in that room", async () => {
-    const actor = await signUp("modbreak-adj-actor");
-    const target = await signUp("modbreak-adj-target");
+    const [actor, target] = await Promise.all([
+      signUp("modbreak-adj-actor"),
+      signUp("modbreak-adj-target"),
+    ]);
 
     const { error: firstError } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,
@@ -93,8 +95,10 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
   });
 
   it("sums both kinds together when both exist", async () => {
-    const actor = await signUp("modbreak-both-actor");
-    const target = await signUp("modbreak-both-target");
+    const [actor, target] = await Promise.all([
+      signUp("modbreak-both-actor"),
+      signUp("modbreak-both-target"),
+    ]);
 
     await insertResolvedRound(target.roomId, target.googleSub, 4);
     const { error } = await actor.client.rpc("log_modifier_adjustment", {

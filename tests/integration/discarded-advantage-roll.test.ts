@@ -23,8 +23,10 @@ describe.skipIf(!hasAnonTestEnv)("discarded advantage/disadvantage roll (issue #
   }
 
   it("persists the discarded roll when disadvantage applies, and it's the losing side of the two d20s", async () => {
-    const caster = await signUp("discard-disadv-caster");
-    const target = await signUp("discard-disadv-target");
+    const [caster, target] = await Promise.all([
+      signUp("discard-disadv-caster"),
+      signUp("discard-disadv-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Slipped Spoon");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -73,8 +75,10 @@ describe.skipIf(!hasAnonTestEnv)("discarded advantage/disadvantage roll (issue #
   });
 
   it("persists the discarded roll when advantage applies, and it's the losing side of the two d20s", async () => {
-    const caster = await signUp("discard-adv-caster");
-    const other = await signUp("discard-adv-other");
+    const [caster, other] = await Promise.all([
+      signUp("discard-adv-caster"),
+      signUp("discard-adv-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Sugar Rush");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -257,8 +261,10 @@ describe.skipIf(!hasAnonTestEnv)("discarded advantage/disadvantage roll (issue #
   });
 
   it("surfaces discarded_value through get_current_layer_rolls_if_complete (issue #167, migration 0051)", async () => {
-    const caster = await signUp("discard-rpc-caster");
-    const other = await signUp("discard-rpc-other");
+    const [caster, other] = await Promise.all([
+      signUp("discard-rpc-caster"),
+      signUp("discard-rpc-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Sugar Rush");
 
     const { data: roundId } = await caster.client.rpc("start_round");
