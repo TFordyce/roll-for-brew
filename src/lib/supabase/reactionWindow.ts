@@ -235,10 +235,10 @@ export async function applyRollFlip(supabase: SupabaseClient, roundId: string, l
   return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
 }
 
-// apply_lowest_gains_highest_modifier (0033, Broken Biscuit) is no longer
-// called from TS: lowest_gains_highest_modifier moved into resolve_round as
-// pure modifier math on the composed modifiers (migration 0078, issue #305).
-// The SQL RPC is left in place (harmless, unreferenced).
+// apply_lowest_gains_highest_modifier (0033, Broken Biscuit) is gone:
+// lowest_gains_highest_modifier moved into resolve_round as pure modifier
+// math on the composed modifiers (migration 0078, issue #305), and the
+// orphaned fan-out RPC was dropped in migration 0083 (issue #312).
 //
 // applyForcedReroll / applyRollFlip / applyRollSwap still run at
 // finalizeReactionWindow and still mutate rolls.value in place (RoundReveal

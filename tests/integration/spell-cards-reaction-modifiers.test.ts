@@ -17,7 +17,7 @@ import {
 // get_round_modifier_effects the same way a pre-roll Action cast already
 // does (the modifier bucket doesn't distinguish how a cast was made).
 //
-// Six Sugars' dice_modifier casts with resolved_value left null until the
+// Six Sugars' dice_modifier casts with no cast_inputs.dice_roll until the
 // caster resolves it (issue #252, migration 0069) — resolved here via
 // resolve_pending_spell_die_in_app immediately after casting, same as the
 // compound-card tests (spell-cards-compound.test.ts).
@@ -70,7 +70,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     // not resolved_value IS NULL.
     const { data: preRow } = await admin
       .from("spell_casts")
-      .select("cast_inputs, resolved_value")
+      .select("cast_inputs")
       .eq("id", pendingCastId)
       .single();
     expect(preRow!.cast_inputs ?? {}).not.toHaveProperty("dice_roll");
@@ -80,17 +80,16 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     });
     expect(resolveError).toBeNull();
 
-    // Resolution writes cast_inputs.dice_roll (raw, unsigned) AND keeps
-    // resolved_value (signed) in parallel for the legacy readers.
+    // #312: resolution writes cast_inputs.dice_roll (raw, unsigned) — the sole
+    // source of truth now that resolved_value is dropped.
     const { data: postRow } = await admin
       .from("spell_casts")
-      .select("cast_inputs, resolved_value")
+      .select("cast_inputs")
       .eq("id", pendingCastId)
       .single();
     const diceRoll = (postRow!.cast_inputs as { dice_roll: number }).dice_roll;
     expect(diceRoll).toBeGreaterThanOrEqual(1);
     expect(diceRoll).toBeLessThanOrEqual(6);
-    expect(postRow!.resolved_value).toBe(diceRoll); // 1d6 sign is +1
 
     const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: roundId,
