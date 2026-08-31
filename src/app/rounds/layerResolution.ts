@@ -158,9 +158,12 @@ const defaultFinalizeDeps: FinalizeReactionWindowDeps = {
  * with): applies any still-active forced_reroll effects in place on the
  * layer's own rolls (Double Dunk, Milk First?, ...), then the two remaining
  * table-wide roll-transform effects (0033: Zariel's Fall/roll_flip, Dunkin
- * Disaster/roll_swap), in that fixed order — a deliberate simplification for
- * the rare case of both landing on the same layer, rather than trying to
- * reason about card-text precedence between them — and hands off to
+ * Disaster/roll_swap), in that fixed order — "flip before swap", the
+ * documented tie of record for a player hit by both. Each apply_* RPC now
+ * also records its exact before→after into spell_casts.cast_inputs
+ * (migration 0079, issue #306); resolve_round rebuilds every roller's final
+ * roll from those recorded values, so the in-memory `rolls` patching below
+ * only feeds the reveal broadcast, not the outcome. Hands off to
  * applyLayerOutcome, which calls the authoritative resolve_round. Broken
  * Biscuit/lowest_gains_highest_modifier is no longer applied here: it moved
  * into resolve_round as pure modifier math on the composed modifiers, so it

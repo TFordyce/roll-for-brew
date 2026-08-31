@@ -84,6 +84,7 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
       effectParams: Record<string, unknown>;
       targetPlayerId: string | null;
       reactionWindowId?: string;
+      castInputs?: Record<string, unknown>;
     },
   ) {
     const instanceId = await forceHold(admin, casterId, donorCard);
@@ -104,6 +105,7 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
         effect_kind: row.effectKind,
         effect_params: row.effectParams,
         reaction_window_id: row.reactionWindowId ?? null,
+        cast_inputs: row.castInputs ?? null,
       })
       .select("id")
       .single();
@@ -447,6 +449,102 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     expect(out.layer).toBe(1);
     expect(out.brewer_id).toBe(p2.googleSub); // bare roll 3 < 7, effect ignored
     expect(out.trace).toEqual([]);
+  });
+
+  it("Phase 3 adopts the eager shim's recorded roll_transform, flip before swap (issue #306)", async () => {
+    const p1 = await signUp("rr-rt-1");
+    const p2 = await signUp("rr-rt-2");
+    const p3 = await signUp("rr-rt-3");
+    const roundId = await openAndCloseRound(p1, [p2, p3]);
+    // Base rolls as originally rolled.
+    await seedRoll(roundId, p1.googleSub, 2);
+    await seedRoll(roundId, p2.googleSub, 20);
+    await seedRoll(roundId, p3.googleSub, 10);
+    const windowId = await openWindow(roundId);
+
+    // roll_flip ran first (order 3): 21 - v for everyone.
+    await seedCast(roundId, p2.googleSub, "Fortune's Flavour", {
+      effectKind: "roll_flip",
+      effectParams: {},
+      targetPlayerId: null,
+      reactionWindowId: windowId,
+      castInputs: {
+        roll_transform: {
+          kind: "roll_flip",
+          order: 3,
+          players: [
+            { player_id: p1.googleSub, before: 2, after: 19 },
+            { player_id: p2.googleSub, before: 20, after: 1 },
+            { player_id: p3.googleSub, before: 10, after: 11 },
+          ],
+        },
+      },
+    });
+    // roll_swap ran second (order 4): swap post-flip highest (p1=19) and lowest (p2=1).
+    await seedCast(roundId, p3.googleSub, "Fortune's Flavour", {
+      effectKind: "roll_swap",
+      effectParams: {},
+      targetPlayerId: null,
+      reactionWindowId: windowId,
+      castInputs: {
+        roll_transform: {
+          kind: "roll_swap",
+          order: 4,
+          players: [
+            { player_id: p1.googleSub, before: 19, after: 1 },
+            { player_id: p2.googleSub, before: 1, after: 19 },
+          ],
+        },
+      },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Final rolls after flip-then-swap: p1=1, p2=19, p3=11 -> p1 (lowest) brews.
+    expect(out.outcome).toBe("brewer");
+    expect(out.brewer_id).toBe(p1.googleSub);
+
+    // p1's two Phase-3 steps: flip (2 -> 19) strictly before swap (19 -> 1).
+    const p1Steps = out.trace.filter((s) => s.target_player === p1.googleSub && s.before.type === "roll");
+    expect(p1Steps.map((s) => s.display_kind)).toEqual(["roll_flip", "roll_swap"]);
+    expect(p1Steps[0]).toMatchObject({ before: { type: "roll", value: 2 }, after: { type: "roll", value: 19 } });
+    expect(p1Steps[1]).toMatchObject({ before: { type: "roll", value: 19 }, after: { type: "roll", value: 1 } });
+  });
+
+  it("Phase 3 reproduces the final rolls purely from cast_inputs, with no dependence on the live rolls.value (issue #306)", async () => {
+    const p1 = await signUp("rr-rt-indep-1");
+    const p2 = await signUp("rr-rt-indep-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    // rolls.value left DELIBERATELY stale: p1's row still says 18 (would win
+    // outright), but the recorded forced_reroll says p1 actually rolled 1.
+    await seedRoll(roundId, p1.googleSub, 18);
+    await seedRoll(roundId, p2.googleSub, 5);
+    const windowId = await openWindow(roundId);
+    await seedCast(roundId, p2.googleSub, "Fortune's Flavour", {
+      effectKind: "forced_reroll",
+      effectParams: {},
+      targetPlayerId: p1.googleSub,
+      reactionWindowId: windowId,
+      castInputs: {
+        roll_transform: {
+          kind: "forced_reroll",
+          order: 2,
+          players: [{ player_id: p1.googleSub, before: 18, after: 1 }],
+        },
+      },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Adopted the recorded 1, not the stale 18 -> p1 brews.
+    expect(out.brewer_id).toBe(p1.googleSub);
+    const step = out.trace.find((s) => s.display_kind === "forced_reroll");
+    expect(step).toMatchObject({
+      target_player: p1.googleSub,
+      before: { type: "roll", value: 18 },
+      after: { type: "roll", value: 1 },
+      outcome: "applied",
+    });
   });
 
   it("is idempotent: re-running over identical inputs yields the same outcome and Trace", async () => {
