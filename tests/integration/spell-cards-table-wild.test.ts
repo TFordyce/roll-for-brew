@@ -30,8 +30,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   }
 
   it("Boil Over (TABLE/set_modifier) fans out to every participant once declare-in closes", async () => {
-    const caster = await signUp("boil-over-caster");
-    const target = await signUp("boil-over-target");
+    const [caster, target] = await Promise.all([
+      signUp("boil-over-caster"),
+      signUp("boil-over-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Boil Over");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -76,8 +78,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Scalding Pour (ALL_OTHER_PLAYERS/flat_modifier) excludes the caster", async () => {
-    const caster = await signUp("scalding-pour-caster");
-    const target = await signUp("scalding-pour-target");
+    const [caster, target] = await Promise.all([
+      signUp("scalding-pour-caster"),
+      signUp("scalding-pour-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Scalding Pour");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -113,8 +117,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Calami-Tea (CHOSEN_PLAYERS) resolves immediately at cast time, not deferred to close_round", async () => {
-    const caster = await signUp("calami-tea-caster");
-    const target = await signUp("calami-tea-target");
+    const [caster, target] = await Promise.all([
+      signUp("calami-tea-caster"),
+      signUp("calami-tea-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Calami-Tea");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -151,11 +157,13 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Calami-Tea rejects more chosen players than the card's max_targets", async () => {
-    const caster = await signUp("calami-tea-overflow-caster");
-    const t1 = await signUp("calami-tea-overflow-t1");
-    const t2 = await signUp("calami-tea-overflow-t2");
-    const t3 = await signUp("calami-tea-overflow-t3");
-    const t4 = await signUp("calami-tea-overflow-t4");
+    const [caster, t1, t2, t3, t4] = await Promise.all([
+      signUp("calami-tea-overflow-caster"),
+      signUp("calami-tea-overflow-t1"),
+      signUp("calami-tea-overflow-t2"),
+      signUp("calami-tea-overflow-t3"),
+      signUp("calami-tea-overflow-t4"),
+    ]);
     await forceHold(admin, caster.googleSub, "Calami-Tea");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -172,8 +180,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Wild Brew Surge (WILD) rolls a d6 and dispatches to a structurally-consistent outcome", async () => {
-    const caster = await signUp("wild-brew-caster");
-    const target = await signUp("wild-brew-target");
+    const [caster, target] = await Promise.all([
+      signUp("wild-brew-caster"),
+      signUp("wild-brew-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Wild Brew Surge");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -222,8 +232,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("apply_roll_swap swaps the layer's highest and lowest rolls in place", async () => {
-    const caster = await signUp("roll-swap-caster");
-    const target = await signUp("roll-swap-target");
+    const [caster, target] = await Promise.all([
+      signUp("roll-swap-caster"),
+      signUp("roll-swap-target"),
+    ]);
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -244,8 +256,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("apply_roll_flip flips every roll in the layer to 21 minus its value", async () => {
-    const caster = await signUp("roll-flip-caster");
-    const target = await signUp("roll-flip-target");
+    const [caster, target] = await Promise.all([
+      signUp("roll-flip-caster"),
+      signUp("roll-flip-target"),
+    ]);
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -266,8 +280,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Drip Tray (tea_maker_override/highest_modifier) surfaces its mode via get_tea_maker_override", async () => {
-    const caster = await signUp("drip-tray-caster");
-    const target = await signUp("drip-tray-target");
+    const [caster, target] = await Promise.all([
+      signUp("drip-tray-caster"),
+      signUp("drip-tray-target"),
+    ]);
 
     const { data: roundId } = await caster.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -303,8 +319,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Inscribed Saucer (declared_number_tea_maker) names the first matching roller and consumes itself", async () => {
-    const caster = await signUp("saucer-caster");
-    const target = await signUp("saucer-target");
+    const [caster, target] = await Promise.all([signUp("saucer-caster"), signUp("saucer-target")]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -340,8 +355,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("cast_spell_card rejects a declared_number_tea_maker card cast without a number", async () => {
-    const caster = await signUp("saucer-missing-number-caster");
-    const target = await signUp("saucer-missing-number-target");
+    const [caster, target] = await Promise.all([
+      signUp("saucer-missing-number-caster"),
+      signUp("saucer-missing-number-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -353,9 +370,11 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
   });
 
   it("Kettle Crash (TABLE/reset_persistent_modifier) zeroes every room modifier at cast time (#285)", async () => {
-    const caster = await signUp("kettle-crash-caster");
-    const target = await signUp("kettle-crash-target");
-    const bystander = await signUp("kettle-crash-bystander");
+    const [caster, target, bystander] = await Promise.all([
+      signUp("kettle-crash-caster"),
+      signUp("kettle-crash-target"),
+      signUp("kettle-crash-bystander"),
+    ]);
     await forceHold(admin, caster.googleSub, "Kettle Crash");
 
     // Non-zero modifiers across the table, including a room member who never

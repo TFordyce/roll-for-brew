@@ -28,9 +28,11 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
   }
 
   it("lets a player join a closed round with no rolls yet", async () => {
-    const { client: starterClient, googleSub: starterSub } = await signUp("late-declare-starter");
-    const { client: otherClient, googleSub: otherSub } = await signUp("late-declare-other");
-    const { googleSub: lateSub, client: lateClient } = await signUp("late-declare-late");
+    const [{ client: starterClient, googleSub: starterSub }, { client: otherClient, googleSub: otherSub }, { googleSub: lateSub, client: lateClient }] = await Promise.all([
+      signUp("late-declare-starter"),
+      signUp("late-declare-other"),
+      signUp("late-declare-late"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -55,9 +57,11 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
   });
 
   it("is idempotent on repeat calls", async () => {
-    const { client: starterClient } = await signUp("late-declare-idempotent-starter");
-    const { client: otherClient } = await signUp("late-declare-idempotent-other");
-    const { client: lateClient, googleSub: lateSub } = await signUp("late-declare-idempotent-late");
+    const [{ client: starterClient }, { client: otherClient }, { client: lateClient, googleSub: lateSub }] = await Promise.all([
+      signUp("late-declare-idempotent-starter"),
+      signUp("late-declare-idempotent-other"),
+      signUp("late-declare-idempotent-late"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -78,9 +82,11 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
   });
 
   it("fails once a roll has already landed for the round (RFB31)", async () => {
-    const { client: starterClient } = await signUp("late-declare-rolled-starter");
-    const { client: otherClient } = await signUp("late-declare-rolled-other");
-    const { client: lateClient } = await signUp("late-declare-rolled-late");
+    const [{ client: starterClient }, { client: otherClient }, { client: lateClient }] = await Promise.all([
+      signUp("late-declare-rolled-starter"),
+      signUp("late-declare-rolled-other"),
+      signUp("late-declare-rolled-late"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -99,8 +105,10 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
   });
 
   it("fails while the round is still open (declare_in is the right call there)", async () => {
-    const { client: starterClient } = await signUp("late-declare-open-starter");
-    const { client: lateClient } = await signUp("late-declare-open-late");
+    const [{ client: starterClient }, { client: lateClient }] = await Promise.all([
+      signUp("late-declare-open-starter"),
+      signUp("late-declare-open-late"),
+    ]);
 
     const { data: roundId } = await starterClient.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -111,9 +119,11 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
   });
 
   it("lets a still-deferred opponent-targeted cast target a newly Late-Declared player", async () => {
-    const { client: casterClient, googleSub: casterSub } = await signUp("late-declare-retarget-caster");
-    const { client: otherClient } = await signUp("late-declare-retarget-other");
-    const { client: lateClient, googleSub: lateSub } = await signUp("late-declare-retarget-late");
+    const [{ client: casterClient, googleSub: casterSub }, { client: otherClient }, { client: lateClient, googleSub: lateSub }] = await Promise.all([
+      signUp("late-declare-retarget-caster"),
+      signUp("late-declare-retarget-other"),
+      signUp("late-declare-retarget-late"),
+    ]);
     await forceHold(admin, casterSub, "Milky Brew");
 
     const { data: roundId } = await casterClient.rpc("start_round");
@@ -153,9 +163,11 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
   });
 
   it("leaves an already-targeted cast unaffected by a later Late Declare", async () => {
-    const { client: casterClient, googleSub: casterSub } = await signUp("late-declare-no-retarget-caster");
-    const { client: targetClient, googleSub: targetSub } = await signUp("late-declare-no-retarget-target");
-    const { client: lateClient, googleSub: lateSub } = await signUp("late-declare-no-retarget-late");
+    const [{ client: casterClient, googleSub: casterSub }, { client: targetClient, googleSub: targetSub }, { client: lateClient, googleSub: lateSub }] = await Promise.all([
+      signUp("late-declare-no-retarget-caster"),
+      signUp("late-declare-no-retarget-target"),
+      signUp("late-declare-no-retarget-late"),
+    ]);
     await forceHold(admin, casterSub, "Milky Brew");
 
     const { data: roundId } = await casterClient.rpc("start_round");

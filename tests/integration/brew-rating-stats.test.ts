@@ -96,9 +96,11 @@ describe.skipIf(!hasAnonTestEnv)("brew rating stats views", () => {
   }
 
   it("stats_brew_rating_{all_time,last_30_days} average a brewer's scores across multiple raters", async () => {
-    const brewer = await signUp("bratestats-avg-brewer");
-    const raterA = await signUp("bratestats-avg-ratera");
-    const raterB = await signUp("bratestats-avg-raterb");
+    const [brewer, raterA, raterB] = await Promise.all([
+      signUp("bratestats-avg-brewer"),
+      signUp("bratestats-avg-ratera"),
+      signUp("bratestats-avg-raterb"),
+    ]);
     const now = new Date();
 
     const roundId = await seedResolvedRound({
@@ -141,8 +143,10 @@ describe.skipIf(!hasAnonTestEnv)("brew rating stats views", () => {
   });
 
   it("aggregates across raters despite RLS hiding individual rows from the brewer (view runs unrestricted, not security_invoker)", async () => {
-    const brewer = await signUp("bratestats-rls-brewer");
-    const rater = await signUp("bratestats-rls-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("bratestats-rls-brewer"),
+      signUp("bratestats-rls-rater"),
+    ]);
     const now = new Date();
 
     const roundId = await seedResolvedRound({
@@ -175,8 +179,10 @@ describe.skipIf(!hasAnonTestEnv)("brew rating stats views", () => {
   });
 
   it("excludes ratings from a test room", async () => {
-    const brewer = await signUp("bratestats-testroom-brewer");
-    const rater = await signUp("bratestats-testroom-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("bratestats-testroom-brewer"),
+      signUp("bratestats-testroom-rater"),
+    ]);
     const now = new Date();
 
     const testRoomId = await createRoom({ isTest: true });
@@ -205,8 +211,10 @@ describe.skipIf(!hasAnonTestEnv)("brew rating stats views", () => {
   });
 
   it("stats_brew_rating_last_30_days excludes a rating backdated past the 30-day window", async () => {
-    const brewer = await signUp("bratestats-window-brewer");
-    const rater = await signUp("bratestats-window-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("bratestats-window-brewer"),
+      signUp("bratestats-window-rater"),
+    ]);
     const now = new Date();
     const fortyDaysAgo = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
 
@@ -255,8 +263,10 @@ describe.skipIf(!hasAnonTestEnv)("brew rating stats views", () => {
   });
 
   it("exposes no count column at all", async () => {
-    const brewer = await signUp("bratestats-nocount-brewer");
-    const rater = await signUp("bratestats-nocount-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("bratestats-nocount-brewer"),
+      signUp("bratestats-nocount-rater"),
+    ]);
     const now = new Date();
 
     const roundId = await seedResolvedRound({

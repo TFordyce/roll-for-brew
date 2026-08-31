@@ -96,8 +96,10 @@ describe.skipIf(!hasAnonTestEnv)(
       "deletes an adjustment logged by someone else, well outside the 5 minute undo window, " +
         "reverses the bump, and logs an audit row",
       async () => {
-        const { client: adminClient, googleSub: adminSub } = await signUpSignInAndEnter("del-adj-admin");
-        const { client: actorClient, googleSub: actorSub, roomId } = await signUpSignInAndEnter("del-adj-actor");
+        const [{ client: adminClient, googleSub: adminSub }, { client: actorClient, googleSub: actorSub, roomId }] = await Promise.all([
+          signUpSignInAndEnter("del-adj-admin"),
+          signUpSignInAndEnter("del-adj-actor"),
+        ]);
 
         const before = await getModifier(roomId, actorSub);
         const adjustmentId = await logAdjustment(actorClient, actorSub, -4, "Did not lose round");

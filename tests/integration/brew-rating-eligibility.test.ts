@@ -70,8 +70,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyRateableRound", () => {
   });
 
   it("returns the round, unrated, for a non-brewer participant of a resolved round", async () => {
-    const brewer = await signUp("brewrate-elig-pending-brewer");
-    const rater = await signUp("brewrate-elig-pending-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-elig-pending-brewer"),
+      signUp("brewrate-elig-pending-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -87,8 +89,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyRateableRound", () => {
   });
 
   it("reflects the caller's own committed score once they've rated", async () => {
-    const brewer = await signUp("brewrate-elig-rated-brewer");
-    const rater = await signUp("brewrate-elig-rated-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-elig-rated-brewer"),
+      signUp("brewrate-elig-rated-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -106,9 +110,11 @@ describe.skipIf(!hasAnonTestEnv)("getMyRateableRound", () => {
   });
 
   it("returns null (nothing to rate) once a newer round in the room has resolved (Rating Window closed)", async () => {
-    const brewer = await signUp("brewrate-elig-window-brewer");
-    const rater = await signUp("brewrate-elig-window-rater");
-    const other = await signUp("brewrate-elig-window-other");
+    const [brewer, rater, other] = await Promise.all([
+      signUp("brewrate-elig-window-brewer"),
+      signUp("brewrate-elig-window-rater"),
+      signUp("brewrate-elig-window-other"),
+    ]);
 
     await seedResolvedRound({
       roomId: brewer.roomId,
@@ -132,8 +138,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyRateableRound", () => {
   });
 
   it("only ever surfaces the caller's most-recent non-brewer round", async () => {
-    const brewer = await signUp("brewrate-elig-recent-brewer");
-    const rater = await signUp("brewrate-elig-recent-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-elig-recent-brewer"),
+      signUp("brewrate-elig-recent-rater"),
+    ]);
 
     await seedResolvedRound({
       roomId: brewer.roomId,
@@ -155,8 +163,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyRateableRound", () => {
   });
 
   it("returns null for a round the caller brewed themself", async () => {
-    const brewer = await signUp("brewrate-elig-selfbrew-brewer");
-    const other = await signUp("brewrate-elig-selfbrew-other");
+    const [brewer, other] = await Promise.all([
+      signUp("brewrate-elig-selfbrew-brewer"),
+      signUp("brewrate-elig-selfbrew-other"),
+    ]);
 
     await seedResolvedRound({
       roomId: brewer.roomId,
@@ -219,8 +229,10 @@ describe.skipIf(!hasAnonTestEnv)("submitBrewRating / withdrawBrewRating wrappers
   }
 
   it("submits a rating that getMyRateableRound then reflects as myScore", async () => {
-    const brewer = await signUp("brewrate-wrap-submit-brewer");
-    const rater = await signUp("brewrate-wrap-submit-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-wrap-submit-brewer"),
+      signUp("brewrate-wrap-submit-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -238,8 +250,10 @@ describe.skipIf(!hasAnonTestEnv)("submitBrewRating / withdrawBrewRating wrappers
   });
 
   it("withdraws a rating that getMyRateableRound then reflects as unrated", async () => {
-    const brewer = await signUp("brewrate-wrap-withdraw-brewer");
-    const rater = await signUp("brewrate-wrap-withdraw-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-wrap-withdraw-brewer"),
+      signUp("brewrate-wrap-withdraw-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -257,8 +271,10 @@ describe.skipIf(!hasAnonTestEnv)("submitBrewRating / withdrawBrewRating wrappers
   });
 
   it("rejects an out-of-range score, surfaced as a thrown error", async () => {
-    const brewer = await signUp("brewrate-wrap-range-brewer");
-    const rater = await signUp("brewrate-wrap-range-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-wrap-range-brewer"),
+      signUp("brewrate-wrap-range-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,

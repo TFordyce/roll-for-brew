@@ -113,8 +113,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_delete_round: hard-deletes an invalid ro
     async () => {
       const { client: adminClient, googleSub: adminSub } = await signUpSignInAndEnter("delete-round-resolved-admin");
       await makeAdmin(adminSub);
-      const starter = await signUpSignInAndEnter("delete-round-resolved-starter");
-      const other = await signUpSignInAndEnter("delete-round-resolved-other");
+      const [starter, other] = await Promise.all([
+        signUpSignInAndEnter("delete-round-resolved-starter"),
+        signUpSignInAndEnter("delete-round-resolved-other"),
+      ]);
 
       const roundId = await startRound(starter.client);
       await other.client.rpc("declare_in", { p_round_id: roundId });

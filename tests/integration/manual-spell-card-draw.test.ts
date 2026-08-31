@@ -168,13 +168,16 @@ describe.skipIf(!hasAnonTestEnv)("manual spell card draw: pending draw + physica
   });
 
   it("draw_pending_spell_card_manual rejects a card with no in-deck instance (RFB06) and leaves the pending row intact", async () => {
-    const { client } = await signUpSignInAndEnter("draw-manual-desync");
+    // Second player ("someone else already holds Lucky Sip") is independent
+    // of the first, so create both up front.
+    const [{ client }, { googleSub: otherSub }] = await Promise.all([
+      signUpSignInAndEnter("draw-manual-desync"),
+      signUpSignInAndEnter("draw-manual-desync-holder"),
+    ]);
+    await forceHold(admin, otherSub, "Lucky Sip");
+
     const roundId = await startRoundFor(client);
     await client.rpc("record_pending_spell_draw", { p_round_id: roundId, p_trigger: "nat1" });
-
-    // Someone else already holds "Lucky Sip" — its only instance isn't in_deck.
-    const { googleSub: otherSub } = await signUpSignInAndEnter("draw-manual-desync-holder");
-    await forceHold(admin, otherSub, "Lucky Sip");
     const cardId = await cardIdFor("Lucky Sip");
 
     const { error } = await client.rpc("draw_pending_spell_card_manual", {

@@ -27,10 +27,12 @@ describe.skipIf(!hasAnonTestEnv)("draw_spell_card_as: forced swap on nat1 (issue
   }
 
   it("forces the swap on nat1 for the target player, same as the in-app path", async () => {
-    const { client: adminClient, googleSub: adminId } = await signUpSignInAndEnter("draw-as-admin");
+    const [{ client: adminClient, googleSub: adminId }, { googleSub: targetId, roomId }] =
+      await Promise.all([
+        signUpSignInAndEnter("draw-as-admin"),
+        signUpSignInAndEnter("draw-as-target"),
+      ]);
     await makeAdmin(adminId);
-
-    const { googleSub: targetId, roomId } = await signUpSignInAndEnter("draw-as-target");
     await admin.from("rooms").update({ is_test: true }).eq("id", roomId);
     const oldInstanceId = await forceHold(admin, targetId, "Lucky Sip");
 
@@ -59,10 +61,12 @@ describe.skipIf(!hasAnonTestEnv)("draw_spell_card_as: forced swap on nat1 (issue
   });
 
   it("still parks as pending_swap on nat20, unaffected by the nat1 forced path", async () => {
-    const { client: adminClient, googleSub: adminId } = await signUpSignInAndEnter("draw-as-admin-nat20");
+    const [{ client: adminClient, googleSub: adminId }, { googleSub: targetId, roomId }] =
+      await Promise.all([
+        signUpSignInAndEnter("draw-as-admin-nat20"),
+        signUpSignInAndEnter("draw-as-target-nat20"),
+      ]);
     await makeAdmin(adminId);
-
-    const { googleSub: targetId, roomId } = await signUpSignInAndEnter("draw-as-target-nat20");
     await admin.from("rooms").update({ is_test: true }).eq("id", roomId);
     await forceHold(admin, targetId, "Lucky Sip");
 

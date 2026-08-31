@@ -37,8 +37,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
   }
 
   it("Six Sugars (dice_modifier, Reaction/Self) resolves 1d6 through the reaction window", async () => {
-    const caster = await signUp("six-sugars-caster");
-    const other = await signUp("six-sugars-other");
+    const [caster, other] = await Promise.all([
+      signUp("six-sugars-caster"),
+      signUp("six-sugars-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -94,8 +96,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
   });
 
   it("Mug Shot (set_modifier, Reaction/Opponent) negates a target's modifier through the reaction window", async () => {
-    const caster = await signUp("mug-shot-caster");
-    const target = await signUp("mug-shot-target");
+    const [caster, target] = await Promise.all([
+      signUp("mug-shot-caster"),
+      signUp("mug-shot-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Mug Shot");
 
     const { data: roundId } = await caster.client.rpc("start_round");

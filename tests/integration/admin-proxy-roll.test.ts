@@ -82,9 +82,9 @@ describe.skipIf(!hasAnonTestEnv)("admin_proxy_roll (Proxy Roll, issue #273)", ()
   });
 
   it("folds an absent player into a closed round with no rolls yet", async () => {
-    const { client: adminClient, googleSub: adminSub } = await signUp("proxy-closed-admin");
+    const [{ client: adminClient, googleSub: adminSub }, { client: otherClient }] =
+      await Promise.all([signUp("proxy-closed-admin"), signUp("proxy-closed-other")]);
     await makeAdmin(adminSub);
-    const { client: otherClient } = await signUp("proxy-closed-other");
     const absentId = await seedAbsentPlayer("closed");
 
     const { data: roundId } = await adminClient.rpc("start_round");
@@ -116,9 +116,9 @@ describe.skipIf(!hasAnonTestEnv)("admin_proxy_roll (Proxy Roll, issue #273)", ()
   });
 
   it("fails once a roll has already landed for the round (RFB32)", async () => {
-    const { client: adminClient, googleSub: adminSub } = await signUp("proxy-rolled-admin");
+    const [{ client: adminClient, googleSub: adminSub }, { client: otherClient }] =
+      await Promise.all([signUp("proxy-rolled-admin"), signUp("proxy-rolled-other")]);
     await makeAdmin(adminSub);
-    const { client: otherClient } = await signUp("proxy-rolled-other");
     const absentId = await seedAbsentPlayer("rolled");
 
     const { data: roundId } = await adminClient.rpc("start_round");

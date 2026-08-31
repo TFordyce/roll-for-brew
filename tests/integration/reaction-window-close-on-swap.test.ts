@@ -54,8 +54,10 @@ describe.skipIf(!hasAnonTestEnv)("reaction window closes when a keep-or-swap dec
   }
 
   it("closes the window and hands back the round id when the sole eligible holder swaps their Reaction card away", async () => {
-    const caster = await signUp("swap-close-caster");
-    const other = await signUp("swap-close-other");
+    const [caster, other] = await Promise.all([
+      signUp("swap-close-caster"),
+      signUp("swap-close-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forcePendingSwap(caster.googleSub, "Lucky Sip"); // Action
 
@@ -84,8 +86,10 @@ describe.skipIf(!hasAnonTestEnv)("reaction window closes when a keep-or-swap dec
   });
 
   it("leaves the window open when the resolving player keeps a Reaction card through the swap", async () => {
-    const caster = await signUp("swap-keep-reaction-caster");
-    const other = await signUp("swap-keep-reaction-other");
+    const [caster, other] = await Promise.all([
+      signUp("swap-keep-reaction-caster"),
+      signUp("swap-keep-reaction-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forcePendingSwap(caster.googleSub, "Lucky Sip"); // Action
 
@@ -108,8 +112,10 @@ describe.skipIf(!hasAnonTestEnv)("reaction window closes when a keep-or-swap dec
   });
 
   it("does not close the window while another eligible holder remains", async () => {
-    const caster = await signUp("swap-other-eligible-caster");
-    const other = await signUp("swap-other-eligible-other");
+    const [caster, other] = await Promise.all([
+      signUp("swap-other-eligible-caster"),
+      signUp("swap-other-eligible-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forcePendingSwap(caster.googleSub, "Lucky Sip"); // Action
     await forceHold(admin, other.googleSub, "Mug Shot"); // Reaction, Opponent

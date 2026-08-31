@@ -74,8 +74,10 @@ describe.skipIf(!hasAnonTestEnv)("round modifier effects: card name, caster, adv
   });
 
   it("includes disadvantage rows (previously excluded) labelled with card name and caster", async () => {
-    const caster = await signUp("card-data-disadv-caster");
-    const target = await signUp("card-data-disadv-target");
+    const [caster, target] = await Promise.all([
+      signUp("card-data-disadv-caster"),
+      signUp("card-data-disadv-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Slipped Spoon");
 
     const { data: roundId } = await caster.client.rpc("start_round");

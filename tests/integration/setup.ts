@@ -63,6 +63,16 @@ export async function removeFromWhitelist(admin: SupabaseClient, email: string) 
  * only way to drive GoTrue's real token-issuance path, same as
  * createTestAnonClient's docs above), and enters today's room — the common
  * setup every RPC-level integration test in this suite starts from.
+ *
+ * The sign-in is passwordless: the user is created with no password and the
+ * session is minted from an admin-generated magiclink. Password create +
+ * password verify were each a bcrypt op at GoTrue's default cost (~350 ms of
+ * the ~590 ms per user) and dominated the suite's wall-clock (issue #332).
+ * verifyOtp still runs GoTrue's real token-issuance path, so the
+ * custom_access_token hook — and therefore the per-login whitelist
+ * revocation check — is exercised exactly as a password sign-in would be.
+ * (whitelist-gate.test.ts keeps a dedicated password sign-in for the
+ * revocation assertion.)
  */
 export async function signUpSignInAndEnterRoom(
   admin: SupabaseClient,
@@ -70,7 +80,6 @@ export async function signUpSignInAndEnterRoom(
   label: string,
 ) {
   const email = uniqueTestEmail(label);
-  const password = `Test-password-${Math.random().toString(36).slice(2)}!`;
   const googleSub = `google-sub-${label}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   cleanup.trackWhitelistedEmail(email);
   cleanup.trackPlayerId(googleSub);
@@ -78,7 +87,6 @@ export async function signUpSignInAndEnterRoom(
   await admin.from("whitelist").insert({ email: email.toLowerCase() });
   const { data, error } = await admin.auth.admin.createUser({
     email,
-    password,
     email_confirm: true,
     user_metadata: { sub: googleSub, name: `Player ${label}` },
   });
@@ -86,7 +94,15 @@ export async function signUpSignInAndEnterRoom(
   cleanup.trackUser(data.user!.id);
 
   const client = createTestAnonClient();
-  const { error: signInError } = await client.auth.signInWithPassword({ email, password });
+  const { data: link, error: linkError } = await admin.auth.admin.generateLink({
+    type: "magiclink",
+    email,
+  });
+  if (linkError) throw linkError;
+  const { error: signInError } = await client.auth.verifyOtp({
+    type: "magiclink",
+    token_hash: link.properties.hashed_token,
+  });
   if (signInError) throw signInError;
 
   const { data: roomId, error: roomError } = await client.rpc("enter_todays_room");
@@ -230,9 +246,9 @@ export function createTestCleanup(admin: SupabaseClient) {
    * player row and the card's held state into later tests/runs (issue
    * #175).
    *
-   * Second pass: any card that migration 0074 parks at 'benched' (issue
-   * #284) but a test force-held is sent back to 'in_deck' by the reset
-   * above — re-park it so the non-working-card pool stays out of the draw.
+   * Player-scoped, so it's safe to run concurrently for every tracked
+   * player/user in a teardown layer. The benched cards a release like this
+   * un-parks are re-parked once per layer by reBenchLooseBenchedCards().
    */
   async function releaseHeldCards(playerId: string) {
     const { error } = await admin
@@ -240,39 +256,45 @@ export function createTestCleanup(admin: SupabaseClient) {
       .update({ location: "in_deck", held_by_player: null })
       .eq("held_by_player", playerId);
     if (error) throw error;
+  }
 
-    // A test that force-held a benched card (e.g. Cloud of Cream) just sent
-    // it back to 'in_deck' above, quietly un-benching it for the rest of
-    // the run. Re-park any benched card sitting loose in the deck so the
-    // non-working-card pool stays out of draw_spell_card (issue #284).
-    //
-    // Gated on an existing 'benched' row so this is a no-op — and, crucially,
-    // won't trip the pre-0074 three-value location check constraint — when
-    // run against a DB where migration 0074 hasn't been applied.
+  /**
+   * Any card migration 0074 parks at 'benched' (issue #284) that a test
+   * force-held was just sent back to 'in_deck' by releaseHeldCards, quietly
+   * un-benching it for the rest of the run. Re-park every benched card
+   * sitting loose in the deck so the non-working-card pool stays out of
+   * draw_spell_card. This scans the whole deck rather than one player's
+   * rows, so run() calls it once per teardown layer, not once per entity.
+   *
+   * Gated on an existing 'benched' row so this is a no-op — and, crucially,
+   * won't trip the pre-0074 three-value location check constraint — when
+   * run against a DB where migration 0074 hasn't been applied.
+   */
+  async function reBenchLooseBenchedCards() {
     const { data: benchedProbe, error: probeErr } = await admin
       .from("spell_deck_instances")
       .select("id")
       .eq("location", "benched")
       .limit(1);
     if (probeErr) throw probeErr;
-    if (benchedProbe && benchedProbe.length > 0) {
-      const { data: benchedCards, error: benchedErr } = await admin
-        .from("spell_cards")
-        .select("id")
-        .in("name", [...BENCHED_SPELL_CARDS]);
-      if (benchedErr) throw benchedErr;
+    if (!benchedProbe || benchedProbe.length === 0) return;
 
-      const { error: reBenchErr } = await admin
-        .from("spell_deck_instances")
-        .update({ location: "benched", held_by_player: null })
-        .is("held_by_player", null)
-        .eq("location", "in_deck")
-        .in(
-          "card_id",
-          (benchedCards ?? []).map((c) => c.id),
-        );
-      if (reBenchErr) throw reBenchErr;
-    }
+    const { data: benchedCards, error: benchedErr } = await admin
+      .from("spell_cards")
+      .select("id")
+      .in("name", [...BENCHED_SPELL_CARDS]);
+    if (benchedErr) throw benchedErr;
+
+    const { error: reBenchErr } = await admin
+      .from("spell_deck_instances")
+      .update({ location: "benched", held_by_player: null })
+      .is("held_by_player", null)
+      .eq("location", "in_deck")
+      .in(
+        "card_id",
+        (benchedCards ?? []).map((c) => c.id),
+      );
+    if (reBenchErr) throw reBenchErr;
   }
 
   /**
@@ -333,28 +355,43 @@ export function createTestCleanup(admin: SupabaseClient) {
       roundIds.push(roundId);
     },
     async run() {
-      for (const roundId of roundIds.splice(0)) {
-        await admin.from("rounds").delete().eq("id", roundId);
-      }
-      for (const roomId of roomIds.splice(0)) {
-        await admin.from("room_players").delete().eq("room_id", roomId);
-        await admin.from("rooms").delete().eq("id", roomId);
-      }
-      for (const playerId of playerIds.splice(0)) {
-        // spell_draws.player_id has no ON DELETE CASCADE (0018), so a row
-        // forced in via forceDraw would otherwise block this delete.
-        await admin.from("spell_draws").delete().eq("player_id", playerId);
-        await releaseHeldCards(playerId);
-        await releaseActiveEffects(playerId);
-        await deletePlayer(playerId);
-      }
-      for (const id of userIds.splice(0)) {
-        await admin.from("spell_draws").delete().eq("player_id", id);
-        await releaseHeldCards(id);
-        await releaseActiveEffects(id);
-        await deletePlayer(id);
-        await deleteTestUser(admin, id);
-      }
+      // Teardown runs one FK layer at a time — rounds, then rooms, then
+      // players, then auth users, then whitelist rows — but the entities
+      // within a layer are independent, so they're deleted concurrently
+      // (issue #332). The per-entity await chains below preserve the
+      // child-before-parent order that matters.
+      await Promise.all(
+        roundIds.splice(0).map((roundId) =>
+          admin.from("rounds").delete().eq("id", roundId),
+        ),
+      );
+      await Promise.all(
+        roomIds.splice(0).map(async (roomId) => {
+          await admin.from("room_players").delete().eq("room_id", roomId);
+          await admin.from("rooms").delete().eq("id", roomId);
+        }),
+      );
+      await Promise.all(
+        playerIds.splice(0).map(async (playerId) => {
+          // spell_draws.player_id has no ON DELETE CASCADE (0018), so a row
+          // forced in via forceDraw would otherwise block this delete.
+          await admin.from("spell_draws").delete().eq("player_id", playerId);
+          await releaseHeldCards(playerId);
+          await releaseActiveEffects(playerId);
+          await deletePlayer(playerId);
+        }),
+      );
+      await reBenchLooseBenchedCards();
+      await Promise.all(
+        userIds.splice(0).map(async (id) => {
+          await admin.from("spell_draws").delete().eq("player_id", id);
+          await releaseHeldCards(id);
+          await releaseActiveEffects(id);
+          await deletePlayer(id);
+          await deleteTestUser(admin, id);
+        }),
+      );
+      await reBenchLooseBenchedCards();
       await Promise.all(
         whitelistedEmails.splice(0).map((email) => removeFromWhitelist(admin, email)),
       );
