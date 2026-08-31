@@ -188,7 +188,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
 
     const { data: dispatchRows, error: dispatchError } = await admin
       .from("spell_casts")
-      .select("resolved_value, effect_kind, effect_params")
+      .select("resolved_value, effect_kind, effect_params, cast_inputs")
       .eq("round_id", roundId)
       .eq("effect_kind", "wild_dispatch")
       .order("cast_at", { ascending: true })
@@ -197,6 +197,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     const branch = dispatchRows![0]!.resolved_value as number;
     expect(branch).toBeGreaterThanOrEqual(1);
     expect(branch).toBeLessThanOrEqual(6);
+    // The d6 branch pick is also recorded into the Cast Log (issue #307) so
+    // the resolver can read it from cast_inputs rather than resolved_value.
+    expect((dispatchRows![0]!.cast_inputs as { branch?: number } | null)?.branch).toBe(branch);
 
     if (branch === 1) {
       const { data: roomPlayers } = await admin

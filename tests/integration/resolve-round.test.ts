@@ -28,6 +28,7 @@ type TraceStep = {
   before: { type: string; value: number | string | null };
   after: { type: string; value: number | string | null };
   outcome: "applied" | "no-op";
+  negated?: boolean;
 };
 
 type ResolveOutcome = {
@@ -85,6 +86,7 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
       targetPlayerId: string | null;
       reactionWindowId?: string;
       castInputs?: Record<string, unknown>;
+      parentCastId?: string;
     },
   ) {
     const instanceId = await forceHold(admin, casterId, donorCard);
@@ -106,6 +108,7 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
         effect_params: row.effectParams,
         reaction_window_id: row.reactionWindowId ?? null,
         cast_inputs: row.castInputs ?? null,
+        parent_cast_id: row.parentCastId ?? null,
       })
       .select("id")
       .single();
@@ -564,6 +567,280 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
 
     expect(second.brewer_id).toBe(first.brewer_id);
     expect(second.outcome).toBe(first.outcome);
+    expect(JSON.stringify(second.trace)).toBe(JSON.stringify(first.trace));
+  });
+
+  // ----------------------------------------------------------------------
+  // Phase 1: Cast-Log resolution — contested_negate / redirect / recursive
+  // counter chains, all derived from recorded cast_inputs (issue #307).
+  // ----------------------------------------------------------------------
+
+  it("a succeeded contested_negate suppresses the whole victim cast group and marks it negated", async () => {
+    const p1 = await signUp("rr-neg-1");
+    const p2 = await signUp("rr-neg-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    // +10 on p1 would push p1's total to 15 and hand the brew to p2 (12).
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier",
+      effectParams: { delta: 10 },
+      targetPlayerId: p1.googleSub,
+    });
+    // p2 counters it and wins the contest (recorded d20 15 >= dc 5).
+    const counterId = await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate",
+      effectParams: {},
+      targetPlayerId: null,
+      parentCastId: victimId,
+      castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Victim effect gone -> p1 back to a bare 5 and brews.
+    expect(out.outcome).toBe("brewer");
+    expect(out.brewer_id).toBe(p1.googleSub);
+
+    // spell_casts.negated after resolve equals the recursive derivation.
+    const { data: victim } = await admin
+      .from("spell_casts").select("negated").eq("id", victimId).single();
+    expect(victim!.negated).toBe(true);
+
+    // Trace: a contested_negate outcome step (dc_d20 is never its own step).
+    const negStep = out.trace.find((s) => s.display_kind === "contested_negate");
+    expect(negStep).toMatchObject({
+      target_player: p1.googleSub,
+      before: { type: "status", value: "cast" },
+      after: { type: "status", value: "negated target" },
+      outcome: "applied",
+    });
+    expect(negStep!.source_cast.cast_id).toBe(counterId);
+    expect(negStep!.source_cast.caster_player_id).toBe(p2.googleSub);
+
+    // Struck-through no-op step for the negated victim group.
+    const struck = out.trace.find((s) => s.negated === true);
+    expect(struck).toMatchObject({
+      display_kind: "flat_modifier",
+      target_player: p1.googleSub,
+      before: { type: "status", value: "negated" },
+      after: { type: "status", value: "negated" },
+      outcome: "no-op",
+    });
+    // The suppressed effect never becomes a modifier step.
+    expect(out.trace.some((s) => s.before.type === "modifier")).toBe(false);
+  });
+
+  it("a failed contested_negate leaves the victim cast to compose, and reads as a no-op step", async () => {
+    const p1 = await signUp("rr-negfail-1");
+    const p2 = await signUp("rr-negfail-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier",
+      effectParams: { delta: 10 },
+      targetPlayerId: p1.googleSub,
+    });
+    // Contest lost: recorded d20 3 < dc 5.
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate",
+      effectParams: {},
+      targetPlayerId: null,
+      parentCastId: victimId,
+      castInputs: { dc_d20: 3, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // +10 still lands -> p1 total 15 -> p2 (12) brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    const { data: victim } = await admin
+      .from("spell_casts").select("negated").eq("id", victimId).single();
+    expect(victim!.negated).toBe(false);
+
+    const negStep = out.trace.find((s) => s.display_kind === "contested_negate");
+    expect(negStep).toMatchObject({
+      after: { type: "status", value: "no effect" },
+      outcome: "no-op",
+    });
+    expect(out.trace.some((s) => s.negated === true)).toBe(false);
+    // The victim modifier still composed.
+    expect(out.trace.find((s) => s.display_kind === "flat_modifier")).toMatchObject({
+      target_player: p1.googleSub,
+      before: { type: "modifier", value: 0 },
+      after: { type: "modifier", value: 10 },
+    });
+  });
+
+  it("DC is tier-derived from the victim card unless effect_params.dc (recorded in cast_inputs) overrides it", async () => {
+    const p1 = await signUp("rr-dc-1");
+    const p2 = await signUp("rr-dc-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+
+    // Two independent rare-card flat +10 casts on p1, each its own cast group
+    // (distinct donor card => distinct card_instance_id).
+    const victimA = await seedCast(roundId, p1.googleSub, "Milky Brew", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    const victimB = await seedCast(roundId, p1.googleSub, "Tea Leaf", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+
+    // Counter A: recorded d20 4, no dc -> checked against rare-tier default 5 -> FAILS.
+    await seedCast(roundId, p2.googleSub, "Slipped Spoon", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimA, castInputs: { dc_d20: 4 },
+    });
+    // Counter B: same d20 4 but dc override 2 -> SUCCEEDS.
+    await seedCast(roundId, p2.googleSub, "Steady Hand", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimB, castInputs: { dc_d20: 4, dc: 2 },
+    });
+
+    await resolve(p1.client, roundId);
+
+    const { data: rows } = await admin
+      .from("spell_casts").select("id, negated").in("id", [victimA, victimB]);
+    const byId = Object.fromEntries(rows!.map((r) => [r.id, r.negated]));
+    expect(byId[victimA]).toBe(false); // rare-tier default DC 5 not met by 4
+    expect(byId[victimB]).toBe(true);  // dc override 2 met by 4
+  });
+
+  it("counter-of-counter (depth 2): the counter is itself countered, so the original victim effect applies", async () => {
+    const p1 = await signUp("rr-coc2-1");
+    const p2 = await signUp("rr-coc2-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    // C1: p2 negates the victim.
+    const c1 = await seedCast(roundId, p2.googleSub, "Bes-Tea", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimId, castInputs: { dc_d20: 15, dc: 5 },
+    });
+    // C2: p1 negates C1.
+    await seedCast(roundId, p1.googleSub, "Brewer's Blessing", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: c1, castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // C1 countered -> victim +10 lands -> p1 total 15 -> p2 brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    const { data: rows } = await admin
+      .from("spell_casts").select("id, negated").in("id", [victimId, c1]);
+    const byId = Object.fromEntries(rows!.map((r) => [r.id, r.negated]));
+    expect(byId[victimId]).toBe(false); // original effect NOT negated
+    expect(byId[c1]).toBe(true);        // the first counter WAS negated
+
+    expect(out.trace.find((s) => s.display_kind === "flat_modifier")).toMatchObject({
+      target_player: p1.googleSub,
+      after: { type: "modifier", value: 10 },
+    });
+  });
+
+  it("counter-of-counter-of-counter (depth 3): the top counter revives C1, re-negating the victim", async () => {
+    const p1 = await signUp("rr-coc3-1");
+    const p2 = await signUp("rr-coc3-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Cold Tea", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    const c1 = await seedCast(roundId, p2.googleSub, "Gambler's Infusion", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimId, castInputs: { dc_d20: 15, dc: 5 },
+    });
+    const c2 = await seedCast(roundId, p1.googleSub, "Last Drip", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: c1, castInputs: { dc_d20: 15, dc: 5 },
+    });
+    await seedCast(roundId, p2.googleSub, "Lesser Detox", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: c2, castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // C2 negated -> C1 lives -> victim negated -> p1 bare 5 -> p1 brews.
+    expect(out.brewer_id).toBe(p1.googleSub);
+    const { data: rows } = await admin
+      .from("spell_casts").select("id, negated").in("id", [victimId, c1, c2]);
+    const byId = Object.fromEntries(rows!.map((r) => [r.id, r.negated]));
+    expect(byId[victimId]).toBe(true);
+    expect(byId[c1]).toBe(false);
+    expect(byId[c2]).toBe(true);
+  });
+
+  it("redirect retargets a modifier cast onto the original caster, from recorded state (no in-place UPDATE)", async () => {
+    const p1 = await signUp("rr-redir-1");
+    const p2 = await signUp("rr-redir-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 3);
+    // p1 dumps set_modifier 100 on p2. Unredirected: p2 -> 103, p1 (10) brews.
+    const victimId = await seedCast(roundId, p1.googleSub, "Milky Brew", {
+      effectKind: "set_modifier", effectParams: { value: 100 }, targetPlayerId: p2.googleSub,
+    });
+    // p2 reflects it back onto p1 (the original caster).
+    const redirectId = await seedCast(roundId, p2.googleSub, "Mug Mirror", {
+      effectKind: "redirect", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimId,
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Effect now lands on p1 -> p1 total 110, p2 bare 3 -> p2 brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+
+    const redirStep = out.trace.find((s) => s.display_kind === "redirect");
+    expect(redirStep).toMatchObject({
+      target_player: p1.googleSub,
+      before: { type: "target", value: p2.googleSub },
+      after: { type: "target", value: p1.googleSub },
+      outcome: "applied",
+    });
+    expect(redirStep!.source_cast.cast_id).toBe(redirectId);
+
+    // The modifier bucketed onto p1, not p2.
+    const modStep = out.trace.find((s) => s.display_kind === "set_modifier");
+    expect(modStep).toMatchObject({
+      target_player: p1.googleSub,
+      after: { type: "modifier", value: 100 },
+    });
+
+    // redirected_to_cast_id cache points the victim at the redirect cast
+    // (no in-place target_player_id mutation).
+    const { data: victim } = await admin
+      .from("spell_casts").select("redirected_to_cast_id, target_player_id").eq("id", victimId).single();
+    expect(victim!.redirected_to_cast_id).toBe(redirectId);
+    expect(victim!.target_player_id).toBe(p2.googleSub);
+  });
+
+  it("Phase 1 is idempotent: re-resolving a round with a counter chain yields an identical Trace", async () => {
+    const p1 = await signUp("rr-negidem-1");
+    const p2 = await signUp("rr-negidem-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimId, castInputs: { dc_d20: 18, dc: 5 },
+    });
+
+    const first = await resolve(p1.client, roundId);
+    const second = await resolve(p1.client, roundId);
+    expect(second.brewer_id).toBe(first.brewer_id);
     expect(JSON.stringify(second.trace)).toBe(JSON.stringify(first.trace));
   });
 });
