@@ -32,8 +32,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   }
 
   it("rejects a non-admin caller (RFB33)", async () => {
-    const a = await signUpSignInAndEnter("backfill-not-admin-a");
-    const b = await signUpSignInAndEnter("backfill-not-admin-b");
+    const [a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-not-admin-a"),
+      signUpSignInAndEnter("backfill-not-admin-b"),
+    ]);
 
     const { data, error } = await backfill(a.client, [a.googleSub, b.googleSub], [
       [
@@ -54,8 +56,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("rejects zero layers (RFB35)", async () => {
-    const a = await signUpSignInAndEnter("backfill-no-layers-a");
-    const b = await signUpSignInAndEnter("backfill-no-layers-b");
+    const [a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-no-layers-a"),
+      signUpSignInAndEnter("backfill-no-layers-b"),
+    ]);
     await makeAdmin(a.googleSub);
 
     const { error } = await backfill(a.client, [a.googleSub, b.googleSub], []);
@@ -63,8 +67,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("rejects backfilling while another round is already live in today's room (RFB36)", async () => {
-    const a = await signUpSignInAndEnter("backfill-already-live-a");
-    const b = await signUpSignInAndEnter("backfill-already-live-b");
+    const [a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-already-live-a"),
+      signUpSignInAndEnter("backfill-already-live-b"),
+    ]);
     await makeAdmin(a.googleSub);
 
     const { data: liveRoundId, error: startError } = await a.client.rpc("start_round", { p_room_id: null });
@@ -81,9 +87,11 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("rejects a layer whose roster doesn't match the expected tied set (RFB37)", async () => {
-    const a = await signUpSignInAndEnter("backfill-roster-mismatch-a");
-    const b = await signUpSignInAndEnter("backfill-roster-mismatch-b");
-    const c = await signUpSignInAndEnter("backfill-roster-mismatch-c");
+    const [a, b, c] = await Promise.all([
+      signUpSignInAndEnter("backfill-roster-mismatch-a"),
+      signUpSignInAndEnter("backfill-roster-mismatch-b"),
+      signUpSignInAndEnter("backfill-roster-mismatch-c"),
+    ]);
     await makeAdmin(a.googleSub);
 
     // Only 2 of the 3 declared participants get a layer-0 roll.
@@ -97,8 +105,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("rejects an out-of-range roll value (RFB38)", async () => {
-    const a = await signUpSignInAndEnter("backfill-out-of-range-a");
-    const b = await signUpSignInAndEnter("backfill-out-of-range-b");
+    const [a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-out-of-range-a"),
+      signUpSignInAndEnter("backfill-out-of-range-b"),
+    ]);
     await makeAdmin(a.googleSub);
 
     const { error } = await backfill(a.client, [a.googleSub, b.googleSub], [
@@ -111,8 +121,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("rejects supplying an extra layer once the round already resolved (RFB39)", async () => {
-    const a = await signUpSignInAndEnter("backfill-extra-layer-a");
-    const b = await signUpSignInAndEnter("backfill-extra-layer-b");
+    const [a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-extra-layer-a"),
+      signUpSignInAndEnter("backfill-extra-layer-b"),
+    ]);
     await makeAdmin(a.googleSub);
 
     const { error } = await backfill(a.client, [a.googleSub, b.googleSub], [
@@ -129,8 +141,10 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("rejects a still-tied final layer with no further layer supplied (RFB40)", async () => {
-    const a = await signUpSignInAndEnter("backfill-still-tied-a");
-    const b = await signUpSignInAndEnter("backfill-still-tied-b");
+    const [a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-still-tied-a"),
+      signUpSignInAndEnter("backfill-still-tied-b"),
+    ]);
     await makeAdmin(a.googleSub);
 
     // Both roll 10 with 0 modifier — a tie, but only one layer was given.
@@ -144,9 +158,11 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("resolves a straightforward two-player round with no tie, flagging provenance throughout", async () => {
-    const adminSession = await signUpSignInAndEnter("backfill-happy-admin");
-    const a = await signUpSignInAndEnter("backfill-happy-a");
-    const b = await signUpSignInAndEnter("backfill-happy-b");
+    const [adminSession, a, b] = await Promise.all([
+      signUpSignInAndEnter("backfill-happy-admin"),
+      signUpSignInAndEnter("backfill-happy-a"),
+      signUpSignInAndEnter("backfill-happy-b"),
+    ]);
     await makeAdmin(adminSession.googleSub);
 
     // a's total (5) < b's total (12) — a is the brewer.
@@ -227,10 +243,12 @@ describe.skipIf(!hasAnonTestEnv)("admin_backfill_round: bulk-records an entire m
   });
 
   it("resolves a round that ties at layer 0 and is decided by a layer-1 reroll", async () => {
-    const adminSession = await signUpSignInAndEnter("backfill-tie-admin");
-    const a = await signUpSignInAndEnter("backfill-tie-a");
-    const b = await signUpSignInAndEnter("backfill-tie-b");
-    const c = await signUpSignInAndEnter("backfill-tie-c");
+    const [adminSession, a, b, c] = await Promise.all([
+      signUpSignInAndEnter("backfill-tie-admin"),
+      signUpSignInAndEnter("backfill-tie-a"),
+      signUpSignInAndEnter("backfill-tie-b"),
+      signUpSignInAndEnter("backfill-tie-c"),
+    ]);
     await makeAdmin(adminSession.googleSub);
 
     // Layer 0: a and b both roll 10 (tied, lowest); c rolls 15 (out).

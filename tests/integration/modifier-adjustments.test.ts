@@ -33,8 +33,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   }
 
   it("applies the delta to the target's live modifier and logs a row", async () => {
-    const actor = await signUp("modadj-log-actor");
-    const target = await signUp("modadj-log-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-log-actor"),
+      signUp("modadj-log-target"),
+    ]);
 
     const before = await getModifier(target.googleSub, target.roomId);
 
@@ -63,8 +65,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("supports negative deltas", async () => {
-    const actor = await signUp("modadj-negative-actor");
-    const target = await signUp("modadj-negative-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-negative-actor"),
+      signUp("modadj-negative-target"),
+    ]);
     const before = await getModifier(target.googleSub, target.roomId);
 
     const { error } = await actor.client.rpc("log_modifier_adjustment", {
@@ -79,8 +83,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("rejects a zero delta (RFB10)", async () => {
-    const actor = await signUp("modadj-zero-actor");
-    const target = await signUp("modadj-zero-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-zero-actor"),
+      signUp("modadj-zero-target"),
+    ]);
 
     const { error } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,
@@ -92,8 +98,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("rejects a blank reason (RFB11)", async () => {
-    const actor = await signUp("modadj-blank-actor");
-    const target = await signUp("modadj-blank-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-blank-actor"),
+      signUp("modadj-blank-target"),
+    ]);
 
     const { error } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,
@@ -117,8 +125,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("records the actor as the caller's own identity, never a client value", async () => {
-    const actor = await signUp("modadj-actor-identity-actor");
-    const target = await signUp("modadj-actor-identity-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-actor-identity-actor"),
+      signUp("modadj-actor-identity-target"),
+    ]);
 
     const { data: adjustmentId } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,
@@ -135,8 +145,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("lets the actor undo their own most-recent adjustment within the window, reversing the modifier", async () => {
-    const actor = await signUp("modadj-undo-actor");
-    const target = await signUp("modadj-undo-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-undo-actor"),
+      signUp("modadj-undo-target"),
+    ]);
     const before = await getModifier(target.googleSub, target.roomId);
 
     const { data: adjustmentId } = await actor.client.rpc("log_modifier_adjustment", {
@@ -158,9 +170,11 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("rejects undo by a different player than the actor (RFB13)", async () => {
-    const actor = await signUp("modadj-undo-wrong-actor");
-    const target = await signUp("modadj-undo-wrong-target");
-    const bystander = await signUp("modadj-undo-wrong-bystander");
+    const [actor, target, bystander] = await Promise.all([
+      signUp("modadj-undo-wrong-actor"),
+      signUp("modadj-undo-wrong-target"),
+      signUp("modadj-undo-wrong-bystander"),
+    ]);
 
     const { data: adjustmentId } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,
@@ -176,8 +190,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("rejects undo of an entry that is not the actor's most-recent (RFB14)", async () => {
-    const actor = await signUp("modadj-undo-stale-actor");
-    const target = await signUp("modadj-undo-stale-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-undo-stale-actor"),
+      signUp("modadj-undo-stale-target"),
+    ]);
 
     const { data: firstId } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,
@@ -198,8 +214,10 @@ describe.skipIf(!hasAnonTestEnv)("modifier adjustments: log and undo", () => {
   });
 
   it("rejects undo once more than 5 minutes have elapsed (RFB15)", async () => {
-    const actor = await signUp("modadj-undo-expired-actor");
-    const target = await signUp("modadj-undo-expired-target");
+    const [actor, target] = await Promise.all([
+      signUp("modadj-undo-expired-actor"),
+      signUp("modadj-undo-expired-target"),
+    ]);
 
     const { data: adjustmentId } = await actor.client.rpc("log_modifier_adjustment", {
       p_target_player_id: target.googleSub,

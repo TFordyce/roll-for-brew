@@ -29,8 +29,10 @@ describe.skipIf(!hasAnonTestEnv)("get_reaction_window_pending_players (issue #25
   }
 
   it("returns nothing when no reaction window is open", async () => {
-    const caster = await signUp("pending-none-caster");
-    const other = await signUp("pending-none-other");
+    const [caster, other] = await Promise.all([
+      signUp("pending-none-caster"),
+      signUp("pending-none-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -42,8 +44,10 @@ describe.skipIf(!hasAnonTestEnv)("get_reaction_window_pending_players (issue #25
   });
 
   it("lists every eligible holder who hasn't passed yet, and drops each as they pass", async () => {
-    const caster = await signUp("pending-list-caster");
-    const other = await signUp("pending-list-other");
+    const [caster, other] = await Promise.all([
+      signUp("pending-list-caster"),
+      signUp("pending-list-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forceHold(admin, other.googleSub, "Mug Shot"); // Reaction, Opponent
 
@@ -65,8 +69,10 @@ describe.skipIf(!hasAnonTestEnv)("get_reaction_window_pending_players (issue #25
   });
 
   it("resets to the new poll round's eligible holders once a cast reopens the window", async () => {
-    const caster = await signUp("pending-reopen-caster");
-    const other = await signUp("pending-reopen-other");
+    const [caster, other] = await Promise.all([
+      signUp("pending-reopen-caster"),
+      signUp("pending-reopen-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forceHold(admin, other.googleSub, "Mug Shot"); // Reaction, Opponent
 

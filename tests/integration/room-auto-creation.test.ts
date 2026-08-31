@@ -121,8 +121,10 @@ describe.skipIf(!hasAnonTestEnv)("room auto-creation (enter_todays_room RPC)", (
   });
 
   it("joins the same room for two different whitelisted players logging in the same day", async () => {
-    const { client: clientA } = await signUpAndSignIn("shared-room-a");
-    const { client: clientB } = await signUpAndSignIn("shared-room-b");
+    const [{ client: clientA }, { client: clientB }] = await Promise.all([
+      signUpAndSignIn("shared-room-a"),
+      signUpAndSignIn("shared-room-b"),
+    ]);
 
     const { data: roomIdA } = await clientA.rpc("enter_todays_room");
     const { data: roomIdB } = await clientB.rpc("enter_todays_room");

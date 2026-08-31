@@ -309,8 +309,10 @@ describe.skipIf(!hasAnonTestEnv)("spell card ratings: rate, withdraw, eligibilit
   });
 
   it("get_player_spell_collection never exposes another player's rating or cast-eligibility", async () => {
-    const owner = await signUp("spellrate-cross-owner");
-    const viewer = await signUp("spellrate-cross-viewer");
+    const [owner, viewer] = await Promise.all([
+      signUp("spellrate-cross-owner"),
+      signUp("spellrate-cross-viewer"),
+    ]);
     const roundId = await seedRound({
       roomId: owner.roomId,
       startedBy: owner.googleSub,
@@ -370,8 +372,10 @@ describe.skipIf(!hasAnonTestEnv)("spell card ratings: rate, withdraw, eligibilit
   });
 
   it("RLS: a rater reads back their own row; a different player cannot", async () => {
-    const rater = await signUp("spellrate-rls-rater");
-    const bystander = await signUp("spellrate-rls-bystander");
+    const [rater, bystander] = await Promise.all([
+      signUp("spellrate-rls-rater"),
+      signUp("spellrate-rls-bystander"),
+    ]);
     const roundId = await seedRound({
       roomId: rater.roomId,
       startedBy: rater.googleSub,

@@ -67,8 +67,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
   });
 
   it("Cold Tea applies both the opponent's -3 penalty and the caster's 1d4 bonus", async () => {
-    const caster = await signUp("cold-tea-caster");
-    const target = await signUp("cold-tea-target");
+    const [caster, target] = await Promise.all([
+      signUp("cold-tea-caster"),
+      signUp("cold-tea-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Cold Tea");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -133,8 +135,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
   });
 
   it("Slipped Spoon applies both the opponent's disadvantage and the caster's 1d4 bonus", async () => {
-    const caster = await signUp("slipped-spoon-caster");
-    const target = await signUp("slipped-spoon-target");
+    const [caster, target] = await Promise.all([
+      signUp("slipped-spoon-caster"),
+      signUp("slipped-spoon-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Slipped Spoon");
 
     const { data: roundId } = await caster.client.rpc("start_round");

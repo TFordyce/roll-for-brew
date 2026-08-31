@@ -26,8 +26,7 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
   }
 
   async function startCloseAndDeclare(starterLabel: string, otherLabel: string) {
-    const starter = await signUp(starterLabel);
-    const other = await signUp(otherLabel);
+    const [starter, other] = await Promise.all([signUp(starterLabel), signUp(otherLabel)]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -81,8 +80,10 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
   });
 
   it("rejects writing another player's roll_input_mode row", async () => {
-    const player = await signUp("settings-guard-self");
-    const other = await signUp("settings-guard-other");
+    const [player, other] = await Promise.all([
+      signUp("settings-guard-self"),
+      signUp("settings-guard-other"),
+    ]);
 
     const { error } = await player.client
       .from("player_settings")
@@ -155,9 +156,11 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
   });
 
   it("submit_manual_roll rejects a caller who is not a declared participant", async () => {
-    const starter = await signUp("manual-guard-starter");
-    const other = await signUp("manual-guard-other");
-    const bystander = await signUp("manual-guard-bystander");
+    const [starter, other, bystander] = await Promise.all([
+      signUp("manual-guard-starter"),
+      signUp("manual-guard-other"),
+      signUp("manual-guard-bystander"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
