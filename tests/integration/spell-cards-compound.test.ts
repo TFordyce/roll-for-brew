@@ -38,6 +38,34 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
+  it("layer 0 stays incomplete until the pending die is rolled — cast_inputs.dice_roll sentinel (issue #306)", async () => {
+    const caster = await signUp("die-gate-caster");
+    const target = await signUp("die-gate-target");
+    await forceHold(admin, caster.googleSub, "Cold Tea");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await caster.client.rpc("cast_spell_card", { p_round_id: roundId, p_target_player_id: target.googleSub });
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+
+    await caster.client.rpc("submit_roll", { p_round_id: roundId });
+    await target.client.rpc("submit_roll", { p_round_id: roundId });
+
+    // Everyone has rolled, but the caster's 1d4 is still unrolled -> layer 0
+    // is not "complete" yet.
+    const { data: blocked } = await caster.client.rpc("get_current_layer_rolls_if_complete", { p_round_id: roundId });
+    expect(blocked ?? []).toHaveLength(0);
+
+    const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+    await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: (pending as { cast_id: string }[])[0]!.cast_id,
+    });
+
+    const { data: complete } = await caster.client.rpc("get_current_layer_rolls_if_complete", { p_round_id: roundId });
+    expect(complete as unknown[]).toHaveLength(2);
+  });
+
   it("Cold Tea applies both the opponent's -3 penalty and the caster's 1d4 bonus", async () => {
     const caster = await signUp("cold-tea-caster");
     const target = await signUp("cold-tea-target");

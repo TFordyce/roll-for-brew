@@ -238,8 +238,15 @@ export async function applyRollFlip(supabase: SupabaseClient, roundId: string, l
 // apply_lowest_gains_highest_modifier (0033, Broken Biscuit) is no longer
 // called from TS: lowest_gains_highest_modifier moved into resolve_round as
 // pure modifier math on the composed modifiers (migration 0078, issue #305).
-// The SQL RPC is left in place for now — a later slice (#306) sweeps the
-// retired eager roll-transform RPCs together.
+// The SQL RPC is left in place (harmless, unreferenced).
+//
+// applyForcedReroll / applyRollFlip / applyRollSwap still run at
+// finalizeReactionWindow and still mutate rolls.value in place (RoundReveal
+// / round history / the reveal broadcast read it), but as of migration 0079
+// (issue #306) they ALSO record their exact per-player before→after into
+// spell_casts.cast_inputs.roll_transform, and resolve_round rebuilds every
+// roller's final roll from those recorded values alone — so rolls.value is
+// now a resolver-agreeing cache, not the resolver's input.
 
 export type TeaMakerOverride = {
   mode: "highest_modifier" | "highest_roll" | "chosen";

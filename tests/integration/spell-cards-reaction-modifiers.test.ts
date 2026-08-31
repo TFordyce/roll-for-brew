@@ -63,10 +63,32 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
 
     const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
     const pendingCastId = (pending as { cast_id: string }[])[0]!.cast_id;
+
+    // Issue #306: the unrolled sentinel is the ABSENCE of cast_inputs.dice_roll,
+    // not resolved_value IS NULL.
+    const { data: preRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs, resolved_value")
+      .eq("id", pendingCastId)
+      .single();
+    expect(preRow!.cast_inputs ?? {}).not.toHaveProperty("dice_roll");
+
     const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
       p_cast_id: pendingCastId,
     });
     expect(resolveError).toBeNull();
+
+    // Resolution writes cast_inputs.dice_roll (raw, unsigned) AND keeps
+    // resolved_value (signed) in parallel for the legacy readers.
+    const { data: postRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs, resolved_value")
+      .eq("id", pendingCastId)
+      .single();
+    const diceRoll = (postRow!.cast_inputs as { dice_roll: number }).dice_roll;
+    expect(diceRoll).toBeGreaterThanOrEqual(1);
+    expect(diceRoll).toBeLessThanOrEqual(6);
+    expect(postRow!.resolved_value).toBe(diceRoll); // 1d6 sign is +1
 
     const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: roundId,
