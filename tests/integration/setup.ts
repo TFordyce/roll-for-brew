@@ -96,15 +96,16 @@ export async function signUpSignInAndEnterRoom(
 }
 
 /**
- * The 39 non-working spell cards parked at location 'benched' by migration
- * 0074 (issue #284) so draw_spell_card skips them. Kept in sync with that
- * migration's name list by hand. A test that force-holds one of these must
- * return it to the bench, not the deck, on cleanup — releaseHeldCards below
- * does that.
+ * The non-working spell cards still parked at location 'benched' (migration
+ * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
+ * each card is implemented and un-benched: 0074 benched 39; Saving Steep
+ * (#308, migration 0081) is now live, so 38 remain here. A test that
+ * force-holds one of these must return it to the bench, not the deck, on
+ * cleanup — releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
-  // No effect rows (37)
-  "Bes-Tea", "Tea Party Revolt", "Last Drip", "Saving Steep",
+  // No effect rows
+  "Bes-Tea", "Tea Party Revolt", "Last Drip",
   "Brew-tal Swap", "Yorkshire Terror",
   "Tea Cosy", "Tea Leaf", "Spillage", "Chai-nge of Heart", "Bag for Life",
   "Loose Leaf", "Stir the Pot", "PG Tipped", "Jinxed Biscuit",
