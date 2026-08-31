@@ -19,7 +19,7 @@ import {
 // of a compound cast now compose into get_round_modifier_effects.
 //
 // Both cards' caster-facing half is a dice_modifier (1d4), which since
-// issue #252 (migration 0069) casts with resolved_value left null until the
+// issue #252 (migration 0069) casts with no cast_inputs.dice_roll until the
 // caster resolves it via resolve_pending_spell_die_in_app — these tests call
 // that immediately after casting so the rest of each assertion (the
 // non-dice half, and the resolved die's 1-4 range) is unaffected.
@@ -161,7 +161,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
 
     const { data: casts, error: castsError } = await admin
       .from("spell_casts")
-      .select("target_player_id, effect_kind, effect_params, resolved_value")
+      .select("target_player_id, effect_kind, effect_params, cast_inputs")
       .eq("round_id", roundId);
     expect(castsError).toBeNull();
 
@@ -169,7 +169,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       target_player_id: string;
       effect_kind: string;
       effect_params: Record<string, unknown>;
-      resolved_value: number | null;
+      cast_inputs: { dice_roll?: number } | null;
     }[];
     expect(rows).toHaveLength(2);
 
@@ -178,7 +178,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       target_player_id: target.googleSub,
       effect_kind: "disadvantage",
       effect_params: {},
-      resolved_value: null,
+      cast_inputs: null,
     });
 
     const casterRow = rows.find((r) => r.target_player_id === caster.googleSub);
@@ -187,7 +187,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       effect_kind: "dice_modifier",
       effect_params: { dice: "1d4" },
     });
-    expect(casterRow!.resolved_value).toBeGreaterThanOrEqual(1);
-    expect(casterRow!.resolved_value).toBeLessThanOrEqual(4);
+    // #312: resolved_value is dropped; the rolled die lives in
+    // cast_inputs.dice_roll (raw, unsigned — 1d4 sign is +1).
+    expect(casterRow!.cast_inputs!.dice_roll).toBeGreaterThanOrEqual(1);
+    expect(casterRow!.cast_inputs!.dice_roll).toBeLessThanOrEqual(4);
   });
 });
