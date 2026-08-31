@@ -60,9 +60,11 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
   }
 
   it("resolves a multi-layer tie (including a nat-1 tie) to a single brewer, off whichever layer it finally resolves on", async () => {
-    const a = await signUp("reroll-a");
-    const b = await signUp("reroll-b");
-    const c = await signUp("reroll-c");
+    const [a, b, c] = await Promise.all([
+      signUp("reroll-a"),
+      signUp("reroll-b"),
+      signUp("reroll-c"),
+    ]);
 
     const { data: roundId } = await a.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -177,9 +179,11 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
   // current layer or to that layer's own expected rollers — a spectator who
   // never rolled anything should still see every already-revealed layer.
   it("get_round_layer_history returns every completed layer to a spectator, withholding an incomplete one", async () => {
-    const a = await signUp("history-a");
-    const b = await signUp("history-b");
-    const spectator = await signUp("history-spectator");
+    const [a, b, spectator] = await Promise.all([
+      signUp("history-a"),
+      signUp("history-b"),
+      signUp("history-spectator"),
+    ]);
 
     const { data: roundId } = await a.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -220,9 +224,11 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
   });
 
   it("advance_round_layer rejects a player who didn't roll the current layer", async () => {
-    const a = await signUp("advance-guard-a");
-    const b = await signUp("advance-guard-b");
-    const outsider = await signUp("advance-guard-outsider");
+    const [a, b, outsider] = await Promise.all([
+      signUp("advance-guard-a"),
+      signUp("advance-guard-b"),
+      signUp("advance-guard-outsider"),
+    ]);
 
     const { data: roundId } = await a.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -252,8 +258,10 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
   // to a real reroll layer, then confirm the caster's still-active advantage
   // cast is honoured at layer 0 but ignored once rerolling at layer 1.
   it("honours an active advantage cast on the original roll but ignores it on a tie-break reroll (issue #219)", async () => {
-    const caster = await signUp("tiebreak-adv-caster");
-    const other = await signUp("tiebreak-adv-other");
+    const [caster, other] = await Promise.all([
+      signUp("tiebreak-adv-caster"),
+      signUp("tiebreak-adv-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Sugar Rush");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -324,8 +332,10 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
   // submit_roll — a structurally separate keep-the-lower-d20 code path in
   // 0060's exists-checks, not just the same branch with a different sign.
   it("honours an active disadvantage cast on the original roll but ignores it on a tie-break reroll (issue #219)", async () => {
-    const caster = await signUp("tiebreak-disadv-caster");
-    const target = await signUp("tiebreak-disadv-target");
+    const [caster, target] = await Promise.all([
+      signUp("tiebreak-disadv-caster"),
+      signUp("tiebreak-disadv-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Slipped Spoon");
 
     const { data: roundId } = await caster.client.rpc("start_round");

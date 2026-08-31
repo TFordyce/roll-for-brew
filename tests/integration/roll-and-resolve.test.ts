@@ -50,8 +50,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
   }
 
   it("submits layer-0 rolls, hides them until personally submitted, then resolves the brewer and increments their modifier", async () => {
-    const starter = await signUp("roll-starter");
-    const other = await signUp("roll-other");
+    const [starter, other] = await Promise.all([signUp("roll-starter"), signUp("roll-other")]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -150,9 +149,11 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
   });
 
   it("resolve_round rejects a brewer who isn't a participant in the round", async () => {
-    const starter = await signUp("resolve-guard-starter");
-    const other = await signUp("resolve-guard-other");
-    const outsider = await signUp("resolve-guard-outsider");
+    const [starter, other, outsider] = await Promise.all([
+      signUp("resolve-guard-starter"),
+      signUp("resolve-guard-other"),
+      signUp("resolve-guard-outsider"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -174,9 +175,11 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
   });
 
   it("submit_roll rejects a caller who is not a declared participant", async () => {
-    const starter = await signUp("roll-guard-starter");
-    const other = await signUp("roll-guard-other");
-    const bystander = await signUp("roll-guard-bystander");
+    const [starter, other, bystander] = await Promise.all([
+      signUp("roll-guard-starter"),
+      signUp("roll-guard-other"),
+      signUp("roll-guard-bystander"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -197,8 +200,10 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
   });
 
   it("broadcasts a round-revealed event on the room's Realtime channel when resolved", async () => {
-    const starter = await signUp("broadcast-starter");
-    const other = await signUp("broadcast-other");
+    const [starter, other] = await Promise.all([
+      signUp("broadcast-starter"),
+      signUp("broadcast-other"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);

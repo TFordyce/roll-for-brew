@@ -57,8 +57,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   }
 
   it("submits a rating for a non-brewer participant of a resolved round", async () => {
-    const brewer = await signUp("brewrate-submit-brewer");
-    const rater = await signUp("brewrate-submit-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-submit-brewer"),
+      signUp("brewrate-submit-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -89,8 +91,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("edits the same row on a second submit for the same round (upsert, no duplicate)", async () => {
-    const brewer = await signUp("brewrate-edit-brewer");
-    const rater = await signUp("brewrate-edit-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-edit-brewer"),
+      signUp("brewrate-edit-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -117,8 +121,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects the brewer rating themself (RFB25)", async () => {
-    const brewer = await signUp("brewrate-self-brewer");
-    const other = await signUp("brewrate-self-other");
+    const [brewer, other] = await Promise.all([
+      signUp("brewrate-self-brewer"),
+      signUp("brewrate-self-other"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -137,9 +143,11 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects a non-participant (RFB24)", async () => {
-    const brewer = await signUp("brewrate-outsider-brewer");
-    const participant = await signUp("brewrate-outsider-participant");
-    const outsider = await signUp("brewrate-outsider-outsider");
+    const [brewer, participant, outsider] = await Promise.all([
+      signUp("brewrate-outsider-brewer"),
+      signUp("brewrate-outsider-participant"),
+      signUp("brewrate-outsider-outsider"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -158,8 +166,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects a score outside 1-5 (RFB22)", async () => {
-    const brewer = await signUp("brewrate-range-brewer");
-    const rater = await signUp("brewrate-range-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-range-brewer"),
+      signUp("brewrate-range-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -178,8 +188,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects a round that does not exist or is not resolved (RFB23)", async () => {
-    const brewer = await signUp("brewrate-unresolved-brewer");
-    const rater = await signUp("brewrate-unresolved-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-unresolved-brewer"),
+      signUp("brewrate-unresolved-rater"),
+    ]);
 
     const { data, error: insertError } = await admin
       .from("rounds")
@@ -209,8 +221,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects rating a round that isn't the caller's most-recent non-brewer round (RFB26)", async () => {
-    const brewer = await signUp("brewrate-stale-brewer");
-    const rater = await signUp("brewrate-stale-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-stale-brewer"),
+      signUp("brewrate-stale-rater"),
+    ]);
 
     const olderRoundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -236,9 +250,11 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects submit once a newer round in the same room has resolved (RFB27, window closed)", async () => {
-    const brewer = await signUp("brewrate-window-brewer");
-    const rater = await signUp("brewrate-window-rater");
-    const other = await signUp("brewrate-window-other");
+    const [brewer, rater, other] = await Promise.all([
+      signUp("brewrate-window-brewer"),
+      signUp("brewrate-window-rater"),
+      signUp("brewrate-window-other"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -267,8 +283,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("withdraws the caller's own rating, deleting the row", async () => {
-    const brewer = await signUp("brewrate-withdraw-brewer");
-    const rater = await signUp("brewrate-withdraw-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-withdraw-brewer"),
+      signUp("brewrate-withdraw-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -299,8 +317,10 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("is a no-op to withdraw a rating that was never submitted", async () => {
-    const brewer = await signUp("brewrate-withdraw-noop-brewer");
-    const rater = await signUp("brewrate-withdraw-noop-rater");
+    const [brewer, rater] = await Promise.all([
+      signUp("brewrate-withdraw-noop-brewer"),
+      signUp("brewrate-withdraw-noop-rater"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -315,9 +335,11 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("rejects withdraw once the rating window has closed (RFB27)", async () => {
-    const brewer = await signUp("brewrate-withdraw-window-brewer");
-    const rater = await signUp("brewrate-withdraw-window-rater");
-    const other = await signUp("brewrate-withdraw-window-other");
+    const [brewer, rater, other] = await Promise.all([
+      signUp("brewrate-withdraw-window-brewer"),
+      signUp("brewrate-withdraw-window-rater"),
+      signUp("brewrate-withdraw-window-other"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,
@@ -346,9 +368,11 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
   });
 
   it("RLS: a rater can read back their own row; a different player (including the brewer) cannot", async () => {
-    const brewer = await signUp("brewrate-rls-brewer");
-    const rater = await signUp("brewrate-rls-rater");
-    const bystander = await signUp("brewrate-rls-bystander");
+    const [brewer, rater, bystander] = await Promise.all([
+      signUp("brewrate-rls-brewer"),
+      signUp("brewrate-rls-rater"),
+      signUp("brewrate-rls-bystander"),
+    ]);
 
     const roundId = await seedResolvedRound({
       roomId: brewer.roomId,

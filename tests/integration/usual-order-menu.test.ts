@@ -76,8 +76,10 @@ describe.skipIf(!hasAnonTestEnv)("usual_drinks", () => {
   });
 
   it("is world-readable: a different player can read the row, but not write it (RLS)", async () => {
-    const owner = await signUp("usual-rls-owner");
-    const other = await signUp("usual-rls-other");
+    const [owner, other] = await Promise.all([
+      signUp("usual-rls-owner"),
+      signUp("usual-rls-other"),
+    ]);
 
     await owner.client
       .from("usual_drinks")
@@ -340,8 +342,10 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
   }
 
   it("returns each participant's Order with their current Usual's milk/sugar/decaf", async () => {
-    const starter = await signUp("menu-happy-starter");
-    const other = await signUp("menu-happy-other");
+    const [starter, other] = await Promise.all([
+      signUp("menu-happy-starter"),
+      signUp("menu-happy-other"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -380,8 +384,10 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
   });
 
   it("excludes players who ordered without declaring into the round", async () => {
-    const starter = await signUp("menu-nonparticipant-starter");
-    const outsider = await signUp("menu-nonparticipant-outsider");
+    const [starter, outsider] = await Promise.all([
+      signUp("menu-nonparticipant-starter"),
+      signUp("menu-nonparticipant-outsider"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);
@@ -399,8 +405,10 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
   });
 
   it("excludes declared participants who never placed an Order", async () => {
-    const starter = await signUp("menu-no-order-starter");
-    const silent = await signUp("menu-no-order-silent");
+    const [starter, silent] = await Promise.all([
+      signUp("menu-no-order-starter"),
+      signUp("menu-no-order-silent"),
+    ]);
 
     const { data: roundId } = await starter.client.rpc("start_round");
     cleanup.trackRound(roundId as string);

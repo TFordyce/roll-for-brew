@@ -67,8 +67,10 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
   });
 
   it("cast pre-roll at a declared-in target rerolls that target's roll in place", async () => {
-    const caster = await signUp("yorkshire-caster");
-    const target = await signUp("yorkshire-target");
+    const [caster, target] = await Promise.all([
+      signUp("yorkshire-caster"),
+      signUp("yorkshire-target"),
+    ]);
     await forceHold(admin, caster.googleSub, "Yorkshire Terror");
 
     const { data: roundId } = await caster.client.rpc("start_round");
@@ -137,8 +139,10 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
   });
 
   it("deferred target set after the window opens is still attached (via set_spell_cast_target)", async () => {
-    const caster = await signUp("yorkshire-deferred-caster");
-    const target = await signUp("yorkshire-deferred-target");
+    const [caster, target] = await Promise.all([
+      signUp("yorkshire-deferred-caster"),
+      signUp("yorkshire-deferred-target"),
+    ]);
     // A held Reaction card keeps the window open past open_reaction_window so
     // set_spell_cast_target still has an open window to attach to — the only
     // ordering where its late-attach matters. The deferred + no-eligible-
@@ -197,8 +201,10 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
   });
 
   it("rejects casting Yorkshire Terror on yourself", async () => {
-    const caster = await signUp("yorkshire-self-caster");
-    const other = await signUp("yorkshire-self-other");
+    const [caster, other] = await Promise.all([
+      signUp("yorkshire-self-caster"),
+      signUp("yorkshire-self-other"),
+    ]);
     await forceHold(admin, caster.googleSub, "Yorkshire Terror");
 
     const { data: roundId } = await caster.client.rpc("start_round");
