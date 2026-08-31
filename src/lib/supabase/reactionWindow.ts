@@ -235,22 +235,11 @@ export async function applyRollFlip(supabase: SupabaseClient, roundId: string, l
   return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
 }
 
-/**
- * Calls apply_lowest_gains_highest_modifier (0033, Broken Biscuit): adds the
- * highest modifier on the table to the layer's lowest roller's roll.
- */
-export async function applyLowestGainsHighestModifier(
-  supabase: SupabaseClient,
-  roundId: string,
-  layer: number,
-): Promise<RollChange[]> {
-  const { data, error } = await supabase.rpc("apply_lowest_gains_highest_modifier", {
-    p_round_id: roundId,
-    p_layer: layer,
-  });
-  if (error) throw error;
-  return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
-}
+// apply_lowest_gains_highest_modifier (0033, Broken Biscuit) is no longer
+// called from TS: lowest_gains_highest_modifier moved into resolve_round as
+// pure modifier math on the composed modifiers (migration 0078, issue #305).
+// The SQL RPC is left in place for now — a later slice (#306) sweeps the
+// retired eager roll-transform RPCs together.
 
 export type TeaMakerOverride = {
   mode: "highest_modifier" | "highest_roll" | "chosen";

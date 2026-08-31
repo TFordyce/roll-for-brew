@@ -260,3 +260,135 @@ export async function resolveRound(
   });
   if (error) throw error;
 }
+
+/**
+ * One step of a round's Resolution Trace (migration 0078, ADR 0005): the
+ * structured record resolve_round emits for every effect it applied while
+ * composing modifiers and picking the brewer. The renderer (#314) owns the
+ * wording; SQL emits only these fields.
+ */
+export type ResolutionTraceStep = {
+  index: number;
+  displayKind: string;
+  sourceCast: {
+    castId: string | null;
+    activeEffectId: string | null;
+    cardName: string | null;
+    casterPlayerId: string | null;
+  };
+  targetPlayer: string | null;
+  before: { type: string; value: number | string | null };
+  after: { type: string; value: number | string | null };
+  outcome: "applied" | "no-op";
+};
+
+/**
+ * The outcome of the authoritative layer-0 resolver, resolve_round(uuid)
+ * (migration 0078). `brewer` carries the picked brewer plus the cups-made
+ * count and whether a tea_maker_override suppressed their modifier gain;
+ * `tie` carries the tied roster that must reroll in the next layer. Either
+ * way `trace` is the round's Resolution Trace (empty for a tie-break reroll
+ * layer, which bypasses all spell logic).
+ */
+export type ResolveRoundOutcome =
+  | {
+      outcome: "brewer";
+      layer: number;
+      brewerId: string;
+      brewerSource: string;
+      cupsMade: number;
+      noModifierGain: boolean;
+      trace: ResolutionTraceStep[];
+    }
+  | {
+      outcome: "tie";
+      layer: number;
+      tiedPlayerIds: string[];
+      cupsMade: number;
+      trace: ResolutionTraceStep[];
+    };
+
+type RawTraceStep = {
+  index: number;
+  display_kind: string;
+  source_cast: {
+    cast_id: string | null;
+    active_effect_id: string | null;
+    card_name: string | null;
+    caster_player_id: string | null;
+  };
+  target_player: string | null;
+  before: { type: string; value: number | string | null };
+  after: { type: string; value: number | string | null };
+  outcome: "applied" | "no-op";
+};
+
+type RawResolveRoundOutcome = {
+  outcome: "brewer" | "tie";
+  layer: number;
+  brewer_id: string | null;
+  brewer_source: string | null;
+  tied_player_ids: string[] | null;
+  cups_made: number;
+  no_modifier_gain: boolean;
+  trace: RawTraceStep[];
+};
+
+function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
+  return {
+    index: raw.index,
+    displayKind: raw.display_kind,
+    sourceCast: {
+      castId: raw.source_cast?.cast_id ?? null,
+      activeEffectId: raw.source_cast?.active_effect_id ?? null,
+      cardName: raw.source_cast?.card_name ?? null,
+      casterPlayerId: raw.source_cast?.caster_player_id ?? null,
+    },
+    targetPlayer: raw.target_player,
+    before: raw.before,
+    after: raw.after,
+    outcome: raw.outcome,
+  };
+}
+
+/**
+ * Calls the authoritative resolve_round(uuid) RPC (migration 0078): composes
+ * every player's round modifier, applies lowest_gains_highest_modifier as
+ * modifier math, resolves tea_maker_override / declared_number precedence,
+ * and picks the brewer (or the tied roster) — writing the Resolution Trace
+ * onto rounds.resolution_trace. It does NOT flip the round to resolved; the
+ * caller persists a brewer via resolveRound (the 4-arg RPC) or a tie via
+ * advanceRoundLayer, exactly as before.
+ */
+export async function resolveRoundOutcome(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<ResolveRoundOutcome> {
+  const { data, error } = await supabase.rpc("resolve_round", { p_round_id: roundId });
+  if (error) throw error;
+
+  const raw = data as RawResolveRoundOutcome;
+  const trace = (raw.trace ?? []).map(toTraceStep);
+  const cupsMade = raw.cups_made;
+
+  if (raw.outcome === "tie") {
+    if (!raw.tied_player_ids?.length) {
+      throw new Error("resolve_round returned a tie with no tied_player_ids");
+    }
+    return { outcome: "tie", layer: raw.layer, tiedPlayerIds: raw.tied_player_ids, cupsMade, trace };
+  }
+
+  if (!raw.brewer_id) {
+    throw new Error("resolve_round returned a brewer outcome with no brewer_id");
+  }
+
+  return {
+    outcome: "brewer",
+    layer: raw.layer,
+    brewerId: raw.brewer_id,
+    brewerSource: raw.brewer_source ?? "default",
+    cupsMade,
+    noModifierGain: raw.no_modifier_gain,
+    trace,
+  };
+}
