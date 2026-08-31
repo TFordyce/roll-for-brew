@@ -310,14 +310,29 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards th
       const p1 = await signUp("reg-caff-crash-1");
       const p2 = await signUp("reg-caff-crash-2");
       const roundId = await openAndCloseRound(p1, [p2]);
-      // p1 roll 5 + snapshot 10 = 15 loses to p2 (6); set -1 -> total 4 wins.
+      // Caffeine Crash carries duration_rounds = 2 -> it is a persistent
+      // modifier applied through spell_active_effects, not the one-shot
+      // spell_casts bucket (resolve_round's lazy branch filters on
+      // sc.duration_rounds is null). Seed it as an active effect.
+      // p1 roll 5 + snapshot 10 = 15 loses to p2 (6); set -1 -> total 4 brews.
       await seedRoll(roundId, p1.googleSub, 5, 10);
       await seedRoll(roundId, p2.googleSub, 6);
-      await seedCast(roundId, p1.googleSub, "Caffeine Crash", {
-        effectKind: "set_modifier",
-        effectParams: { value: -1 },
-        targetPlayerId: p1.googleSub,
+
+      const { data: card } = await admin
+        .from("spell_cards")
+        .select("id")
+        .eq("name", "Caffeine Crash")
+        .single();
+      const { error: saeErr } = await admin.from("spell_active_effects").insert({
+        room_id: p1.roomId,
+        target_player_id: p1.googleSub,
+        caster_id: p1.googleSub,
+        card_id: card!.id,
+        effect_kind: "set_modifier",
+        effect_params: { value: -1 },
+        rounds_remaining: 2,
       });
+      expect(saeErr).toBeNull();
 
       const out = await resolve(p1.client, roundId);
       expect(out.brewer_id).toBe(p1.googleSub);
