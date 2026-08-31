@@ -1006,14 +1006,159 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     void rowP3full;
   });
 
-  it("Saving Steep is a live catalog card with a contested_negate {dc:10} effect and a deck instance", async () => {
+  it("Saving Steep is a live catalog card with a contested_negate {dc:10, backfire} effect and a deck instance", async () => {
     const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Saving Steep").single();
     const { data: effects } = await admin
       .from("spell_card_effects").select("effect_kind, effect_params").eq("card_id", card!.id);
-    expect(effects).toEqual([{ effect_kind: "contested_negate", effect_params: { dc: 10 } }]);
+    expect(effects).toEqual([{ effect_kind: "contested_negate", effect_params: { dc: 10, backfire: true } }]);
     const { data: instances } = await admin
       .from("spell_deck_instances").select("location").eq("card_id", card!.id);
     expect(instances!.length).toBeGreaterThan(0);
     expect(instances!.every((i) => i.location !== "benched")).toBe(true);
+  });
+
+  it("Saving Steep {dc:10}: d20 >= 10 negates the whole victim group", async () => {
+    const p1 = await signUp("rr-ss-neg-1");
+    const p2 = await signUp("rr-ss-neg-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: { dc: 10, backfire: true }, targetPlayerId: null,
+      parentCastId: victimId, castInputs: { dc_d20: 11, dc: 10 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    expect(out.brewer_id).toBe(p1.googleSub); // +10 gone -> p1 back to a bare 5
+    const { data: victim } = await admin.from("spell_casts").select("negated").eq("id", victimId).single();
+    expect(victim!.negated).toBe(true);
+    expect(out.trace.find((s) => s.display_kind === "contested_negate")).toMatchObject({ outcome: "applied" });
+  });
+
+  it("Saving Steep {dc:10}: a 2-9 roll loses the contest — victim composes, no backfire, no-op step", async () => {
+    const p1 = await signUp("rr-ss-loss-1");
+    const p2 = await signUp("rr-ss-loss-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    // A recorded 7: below the dc:10 override, above nat 1 -> plain contest loss.
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: { dc: 10, backfire: true }, targetPlayerId: null,
+      parentCastId: victimId, castInputs: { dc_d20: 7, dc: 10 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    expect(out.brewer_id).toBe(p2.googleSub); // +10 still lands -> p1 total 15
+    const { data: victim } = await admin.from("spell_casts").select("negated").eq("id", victimId).single();
+    expect(victim!.negated).toBe(false);
+    const negStep = out.trace.find((s) => s.display_kind === "contested_negate");
+    expect(negStep).toMatchObject({ outcome: "no-op", after: { type: "status", value: "no effect" } });
+    expect((negStep as unknown as { dc_d20: number; dc: number }).dc_d20).toBe(7);
+    expect((negStep as unknown as { dc: number }).dc).toBe(10);
+    expect(out.trace.some((s) => (s as unknown as { backfire?: boolean }).backfire)).toBe(false);
+  });
+
+  it("a counter with no recorded backfire payload never backfires on a nat 1 (Tannin Tantrum path)", async () => {
+    const p1 = await signUp("rr-tt-nat1-1");
+    const p2 = await signUp("rr-tt-nat1-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    // Tier-derived dc (common = 2), recorded nat 1, and — crucially — no
+    // `backfire` key in cast_inputs (cast_reaction_spell_card only writes it
+    // when effect_params.backfire is set, i.e. only for Saving Steep).
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: victimId, castInputs: { dc_d20: 1, dc: 2 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Plain contest loss: +10 lands, p2 brews; nothing re-applied onto p2.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    expect(out.trace.find((s) => s.display_kind === "contested_negate")).toMatchObject({ outcome: "no-op" });
+    expect(out.trace.some((s) => (s as unknown as { backfire?: boolean }).backfire)).toBe(false);
+    expect(out.trace.some((s) => s.target_player === p2.googleSub && s.before.type === "modifier")).toBe(false);
+  });
+
+  it("a negated advantage unwinds to the recorded before value (issue #308)", async () => {
+    const p1 = await signUp("rr-negadv-1");
+    const p2 = await signUp("rr-negadv-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 2);
+    await seedRoll(roundId, p2.googleSub, 8);
+    const windowId = await openWindow(roundId);
+    // p1 was given advantage: rolled 3 and 19, kept 19 (recorded). rolls.value
+    // sits at the kept 19.
+    const advId = await seedCast(roundId, p1.googleSub, "Fortune's Flavour", {
+      effectKind: "advantage", effectParams: {}, targetPlayerId: p1.googleSub,
+      reactionWindowId: windowId,
+      castInputs: {
+        roll_transform: {
+          kind: "advantage", order: 1, cancelled: false, dice: [3, 19],
+          players: [{ player_id: p1.googleSub, before: 3, after: 19 }],
+        },
+      },
+    });
+    await admin.from("rolls").update({ value: 19 }).eq("round_id", roundId).eq("player_id", p1.googleSub).eq("layer", 0);
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: advId, castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Advantage unwound -> p1 back to the recorded 3, now the lowest.
+    expect(out.brewer_id).toBe(p1.googleSub);
+    expect(out.trace.some((s) => s.display_kind === "advantage" && s.before.type === "roll")).toBe(false);
+  });
+
+  it("negating one row of a compound cast negates every row of the group (issue #308)", async () => {
+    const p1 = await signUp("rr-compound-neg-1");
+    const p2 = await signUp("rr-compound-neg-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 4);
+    await seedRoll(roundId, p2.googleSub, 12);
+    // Two rows of ONE cast group (shared card_instance_id): +10 on p1, +5 on p1.
+    const rowA = await seedCast(roundId, p1.googleSub, "Slipped Spoon", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p1.googleSub,
+    });
+    const { data: rowAfull } = await admin
+      .from("spell_casts").select("card_instance_id").eq("id", rowA).single();
+    const { data: rowB, error: bErr } = await admin
+      .from("spell_casts")
+      .insert({
+        round_id: roundId, caster_id: p1.googleSub,
+        card_instance_id: rowAfull!.card_instance_id,
+        target_player_id: p1.googleSub, target_pending: false,
+        effect_kind: "flat_modifier", effect_params: { delta: 5 },
+      })
+      .select("id").single();
+    expect(bErr).toBeNull();
+    // Counter targets only row A.
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: rowA, castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // BOTH +10 and +5 suppressed -> p1 bare 4, brews.
+    expect(out.brewer_id).toBe(p1.googleSub);
+    const { data: rows } = await admin
+      .from("spell_casts").select("id, negated").in("id", [rowA, rowB!.id]);
+    expect(rows!.every((r) => r.negated === true)).toBe(true);
+    expect(out.trace.some((s) => s.before.type === "modifier")).toBe(false);
   });
 });

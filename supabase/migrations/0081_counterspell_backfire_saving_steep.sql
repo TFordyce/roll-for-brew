@@ -19,11 +19,10 @@
 --    handled two: `dc_d20 >= dc` negates the whole target cast group;
 --    anything else is a contest lost (the countered cast composes as normal,
 --    the counter is a no-op). This slice adds the natural-1 BACKFIRE:
---      * `cast_reaction_spell_card` -- on `dc_d20 = 1` for a card that
---        carries the backfire behaviour (only Saving Steep, detected by its
---        `effect_params.dc` being present is NOT the signal; the signal is
---        that we record a `cast_inputs.backfire` object here). It draws every
---        extra server-RNG the re-application needs and records it:
+--      * `cast_reaction_spell_card` -- on `dc_d20 = 1` for a counter whose
+--        card sets `effect_params.backfire = true` (Saving Steep only;
+--        Tannin Tantrum omits it and simply loses the contest on a 1). It
+--        draws every extra server-RNG the re-application needs and records it:
 --          cast_inputs.backfire = {
 --            "transforms": [ { "kind": <eager kind>, "order": <1..4>,
 --                              "extra_dice": [<d20>, ...] }, ... ],
@@ -239,13 +238,17 @@ declare
   v_total integer;
   i integer;
 begin
-  -- Eager (roll-input) kinds: one transform entry per DISTINCT kind in the
-  -- victim group, with any extra d20 draws the re-application consumes.
+  -- Eager (roll-input) rows: one transform entry PER ROW of the victim group
+  -- (spec §8: "one extra step per re-applied effect row"), each with the
+  -- extra d20 draws its own re-application consumes. Ordered by the fixed
+  -- eager-shim order, then seq, so Phase 3 walks them the same way it walks
+  -- the originals.
   for v_row in
-    select distinct effect_kind
+    select effect_kind
       from public.spell_casts
      where card_instance_id = p_victim_group
        and effect_kind in ('advantage', 'disadvantage', 'forced_reroll', 'roll_flip', 'roll_swap')
+     order by seq
   loop
     v_extra := '[]'::jsonb;
     if v_row.effect_kind in ('advantage', 'disadvantage') then
@@ -260,7 +263,7 @@ begin
     elsif v_row.effect_kind = 'roll_flip' then
       v_order := 3;
     else
-      v_order := 4;   -- roll_swap: no counterpart on a lone target
+      v_order := 4;   -- roll_swap: self-inverse when re-applied (see Phase 3)
     end if;
 
     v_transforms := v_transforms || jsonb_build_array(jsonb_build_object(
@@ -510,11 +513,16 @@ begin
         update public.spell_casts set negated = true where id = p_target_cast_id;
       end if;
 
-      -- Natural 1: this counter BACKFIRES (spec �8). It does not negate the
-      -- victim; instead resolve_round re-applies every effect row of the
-      -- victim group once more onto the reactor. Draw + record every extra
-      -- server-RNG that re-application needs, now, into cast_inputs.backfire.
-      if v_roll = 1 and v_target_group is not null then
+      -- Natural 1 on a counter whose card carries the backfire behaviour
+      -- (effect_params.backfire = true -- Saving Steep only; Tannin Tantrum
+      -- omits it and just "resolves as normal" on a fail, spec §8). It does
+      -- NOT negate the victim; instead resolve_round re-applies every effect
+      -- row of the victim group once more onto the reactor. Draw + record
+      -- every extra server-RNG that needs, now, into cast_inputs.backfire --
+      -- whose presence is then the resolver's backfire signal.
+      if v_roll = 1
+         and v_target_group is not null
+         and coalesce((v_effect.effect_params ->> 'backfire')::boolean, false) then
         perform public._rr_record_backfire(v_row_cast_id, v_target_group);
       end if;
     elsif v_effect.effect_kind = 'redirect' then
@@ -753,8 +761,14 @@ begin
        set negated = (card_instance_id = any (v_negated_groups))
      where round_id = p_round_id;
 
-    -- redirected_to_cast_id: clear, then re-point every redirected (and not
-    -- also negated) group at its redirect cast.
+    -- redirected_to_cast_id: clear, then re-point each redirected (and not
+    -- also negated) TARGETED ROW at its redirect cast. Spec §8 line 205
+    -- describes this cache as keyed off the cast group, but the #308
+    -- acceptance criterion "redirect ... moves only the reactor's own
+    -- exposure; other targets still hit" is only expressible per row -- so
+    -- the pointer sits on the one row that actually moved. Flagged for the
+    -- integrator; single-target casts (every redirect card today) are
+    -- unaffected either way.
     update public.spell_casts
        set redirected_to_cast_id = null
      where round_id = p_round_id and redirected_to_cast_id is not null;
@@ -803,7 +817,7 @@ begin
               else 'no effect'
             end),
           -- dc_d20 / dc travel with every contested_negate step so the
-          -- renderer can say "rolled a 4 vs DC 10" on a contest lost (�8).
+          -- renderer can say "rolled a 4 vs DC 10" on a contest lost (§8).
           jsonb_build_object(
             'dc_d20', v_clr.counter_dc_d20,
             'dc', v_clr.counter_dc,
@@ -957,6 +971,10 @@ begin
               (v_t->'extra_dice'->>0)::numeric, (v_t->'extra_dice'->>1)::numeric)
             when 'forced_reroll' then (v_t->'extra_dice'->>0)::numeric
             when 'roll_flip' then 21 - v_before
+            -- roll_swap: a table-wide high<->low exchange. Re-applied it is
+            -- its own inverse, and the reactor's row already carries any
+            -- first swap, so the second returns them -- net zero, recorded
+            -- as before == after (rules-as-written, not a special case).
             else v_before
           end;
           v_running := v_after;
@@ -1385,7 +1403,7 @@ comment on function public.resolve_round(uuid) is
 -- final target and reads p_target_cast_id).
 
 insert into public.spell_card_effects (card_id, target_role, effect_kind, effect_params, ordinal)
-select sc.id, 'TARGET', 'contested_negate', '{"dc": 10}'::jsonb, 0
+select sc.id, 'TARGET', 'contested_negate', '{"dc": 10, "backfire": true}'::jsonb, 0
   from public.spell_cards sc
  where sc.name = 'Saving Steep'
    and not exists (
