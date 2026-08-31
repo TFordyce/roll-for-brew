@@ -843,4 +843,177 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     expect(second.brewer_id).toBe(first.brewer_id);
     expect(JSON.stringify(second.trace)).toBe(JSON.stringify(first.trace));
   });
+
+  it("a negated forced_reroll unwinds to the recorded before value (issue #308)", async () => {
+    const p1 = await signUp("rr-negrt-1");
+    const p2 = await signUp("rr-negrt-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 3);
+    await seedRoll(roundId, p2.googleSub, 8);
+    const windowId = await openWindow(roundId);
+    // p2 forces p1 to reroll 18 -> 1 (recorded). p1's rolls.value is left at
+    // the post-reroll 1, exactly as the eager shim leaves it.
+    const rerollId = await seedCast(roundId, p2.googleSub, "Fortune's Flavour", {
+      effectKind: "forced_reroll", effectParams: {}, targetPlayerId: p1.googleSub,
+      reactionWindowId: windowId,
+      castInputs: {
+        roll_transform: {
+          kind: "forced_reroll", order: 2,
+          players: [{ player_id: p1.googleSub, before: 18, after: 1 }],
+        },
+      },
+    });
+    await admin.from("rolls").update({ value: 1 }).eq("round_id", roundId).eq("player_id", p1.googleSub).eq("layer", 0);
+    // p1 counters the reroll and wins (d20 15 >= dc 5).
+    await seedCast(roundId, p1.googleSub, "Milky Brew", {
+      effectKind: "contested_negate", effectParams: {}, targetPlayerId: null,
+      parentCastId: rerollId, castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // The reroll is unwound -> p1 back to 18, so p2 (8) is now the lowest.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    // No surviving forced_reroll step for p1.
+    expect(out.trace.some((s) => s.display_kind === "forced_reroll" && s.before.type === "roll")).toBe(false);
+  });
+
+  // ----------------------------------------------------------------------
+  // Saving Steep natural-1 backfire (issue #308, spec §8).
+  // ----------------------------------------------------------------------
+
+  it("a nat-1 backfire leaves the victim to resolve and re-applies its flat_modifier onto the reactor, outcome 'backfired'", async () => {
+    const p1 = await signUp("rr-bf-flat-1");
+    const p2 = await signUp("rr-bf-flat-2");
+    const p3 = await signUp("rr-bf-flat-3");
+    const roundId = await openAndCloseRound(p1, [p2, p3]);
+    await seedRoll(roundId, p1.googleSub, 5);
+    await seedRoll(roundId, p2.googleSub, 5);
+    await seedRoll(roundId, p3.googleSub, 5);
+    // p1 buffs p3 by +10.
+    const victimId = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier", effectParams: { delta: 10 }, targetPlayerId: p3.googleSub,
+    });
+    // p2 (reactor) counters with Saving Steep and rolls a natural 1.
+    const counterId = await seedCast(roundId, p2.googleSub, "Saving Steep", {
+      effectKind: "contested_negate", effectParams: { dc: 10 }, targetPlayerId: null,
+      parentCastId: victimId,
+      castInputs: { dc_d20: 1, dc: 10, backfire: { transforms: [], dice_rolls: {} } },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // Victim NOT negated -> p3 still +10 (total 15); backfire +10 on p2
+    // (total 15); p1 untouched at 5 -> p1 brews.
+    expect(out.brewer_id).toBe(p1.googleSub);
+    const { data: victim } = await admin.from("spell_casts").select("negated").eq("id", victimId).single();
+    expect(victim!.negated).toBe(false);
+
+    const negStep = out.trace.find((s) => s.display_kind === "contested_negate");
+    expect(negStep).toMatchObject({ outcome: "backfired" });
+    expect((negStep as unknown as { dc_d20: number; dc: number }).dc_d20).toBe(1);
+    expect((negStep as unknown as { dc: number }).dc).toBe(10);
+
+    // p3's own +10 modifier step still there.
+    expect(out.trace.find((s) => s.display_kind === "flat_modifier" && s.target_player === p3.googleSub))
+      .toMatchObject({ after: { type: "modifier", value: 10 } });
+    // A backfire +10 modifier step landed on the reactor p2.
+    const bfStep = out.trace.find(
+      (s) => s.display_kind === "flat_modifier" && s.target_player === p2.googleSub,
+    ) as unknown as { after: { value: number }; backfire?: boolean };
+    expect(bfStep.after.value).toBe(10);
+    expect(bfStep.backfire).toBe(true);
+    expect(negStep!.source_cast.cast_id).toBe(counterId);
+  });
+
+  it("a nat-1 backfire re-applies a disadvantage onto the reactor as a third-die-lowest roll step", async () => {
+    const p1 = await signUp("rr-bf-dis-1");
+    const p2 = await signUp("rr-bf-dis-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 15);
+    // p1 casts disadvantage at p2 (no recorded roll_transform needed for the
+    // test — the victim contributes nothing extra of its own).
+    const victimId = await seedCast(roundId, p1.googleSub, "Sugar Rush", {
+      effectKind: "disadvantage", effectParams: {}, targetPlayerId: p2.googleSub,
+    });
+    // p2 counters with Saving Steep, nat 1: backfire draws two more d20 (2, 3).
+    await seedCast(roundId, p2.googleSub, "Saving Steep", {
+      effectKind: "contested_negate", effectParams: { dc: 10 }, targetPlayerId: null,
+      parentCastId: victimId,
+      castInputs: {
+        dc_d20: 1, dc: 10,
+        backfire: {
+          transforms: [{ kind: "disadvantage", order: 1, extra_dice: [2, 3] }],
+          dice_rolls: {},
+        },
+      },
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // p2's 15 vs the two backfire dice 2, 3 -> lowest 2. p1 (10) > p2 (2) -> p2 brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    const bfRoll = out.trace.find(
+      (s) => s.display_kind === "disadvantage" && s.target_player === p2.googleSub && s.before.type === "roll",
+    ) as unknown as { before: { value: number }; after: { value: number }; backfire?: boolean };
+    expect(bfRoll.before.value).toBe(15);
+    expect(bfRoll.after.value).toBe(2);
+    expect(bfRoll.backfire).toBe(true);
+  });
+
+  it("redirect on a multi-target countered cast moves only the reactor's own row; the other target still hits", async () => {
+    const p1 = await signUp("rr-redir-multi-1");
+    const p2 = await signUp("rr-redir-multi-2");
+    const p3 = await signUp("rr-redir-multi-3");
+    const roundId = await openAndCloseRound(p1, [p2, p3]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 3);
+    await seedRoll(roundId, p3.googleSub, 3);
+    // p1 dumps a +100 flat on p2 as one row of a two-row cast group.
+    const rowP2 = await seedCast(roundId, p1.googleSub, "Milky Brew", {
+      effectKind: "flat_modifier", effectParams: { delta: 100 }, targetPlayerId: p2.googleSub,
+    });
+    const { data: rowP2full } = await admin
+      .from("spell_casts").select("card_instance_id").eq("id", rowP2).single();
+    // A sibling row of the SAME cast group hitting p3.
+    const { data: rowP3full, error: sibErr } = await admin
+      .from("spell_casts")
+      .insert({
+        round_id: roundId, caster_id: p1.googleSub,
+        card_instance_id: rowP2full!.card_instance_id,
+        target_player_id: p3.googleSub, target_pending: false,
+        effect_kind: "flat_modifier", effect_params: { delta: 100 },
+      })
+      .select("id").single();
+    expect(sibErr).toBeNull();
+    // p2 reflects only its own exposure back onto the original caster p1.
+    await seedCast(roundId, p2.googleSub, "Mug Mirror", {
+      effectKind: "redirect", effectParams: {}, targetPlayerId: null,
+      parentCastId: rowP2,
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // p2's row -> p1 (total 110); p3's row stays (total 103); p2 bare 3 -> p2 brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    expect(out.trace.find((s) => s.display_kind === "flat_modifier" && s.target_player === p1.googleSub))
+      .toMatchObject({ after: { type: "modifier", value: 100 } });
+    expect(out.trace.find((s) => s.display_kind === "flat_modifier" && s.target_player === p3.googleSub))
+      .toMatchObject({ after: { type: "modifier", value: 100 } });
+    // p2 itself takes no modifier hit.
+    expect(out.trace.some((s) => s.display_kind === "flat_modifier" && s.target_player === p2.googleSub)).toBe(false);
+    void rowP3full;
+  });
+
+  it("Saving Steep is a live catalog card with a contested_negate {dc:10} effect and a deck instance", async () => {
+    const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Saving Steep").single();
+    const { data: effects } = await admin
+      .from("spell_card_effects").select("effect_kind, effect_params").eq("card_id", card!.id);
+    expect(effects).toEqual([{ effect_kind: "contested_negate", effect_params: { dc: 10 } }]);
+    const { data: instances } = await admin
+      .from("spell_deck_instances").select("location").eq("card_id", card!.id);
+    expect(instances!.length).toBeGreaterThan(0);
+    expect(instances!.every((i) => i.location !== "benched")).toBe(true);
+  });
 });
