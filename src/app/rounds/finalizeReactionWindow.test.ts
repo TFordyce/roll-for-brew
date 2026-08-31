@@ -12,7 +12,6 @@ function fakeDeps(overrides: Partial<FinalizeReactionWindowDeps> = {}): Finalize
     hasActiveCastKind: vi.fn(async () => false),
     applyRollFlip: vi.fn(async () => []),
     applyRollSwap: vi.fn(async () => []),
-    applyLowestGainsHighestModifier: vi.fn(async () => []),
     applyLayerOutcome: vi.fn(async () => {}),
     ...overrides,
   };
