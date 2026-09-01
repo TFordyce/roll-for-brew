@@ -756,7 +756,7 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       cardName: "Inscribed Saucer",
       effectKind: "declared_number_tea_maker",
       effectParams: { number: 13 },
-      roundsRemaining: 9999,
+      roundsRemaining: 1, // #310: declared-number sentinel is duration-1
     });
 
     const out = await resolve(p1.client, roundId);

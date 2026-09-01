@@ -33,19 +33,29 @@
 -- 3. New _rr_active_effects_as_of(room, round): the authoritative row source
 --    for "which effects are live as of this round". A row is live iff its
 --    source cast is not negated, its duration is not exhausted (counting
---    resolved rounds between the source round and the as-of round), and it
---    has not been dispelled at/before the as-of round. Every reader of
---    spell_active_effects is rewired through it.
+--    resolved rounds between the source round and the as-of round -- shared
+--    with the badge via _rr_effect_rounds_elapsed), and it has not been
+--    dispelled at/before the as-of round. Every reader that treats
+--    spell_active_effects as *current game state* is rewired through it:
+--    get_round_modifier_effects, _rr_active_ward_gate,
+--    get_dispellable_active_effects, get_room_active_effects,
+--    resolve_round(uuid) Phases 2/4a/5, and resolve_declared_number_tea_maker.
+--    (end_active_effect still looks a row up by primary key to log the
+--    dispel cast -- that is a write path, not a "what is live" read.)
 --
 -- 4. The in-place tick (update rounds_remaining = rounds_remaining - 1;
 --    delete where rounds_remaining <= 0) is removed from the legacy 4-arg
---    resolve_round -- the only place it lived. end_active_effect stops
---    physically deleting the row; the dispel is already a logged spell_casts
---    row, which _rr_active_effects_as_of now honours.
+--    resolve_round -- the only place it lived. end_active_effect and
+--    resolve_declared_number_tea_maker stop physically deleting rows: dispel
+--    is already a logged spell_casts row, and the declared-number sentinel is
+--    now a duration-1 projection row that ages out on its own. Nothing in
+--    this subsystem deletes a spell_active_effects row for game-logic reasons
+--    any more.
 --
 -- 5. cast_spell_card's declared_number_tea_maker branch inserts its Cast Log
 --    row BEFORE the sentinel active-effect row so the latter can carry a
---    real source_cast_id.
+--    real source_cast_id, and gives it rounds_remaining = 1 (its cast round
+--    only) instead of the old 9999 no-op sentinel.
 --
 -- 6. rebuild_active_effects_projection(room): explicit from-scratch rebuild
 --    of a room's projection by replaying its Cast Log in seq order. A debug
@@ -107,10 +117,35 @@ comment on column public.spell_active_effects.source_cast_id is
 --     in round Rd removes the effect from Rd onward; earlier rounds still
 --     show it -- more faithful than the old immediate physical DELETE.)
 --
--- A NULL / unknown p_as_of_round_id yields no as-of started_at, so the
--- duration count is 0 and no dispel matches -> every non-negated row is
--- returned. Real callers always pass a real round; get_room_active_effects
--- in an empty room hits this and correctly shows full duration.
+-- A NULL / unknown p_as_of_round_id yields no as-of started_at, so the dispel
+-- check matches nothing and _rr_effect_rounds_elapsed counts every resolved
+-- round since the source -> a row is live unless its own duration is spent.
+-- Real callers always pass a real round; get_room_active_effects in an empty
+-- room hits this and correctly shows full duration (no resolved rounds yet).
+
+-- Resolved rounds in [source cast's round .started_at, as-of .started_at) --
+-- how many rounds a promoted effect has "aged". Shared by _rr_active_effects
+-- _as_of (liveness: aged < rounds_remaining) and get_room_active_effects
+-- (badge: rounds_remaining - aged). A NULL as-of drops the upper bound.
+create or replace function public._rr_effect_rounds_elapsed(
+  p_room_id uuid, p_source_started_at timestamptz, p_as_of_started_at timestamptz
+)
+returns integer
+language sql
+stable
+set search_path = public
+as $$
+  select count(*)::integer
+    from public.rounds r
+   where r.room_id = p_room_id
+     and r.status = 'resolved'
+     and r.started_at >= p_source_started_at
+     and (p_as_of_started_at is null or r.started_at < p_as_of_started_at);
+$$;
+
+revoke execute on function public._rr_effect_rounds_elapsed(uuid, timestamptz, timestamptz) from public, anon;
+grant execute on function public._rr_effect_rounds_elapsed(uuid, timestamptz, timestamptz) to authenticated;
+
 create or replace function public._rr_active_effects_as_of(
   p_room_id uuid, p_as_of_round_id uuid
 )
@@ -135,14 +170,9 @@ as $$
      and coalesce(src.negated, false) = false
      and (
        sae.rounds_remaining is null
-       or (
-         select count(*)
-           from public.rounds r
-          where r.room_id = p_room_id
-            and r.status = 'resolved'
-            and r.started_at >= src_round.started_at
-            and r.started_at < (select started_at from as_of)
-       ) < sae.rounds_remaining
+       or public._rr_effect_rounds_elapsed(
+            p_room_id, src_round.started_at, (select started_at from as_of)
+          ) < sae.rounds_remaining
      )
      and not exists (
        select 1
@@ -161,8 +191,11 @@ grant execute on function public._rr_active_effects_as_of(uuid, uuid) to authent
 comment on function public._rr_active_effects_as_of(uuid, uuid) is
   'Issue #310: the spell_active_effects rows live as of a given round -- '
   'source cast not negated, duration not exhausted (resolved-round count '
-  'since the source round), not dispelled at/before the round. The single '
-  'row source every active-effect reader is rewired through.';
+  'since the source round), not dispelled at/before the round. The shared '
+  'row source for every reader that treats spell_active_effects as current '
+  'game state (get_round_modifier_effects, the ward gate/map, dispel/room '
+  'badge readers, resolve_round Phases 2/4a/5, resolve_declared_number_tea_'
+  'maker).';
 
 -- ===========================================================================
 -- 3. rebuild_active_effects_projection(room) -- explicit from-scratch replay.
@@ -172,6 +205,14 @@ comment on function public._rr_active_effects_as_of(uuid, uuid) is
 -- (record_active_effect_if_persistent, which re-derives duration and applies
 -- ward-blocks-ward suppression). declared_number_tea_maker sentinels are
 -- re-inserted directly (they are not "persistent" in record_...'s sense).
+--
+-- It reproduces the *physical* projection the incremental path builds, which
+-- means it promotes a cast that was LATER negated too: the incremental path
+-- inserts the row at cast time and never removes it, so its physical set
+-- keeps that row (and a since-negated ward still counts for ward-blocks-ward,
+-- exactly as it did live). negation / duration-expiry / dispel are read-time
+-- filters that _rr_active_effects_as_of applies identically to both paths --
+-- rebuilding them out here would make the two projections diverge.
 --
 -- A debug / maintenance op. The seq-ordered replay reproduces steady-state
 -- ward-blocks-ward; the 0082 deferred-OPPONENT-vs-higher-seq-ward edge is
@@ -196,7 +237,8 @@ begin
       join public.spell_deck_instances sdi on sdi.id = sc.card_instance_id
       join public.spell_cards card on card.id = sdi.card_id
      where r.room_id = p_room_id
-       and coalesce(sc.negated, false) = false
+       -- negated casts are replayed too -- see the header: the incremental
+       -- path's physical set keeps them.
        and (
          sc.effect_kind = 'declared_number_tea_maker'
          or (
@@ -215,7 +257,7 @@ begin
       values (
         v_cast.room_id, coalesce(v_cast.target_player_id, v_cast.caster_id),
         v_cast.caster_id, v_cast.cast_id, v_cast.card_id,
-        v_cast.effect_kind, v_cast.effect_params, 9999
+        v_cast.effect_kind, v_cast.effect_params, 1   -- one-shot: its cast round only
       );
     else
       perform public.record_active_effect_if_persistent(
@@ -397,6 +439,11 @@ $$;
 revoke execute on function public.get_dispellable_active_effects(uuid) from public, anon;
 grant execute on function public.get_dispellable_active_effects(uuid) to authenticated;
 
+comment on function public.get_dispellable_active_effects(uuid) is
+  'Issue #310: reads the live projection (_rr_active_effects_as_of) so the '
+  'dispel UI never offers an already-expired or already-dispelled effect. '
+  'Signature and output columns unchanged.';
+
 -- ===========================================================================
 -- 7. end_active_effect -- the dispel is a logged spell_casts row ONLY; the
 --    physical DELETE is gone (_rr_active_effects_as_of honours the dispel
@@ -529,33 +576,99 @@ begin
    order by started_at desc
    limit 1;
 
+  -- source_cast_id is NOT NULL, so these joins are effectively inner; they
+  -- give _rr_effect_rounds_elapsed the source cast's round start. The derived
+  -- rounds_remaining uses the SAME elapsed count as _rr_active_effects_as_of's
+  -- liveness test, so a row it returned can never derive to a negative badge
+  -- (greatest(..., 0) is belt-and-braces); NULL stays NULL for unbounded wards.
   return query
     select sae.id, sae.target_player_id, sc.name, sc.tier, sc.polarity,
            case
              when sae.rounds_remaining is null then null
-             else greatest(sae.rounds_remaining - coalesce(elapsed.n, 0), 0)::integer
+             else greatest(
+               sae.rounds_remaining
+               - public._rr_effect_rounds_elapsed(p_room_id, sr.started_at, v_latest_started_at),
+               0
+             )::integer
            end as rounds_remaining
       from public._rr_active_effects_as_of(p_room_id, v_latest_round) sae
       join public.spell_cards sc on sc.id = sae.card_id
-      left join lateral (
-        select count(*)::integer as n
-          from public.rounds r
-          join public.spell_casts scx on scx.id = sae.source_cast_id
-          join public.rounds sr on sr.id = scx.round_id
-         where r.room_id = p_room_id
-           and r.status = 'resolved'
-           and r.started_at >= sr.started_at
-           and (v_latest_started_at is null or r.started_at < v_latest_started_at)
-      ) elapsed on true;
+      join public.spell_casts scx on scx.id = sae.source_cast_id
+      join public.rounds sr on sr.id = scx.round_id;
 end;
 $$;
 
 revoke execute on function public.get_room_active_effects(uuid) from public, anon;
 grant execute on function public.get_room_active_effects(uuid) to authenticated;
 
+comment on function public.get_room_active_effects(uuid) is
+  'Issue #310: roster-badge reader -- projection-filtered via '
+  '_rr_active_effects_as_of at the room''s latest round; the rounds_remaining '
+  'output is DERIVED (immutable snapshot minus resolved rounds since the '
+  'source cast, floored at 0), NULL for an unbounded ward. Signature and '
+  'output columns unchanged.';
+
 -- ===========================================================================
--- 9. Legacy 4-arg resolve_round -- the in-place tick is removed (expiry is
---    now derived by _rr_active_effects_as_of). Otherwise byte-for-byte 0057.
+-- 9. resolve_declared_number_tea_maker -- reads the live projection (no raw
+--    scan, no physical DELETE). Otherwise byte-for-byte 0033.
+-- ===========================================================================
+-- The declared-number sentinel is now a duration-1 projection row (see
+-- cast_spell_card / rebuild_active_effects_projection): live in its own cast
+-- round, then _rr_active_effects_as_of derives it expired. So this function
+-- no longer needs -- and must not do -- a physical DELETE to make it "one
+-- shot"; that would break the "rebuild == incremental" AC (the cast row
+-- stays in the Cast Log and would re-project). It also now reads through
+-- _rr_active_effects_as_of, so a negated Inscribed Saucer cast is ignored
+-- here exactly as it is in resolve_round(uuid) Phase 5. The result is a pure,
+-- idempotent read; the orchestrator (layerResolution.ts) already discards the
+-- return and only calls it when resolve_round(uuid) picked brewer_source
+-- 'declared_number'.
+create or replace function public.resolve_declared_number_tea_maker(p_round_id uuid, p_layer integer)
+returns text
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_room_id uuid;
+  v_number integer;
+  v_matched_player text;
+begin
+  select room_id into v_room_id from public.rounds where id = p_round_id;
+
+  for v_number in
+    select (sae.effect_params ->> 'number')::integer
+      from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+     where sae.effect_kind = 'declared_number_tea_maker'
+     order by sae.created_at
+  loop
+    select r.player_id into v_matched_player
+      from public.rolls r
+     where r.round_id = p_round_id and r.layer = p_layer and r.value = v_number
+     limit 1;
+
+    if v_matched_player is not null then
+      return v_matched_player;
+    end if;
+  end loop;
+
+  return null;
+end;
+$$;
+
+revoke execute on function public.resolve_declared_number_tea_maker(uuid, integer) from public, anon;
+grant execute on function public.resolve_declared_number_tea_maker(uuid, integer) to authenticated;
+
+comment on function public.resolve_declared_number_tea_maker(uuid, integer) is
+  'Issue #310: pure, idempotent read -- the earliest live declared-number '
+  'sentinel (via _rr_active_effects_as_of, so negated / expired ones are '
+  'skipped) whose number a p_layer roll matches, else NULL. No physical '
+  'DELETE: the sentinel is a duration-1 projection row that ages out on its '
+  'own.';
+
+-- ===========================================================================
+-- 10. Legacy 4-arg resolve_round -- the in-place tick is removed (expiry is
+--     now derived by _rr_active_effects_as_of). Otherwise byte-for-byte 0057.
 -- ===========================================================================
 create or replace function public.resolve_round(
   p_round_id uuid, p_brewer_id text, p_cups_made integer, p_no_modifier_gain boolean default false
@@ -639,7 +752,7 @@ comment on function public.resolve_round(uuid, text, integer, boolean) is
   'resolved-round count since each effect''s source cast.';
 
 -- ===========================================================================
--- 10. resolve_round(uuid) and cast_spell_card -- re-emitted verbatim from
+-- 11. resolve_round(uuid) and cast_spell_card -- re-emitted verbatim from
 --     0083 with only the surgical #310 changes (appended below by the
 --     migration author from the 0083 source; see PR description).
 -- ===========================================================================
@@ -1666,7 +1779,7 @@ comment on function public.resolve_round(uuid) is
   'Authoritative layer-0 outcome resolver (issues #305/#306/#307/#308/#309, ADR 0005): Phase 1 derives negate / redirect / backfire; Phase 2 projects active wards (with source-cast seq); Phase 3 rebuilds every roller''s final roll from the eager shim (adopting a roll-domain ward''s `warded` marker unchanged); Phase 4 composes modifiers (dropping a modifier-domain effect warded by an earlier-seq ward as a `warded` step, excluding a warded tied-lowest roller from lowest_gains_highest_modifier); Phase 5 selects the brewer and forces no_modifier_gain for a block_earned_modifier ward on them. Emits the Resolution Trace into rounds.resolution_trace. Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';
 
 -- ===========================================================================
--- 11. cast_spell_card -- declared_number_tea_maker logs its Cast Log row
+-- 12. cast_spell_card -- declared_number_tea_maker logs its Cast Log row
 --     before the sentinel active-effect row. Otherwise byte-for-byte 0083.
 -- ===========================================================================
 create or replace function public.cast_spell_card(
@@ -1905,10 +2018,13 @@ begin
 
       -- #310: Cast Log row first so the sentinel active-effect row can carry a
       -- real source_cast_id (spell_active_effects.source_cast_id is NOT NULL).
+      -- rounds_remaining => 1: the declared number applies to its own cast
+      -- round only, then _rr_active_effects_as_of derives it expired -- no
+      -- physical DELETE (resolve_declared_number_tea_maker, #310).
       insert into public.spell_active_effects (
         room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining
       )
-      values (v_room_id, v_player_id, v_player_id, v_row_cast_id, v_card_id, v_effect.effect_kind, v_effect_params, 9999);
+      values (v_room_id, v_player_id, v_player_id, v_row_cast_id, v_card_id, v_effect.effect_kind, v_effect_params, 1);
 
       if v_cast_id is null then
         v_cast_id := v_row_cast_id;

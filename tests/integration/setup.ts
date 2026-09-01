@@ -232,7 +232,6 @@ export async function seedActiveEffect(
     effectParams?: Record<string, unknown>;
     roundsRemaining?: number | null;
     roundId?: string;
-    reactionWindowId?: string;
   },
 ): Promise<{ effectId: string; castId: string; roundId: string }> {
   const {
@@ -243,7 +242,6 @@ export async function seedActiveEffect(
     effectKind,
     effectParams = {},
     roundsRemaining = null,
-    reactionWindowId,
   } = opts;
 
   const { data: card, error: cardError } = await admin
@@ -287,7 +285,6 @@ export async function seedActiveEffect(
       target_pending: false,
       effect_kind: effectKind,
       effect_params: effectParams,
-      reaction_window_id: reactionWindowId ?? null,
     })
     .select("id")
     .single();
