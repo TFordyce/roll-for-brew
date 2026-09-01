@@ -1151,4 +1151,140 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     expect(rows!.every((r) => r.negated === true)).toBe(true);
     expect(out.trace.some((s) => s.before.type === "modifier")).toBe(false);
   });
+
+  // ==========================================================================
+  // Phase 4b: persistent modifier delta projection + the room_players.modifier
+  // log-derived cache (issue #311, spec §9).
+  // ==========================================================================
+
+  async function roomModifier(roomId: string, playerId: string) {
+    const { data, error } = await admin
+      .from("room_players")
+      .select("modifier")
+      .eq("room_id", roomId)
+      .eq("player_id", playerId)
+      .single();
+    expect(error).toBeNull();
+    return data!.modifier as number;
+  }
+
+  async function breakdown(client: SupabaseClient, playerId: string, roomId: string) {
+    const { data, error } = await client
+      .rpc("get_modifier_breakdown", { p_player_id: playerId, p_room_id: roomId })
+      .single();
+    expect(error).toBeNull();
+    return data as { cups_made: number; adjustments: number; spell_effects: number };
+  }
+
+  /** Seeds a sibling persistent_modifier_transfer pair (caster +d, target -d). */
+  async function seedTransferPair(roundId: string, casterId: string, targetId: string, casterDelta: number) {
+    const a = await seedCast(roundId, casterId, "Lucky Sip", {
+      effectKind: "persistent_modifier_transfer",
+      effectParams: { delta: casterDelta },
+      targetPlayerId: casterId,
+      castInputs: { caster_modifier: 0, other_modifier: 0 },
+    });
+    const b = await seedCast(roundId, casterId, "Lucky Sip", {
+      effectKind: "persistent_modifier_transfer",
+      effectParams: { delta: -casterDelta },
+      targetPlayerId: targetId,
+      castInputs: { caster_modifier: 0, other_modifier: 0 },
+    });
+    return { a, b };
+  }
+
+  it("Phase 4b writes room_players.modifier = base + delta for a transfer pair and reconciles the breakdown", async () => {
+    const p1 = await signUp("rr-pmt-1");
+    const p2 = await signUp("rr-pmt-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 12);
+    await seedTransferPair(roundId, p1.googleSub, p2.googleSub, 6);
+
+    const out = await resolve(p1.client, roundId);
+
+    expect(await roomModifier(p1.roomId, p1.googleSub)).toBe(6);
+    expect(await roomModifier(p2.roomId, p2.googleSub)).toBe(-6);
+
+    const b1 = await breakdown(p1.client, p1.googleSub, p1.roomId);
+    expect(b1).toEqual({ cups_made: 0, adjustments: 0, spell_effects: 6 });
+    expect(b1.cups_made + b1.adjustments + b1.spell_effects).toBe(await roomModifier(p1.roomId, p1.googleSub));
+
+    const pmtSteps = out.trace.filter((s) => s.display_kind === "persistent_modifier_transfer");
+    expect(pmtSteps).toHaveLength(2);
+    expect(pmtSteps.map((s) => s.target_player).sort()).toEqual([p1.googleSub, p2.googleSub].sort());
+    const p1Step = pmtSteps.find((s) => s.target_player === p1.googleSub)!;
+    expect(p1Step.before).toEqual({ type: "modifier", value: 0 });
+    expect(p1Step.after).toEqual({ type: "modifier", value: 6 });
+  });
+
+  it("Phase 4b is idempotent — a second resolve_round leaves the cache and the steps unchanged", async () => {
+    const p1 = await signUp("rr-pmt-idem-1");
+    const p2 = await signUp("rr-pmt-idem-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 12);
+    await seedTransferPair(roundId, p1.googleSub, p2.googleSub, 4);
+
+    const first = await resolve(p1.client, roundId);
+    const modAfterFirst = await roomModifier(p1.roomId, p1.googleSub);
+    const second = await resolve(p1.client, roundId);
+
+    expect(modAfterFirst).toBe(4);
+    expect(await roomModifier(p1.roomId, p1.googleSub)).toBe(4);
+    expect(await roomModifier(p2.roomId, p2.googleSub)).toBe(-4);
+    expect(second.trace.filter((s) => s.display_kind === "persistent_modifier_transfer")).toEqual(
+      first.trace.filter((s) => s.display_kind === "persistent_modifier_transfer"),
+    );
+  });
+
+  it("Phase 4b skips a negated transfer — the cache is not moved", async () => {
+    const p1 = await signUp("rr-pmt-neg-1");
+    const p2 = await signUp("rr-pmt-neg-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 12);
+    const oneSided = await seedCast(roundId, p1.googleSub, "Lucky Sip", {
+      effectKind: "persistent_modifier_transfer",
+      effectParams: { delta: 3 },
+      targetPlayerId: p1.googleSub,
+      castInputs: {},
+    });
+    await seedCast(roundId, p2.googleSub, "Milky Brew", {
+      effectKind: "contested_negate",
+      effectParams: {},
+      targetPlayerId: null,
+      parentCastId: oneSided,
+      castInputs: { dc_d20: 15, dc: 5 },
+    });
+
+    await resolve(p1.client, roundId);
+
+    expect(await roomModifier(p1.roomId, p1.googleSub)).toBe(0);
+    const { data: castRow } = await admin.from("spell_casts").select("negated").eq("id", oneSided).single();
+    expect(castRow!.negated).toBe(true);
+  });
+
+  it("admin_delete_round recomputes the cache with no bespoke revert", async () => {
+    const p1 = await signUp("rr-pmt-del-1");
+    const p2 = await signUp("rr-pmt-del-2");
+    await admin.from("players").update({ is_admin: true }).eq("id", p1.googleSub);
+
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 10);
+    await seedRoll(roundId, p2.googleSub, 12);
+    await seedTransferPair(roundId, p1.googleSub, p2.googleSub, 5);
+    await resolve(p1.client, roundId);
+    expect(await roomModifier(p1.roomId, p1.googleSub)).toBe(5);
+
+    const { error } = await p1.client.rpc("admin_delete_round", {
+      p_round_id: roundId,
+      p_reason: "issue #311: cache recompute on delete",
+    });
+    expect(error).toBeNull();
+
+    expect(await roomModifier(p1.roomId, p1.googleSub)).toBe(0);
+    expect(await roomModifier(p2.roomId, p2.googleSub)).toBe(0);
+    await admin.from("admin_round_deletions").delete().eq("round_id", roundId);
+  });
 });

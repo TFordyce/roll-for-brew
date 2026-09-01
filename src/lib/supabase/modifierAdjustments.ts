@@ -125,13 +125,17 @@ export async function adminDeleteModifierAdjustment(
 export type ModifierBreakdown = {
   cupsMade: number;
   adjustments: number;
+  spellEffects: number;
 };
 
 /**
- * The two sums behind a player's room-scoped modifier (get_modifier_breakdown,
- * 0054) — resolved-round cups_made as brewer, and modifier_adjustments.delta
- * — for the modifier breakdown popover (issue #184). Both default to zero
- * server-side when a player has no history of one or both kinds.
+ * The three sums behind a player's room-scoped modifier (get_modifier_breakdown,
+ * 0054 / 0085) — resolved-round cups_made as brewer, modifier_adjustments.delta,
+ * and the rest-of-day spell modifier delta (persistent_modifier_transfer /
+ * persistent_modifier_spend, issue #311) — for the modifier breakdown popover
+ * (issue #184). All default to zero server-side when a player has no history of
+ * that kind. cupsMade + adjustments + spellEffects reconciles to
+ * room_players.modifier for every player a transfer has touched.
  */
 export async function getModifierBreakdown(
   supabase: SupabaseClient,
@@ -142,7 +146,12 @@ export async function getModifierBreakdown(
     .rpc("get_modifier_breakdown", { p_player_id: playerId, p_room_id: roomId })
     .single();
   if (error) throw error;
-  return { cupsMade: (data as { cups_made: number }).cups_made, adjustments: (data as { adjustments: number }).adjustments };
+  const row = data as { cups_made: number; adjustments: number; spell_effects: number | null };
+  return {
+    cupsMade: row.cups_made,
+    adjustments: row.adjustments,
+    spellEffects: row.spell_effects ?? 0,
+  };
 }
 
 /**
