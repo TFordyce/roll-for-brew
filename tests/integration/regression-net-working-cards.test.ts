@@ -39,7 +39,7 @@ type TraceStep = {
   target_player: string | null;
   before: { type: string; value: number | string | null };
   after: { type: string; value: number | string | null };
-  outcome: string;
+  outcome: "applied" | "no-op";
   negated?: boolean;
 };
 
@@ -54,7 +54,7 @@ type ResolveOutcome = {
   trace: TraceStep[];
 };
 
-describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards through resolve_round", () => {
+describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
 
@@ -629,6 +629,7 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards th
     });
     expect(out.trace.find((s) => s.display_kind === "dice_modifier" && s.target_player === p1.googleSub)).toMatchObject({
       after: { type: "modifier", value: 3 },
+      outcome: "applied",
     });
   });
 
@@ -921,6 +922,9 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards th
 
       const { data: roundId, error: startErr } = await caster.client.rpc("start_round");
       expect(startErr).toBeNull();
+      // Track for teardown too: a mid-loop expect failure skips the
+      // admin.from("rounds").delete() at the end of the iteration.
+      cleanup.trackRound(roundId as string);
       await other.client.rpc("declare_in", { p_round_id: roundId });
 
       const { error: castErr } = await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
