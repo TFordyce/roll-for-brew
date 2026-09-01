@@ -320,7 +320,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     });
   });
 
-  it("Inscribed Saucer (declared_number_tea_maker) names the first matching roller and consumes itself", async () => {
+  it("Inscribed Saucer (declared_number_tea_maker) names the first matching roller as a pure, repeatable read (#310)", async () => {
     const [caster, target] = await Promise.all([signUp("saucer-caster"), signUp("saucer-target")]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
@@ -348,12 +348,23 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     expect(matchError).toBeNull();
     expect(matched).toBe(target.googleSub);
 
-    // One-time trigger: a second call finds nothing left to consume.
+    // #310: it no longer physically consumes the sentinel — it's a pure,
+    // idempotent read, so a repeat call in the same round returns the same
+    // player. "One shot" is now enforced by the sentinel being a duration-1
+    // projection row that ages out once this round resolves (covered by the
+    // resolve-round / spell-active-effects expiry tests).
     const { data: secondMatch } = await caster.client.rpc("resolve_declared_number_tea_maker", {
       p_round_id: roundId,
       p_layer: 0,
     });
-    expect(secondMatch).toBeNull();
+    expect(secondMatch).toBe(target.googleSub);
+
+    const { data: sentinelRow } = await admin
+      .from("spell_active_effects")
+      .select("effect_kind, rounds_remaining")
+      .eq("room_id", caster.roomId)
+      .eq("effect_kind", "declared_number_tea_maker");
+    expect(sentinelRow).toEqual([{ effect_kind: "declared_number_tea_maker", rounds_remaining: 1 }]);
   });
 
   it("cast_spell_card rejects a declared_number_tea_maker card cast without a number", async () => {

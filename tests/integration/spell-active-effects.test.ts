@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  seedActiveEffect,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -28,19 +29,10 @@ type DispellableEffectRow = {
 describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and Detox", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
-  let cloudOfCreamCardId: string;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     admin = createTestAdminClient();
     cleanup = createTestCleanup(admin);
-
-    const { data, error } = await admin
-      .from("spell_cards")
-      .select("id")
-      .eq("name", "Cloud of Cream")
-      .single();
-    if (error) throw error;
-    cloudOfCreamCardId = data.id;
   });
 
   afterEach(() => cleanup.run());
@@ -67,31 +59,27 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
   }
 
   /**
-   * Seeds a Common-tier, positive-polarity persistent active effect directly.
-   * #312 retired `hidden_modifier` and deleted Cloud of Cream's effect row
-   * (its surviving mechanic — targeting skip — is Tier A primitive 5, a later
+   * Seeds a Common-tier, positive-polarity persistent active effect. #312
+   * retired `hidden_modifier` and deleted Cloud of Cream's effect row (its
+   * surviving mechanic — targeting skip — is Tier A primitive 5, a later
    * ticket), so no castable Common-tier persistent card remains. The tests
    * below only exercise the spell_active_effects reader / dispel RPCs, not a
    * card's cast->record path (covered by the Caffeine Crash test above), so
-   * the row goes straight in — card_id still points at Cloud of Cream for a
-   * stable card_name / tier / polarity in the assertions.
+   * seedActiveEffect stands the row up directly — card_id still points at
+   * Cloud of Cream for a stable card_name / tier / polarity, and the source
+   * cast it now requires (#310) lands in its own prior resolved round.
    */
   async function seedCommonActiveEffect(roomId: string, playerId: string) {
-    const { data: row, error } = await admin
-      .from("spell_active_effects")
-      .insert({
-        room_id: roomId,
-        target_player_id: playerId,
-        caster_id: playerId,
-        card_id: cloudOfCreamCardId,
-        effect_kind: "flat_modifier",
-        effect_params: {},
-        rounds_remaining: 2,
-      })
-      .select("id")
-      .single();
-    expect(error).toBeNull();
-    return row!.id as string;
+    const { effectId } = await seedActiveEffect(admin, cleanup, {
+      roomId,
+      targetPlayerId: playerId,
+      casterId: playerId,
+      cardName: "Cloud of Cream",
+      effectKind: "flat_modifier",
+      effectParams: {},
+      roundsRemaining: 2,
+    });
+    return effectId;
   }
 
   it("Caffeine Crash composes into the modifier bucket for exactly its 2 remaining rounds, then expires", async () => {
@@ -144,11 +132,15 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     });
     expect(resolve1Error).toBeNull();
 
+    // #310: rounds_remaining is an immutable duration snapshot — resolving a
+    // round no longer decrements it. The row is still present and still
+    // composes (asserted for round 2 below); expiry is derived, proven by
+    // its absence from get_round_modifier_effects in round 3.
     const { data: activeAfterRound1 } = await admin
       .from("spell_active_effects")
       .select("rounds_remaining")
       .eq("source_cast_id", castId);
-    expect(activeAfterRound1).toEqual([{ rounds_remaining: 1 }]);
+    expect(activeAfterRound1).toEqual([{ rounds_remaining: 2 }]);
 
     // Round 2: the effect is still active — 1 round left — and still
     // composes into the modifier bucket without any new cast.
@@ -179,11 +171,14 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       p_cups_made: 2,
     });
 
+    // #310: the row physically persists (projection, not a mutable counter) —
+    // its snapshot is untouched. What changes is that it is now derived-
+    // expired: the round 3 check below shows it no longer composes.
     const { data: activeAfterRound2 } = await admin
       .from("spell_active_effects")
       .select("rounds_remaining")
       .eq("source_cast_id", castId);
-    expect(activeAfterRound2).toEqual([]);
+    expect(activeAfterRound2).toEqual([{ rounds_remaining: 2 }]);
 
     // Round 3: expired — the modifier bucket no longer sees it.
     const { data: round3Id } = await caster.client.rpc("start_round");
@@ -302,11 +297,21 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     });
     expect(endError).toBeNull();
 
-    const { data: cloudGone } = await admin
+    // #310: end_active_effect logs a dispel cast instead of deleting the row.
+    // The row physically persists...
+    const { data: cloudRow } = await admin
       .from("spell_active_effects")
       .select("id")
       .eq("id", cloudEffectId);
-    expect(cloudGone).toEqual([]);
+    expect(cloudRow).toHaveLength(1);
+    // ...but the logged dispel drops it from the projection: it is no longer
+    // live in the room.
+    const { data: liveAfterDispel } = await cloudCaster.client.rpc("get_room_active_effects", {
+      p_room_id: cloudCaster.roomId,
+    });
+    expect(byTarget(liveAfterDispel as { target_player_id: string }[], cloudCaster.googleSub)).toEqual(
+      [],
+    );
 
     const { data: detoxInstance } = await admin
       .from("spell_deck_instances")
@@ -392,11 +397,18 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     });
     expect(endError).toBeNull();
 
-    const { data: rareGone } = await admin
+    // #310: the row persists; the logged dispel drops it from the projection.
+    const { data: rareRow } = await admin
       .from("spell_active_effects")
       .select("id")
       .eq("id", rareEffectId);
-    expect(rareGone).toEqual([]);
+    expect(rareRow).toHaveLength(1);
+    const { data: liveAfterDispel } = await crashTarget.client.rpc("get_room_active_effects", {
+      p_room_id: crashTarget.roomId,
+    });
+    expect(byTarget(liveAfterDispel as { target_player_id: string }[], crashTarget.googleSub)).toEqual(
+      [],
+    );
 
     const { data: detoxInstance } = await admin
       .from("spell_deck_instances")
@@ -404,5 +416,95 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       .eq("id", detoxInstanceId)
       .single();
     expect(detoxInstance).toEqual({ location: "in_deck", held_by_player: null });
+  });
+
+  it("negating the originating cast re-projects a persistent effect away (#310)", async () => {
+    const [caster, target] = await Promise.all([signUp("negate-caster"), signUp("negate-target")]);
+    await forceHold(admin, caster.googleSub, "Caffeine Crash");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: target.googleSub,
+    });
+    expect(castError).toBeNull();
+
+    // Present while the source cast stands.
+    const { data: before } = await caster.client.rpc("get_round_modifier_effects", {
+      p_round_id: roundId,
+    });
+    expect(byTarget(before as { target_player_id: string }[], target.googleSub)).toHaveLength(1);
+
+    // Negate the source cast — the projection re-derives without it.
+    const { error: negErr } = await admin
+      .from("spell_casts")
+      .update({ negated: true })
+      .eq("id", castId);
+    expect(negErr).toBeNull();
+
+    const { data: after } = await caster.client.rpc("get_round_modifier_effects", {
+      p_round_id: roundId,
+    });
+    expect(byTarget(after as { target_player_id: string }[], target.googleSub)).toEqual([]);
+  });
+
+  it("rebuild_active_effects_projection reproduces the incremental projection (#310)", async () => {
+    const p1 = await signUp("rebuild-p1");
+
+    // A dedicated room: rebuild_active_effects_projection rewrites a whole
+    // room's projection, so it must not run against the shared suite room.
+    const { data: room, error: roomErr } = await admin
+      .from("rooms")
+      .insert({ date: null })
+      .select("id")
+      .single();
+    expect(roomErr).toBeNull();
+    cleanup.trackRoom(room!.id);
+    const { error: rpErr } = await admin
+      .from("room_players")
+      .insert({ room_id: room!.id, player_id: p1.googleSub });
+    expect(rpErr).toBeNull();
+
+    await seedActiveEffect(admin, cleanup, {
+      roomId: room!.id,
+      targetPlayerId: p1.googleSub,
+      casterId: p1.googleSub,
+      cardName: "Caffeine Crash",
+      effectKind: "set_modifier",
+      effectParams: { value: -1 },
+      roundsRemaining: 2,
+    });
+    await seedActiveEffect(admin, cleanup, {
+      roomId: room!.id,
+      targetPlayerId: p1.googleSub,
+      casterId: p1.googleSub,
+      cardName: "Jinxed Biscuit",
+      effectKind: "ward",
+      effectParams: { polarity: ["positive"], domain: ["modifier"] },
+      roundsRemaining: 3,
+    });
+
+    const cols =
+      "target_player_id, caster_id, card_id, effect_kind, effect_params, rounds_remaining, source_cast_id";
+    const snapshot = async () =>
+      (
+        await admin
+          .from("spell_active_effects")
+          .select(cols)
+          .eq("room_id", room!.id)
+          .order("source_cast_id")
+      ).data;
+
+    const incremental = await snapshot();
+    expect(incremental).toHaveLength(2);
+
+    const { error: rebuildErr } = await admin.rpc("rebuild_active_effects_projection", {
+      p_room_id: room!.id,
+    });
+    expect(rebuildErr).toBeNull();
+
+    expect(await snapshot()).toEqual(incremental);
   });
 });

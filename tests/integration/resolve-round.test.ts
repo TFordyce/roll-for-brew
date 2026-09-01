@@ -5,6 +5,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  seedActiveEffect,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -370,26 +371,15 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     });
 
     // Inscribed-Saucer-style declared number 13 (p2 rolled it).
-    const donor = await forceHold(admin, p1.googleSub, "Six Sugars");
-    await admin
-      .from("spell_deck_instances")
-      .update({ location: "in_deck", held_by_player: null })
-      .eq("id", donor);
-    const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Six Sugars").single();
-    const { data: sae, error: saeErr } = await admin
-      .from("spell_active_effects")
-      .insert({
-        room_id: p1.roomId,
-        target_player_id: p1.googleSub,
-        caster_id: p1.googleSub,
-        card_id: card!.id,
-        effect_kind: "declared_number_tea_maker",
-        effect_params: { number: 13 },
-        rounds_remaining: 9999,
-      })
-      .select("id")
-      .single();
-    expect(saeErr).toBeNull();
+    const { effectId: saeId } = await seedActiveEffect(admin, cleanup, {
+      roomId: p1.roomId,
+      targetPlayerId: p1.googleSub,
+      casterId: p1.googleSub,
+      cardName: "Six Sugars",
+      effectKind: "declared_number_tea_maker",
+      effectParams: { number: 13 },
+      roundsRemaining: 1, // #310: declared-number sentinel is duration-1
+    });
 
     const out = await resolve(p1.client, roundId);
 
@@ -402,8 +392,8 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     const { data: after } = await admin
       .from("spell_active_effects")
       .select("id")
-      .eq("id", sae!.id);
-    expect(after).toEqual([{ id: sae!.id }]);
+      .eq("id", saeId);
+    expect(after).toEqual([{ id: saeId }]);
 
     const again = await resolve(p1.client, roundId);
     expect(again.brewer_id).toBe(p2.googleSub);
