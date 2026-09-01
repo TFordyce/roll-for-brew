@@ -206,6 +206,113 @@ export async function forceDraw(
 }
 
 /**
+ * Seeds a persistent active effect the way it exists after #310: a real
+ * spell_casts row (the Cast Log anchor — spell_active_effects.source_cast_id
+ * is NOT NULL) plus the projected spell_active_effects row pointing at it.
+ *
+ * By default the source cast lands in a fresh `resolved` round created just
+ * for the seed (tracked for teardown), so the effect reads as "carried
+ * forward from an earlier round" without colliding with a test's own
+ * start_round (rounds_one_active_per_room only guards open/closed rounds).
+ * Pass `roundId` to anchor the cast in an existing round instead.
+ *
+ * rounds_remaining is stored verbatim as the immutable duration snapshot
+ * (#310); how many rounds are actually left is derived by
+ * _rr_active_effects_as_of at read time.
+ */
+export async function seedActiveEffect(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+  opts: {
+    roomId: string;
+    targetPlayerId: string;
+    casterId: string;
+    cardName: string;
+    effectKind: string;
+    effectParams?: Record<string, unknown>;
+    roundsRemaining?: number | null;
+    roundId?: string;
+    reactionWindowId?: string;
+  },
+): Promise<{ effectId: string; castId: string; roundId: string }> {
+  const {
+    roomId,
+    targetPlayerId,
+    casterId,
+    cardName,
+    effectKind,
+    effectParams = {},
+    roundsRemaining = null,
+    reactionWindowId,
+  } = opts;
+
+  const { data: card, error: cardError } = await admin
+    .from("spell_cards")
+    .select("id")
+    .eq("name", cardName)
+    .single();
+  if (cardError) throw cardError;
+
+  const { data: instance, error: instanceError } = await admin
+    .from("spell_deck_instances")
+    .select("id")
+    .eq("card_id", card.id)
+    .single();
+  if (instanceError) throw instanceError;
+
+  let roundId = opts.roundId;
+  if (!roundId) {
+    const { data: round, error: roundError } = await admin
+      .from("rounds")
+      .insert({
+        room_id: roomId,
+        started_by: casterId,
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (roundError) throw roundError;
+    roundId = round.id as string;
+    cleanup.trackRound(roundId);
+  }
+
+  const { data: cast, error: castError } = await admin
+    .from("spell_casts")
+    .insert({
+      round_id: roundId,
+      caster_id: casterId,
+      card_instance_id: instance.id,
+      target_player_id: targetPlayerId,
+      target_pending: false,
+      effect_kind: effectKind,
+      effect_params: effectParams,
+      reaction_window_id: reactionWindowId ?? null,
+    })
+    .select("id")
+    .single();
+  if (castError) throw castError;
+
+  const { data: effect, error: effectError } = await admin
+    .from("spell_active_effects")
+    .insert({
+      room_id: roomId,
+      target_player_id: targetPlayerId,
+      caster_id: casterId,
+      source_cast_id: cast.id,
+      card_id: card.id,
+      effect_kind: effectKind,
+      effect_params: effectParams,
+      rounds_remaining: roundsRemaining,
+    })
+    .select("id")
+    .single();
+  if (effectError) throw effectError;
+
+  return { effectId: effect.id as string, castId: cast.id as string, roundId };
+}
+
+/**
  * Narrows a room-scoped RPC result (get_round_modifier_effects,
  * get_room_active_effects, get_dispellable_active_effects — all shaped with
  * a target_player_id column) down to the row(s) for one or more player ids.

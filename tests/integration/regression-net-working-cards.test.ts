@@ -5,6 +5,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  seedActiveEffect,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -318,21 +319,15 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       await seedRoll(roundId, p1.googleSub, 5, 10);
       await seedRoll(roundId, p2.googleSub, 6);
 
-      const { data: card } = await admin
-        .from("spell_cards")
-        .select("id")
-        .eq("name", "Caffeine Crash")
-        .single();
-      const { error: saeErr } = await admin.from("spell_active_effects").insert({
-        room_id: p1.roomId,
-        target_player_id: p1.googleSub,
-        caster_id: p1.googleSub,
-        card_id: card!.id,
-        effect_kind: "set_modifier",
-        effect_params: { value: -1 },
-        rounds_remaining: 2,
+      await seedActiveEffect(admin, cleanup, {
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p1.googleSub,
+        cardName: "Caffeine Crash",
+        effectKind: "set_modifier",
+        effectParams: { value: -1 },
+        roundsRemaining: 2,
       });
-      expect(saeErr).toBeNull();
 
       const out = await resolve(p1.client, roundId);
       expect(out.brewer_id).toBe(p1.googleSub);
@@ -754,22 +749,15 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
     await seedRoll(roundId, p1.googleSub, 5);
     await seedRoll(roundId, p2.googleSub, 13);
 
-    const instanceId = await forceHold(admin, p1.googleSub, "Inscribed Saucer");
-    await admin
-      .from("spell_deck_instances")
-      .update({ location: "in_deck", held_by_player: null })
-      .eq("id", instanceId);
-    const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Inscribed Saucer").single();
-    const { error: saeErr } = await admin.from("spell_active_effects").insert({
-      room_id: p1.roomId,
-      target_player_id: p1.googleSub,
-      caster_id: p1.googleSub,
-      card_id: card!.id,
-      effect_kind: "declared_number_tea_maker",
-      effect_params: { number: 13 },
-      rounds_remaining: 9999,
+    await seedActiveEffect(admin, cleanup, {
+      roomId: p1.roomId,
+      targetPlayerId: p1.googleSub,
+      casterId: p1.googleSub,
+      cardName: "Inscribed Saucer",
+      effectKind: "declared_number_tea_maker",
+      effectParams: { number: 13 },
+      roundsRemaining: 9999,
     });
-    expect(saeErr).toBeNull();
 
     const out = await resolve(p1.client, roundId);
     expect(out.brewer_id).toBe(p2.googleSub);
@@ -783,31 +771,33 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
   // ====================================================================
 
   describe("dispel", () => {
-    async function seedActiveEffect(roomId: string, targetId: string, casterId: string, cardName: string) {
-      const { data: card } = await admin.from("spell_cards").select("id").eq("name", cardName).single();
-      const { data, error } = await admin
-        .from("spell_active_effects")
-        .insert({
-          room_id: roomId,
-          target_player_id: targetId,
-          caster_id: casterId,
-          card_id: card!.id,
-          effect_kind: "flat_modifier",
-          effect_params: { delta: 3 },
-          rounds_remaining: 9999,
-        })
-        .select("id")
-        .single();
-      expect(error).toBeNull();
-      return data!.id as string;
+    // #310: a persistent flat_modifier effect standing in for a dispel
+    // target. seedActiveEffect gives it the Cast Log anchor source_cast_id
+    // now requires, in its own prior resolved round.
+    async function seedDispellableEffect(
+      roomId: string,
+      targetId: string,
+      casterId: string,
+      cardName: string,
+    ) {
+      const { effectId } = await seedActiveEffect(admin, cleanup, {
+        roomId,
+        targetPlayerId: targetId,
+        casterId,
+        cardName,
+        effectKind: "flat_modifier",
+        effectParams: { delta: 3 },
+        roundsRemaining: 9999,
+      });
+      return effectId;
     }
 
     it("Lesser Detox ends a common-tier active effect and logs a dispel cast; rejects a rare-tier one", async () => {
       const caster = await signUp("reg-lesser-detox-caster");
       const target = await signUp("reg-lesser-detox-target");
       // Lucky Sip is common; Milky Brew is rare.
-      const commonEffectId = await seedActiveEffect(caster.roomId, target.googleSub, caster.googleSub, "Lucky Sip");
-      const rareEffectId = await seedActiveEffect(caster.roomId, target.googleSub, caster.googleSub, "Milky Brew");
+      const commonEffectId = await seedDispellableEffect(caster.roomId, target.googleSub, caster.googleSub, "Lucky Sip");
+      const rareEffectId = await seedDispellableEffect(caster.roomId, target.googleSub, caster.googleSub, "Milky Brew");
 
       await forceHold(admin, caster.googleSub, "Lesser Detox");
       const { data: roundId, error: startErr } = await caster.client.rpc("start_round");
@@ -827,11 +817,13 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       });
       expect(dispelErr).toBeNull();
 
-      const { data: remaining } = await admin
-        .from("spell_active_effects")
-        .select("id")
-        .in("id", [commonEffectId, rareEffectId]);
-      expect(remaining!.map((r) => r.id)).toEqual([rareEffectId]);
+      // #310: end_active_effect logs a dispel cast and no longer deletes the
+      // row. Both rows still exist physically; the projection drops the
+      // dispelled one.
+      const live = await caster.client.rpc("get_room_active_effects", { p_room_id: caster.roomId });
+      const liveIds = (live.data as { effect_id: string }[]).map((r) => r.effect_id);
+      expect(liveIds).toContain(rareEffectId);
+      expect(liveIds).not.toContain(commonEffectId);
 
       const { data: dispelCasts } = await admin
         .from("spell_casts")
@@ -844,8 +836,8 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
     it("Greater Detox ends a rare-tier active effect and logs a dispel cast; rejects a common-tier one", async () => {
       const caster = await signUp("reg-greater-detox-caster");
       const target = await signUp("reg-greater-detox-target");
-      const commonEffectId = await seedActiveEffect(caster.roomId, target.googleSub, caster.googleSub, "Lucky Sip");
-      const rareEffectId = await seedActiveEffect(caster.roomId, target.googleSub, caster.googleSub, "Milky Brew");
+      const commonEffectId = await seedDispellableEffect(caster.roomId, target.googleSub, caster.googleSub, "Lucky Sip");
+      const rareEffectId = await seedDispellableEffect(caster.roomId, target.googleSub, caster.googleSub, "Milky Brew");
 
       await forceHold(admin, caster.googleSub, "Greater Detox");
       const { data: roundId, error: startErr } = await caster.client.rpc("start_round");
@@ -865,11 +857,11 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       });
       expect(dispelErr).toBeNull();
 
-      const { data: remaining } = await admin
-        .from("spell_active_effects")
-        .select("id")
-        .in("id", [commonEffectId, rareEffectId]);
-      expect(remaining!.map((r) => r.id)).toEqual([commonEffectId]);
+      // #310: rows persist; the projection drops the dispelled rare one.
+      const live = await caster.client.rpc("get_room_active_effects", { p_room_id: caster.roomId });
+      const liveIds = (live.data as { effect_id: string }[]).map((r) => r.effect_id);
+      expect(liveIds).toContain(commonEffectId);
+      expect(liveIds).not.toContain(rareEffectId);
 
       const { data: dispelCasts } = await admin
         .from("spell_casts")

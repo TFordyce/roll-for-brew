@@ -5,6 +5,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  seedActiveEffect,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -121,10 +122,11 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
   }
 
   /**
-   * Inserts a ward as a carried-forward spell_active_effects projection row
-   * (the same shape record_active_effect_if_persistent writes), decoupling
-   * the resolver-seam tests from the full cast path. card_id is a real ward
-   * card so tier-scoped dispel works unchanged.
+   * Seeds a ward that reads as "carried forward from an earlier round":
+   * seedActiveEffect stands up a real ward spell_casts row in its own prior
+   * resolved round (spell_active_effects.source_cast_id is NOT NULL since
+   * #310) plus the projected spell_active_effects row. card_id is a real
+   * ward card so tier-scoped dispel works unchanged.
    */
   async function seedWard(
     roomId: string,
@@ -134,29 +136,16 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
     roundsRemaining: number | null = null,
     cardName = "Jinxed Biscuit",
   ) {
-    const { data: card, error: cardErr } = await admin
-      .from("spell_cards")
-      .select("id")
-      .eq("name", cardName)
-      .single();
-    expect(cardErr).toBeNull();
-
-    const { data, error } = await admin
-      .from("spell_active_effects")
-      .insert({
-        room_id: roomId,
-        target_player_id: targetPlayerId,
-        caster_id: casterId,
-        source_cast_id: null,
-        card_id: card!.id,
-        effect_kind: "ward",
-        effect_params: effectParams,
-        rounds_remaining: roundsRemaining,
-      })
-      .select("id")
-      .single();
-    expect(error).toBeNull();
-    return data!.id as string;
+    const { effectId } = await seedActiveEffect(admin, cleanup, {
+      roomId,
+      targetPlayerId,
+      casterId,
+      cardName,
+      effectKind: "ward",
+      effectParams,
+      roundsRemaining,
+    });
+    return effectId;
   }
 
   async function openAndCloseRound(
@@ -557,7 +546,7 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
   // rounds_remaining NULL = unbounded; dispel
   // ----------------------------------------------------------------------
 
-  it("a NULL rounds_remaining ward is unbounded and survives resolve_round; tier-scoped dispel still ends it", async () => {
+  it("a NULL rounds_remaining ward is unbounded and stays in the projection across resolve_round; tier-scoped dispel still ends it", async () => {
     const p1 = await signUp("wp-unbounded-1");
     const p2 = await signUp("wp-unbounded-2");
     const roundId = await openAndCloseRound(p1, [p2]);
@@ -574,9 +563,9 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
 
     const out = await resolve(p1.client, roundId);
 
-    // Also drive the legacy 4-arg resolve_round, which ticks
-    // rounds_remaining - 1 and deletes rows that hit <= 0. A NULL row must
-    // survive that tick untouched (NULL - 1 = NULL, NULL <= 0 is false).
+    // #310: the legacy 4-arg resolve_round no longer ticks or deletes
+    // spell_active_effects rows — expiry is derived — so an unbounded ward's
+    // snapshot stays exactly NULL across a resolve.
     const { error: tickErr } = await p1.client.rpc("resolve_round", {
       p_round_id: roundId,
       p_brewer_id: out.brewer_id,
