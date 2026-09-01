@@ -947,13 +947,43 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
         expect(modOf(caster.googleSub)).toBe(0);
         expect(modOf(other.googleSub)).toBe(0);
       } else if (branch === 2) {
-        // Caster gains +3 rest of day.
-        expect(modOf(caster.googleSub)).toBe(CASTER_MOD + 3);
+        // #311: +3 caster rest of day is now armed as a one-sided
+        // persistent_modifier_transfer the resolver's Phase 4b projects into
+        // room_players.modifier at resolve -- no cast-time mutation. Same
+        // rest-of-day outcome, deferred like branches 4 and 6.
+        const { data: pmt } = await admin
+          .from("spell_casts")
+          .select("target_player_id, effect_params")
+          .eq("round_id", roundId)
+          .eq("effect_kind", "persistent_modifier_transfer");
+        expect(pmt).toHaveLength(1);
+        expect(pmt![0]).toMatchObject({
+          target_player_id: caster.googleSub,
+          effect_params: { delta: 3 },
+        });
+        expect(modOf(caster.googleSub)).toBe(CASTER_MOD);
         expect(modOf(other.googleSub)).toBe(OTHER_MOD);
       } else if (branch === 3) {
-        // Caster <-> the one other room player: modifiers swapped.
-        expect(modOf(caster.googleSub)).toBe(OTHER_MOD);
-        expect(modOf(other.googleSub)).toBe(CASTER_MOD);
+        // #311: caster <-> other modifier swap is now armed as a
+        // persistent_modifier_transfer sibling pair with a cast-time snapshot;
+        // Phase 4b projects both sides at resolve.
+        const { data: pmt } = await admin
+          .from("spell_casts")
+          .select("id, target_player_id, effect_params, cast_inputs, source_cast_id")
+          .eq("round_id", roundId)
+          .eq("effect_kind", "persistent_modifier_transfer")
+          .order("seq", { ascending: true });
+        expect(pmt).toHaveLength(2);
+        const byTargetPmt = Object.fromEntries(pmt!.map((r) => [r.target_player_id, r]));
+        const casterSide = byTargetPmt[caster.googleSub]!;
+        const otherSide = byTargetPmt[other.googleSub]!;
+        expect((casterSide.effect_params as { delta: number }).delta).toBe(OTHER_MOD - CASTER_MOD);
+        expect((otherSide.effect_params as { delta: number }).delta).toBe(CASTER_MOD - OTHER_MOD);
+        expect(casterSide.source_cast_id).toBeNull();
+        expect(otherSide.source_cast_id).toBe(casterSide.id);
+        expect(casterSide.cast_inputs).toMatchObject({ p1_modifier: CASTER_MOD, p2_modifier: OTHER_MOD });
+        expect(modOf(caster.googleSub)).toBe(CASTER_MOD);
+        expect(modOf(other.googleSub)).toBe(OTHER_MOD);
       } else if (branch === 4) {
         // Arms a table-wide forced_reroll placeholder for the resolver's roll phase.
         const { data: placeholder } = await admin
@@ -965,9 +995,25 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
         expect(placeholder![0]).toMatchObject({ target_role: "TABLE", target_pending: true });
         expect(modOf(caster.googleSub)).toBe(CASTER_MOD);
       } else if (branch === 5) {
-        // Highest and lowest room modifiers swapped (caster 7 <-> other 2).
-        expect(modOf(caster.googleSub)).toBe(OTHER_MOD);
-        expect(modOf(other.googleSub)).toBe(CASTER_MOD);
+        // #311: highest <-> lowest modifier swap (caster 7 <-> other 2) is now
+        // armed as a persistent_modifier_transfer sibling pair; Phase 4b
+        // projects both sides at resolve.
+        const { data: pmt } = await admin
+          .from("spell_casts")
+          .select("id, target_player_id, effect_params, cast_inputs, source_cast_id")
+          .eq("round_id", roundId)
+          .eq("effect_kind", "persistent_modifier_transfer")
+          .order("seq", { ascending: true });
+        expect(pmt).toHaveLength(2);
+        const byTargetPmt = Object.fromEntries(pmt!.map((r) => [r.target_player_id, r]));
+        const highSide = byTargetPmt[caster.googleSub]!;
+        const lowSide = byTargetPmt[other.googleSub]!;
+        expect((highSide.effect_params as { delta: number }).delta).toBe(OTHER_MOD - CASTER_MOD);
+        expect((lowSide.effect_params as { delta: number }).delta).toBe(CASTER_MOD - OTHER_MOD);
+        expect(highSide.source_cast_id).toBeNull();
+        expect(lowSide.source_cast_id).toBe(highSide.id);
+        expect(modOf(caster.googleSub)).toBe(CASTER_MOD);
+        expect(modOf(other.googleSub)).toBe(OTHER_MOD);
       } else {
         // Branch 6: arms a tea_maker_override 'chosen' cast for the resolver's brewer phase.
         const { data: override } = await admin
@@ -991,5 +1037,87 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       .eq("id", wbsInstanceId);
 
     expect([...seen].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  // issue #311: wild_dispatch branches 2 / 3 / 5 no longer mutate
+  // room_players.modifier at cast time -- they arm persistent_modifier_transfer
+  // casts that resolve_round's Phase 4b projects. Drive one branch-2 and one
+  // branch-3/5 cast all the way through resolve and assert the rest-of-day
+  // modifier outcome is unchanged from the old imperative behaviour.
+  it("Wild Brew Surge branches 2 / 3 / 5 produce the same modifier outcome via the projection", async () => {
+    const caster = await signUp("reg-wbs-e2e-caster");
+    const other = await signUp("reg-wbs-e2e-other");
+    const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Wild Brew Surge").single();
+    const { data: instance } = await admin
+      .from("spell_deck_instances").select("id").eq("card_id", card!.id).single();
+    const wbsInstanceId = instance!.id as string;
+
+    const CASTER_MOD = 6;
+    const OTHER_MOD = 1;
+
+    // Real backing cups so _rr_base_modifier reconstructs each player's
+    // pre-cast modifier -- the invariant Phase 4b's absolute recompute relies
+    // on. Inserted once; the per-attempt round delete below never touches them.
+    for (const [pid, cups] of [[caster.googleSub, CASTER_MOD], [other.googleSub, OTHER_MOD]] as const) {
+      const { data: seedRound } = await admin.from("rounds")
+        .insert({ room_id: caster.roomId, started_by: pid, status: "resolved", brewer_id: pid, cups_made: cups })
+        .select("id").single();
+      cleanup.trackRound(seedRound!.id);
+    }
+
+    let verifiedPlus3 = false;
+    let verifiedSwap = false;
+
+    for (let attempt = 0; attempt < 150 && !(verifiedPlus3 && verifiedSwap); attempt++) {
+      await admin.from("room_players").update({ modifier: CASTER_MOD })
+        .eq("room_id", caster.roomId).eq("player_id", caster.googleSub);
+      await admin.from("room_players").update({ modifier: OTHER_MOD })
+        .eq("room_id", caster.roomId).eq("player_id", other.googleSub);
+      await admin.from("spell_deck_instances")
+        .update({ location: "held", held_by_player: caster.googleSub }).eq("id", wbsInstanceId);
+
+      const { data: roundId } = await caster.client.rpc("start_round");
+      cleanup.trackRound(roundId as string);
+      await other.client.rpc("declare_in", { p_round_id: roundId });
+      await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
+
+      const { data: dispatchRow } = await admin
+        .from("spell_casts").select("cast_inputs").eq("round_id", roundId)
+        .eq("effect_kind", "wild_dispatch").order("cast_at", { ascending: true }).limit(1).single();
+      const branch = (dispatchRow!.cast_inputs as { branch: number }).branch;
+
+      if (branch === 2 || branch === 3 || branch === 5) {
+        await caster.client.rpc("close_round", { p_round_id: roundId });
+        // Fixed rolls so resolve picks a deterministic brewer and never ties.
+        await admin.from("rolls").insert([
+          { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 8, input_mode: "manual", modifier_snapshot: 0 },
+          { round_id: roundId, player_id: other.googleSub, layer: 0, value: 15, input_mode: "manual", modifier_snapshot: 0 },
+        ]);
+        await caster.client.rpc("resolve_round", { p_round_id: roundId });
+
+        const { data: mods } = await admin.from("room_players").select("player_id, modifier")
+          .eq("room_id", caster.roomId).in("player_id", [caster.googleSub, other.googleSub]);
+        const modOf = (pid: string) => mods!.find((m) => m.player_id === pid)!.modifier;
+
+        if (branch === 2) {
+          expect(modOf(caster.googleSub)).toBe(CASTER_MOD + 3);
+          expect(modOf(other.googleSub)).toBe(OTHER_MOD);
+          verifiedPlus3 = true;
+        } else {
+          // branches 3 & 5: caster (highest) <-> other (lowest) swapped.
+          expect(modOf(caster.googleSub)).toBe(OTHER_MOD);
+          expect(modOf(other.googleSub)).toBe(CASTER_MOD);
+          verifiedSwap = true;
+        }
+      }
+
+      await admin.from("rounds").delete().eq("id", roundId);
+    }
+
+    await admin.from("spell_deck_instances")
+      .update({ location: "in_deck", held_by_player: null }).eq("id", wbsInstanceId);
+
+    expect(verifiedPlus3).toBe(true);
+    expect(verifiedSwap).toBe(true);
   });
 });

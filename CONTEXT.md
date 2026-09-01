@@ -85,8 +85,12 @@ An admin-gated, reason-required hard delete of a Modifier Adjustment (`admin_del
 _Avoid_: undo (that's the player's own `delete_modifier_adjustment`), purge, admin undo.
 
 **Modifier Breakdown**:
-A room-scoped readout (`get_modifier_breakdown`) splitting a player's live modifier into its two known, durable sources — cups made as brewer, and logged Modifier Adjustments — without reconciling against `room_players.modifier` or accounting for spell-effect deltas, which have no durable per-source ledger. Readable by any authenticated player, not just the subject.
-_Avoid_: modifier history, modifier audit (implies completeness it doesn't have).
+A room-scoped readout (`get_modifier_breakdown`) splitting a player's live modifier into its three durable sources — cups made as brewer, logged Modifier Adjustments, and the Spell Modifier Delta (`spell_effects`). Since #311 made `room_players.modifier` a log-derived cache (`base + spell_delta`), the three sums reconcile to it for every player a persistent modifier transfer/spend has touched. Readable by any authenticated player, not just the subject.
+_Avoid_: modifier history, modifier audit (implies a per-event ledger it doesn't keep).
+
+**Spell Modifier Delta**:
+The rest-of-day spell half of a player's `room_players.modifier` (issue #311, spec §9): the per-player sum of every non-negated `persistent_modifier_transfer` / `persistent_modifier_spend` Cast Log delta in the room, re-derived by `resolve_round` each run (`_rr_spell_modifier_delta`) and surfaced as the Modifier Breakdown's `spell_effects` column. Round-scoped modifier effects (Bes-Tea, Tea Leaf, Spillage) are **not** in it — they revert at round end via `composeModifier`.
+_Avoid_: spell modifier (ambiguous with a round-scoped effect), modifier bonus.
 
 **Pending Spell Draw**:
 A player's earned-but-undrawn card slot after rolling a natural 1 or 20 (`pending_spell_draws`, one row per `(round_id, player_id)`). Recorded immediately at roll time via `record_pending_spell_draw`, regardless of round status — resolved later, in-app or against the physical deck, via `draw_pending_spell_card`/`draw_pending_spell_card_manual`. Never expires and is never voided by a later round resolving; a player who doesn't act can accumulate more than one across different rounds.

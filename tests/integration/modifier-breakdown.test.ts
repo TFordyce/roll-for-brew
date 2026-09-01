@@ -50,7 +50,7 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
       p_room_id: player.roomId,
     });
     expect(error).toBeNull();
-    expect(data).toEqual([{ cups_made: 0, adjustments: 0 }]);
+    expect(data).toEqual([{ cups_made: 0, adjustments: 0, spell_effects: 0 }]);
   });
 
   it("sums resolved-round cups_made as brewer, in that room", async () => {
@@ -64,7 +64,7 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
       p_room_id: player.roomId,
     });
     expect(error).toBeNull();
-    expect(data).toEqual([{ cups_made: 5, adjustments: 0 }]);
+    expect(data).toEqual([{ cups_made: 5, adjustments: 0, spell_effects: 0 }]);
   });
 
   it("sums modifier_adjustments.delta, in that room", async () => {
@@ -91,7 +91,7 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
       p_room_id: target.roomId,
     });
     expect(error).toBeNull();
-    expect(data).toEqual([{ cups_made: 0, adjustments: 3 }]);
+    expect(data).toEqual([{ cups_made: 0, adjustments: 3, spell_effects: 0 }]);
   });
 
   it("sums both kinds together when both exist", async () => {
@@ -113,7 +113,7 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
       p_room_id: target.roomId,
     });
     expect(breakdownError).toBeNull();
-    expect(data).toEqual([{ cups_made: 4, adjustments: 2 }]);
+    expect(data).toEqual([{ cups_made: 4, adjustments: 2, spell_effects: 0 }]);
   });
 
   it("scopes sums to the given room, excluding other rooms' history", async () => {
@@ -145,6 +145,54 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
       p_room_id: player.roomId,
     });
     expect(error).toBeNull();
-    expect(data).toEqual([{ cups_made: 0, adjustments: 0 }]);
+    expect(data).toEqual([{ cups_made: 0, adjustments: 0, spell_effects: 0 }]);
+  });
+
+  // issue #311: get_modifier_breakdown's third column, spell_effects, sums the
+  // non-negated persistent_modifier_transfer / persistent_modifier_spend Cast
+  // Log deltas targeting the player. cups_made + adjustments + spell_effects
+  // reconciles to room_players.modifier once the resolver has recomputed it.
+  it("sums persistent_modifier_transfer / spend deltas into spell_effects", async () => {
+    const player = await signUp("modbreak-spell");
+
+    // A closed round to hang the Cast Log rows off (the deltas are counted
+    // regardless of round status, current generation only).
+    const { data: round, error: roundError } = await admin
+      .from("rounds")
+      .insert({ room_id: player.roomId, started_by: player.googleSub, status: "closed" })
+      .select("id")
+      .single();
+    expect(roundError).toBeNull();
+    cleanup.trackRound(round!.id);
+
+    const { data: instance, error: instError } = await admin
+      .from("spell_deck_instances")
+      .select("id, card_id")
+      .eq("location", "in_deck")
+      .limit(1)
+      .single();
+    expect(instError).toBeNull();
+
+    // +4 transfer, then a -1 spend, then a negated +9 that must not count.
+    const rows = [
+      { effect_params: { delta: 4 }, effect_kind: "persistent_modifier_transfer", negated: false },
+      { effect_params: { delta: -1 }, effect_kind: "persistent_modifier_spend", negated: false },
+      { effect_params: { delta: 9 }, effect_kind: "persistent_modifier_transfer", negated: true },
+    ].map((r) => ({
+      round_id: round!.id,
+      caster_id: player.googleSub,
+      card_instance_id: instance!.id,
+      target_player_id: player.googleSub,
+      ...r,
+    }));
+    const { error: castError } = await admin.from("spell_casts").insert(rows);
+    expect(castError).toBeNull();
+
+    const { data, error } = await player.client.rpc("get_modifier_breakdown", {
+      p_player_id: player.googleSub,
+      p_room_id: player.roomId,
+    });
+    expect(error).toBeNull();
+    expect(data).toEqual([{ cups_made: 0, adjustments: 0, spell_effects: 3 }]);
   });
 });
