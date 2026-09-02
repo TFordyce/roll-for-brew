@@ -102,7 +102,18 @@ function StepRow({ step }: { step: RecapStep }) {
   );
 }
 
-export function RoundRecap({ model }: { model: RoundRecapModel }) {
+export function RoundRecap({
+  model,
+  anchored = true,
+}: {
+  model: RoundRecapModel;
+  /**
+   * Emit the `recap-player-<id>` scroll anchors (issue #314). Off for a
+   * generation-0 disclosure Recap (issue #352), which shares the page with the
+   * canonical generation-1 Recap and must not duplicate its element ids.
+   */
+  anchored?: boolean;
+}) {
   const [activeCast, setActiveCast] = useState<string | null>(null);
 
   if (!model.hasContent) return null;
@@ -115,6 +126,7 @@ export function RoundRecap({ model }: { model: RoundRecapModel }) {
   // target.
   const anchoredPlayers = new Set<string>();
   function anchorFor(step: RecapStep): string | undefined {
+    if (!anchored) return undefined;
     for (const playerId of [step.targetPlayer, step.casterPlayerId]) {
       if (playerId && !anchoredPlayers.has(playerId)) {
         anchoredPlayers.add(playerId);

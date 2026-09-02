@@ -17,6 +17,8 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 import { RoundRecap, scrollToRecapPlayer } from "@/app/_components/RoundRecap";
+import { RerollChainRows } from "@/app/_components/RerollChainRows";
+import { ScrappedGenerationDisclosure } from "@/app/_components/ScrappedGenerationDisclosure";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -87,18 +89,6 @@ export type RoundRevealParticipant = {
  * mount and catch that broadcast at all.
  */
 const RESULTS_TIMEOUT_MS = 5 * 60 * 1000;
-
-// Static Tailwind margin-left classes for each reroll-chain nesting depth
-// (issue #220 decision 3: "chained ties nest further, not in place") — a
-// dynamically-interpolated arbitrary value (`ml-[${i * 20}px]`) can't be
-// picked up by Tailwind's JIT purge, so each depth needs its own literal
-// class. A chain nesting deeper than this list is vanishingly rare (it
-// means the same tied subset rerolled and tied again this many times in a
-// row); falls back to the deepest defined indent rather than stop indenting.
-const REROLL_INDENT_CLASSES = ["ml-5", "ml-10", "ml-14", "ml-20", "ml-24"];
-function rerollIndentClass(chainIndex: number): string {
-  return REROLL_INDENT_CLASSES[chainIndex] ?? REROLL_INDENT_CLASSES[REROLL_INDENT_CLASSES.length - 1] ?? "ml-5";
-}
 
 export function RoundReveal({
   roomId,
@@ -307,13 +297,19 @@ export function RoundReveal({
   // has >= 1 cast. Zero-cast rounds get hasContent === false and everything
   // below renders exactly as before. layerZeroOutcome (the tie-break note)
   // rides on the RPC payload, so nothing extra to thread through here.
+  const recapDisplayName = (playerId: string) => firstNameByPlayerId.get(playerId) ?? playerId;
   const recapModel = recap
     ? buildRoundRecap({
         data: recap,
-        displayName: (playerId) => firstNameByPlayerId.get(playerId) ?? playerId,
+        displayName: recapDisplayName,
       })
     : null;
   const hasRecap = recapModel?.hasContent ?? false;
+
+  // Issue #352: a replayed round. The canonical view below is generation 1;
+  // generation 0's own Recap (its Trace, brewer, first-attempt rolls, and any
+  // tie-break reroll rows) hangs above it in a collapsed disclosure.
+  const scrappedGenerations = recap?.scrappedGenerations ?? [];
 
   return (
     <>
@@ -332,6 +328,14 @@ export function RoundReveal({
             </button>
           </div>
         </div>
+      ) : null}
+
+      {scrappedGenerations.length > 0 ? (
+        <ScrappedGenerationDisclosure
+          generations={scrappedGenerations}
+          roster={participants.map((p) => p.playerId)}
+          displayName={recapDisplayName}
+        />
       ) : null}
 
       {hasRecap && recapModel ? <RoundRecap model={recapModel} /> : null}
@@ -410,37 +414,7 @@ export function RoundReveal({
                   </span>
                 </div>
 
-                {rerollChain.map((level, i) => {
-                  // A reroll layer never carries a discarded die or effect
-                  // badge (issue #219 exempted tie-break rerolls from both),
-                  // so the total is always a plain roll+modifier sum, or the
-                  // bare roll for a nat-1/nat-20 — same rule classifyRollCalculation
-                  // applies to layer 0's own badge above.
-                  const levelCalc = classifyRollCalculation(level.roll, level.modifier);
-                  const levelBadgeValue = levelCalc.kind === "sum" ? levelCalc.total : level.roll;
-
-                  return (
-                    <div
-                      key={level.layer}
-                      className={`mt-1.5 flex items-center justify-between gap-3 border-l-2 border-dashed border-gilt-dark py-1.5 pl-3 ${rerollIndentClass(i)}`}
-                    >
-                      <span className="font-body text-[10px] uppercase tracking-widest text-parchment-dim">
-                        Reroll {i + 1}
-                        {level.tied ? (
-                          <span className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-ember-bright bg-ember/25 px-2 py-0.5 text-[10px] normal-case tracking-normal text-parchment">
-                            Tied again
-                          </span>
-                        ) : null}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <RollCalculation roll={level.roll} modifier={level.modifier} rich discardedRoll={null} />
-                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-2 border-gilt bg-tavern-panel-dark font-display text-xs text-parchment">
-                          {levelBadgeValue}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                <RerollChainRows chain={rerollChain} />
               </li>
             );
           })}
