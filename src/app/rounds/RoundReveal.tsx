@@ -11,9 +11,12 @@ import { firstNameOrFallback } from "@/lib/game/displayName";
 import { buildRerollChain } from "@/lib/game/rerollChain";
 import { getRoundModifierEffectDetails, type ModifierEffectDetail } from "@/lib/supabase/spellCasts";
 import { getRoundLayerHistory, type CompletedLayer } from "@/lib/supabase/rolls";
+import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
+import { buildRoundRecap } from "@/lib/game/roundRecap";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
+import { RoundRecap, scrollToRecapPlayer } from "@/app/_components/RoundRecap";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -134,6 +137,12 @@ export function RoundReveal({
   // just leaves every row without its reroll history rather than breaking
   // the reveal.
   const [history, setHistory] = useState<CompletedLayer[]>([]);
+  // The Round Recap "Ledger" data (issue #314): the Resolution Trace + this
+  // round's cast list. Fetched client-side (no realtime broadcast carries it)
+  // and refetched on every reveal/resolve so it flips from the live pending
+  // ledger to the resolved one. Best-effort: the Recap is additive, so a
+  // failed fetch just falls back to the plain reveal below.
+  const [recap, setRecap] = useState<RoundRecapData | null>(null);
   // Bumped by every layer-rolls-revealed broadcast (any layer, not just 0)
   // and by round-revealed, to retrigger the history fetch below — issue
   // #220 piece 4's "the dependent row needs to populate live ... once a
@@ -161,6 +170,7 @@ export function RoundReveal({
     setShowKettleModal(false);
     setEffectDetails([]);
     setHistory([]);
+    setRecap(null);
     setHistoryRefreshToken(0);
     clearResultsTimeout();
     return clearResultsTimeout;
@@ -201,6 +211,23 @@ export function RoundReveal({
     // comment above) — every reroll layer's own completion needs to
     // refetch this even though `rolls` (layer 0 only, below) doesn't change.
   }, [rolls, roundId, historyRefreshToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    getRoundRecap(supabase, roundId)
+      .then((data) => {
+        if (!cancelled) setRecap(data);
+      })
+      .catch(() => {
+        // Best-effort — the plain reveal below still renders.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // historyRefreshToken bumps on every layer reveal and on round-revealed,
+    // which is exactly when the Trace (and so the Recap) changes.
+  }, [roundId, historyRefreshToken]);
 
   useRoomChannel(roomId, roundId, {
     // Scoped to layer 0 — this drives the *primary* row's own die (every
@@ -267,6 +294,21 @@ export function RoundReveal({
   const displayNameByPlayerId = new Map(participants.map((p) => [p.playerId, p.displayName ?? p.email]));
   const casterName = (playerId: string) => displayNameByPlayerId.get(playerId) ?? playerId;
 
+  // Issue #314: the Round Recap ledger, primary content whenever this round
+  // has >= 1 cast. Zero-cast rounds get hasContent === false and everything
+  // below renders exactly as before.
+  const recapModel = recap
+    ? buildRoundRecap({
+        data: recap,
+        displayName: (playerId) => {
+          const p = participants.find((x) => x.playerId === playerId);
+          return p ? firstNameOrFallback(p.displayName, p.email) : playerId;
+        },
+        layerZeroOutcome: brewerId ? "brewer" : undefined,
+      })
+    : null;
+  const hasRecap = recapModel?.hasContent ?? false;
+
   return (
     <>
       {showKettleModal && brewer ? (
@@ -285,6 +327,8 @@ export function RoundReveal({
           </div>
         </div>
       ) : null}
+
+      {hasRecap && recapModel ? <RoundRecap model={recapModel} /> : null}
 
       <CardFrame title="Rolling">
         <ul className="divide-y divide-gilt-dark/40">
@@ -317,7 +361,13 @@ export function RoundReveal({
               <li key={p.playerId} className="py-2">
                 <div className="flex items-center justify-between gap-3">
                   <ModifierBreakdown playerId={p.playerId} roomId={roomId} modifier={p.modifier} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-y-0.5 sm:flex-row sm:items-center sm:gap-x-2">
+                  <div
+                    className={`flex min-w-0 flex-1 flex-col gap-y-0.5 sm:flex-row sm:items-center sm:gap-x-2 ${
+                      hasRecap ? "cursor-pointer" : ""
+                    }`}
+                    onClick={hasRecap ? () => scrollToRecapPlayer(p.playerId) : undefined}
+                    title={hasRecap ? "Jump to this player's Recap steps" : undefined}
+                  >
                     <span className="font-body text-sm text-parchment" title={p.displayName ?? p.email}>
                       {firstNameOrFallback(p.displayName, p.email)}
                     </span>
