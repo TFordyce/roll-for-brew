@@ -54,6 +54,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     contest: null,
     ward: null,
     restOfDay: false,
+    pairOp: null,
     ...overrides,
   };
 }

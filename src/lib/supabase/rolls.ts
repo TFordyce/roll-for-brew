@@ -298,6 +298,8 @@ export type ResolutionTraceStep = {
   ward: { wardCastId: string | null; wardCardName: string | null } | null;
   /** Issue #311: a persistent (rest-of-day) modifier transfer/spend step. */
   restOfDay: boolean;
+  /** Issue #318: chosen-pair roll transform op — "swap" | "min" | "max". */
+  pairOp: string | null;
 };
 
 /**
@@ -349,6 +351,7 @@ type RawTraceStep = {
   ward_cast_id?: string | null;
   ward_card_name?: string | null;
   rest_of_day?: boolean;
+  op?: string | null;
 };
 
 type RawResolveRoundOutcome = {
@@ -387,6 +390,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
         ? { wardCastId: raw.ward_cast_id ?? null, wardCardName: raw.ward_card_name ?? null }
         : null,
     restOfDay: raw.rest_of_day ?? false,
+    pairOp: raw.op ?? null,
   };
 }
 

@@ -239,6 +239,24 @@ export async function applyRollFlip(supabase: SupabaseClient, roundId: string, l
   return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
 }
 
+/**
+ * Calls apply_roll_pair_transform (0094, issue #318 — Brew-tal Swap / Stir the
+ * Pot / Steaming Mug Bond / Tea for Two): per un-negated roll_pair_transform
+ * cast, swaps or sets-both-lower / sets-both-higher over the caster-named pair
+ * in cast_inputs.pair, respecting a roll-domain ward on either end. Like
+ * apply_roll_swap it also records the per-player before→after into
+ * cast_inputs.roll_transform for resolve_round Phase 3 to adopt.
+ */
+export async function applyRollPairTransform(
+  supabase: SupabaseClient,
+  roundId: string,
+  layer: number,
+): Promise<RollChange[]> {
+  const { data, error } = await supabase.rpc("apply_roll_pair_transform", { p_round_id: roundId, p_layer: layer });
+  if (error) throw error;
+  return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
+}
+
 // apply_lowest_gains_highest_modifier (0033, Broken Biscuit) is gone:
 // lowest_gains_highest_modifier moved into resolve_round as pure modifier
 // math on the composed modifiers (migration 0078, issue #305), and the
