@@ -69,18 +69,28 @@ export type PendingSpellDie = {
  * (Calami-Tea) — up to the card's max_targets, validated against the round's
  * roster immediately (no deferral, unlike OPPONENT/PLAYER). declaredNumber is
  * required for a declared_number_tea_maker card (Inscribed Saucer), 1-20.
- * TABLE/WILD cards need neither. Returns the new cast's id.
+ * TABLE/WILD cards need neither. invokedCardName is required for Genie in the
+ * Teapot (#316, migration 0093): the non-Epic Action card it names, whose sole
+ * edition instance must be in_deck; the named instance is never moved. Returns
+ * the new cast's id.
  */
 export async function castSpellCard(
   supabase: SupabaseClient,
   roundId: string,
-  options: { targetPlayerId?: string; chosenPlayerIds?: string[]; declaredNumber?: number } = {},
+  options: {
+    targetPlayerId?: string;
+    chosenPlayerIds?: string[];
+    declaredNumber?: number;
+    /** Genie in the Teapot (#316): the non-Epic Action card it names. */
+    invokedCardName?: string;
+  } = {},
 ): Promise<string> {
   const { data, error } = await supabase.rpc("cast_spell_card", {
     p_round_id: roundId,
     p_target_player_id: options.targetPlayerId ?? null,
     p_chosen_player_ids: options.chosenPlayerIds ?? null,
     p_declared_number: options.declaredNumber ?? null,
+    p_invoked_card_name: options.invokedCardName ?? null,
   });
   if (error) throw error;
   return data as string;
