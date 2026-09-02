@@ -147,6 +147,8 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       return `${played} — ${t}'s die is flipped`;
     case "roll_swap":
       return `${played} — ${t}'s die is swapped`;
+    case "fixed_roll":
+      return `${played} — ${t}'s die is fixed`;
     case "flat_modifier":
     case "dice_modifier":
       return `${played} on ${t}`;
