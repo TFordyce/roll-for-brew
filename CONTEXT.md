@@ -127,3 +127,11 @@ _Avoid_: cast history, spell audit, effect log.
 **Resolution Trace**:
 The ordered, structured record a rebuilt `resolve_round` emits (ADR 0005) — one step per applied effect, carrying its kind, source cast, target, and before/after values. The game resolves the round from it, and the player-clarity surface renders it directly; there is no second explanation path.
 _Avoid_: roll calculation (that's the current per-player display), effect breakdown, resolution log.
+
+**Round Recap** (a.k.a. **the Ledger**):
+The player-clarity surface over the Resolution Trace (#314) — the primary content of `RoundReveal` whenever a round has ≥ 1 cast. A tap-to-filter **cast strip** (one chip per cast, state `armed → on-stack → resolved{applied/negated/redirected/blocked/backfired/no-op}`) above a flat, **Recap-phase**-grouped list of step rows in resolution order. A round with no casts shows no Recap at all. Rendered from one pure function; room history re-renders past rounds with the same one.
+_Avoid_: round summary, effect breakdown, roll calculation (the per-tile display, which stays).
+
+**Recap phase**:
+The band a Recap step falls in — `Before the roll`, `Reaction window`, or `Outcome` — derived from the source cast's window, not from Layer. Headers follow resolution order and repeat whenever the phase changes, so `Reaction window` can appear twice in one Recap. Distinct from **Layer** (tie-break reroll depth) and from a cast's own pre-roll/reaction timing.
+_Avoid_: phase (bare — always qualify as "Recap phase"), stage, band, layer.

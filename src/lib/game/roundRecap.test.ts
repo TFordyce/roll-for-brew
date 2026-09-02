@@ -59,7 +59,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
 }
 
 function data(over: Partial<RoundRecapData> = {}): RoundRecapData {
-  return { resolved: true, trace: [], casts: [], ...over };
+  return { resolved: true, layerZeroOutcome: "brewer", trace: [], casts: [], ...over };
 }
 
 beforeEach(() => {
@@ -153,27 +153,24 @@ describe("buildRoundRecap", () => {
       step({ displayKind: "tea_maker_override", sourceCast: { castId: null, activeEffectId: null, cardName: "Barista's Call", casterPlayerId: "dev" }, targetPlayer: "ada", before: { type: "status", value: "pending" }, after: { type: "status", value: "brewer" } }),
     ];
 
-    const model = buildRoundRecap({ data: data({ casts, trace }), displayName, layerZeroOutcome: "brewer" });
+    const model = buildRoundRecap({ data: data({ casts, trace }), displayName });
 
+    // Phase headers follow resolution order, inserted on every phase change —
+    // so "Reaction window" recurs after the pre-roll modifiers (Broken Biscuit
+    // / Second Wind resolve back in the reaction window).
     expect(model.phases.map((p) => p.label)).toEqual([
+      "Reaction window",
       "Before the roll",
       "Reaction window",
       "Outcome",
     ]);
-    expect(model.phases.find((p) => p.label === "Before the roll")!.steps.map((s) => s.displayKind)).toEqual([
-      "flat_modifier",
-      "flat_modifier",
+    expect(model.phases.map((p) => p.steps.map((s) => s.displayKind))).toEqual([
+      ["contested_negate", "redirect"],
+      ["flat_modifier", "flat_modifier"],
+      ["lowest_gains_highest_modifier", "flat_modifier"],
+      ["tea_maker_override"],
     ]);
-    expect(model.phases.find((p) => p.label === "Reaction window")!.steps.map((s) => s.displayKind)).toEqual([
-      "contested_negate",
-      "redirect",
-      "lowest_gains_highest_modifier",
-      "flat_modifier",
-    ]);
-    expect(model.phases.find((p) => p.label === "Outcome")!.steps.map((s) => s.displayKind)).toEqual([
-      "tea_maker_override",
-    ]);
-    // numbered 1..7 across the flattened order
+    // numbered 1..7 in resolution (Trace) order, never re-sorted into buckets
     expect(model.phases.flatMap((p) => p.steps).map((s) => s.displayIndex)).toEqual([
       "1", "2", "3", "4", "5", "6", "7",
     ]);
@@ -287,10 +284,17 @@ describe("buildRoundRecap", () => {
     expect(model.showReorderCaption).toBe(false);
     const steps = model.phases.flatMap((p) => p.steps);
     expect(steps.every((s) => s.pending && s.displayIndex === "·" && s.beforeAfter === null)).toBe(true);
+    // Cast order (by seq) is preserved across phases — a reaction cast armed
+    // before a later pre-roll cast still renders before it.
     expect(steps.map((s) => s.sentence)).toEqual([
       "Ada played Steady Hand on Ada",
-      "Ben played Late Arm",
       "Dev played Counterspell on Cass",
+      "Ben played Late Arm",
+    ]);
+    expect(model.phases.map((p) => p.label)).toEqual([
+      "Before the roll",
+      "Reaction window",
+      "Before the roll",
     ]);
     expect(model.castStrip.map((c) => c.state)).toEqual(["on-stack", "on-stack", "armed"]);
   });
@@ -310,24 +314,25 @@ describe("buildRoundRecap", () => {
       step({ displayKind: "flat_modifier", sourceCast: { castId: "C1", activeEffectId: null, cardName: "Slow Pour", casterPlayerId: "ada" }, targetPlayer: "ada", before: { type: "modifier", value: 1 }, after: { type: "modifier", value: 3 } }),
     ];
     const resolvedModel = buildRoundRecap({ data: data({ resolved: true, casts, trace }), displayName });
-    expect(resolvedModel.phases.map((p) => p.label)).toEqual(["Before the roll", "Reaction window"]);
-    expect(resolvedModel.phases.flatMap((p) => p.steps).map((s) => s.castId)).toEqual(["C1", "C2"]);
-    // but resolution order across phases is reaction-first when flattened by the component;
-    // within-phase order is trace order:
-    expect(resolvedModel.phases.find((p) => p.label === "Reaction window")!.steps[0]!.castId).toBe("C2");
+    // Resolution order runs the reaction-phase counter first, then the
+    // pre-roll modifier — the step list and its numbering follow the Trace,
+    // and the phase header flips with it.
+    expect(resolvedModel.phases.map((p) => p.label)).toEqual(["Reaction window", "Before the roll"]);
+    expect(resolvedModel.phases.flatMap((p) => p.steps).map((s) => s.castId)).toEqual(["C2", "C1"]);
+    expect(resolvedModel.phases.flatMap((p) => p.steps).map((s) => s.displayIndex)).toEqual(["1", "2"]);
     expect(resolvedModel.showReorderCaption).toBe(true);
   });
 
   it("went to tie-break: endedInTieBreak set, steps still render, no Outcome group", () => {
     const model = buildRoundRecap({
       data: data({
+        layerZeroOutcome: "tie",
         casts: [cast({ castId: "C1", cardName: "Steady Hand", casterPlayerId: "ada", targetPlayerId: "ada", effectKind: "flat_modifier" })],
         trace: [
           step({ displayKind: "flat_modifier", sourceCast: { castId: "C1", activeEffectId: null, cardName: "Steady Hand", casterPlayerId: "ada" }, targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 2 } }),
         ],
       }),
       displayName,
-      layerZeroOutcome: "tie",
     });
     expect(model.endedInTieBreak).toBe(true);
     expect(model.phases.map((p) => p.label)).toEqual(["Before the roll"]);

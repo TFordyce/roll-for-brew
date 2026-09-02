@@ -293,18 +293,18 @@ export function RoundReveal({
   const brewer = participants.find((p) => p.playerId === brewerId);
   const displayNameByPlayerId = new Map(participants.map((p) => [p.playerId, p.displayName ?? p.email]));
   const casterName = (playerId: string) => displayNameByPlayerId.get(playerId) ?? playerId;
+  const firstNameByPlayerId = new Map(
+    participants.map((p) => [p.playerId, firstNameOrFallback(p.displayName, p.email)]),
+  );
 
   // Issue #314: the Round Recap ledger, primary content whenever this round
   // has >= 1 cast. Zero-cast rounds get hasContent === false and everything
-  // below renders exactly as before.
+  // below renders exactly as before. layerZeroOutcome (the tie-break note)
+  // rides on the RPC payload, so nothing extra to thread through here.
   const recapModel = recap
     ? buildRoundRecap({
         data: recap,
-        displayName: (playerId) => {
-          const p = participants.find((x) => x.playerId === playerId);
-          return p ? firstNameOrFallback(p.displayName, p.email) : playerId;
-        },
-        layerZeroOutcome: brewerId ? "brewer" : undefined,
+        displayName: (playerId) => firstNameByPlayerId.get(playerId) ?? playerId,
       })
     : null;
   const hasRecap = recapModel?.hasContent ?? false;

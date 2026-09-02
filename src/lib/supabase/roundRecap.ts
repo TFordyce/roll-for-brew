@@ -24,6 +24,12 @@ export type RoundRecapCast = {
 
 export type RoundRecapData = {
   resolved: boolean;
+  /**
+   * The layer-0 resolver outcome for a resolved round: "tie" when layer 0
+   * tied and the round was decided by tie-break reroll layers (the Recap ends
+   * at the tie), "brewer" otherwise. null while the round is still live.
+   */
+  layerZeroOutcome: "brewer" | "tie" | null;
   trace: ResolutionTraceStep[];
   casts: RoundRecapCast[];
 };
@@ -44,6 +50,7 @@ type RawRecapCast = {
 
 type RawRoundRecap = {
   resolved: boolean;
+  layer_zero_outcome: "brewer" | "tie" | null;
   trace: unknown;
   casts: RawRecapCast[] | null;
 };
@@ -60,11 +67,20 @@ export async function getRoundRecap(
   roundId: string,
 ): Promise<RoundRecapData | null> {
   const { data, error } = await supabase.rpc("get_round_recap", { p_round_id: roundId });
-  if (error || !data) return null;
+  if (error || !data) {
+    // A participant-gate rejection is expected for a round the viewer sat out
+    // (room history shows "no recap available"); anything else is a real fault
+    // worth a console line before the additive Recap falls back silently.
+    if (error && error.code !== "P0001") {
+      console.error("getRoundRecap failed", error);
+    }
+    return null;
+  }
 
   const raw = data as RawRoundRecap;
   return {
     resolved: raw.resolved,
+    layerZeroOutcome: raw.layer_zero_outcome ?? null,
     trace: parseResolutionTrace(raw.trace),
     casts: (raw.casts ?? []).map((c) => ({
       castId: c.cast_id,

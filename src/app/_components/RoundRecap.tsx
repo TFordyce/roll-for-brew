@@ -109,13 +109,19 @@ export function RoundRecap({ model }: { model: RoundRecapModel }) {
 
   const toggle = (castId: string) => setActiveCast((cur) => (cur === castId ? null : castId));
 
-  // The first rendered step touching a given player carries that player's
-  // scroll anchor (RoundReveal's calc rows call scrollToRecapPlayer).
+  // The first rendered step involving a given player — as target or as
+  // caster — carries that player's scroll anchor (RoundReveal's calc rows
+  // call scrollToRecapPlayer). A row can only carry one id; ties go to the
+  // target.
   const anchoredPlayers = new Set<string>();
-  function anchorFor(playerId: string | null): string | undefined {
-    if (!playerId || anchoredPlayers.has(playerId)) return undefined;
-    anchoredPlayers.add(playerId);
-    return `recap-player-${playerId}`;
+  function anchorFor(step: RecapStep): string | undefined {
+    for (const playerId of [step.targetPlayer, step.casterPlayerId]) {
+      if (playerId && !anchoredPlayers.has(playerId)) {
+        anchoredPlayers.add(playerId);
+        return `recap-player-${playerId}`;
+      }
+    }
+    return undefined;
   }
 
   return (
@@ -133,21 +139,20 @@ export function RoundRecap({ model }: { model: RoundRecapModel }) {
       ) : null}
 
       <div className="mt-2 divide-y divide-gilt-dark/30">
-        {model.phases.map((group) => {
+        {model.phases.map((group, groupIndex) => {
           const visible = group.steps.filter(
             (s) => activeCast === null || s.castId === activeCast,
           );
           if (visible.length === 0) return null;
           return (
-            <div key={group.label} className="py-1.5">
+            // The same label can recur (the resolver revisits the reaction
+            // window), so the key is position-based, not the label.
+            <div key={`${groupIndex}-${group.label}`} className="py-1.5">
               <p className="font-display text-[10px] uppercase tracking-widest text-parchment-dim">
                 {group.label}
               </p>
               {visible.map((step, i) => (
-                <div
-                  key={`${group.label}-${step.castId ?? "x"}-${i}`}
-                  id={anchorFor(step.targetPlayer)}
-                >
+                <div key={`${group.label}-${step.castId ?? "x"}-${i}`} id={anchorFor(step)}>
                   <StepRow step={step} />
                 </div>
               ))}

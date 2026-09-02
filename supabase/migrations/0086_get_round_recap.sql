@@ -76,6 +76,17 @@ begin
 
   return jsonb_build_object(
     'resolved', v_status = 'resolved',
+    -- "tie" once the round has any reroll-layer roll: layer 0 tied and the
+    -- brewer was settled by tie-break rolls, where no spells or reactions
+    -- apply (issue #219) -- the Recap ends at the tie. null while still live.
+    'layer_zero_outcome', case
+      when v_status <> 'resolved' then null
+      when exists (
+        select 1 from public.rolls
+         where round_id = p_round_id and layer > 0
+      ) then 'tie'
+      else 'brewer'
+    end,
     'trace', v_trace,
     'casts', v_casts
   );
@@ -87,9 +98,10 @@ grant execute on function public.get_round_recap(uuid) to authenticated;
 
 comment on function public.get_round_recap(uuid) is
   'Issue #314 (Round Recap / the Ledger): participant-gated read returning '
-  '{ resolved, trace, casts:[{ cast_id, seq, card_name, caster_player_id, '
-  'target_player_id, target_pending, effect_kind, phase, negated, '
-  'redirected_to_cast_id, on_stack }] } for one round. trace is the persisted '
-  'rounds.resolution_trace ([] until resolved); casts carries phase and coarse '
-  'live state for the cast strip, with resolved per-cast state derived '
+  '{ resolved, layer_zero_outcome, trace, casts:[{ cast_id, seq, card_name, '
+  'caster_player_id, target_player_id, target_pending, effect_kind, phase, '
+  'negated, redirected_to_cast_id, on_stack }] } for one round. trace is the '
+  'persisted rounds.resolution_trace ([] until resolved); layer_zero_outcome '
+  'is ''tie'' when tie-break layers decided the round; casts carries phase and '
+  'coarse live state for the cast strip, with resolved per-cast state derived '
   'client-side from the Trace.';

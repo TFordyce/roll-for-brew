@@ -8,12 +8,18 @@ import type { ResolutionTraceStep } from "@/lib/supabase/rolls";
  * order. This module owns exactly one sentence template per `display_kind`;
  * `RoundRecap.tsx` owns none.
  *
+ * "Phase-grouped in resolution order" means: the step list stays in the
+ * resolver's own order and a phase header is inserted wherever the phase
+ * changes from the previous step — so a label can recur (the resolver revisits
+ * the reaction window for lowest-gains-highest after composing pre-roll
+ * modifiers). Steps are never reordered into fixed phase buckets.
+ *
  * Two rendering modes:
  *  - resolved: steps come from the Trace, in resolution order, numbered.
  *  - live (round closed, not yet resolved): there is no Trace, so pending
- *    steps are synthesised from the cast list in cast order, indexed `·`, and
- *    shimmer. On resolve they re-sort to resolution order — never predicted
- *    client-side.
+ *    steps are synthesised from the cast list in cast order (by seq), indexed
+ *    `·`, and shimmer. On resolve they re-sort to resolution order — never
+ *    predicted client-side.
  */
 
 export type CastState =
@@ -50,9 +56,8 @@ export type RecapStep = {
   displayKind: string;
   /** The one sentence this module owns for this kind. Plain text, names resolved. */
   sentence: string;
-  cardName: string | null;
-  casterName: string | null;
   targetPlayer: string | null;
+  casterPlayerId: string | null;
   /** null for a status-only step, or when live (no numbers yet). */
   beforeAfter: BeforeAfter | null;
   /** Short chip label: "applied" / "negated" / "no effect" / "on stack" / … */
@@ -82,24 +87,16 @@ export type RoundRecapModel = {
 export type BuildRoundRecapArgs = {
   data: RoundRecapData;
   displayName: (playerId: string) => string;
-  /**
-   * Layer-0 resolver outcome when known (RoundReveal has it from the reveal
-   * broadcast / tie phase). "tie" appends the tie-break note. Omit otherwise.
-   */
-  layerZeroOutcome?: "brewer" | "tie";
 };
 
-const PHASE_ORDER: PhaseLabel[] = ["Before the roll", "Reaction window", "Outcome"];
+// contested_negate steps carry their outcome in `after.value` as one of these
+// literals (migration 0080 / 0085 _rr_trace_step). Kept as named constants so
+// the string contract with the SQL side is greppable from one place.
+const CONTEST_COUNTERED = "countered";
+const CONTEST_BACKFIRED = "backfired";
+const CONTEST_NO_EFFECT = "no effect";
 
 const OUTCOME_KINDS = new Set(["declared_number_tea_maker", "tea_maker_override"]);
-
-const ROLL_INPUT_KINDS = new Set([
-  "advantage",
-  "disadvantage",
-  "forced_reroll",
-  "roll_flip",
-  "roll_swap",
-]);
 
 function humanKind(kind: string): string {
   return kind.replace(/_/g, " ");
@@ -176,9 +173,6 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       return `${played} — ${t} brews${noGain ? " (no modifier gain)" : ""}`;
     }
     default:
-      // A negated victim step (castId null, negated flag) carries the victim's
-      // own effect_kind as displayKind.
-      if (step.negated) return `${t}'s ${humanKind(step.displayKind)} was negated`;
       return k ? `${played} on ${t}` : humanKind(step.displayKind);
   }
 }
@@ -187,9 +181,9 @@ function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState 
   if (step.negated) return { label: "negated", kind: "negated" };
   if (step.displayKind === "contested_negate" && step.after.type === "status") {
     const v = String(step.after.value ?? "");
-    if (v === "backfired") return { label: "backfired", kind: "backfired" };
-    if (v === "countered") return { label: "countered", kind: "negated" };
-    if (v === "no effect") return { label: "no effect", kind: "no-op" };
+    if (v === CONTEST_BACKFIRED) return { label: "backfired", kind: "backfired" };
+    if (v === CONTEST_COUNTERED) return { label: "countered", kind: "negated" };
+    if (v === CONTEST_NO_EFFECT) return { label: "no effect", kind: "no-op" };
     return { label: v || "applied", kind: "applied" };
   }
   switch (step.outcome) {
@@ -227,16 +221,26 @@ function resolvedCastState(cast: RoundRecapCast, steps: ResolutionTraceStep[]): 
   if (own.some((s) => s.outcome === "backfired" || s.backfire)) return "backfired";
   if (own.some((s) => s.outcome === "blocked")) return "blocked";
   if (own.some((s) => s.outcome === "applied")) return "applied";
-  if (own.length > 0) return "no-op";
-  // No step at all: the cast contributed nothing the resolver recorded.
+  // No applied step (or no step at all): the cast changed nothing the
+  // resolver recorded.
   return "no-op";
 }
 
-export function buildRoundRecap({
-  data,
-  displayName,
-  layerZeroOutcome,
-}: BuildRoundRecapArgs): RoundRecapModel {
+/** Walk an ordered step list into contiguous same-phase groups. */
+function groupByPhase(steps: Array<RecapStep & { phase: PhaseLabel }>): PhaseGroup[] {
+  const groups: PhaseGroup[] = [];
+  for (const step of steps) {
+    const last = groups[groups.length - 1];
+    if (last && last.label === step.phase) {
+      last.steps.push(step);
+    } else {
+      groups.push({ label: step.phase, steps: [step] });
+    }
+  }
+  return groups;
+}
+
+export function buildRoundRecap({ data, displayName }: BuildRoundRecapArgs): RoundRecapModel {
   const live = !data.resolved;
   const casts = [...data.casts].sort((a, b) => a.seq - b.seq);
 
@@ -264,88 +268,63 @@ export function buildRoundRecap({
       : resolvedCastState(c, data.trace),
   }));
 
-  // ---- Step rows ------------------------------------------------------
-  const buckets = new Map<PhaseLabel, RecapStep[]>(PHASE_ORDER.map((l) => [l, []]));
-
-  if (live) {
-    // One pending row per cast that will produce a ledger step, in cast order.
-    for (const c of casts) {
-      if (c.targetPending) continue;
-      const label: PhaseLabel = c.phase === "reaction" ? "Reaction window" : "Before the roll";
-      const t = c.targetPlayerId ? displayName(c.targetPlayerId) : "the table";
-      const cName = displayName(c.casterPlayerId);
-      buckets.get(label)!.push({
-        displayIndex: "·",
-        castId: c.castId,
-        displayKind: c.effectKind ?? "spell",
-        sentence: `${cName} played ${c.cardName}${c.targetPlayerId ? ` on ${t}` : ""}`,
-        cardName: c.cardName,
-        casterName: cName,
-        targetPlayer: c.targetPlayerId,
-        beforeAfter: null,
-        statusLabel: "on stack",
-        statusKind: "pending",
-        pending: true,
+  // ---- Ordered step rows (resolution order / cast order) ----------------
+  const ordered: Array<RecapStep & { phase: PhaseLabel }> = live
+    ? casts
+        .filter((c) => !c.targetPending)
+        .map((c) => {
+          const cName = displayName(c.casterPlayerId);
+          const t = c.targetPlayerId ? displayName(c.targetPlayerId) : "the table";
+          return {
+            phase: c.phase === "reaction" ? "Reaction window" : "Before the roll",
+            displayIndex: "·",
+            castId: c.castId,
+            displayKind: c.effectKind ?? "spell",
+            sentence: `${cName} played ${c.cardName}${c.targetPlayerId ? ` on ${t}` : ""}`,
+            targetPlayer: c.targetPlayerId,
+            casterPlayerId: c.casterPlayerId,
+            beforeAfter: null,
+            statusLabel: "on stack",
+            statusKind: "pending",
+            pending: true,
+          };
+        })
+    : data.trace.map((step, i) => {
+        const t = step.targetPlayer ? displayName(step.targetPlayer) : "the table";
+        const cName = step.sourceCast.casterPlayerId
+          ? displayName(step.sourceCast.casterPlayerId)
+          : "";
+        const k = step.sourceCast.cardName ?? "";
+        const status = statusFor(step);
+        const beforeAfter: BeforeAfter | null =
+          step.before.type === "status"
+            ? null
+            : {
+                label: pillLabel(step.before.type),
+                from: fmt(step.before.value),
+                to: fmt(step.after.value),
+                unchanged: step.before.value === step.after.value,
+              };
+        return {
+          phase: phaseForStep(step, castById),
+          displayIndex: String(i + 1),
+          castId: step.sourceCast.castId,
+          displayKind: step.displayKind,
+          sentence: sentenceFor(step, { t, c: cName, k }),
+          targetPlayer: step.targetPlayer,
+          casterPlayerId: step.sourceCast.casterPlayerId,
+          beforeAfter,
+          statusLabel: status.label,
+          statusKind: status.kind,
+          pending: false,
+        };
       });
-    }
-  } else {
-    for (const step of data.trace) {
-      const phase = phaseForStep(step, castById);
-      const t = step.targetPlayer ? displayName(step.targetPlayer) : "the table";
-      const cName = step.sourceCast.casterPlayerId
-        ? displayName(step.sourceCast.casterPlayerId)
-        : "";
-      const k = step.sourceCast.cardName ?? "";
-      const status = statusFor(step);
-
-      const label = pillLabel(step.before.type);
-      const beforeAfter: BeforeAfter | null =
-        step.before.type === "status"
-          ? null
-          : {
-              label,
-              from: fmt(step.before.value),
-              to: fmt(step.after.value),
-              unchanged: step.before.value === step.after.value,
-            };
-
-      buckets.get(phase)!.push({
-        displayIndex: "",
-        castId: step.sourceCast.castId,
-        displayKind: step.displayKind,
-        sentence: sentenceFor(step, { t, c: cName, k }),
-        cardName: step.sourceCast.cardName,
-        casterName: cName || null,
-        targetPlayer: step.targetPlayer,
-        beforeAfter,
-        statusLabel: status.label,
-        statusKind: status.kind,
-        pending: false,
-      });
-    }
-  }
-
-  const phases: PhaseGroup[] = PHASE_ORDER.map((label) => ({
-    label,
-    steps: buckets.get(label)!,
-  })).filter((g) => g.steps.length > 0);
-
-  // Number resolved steps 1..n across the flattened phase order.
-  if (!live) {
-    let n = 0;
-    for (const g of phases) {
-      for (const s of g.steps) {
-        n += 1;
-        s.displayIndex = String(n);
-      }
-    }
-  }
 
   return {
     hasContent: true,
     castStrip,
-    phases,
+    phases: groupByPhase(ordered),
     showReorderCaption: !live && castStrip.length > 1,
-    endedInTieBreak: !live && layerZeroOutcome === "tie",
+    endedInTieBreak: !live && data.layerZeroOutcome === "tie",
   };
 }
