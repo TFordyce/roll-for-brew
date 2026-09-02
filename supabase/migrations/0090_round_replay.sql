@@ -125,6 +125,28 @@ end;
 $$;
 
 -- ===========================================================================
+-- 3b. _rr_mark_replay_cast_scrapped(uuid, boolean) -- stamp cast_inputs.scrapped
+--     on a round's round_replay cast(s). scrapped=true is the spec's "written
+--     at confirm time" audit record; scrapped=false on keep / auto-decline is
+--     load-bearing, not just audit -- it is what stops record_pending_round_replay
+--     re-creating the pending row on a later re-resolve (its survivor predicate
+--     is `cast_inputs ->> 'scrapped' IS NULL`).
+-- ===========================================================================
+create or replace function public._rr_mark_replay_cast_scrapped(p_round_id uuid, p_scrapped boolean)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.spell_casts
+     set cast_inputs = coalesce(cast_inputs, '{}'::jsonb)
+                       || jsonb_build_object('scrapped', p_scrapped)
+   where round_id = p_round_id and effect_kind = 'round_replay';
+$$;
+
+revoke execute on function public._rr_mark_replay_cast_scrapped(uuid, boolean) from public, anon, authenticated;
+
+-- ===========================================================================
 -- 4. _rr_scrap_round(uuid) -- the atomic rollback + generation bump.
 --    Lives in its own SQL function (not resolve_round -- ADR 0005 keeps that
 --    pure) invoked by the TS orchestration layer via confirm_round_replay.
@@ -191,24 +213,26 @@ begin
     ), '[]'::jsonb)
   );
 
-  -- Every player whose modifier cache generation N could have moved: the
-  -- brewer's tea-making gain, plus both sides of any persistent modifier
-  -- transfer / spend cast this round (spec §9). Captured BEFORE the delete.
+  -- Every player whose modifier cache generation N could have moved. The
+  -- brewer's tea-making gain and both sides of any persistent-modifier
+  -- transfer / spend are the known movers (spec §9), but rather than track
+  -- the exact set, recompute for every round participant plus the brewer
+  -- (cheap -- a handful of players -- and immune to a missed effect kind).
+  -- Captured BEFORE the delete pass removes the participant rows' basis.
   select coalesce(array_agg(distinct p), array[]::text[])
     into v_affected
     from (
       select v_brewer_id as p where v_brewer_id is not null
+      union
+      select rp.player_id
+        from public.round_participants rp
+       where rp.round_id = p_round_id
       union
       select sc.target_player_id
         from public.spell_casts sc
        where sc.round_id = p_round_id
          and sc.effect_kind in ('persistent_modifier_transfer', 'persistent_modifier_spend')
          and sc.target_player_id is not null
-      union
-      select sc.caster_id
-        from public.spell_casts sc
-       where sc.round_id = p_round_id
-         and sc.effect_kind in ('persistent_modifier_transfer', 'persistent_modifier_spend')
     ) t
    where p is not null;
 
@@ -216,12 +240,10 @@ begin
      set scrapped_generations = scrapped_generations || jsonb_build_array(v_snapshot)
    where id = p_round_id;
 
-  -- Mark Time for Brew's own cast(s) scrapped -- the audit record, and the
-  -- belt-and-braces guard alongside replay_generation that stops a second
-  -- pending row ever being created for this round.
-  update public.spell_casts
-     set cast_inputs = coalesce(cast_inputs, '{}'::jsonb) || '{"scrapped": true}'::jsonb
-   where round_id = p_round_id and effect_kind = 'round_replay';
+  -- Mark Time for Brew's own cast(s) scrapped -- the spec's "written at
+  -- confirm time" audit record, and the guard (alongside replay_generation)
+  -- that stops a second pending row ever being created for this round.
+  perform public._rr_mark_replay_cast_scrapped(p_round_id, true);
 
   -- Clean casting slate: no pass-1 casts carry into generation 1; cards spent
   -- in pass 1 stay spent (cast_spell_card / cast_reaction_spell_card already
@@ -285,8 +307,7 @@ comment on function public._rr_scrap_round(uuid) is
   '(cascading promoted active effects) / reaction windows / layer participants / '
   'Brew Ratings, backs the round out to a freshly-closed generation-1 round, '
   'bumps replay_generation, and recomputes room_players.modifier for the brewer '
-  'and every persistent-modifier-transfer party. Internal -- called only by '
-  'confirm_round_replay.';
+  'and every round participant. Internal -- called only by confirm_round_replay.';
 
 -- ===========================================================================
 -- 5. record_pending_round_replay(uuid) -- called by the TS orchestration
@@ -400,7 +421,8 @@ begin
       using errcode = 'RFB47';
   end if;
   if v_caller <> v_caster then
-    raise exception 'confirm_round_replay: only the Time for Brew caster can scrap the round';
+    raise exception 'confirm_round_replay: only the Time for Brew caster can scrap the round'
+      using errcode = 'RFB48';
   end if;
 
   perform public._rr_scrap_round(p_round_id);
@@ -415,7 +437,7 @@ grant execute on function public.confirm_round_replay(uuid) to authenticated;
 comment on function public.confirm_round_replay(uuid) is
   'Issue #315: the Time for Brew caster scraps the resolved round -- runs '
   '_rr_scrap_round and clears the pending row. Raises RFB47 when nothing is '
-  'pending.';
+  'pending, RFB48 when the caller is not the caster.';
 
 create or replace function public.decline_round_replay(p_round_id uuid)
 returns void
@@ -439,12 +461,11 @@ begin
     return;
   end if;
   if v_caller <> v_caster then
-    raise exception 'decline_round_replay: only the Time for Brew caster can keep or scrap the round';
+    raise exception 'decline_round_replay: only the Time for Brew caster can keep or scrap the round'
+      using errcode = 'RFB48';
   end if;
 
-  update public.spell_casts
-     set cast_inputs = coalesce(cast_inputs, '{}'::jsonb) || '{"scrapped": false}'::jsonb
-   where round_id = p_round_id and effect_kind = 'round_replay';
+  perform public._rr_mark_replay_cast_scrapped(p_round_id, false);
 
   delete from public.pending_round_replay where round_id = p_round_id;
 end;
@@ -458,11 +479,15 @@ comment on function public.decline_round_replay(uuid) is
   'cast_inputs.scrapped = false and clears the pending row. Idempotent.';
 
 -- ===========================================================================
--- 8. auto_decline_stalled_round_replays() -- the "existing 5-minute closed-
---    round stall timer" branch (spec §11: "no new clock"). A pending decision
---    older than 5 minutes auto-declines; the round stands, the card is spent.
---    Swept from page.tsx render and from start_round, the same lazy
---    check-on-read pattern as enforce_stall_timeout (issue #21).
+-- 8. auto_decline_stalled_round_replays() -- spec §11's "the existing 5-minute
+--    closed-round stall timer fires with the decision pending -> auto-decline
+--    ... No new clock." The round is 'resolved' (not 'closed') for the whole
+--    decision window, so enforce_stall_timeout's own branches never see it;
+--    this reuses that same 5-minute duration, measured from when the decision
+--    became pending. A pending decision older than 5 minutes auto-declines;
+--    the round stands, the card is spent. Swept lazily from page.tsx render
+--    and from start_round -- the same check-on-read pattern as
+--    enforce_stall_timeout (issue #21), no cron.
 -- ===========================================================================
 create or replace function public.auto_decline_stalled_round_replays()
 returns integer
@@ -480,10 +505,7 @@ begin
      where now() - created_at >= interval '5 minutes'
      for update skip locked
   loop
-    update public.spell_casts
-       set cast_inputs = coalesce(cast_inputs, '{}'::jsonb) || '{"scrapped": false}'::jsonb
-     where round_id = v_row.round_id and effect_kind = 'round_replay';
-
+    perform public._rr_mark_replay_cast_scrapped(v_row.round_id, false);
     delete from public.pending_round_replay where round_id = v_row.round_id;
     v_count := v_count + 1;
   end loop;

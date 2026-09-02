@@ -5,6 +5,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  seedActiveEffect,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -189,6 +190,18 @@ describe.skipIf(!hasAnonTestEnv)("round replay — Time for Brew (issue #315)", 
       rater_player_id: caster.googleSub,
       score: 4,
     });
+    // A promoted active effect whose source cast is this generation — the
+    // scrap must revert it (spec §11: "pass-1-promoted spell_active_effects
+    // removed"). It rides #310's source_cast_id ON DELETE CASCADE.
+    const { effectId: promotedEffectId } = await seedActiveEffect(admin, cleanup, {
+      roomId: caster.roomId,
+      targetPlayerId: other.googleSub,
+      casterId: caster.googleSub,
+      cardName: "Prophe-Tea",
+      effectKind: "advantage",
+      roundsRemaining: 3,
+      roundId,
+    });
 
     // `other` brews (lower roll would be caster; pick `other` explicitly so the
     // gain lands on a known player).
@@ -241,6 +254,15 @@ describe.skipIf(!hasAnonTestEnv)("round replay — Time for Brew (issue #315)", 
       .select("*", { count: "exact", head: true })
       .eq("round_id", roundId);
     expect(ratingCount).toBe(0);
+
+    // The promoted active effect is gone — its generation-0 source cast was
+    // deleted and #310's CASCADE took the projection row with it.
+    const { data: promotedEffect } = await admin
+      .from("spell_active_effects")
+      .select("id")
+      .eq("id", promotedEffectId)
+      .maybeSingle();
+    expect(promotedEffect).toBeNull();
 
     // Brewer's tea-making gain and the Chai-nge transfer's durable deltas are
     // both backed out — every affected player reconciles to their pre-round

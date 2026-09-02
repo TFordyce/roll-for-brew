@@ -326,9 +326,10 @@ export async function broadcastOrderChanged(
  * pending_round_replay row was created (Time for Brew survived the reaction
  * window and its round just resolved), confirmed (round scrapped, generation
  * 1 begins), declined, or auto-declined by the stall sweep. Same
- * one-event/just-refetch shape as the other room broadcasts — RoundReplayLive
- * re-renders the server tree so the blocking prompt / "waiting on X" banner
- * appears or clears in lockstep on every device.
+ * one-event/just-refetch shape as the other room broadcasts — RoundReplayPrompt
+ * (and RoundReveal, which is what's mounted at announce time) re-renders the
+ * server tree so the blocking prompt / "waiting on X" banner appears or clears
+ * in lockstep on every device.
  */
 export async function broadcastRoundReplayChanged(
   supabase: SupabaseClient,
