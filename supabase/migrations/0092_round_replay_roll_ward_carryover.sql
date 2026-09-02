@@ -45,11 +45,14 @@
 -- the holder are filtered in gen-1 Phase 4a anyway; a full snapshot refresh
 -- is left for the #352 retention follow-up.
 --
--- MIGRATION NUMBER: highest on rebuild/effect-resolver is 0090 at authoring
--- time. Issue #352 (full row-level generation retention + RoundReveal gen-1
--- headline) is in flight on a sibling thread and also re-emits _rr_scrap_round
--- / resolve_round -- expect a merge conflict on this branch and recheck the
--- number at the #303 integrate gate.
+-- MIGRATION NUMBER: 0092. 0091 was claimed first by issue #352's
+-- 0091_get_round_recap_scrapped_generations.sql (PR #354, also into
+-- rebuild/effect-resolver); per the recorded convention the second slice
+-- renumbers, so this is 0092. #352 also edits src/lib/game/roundRecap.ts,
+-- roundRecap.test.ts, RoundRecap.tsx and tests/integration/round-replay.test.ts
+-- -- expect merge conflicts in those files too; whoever merges second
+-- resolves. Recheck all rebuild-branch migration numbers at the #303
+-- integrate gate regardless.
 
 -- ===========================================================================
 -- 1. rounds.replay_frozen_rollers -- the player ids whose layer-0 roll was
