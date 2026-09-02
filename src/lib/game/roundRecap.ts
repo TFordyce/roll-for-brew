@@ -1,5 +1,6 @@
-import type { RoundRecapCast, RoundRecapData } from "@/lib/supabase/roundRecap";
+import type { RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
 import type { ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { buildRerollChain, type RerollChainLevel } from "@/lib/game/rerollChain";
 
 /**
  * The Round Recap ("the Ledger", issue #314) — a pure transform from a round's
@@ -87,6 +88,13 @@ export type RoundRecapModel = {
 export type BuildRoundRecapArgs = {
   data: RoundRecapData;
   displayName: (playerId: string) => string;
+  /**
+   * Issue #352: render the step rows from `data.trace` alone even when
+   * `data.casts` is empty — a scrapped replay generation keeps its Trace but
+   * not its cast list. The tap-to-filter cast strip is absent in this mode.
+   * Only takes effect for a resolved round with a non-empty Trace.
+   */
+  traceOnly?: boolean;
 };
 
 // contested_negate steps carry their outcome in `after.value` as one of these
@@ -248,11 +256,21 @@ function groupByPhase(steps: Array<RecapStep & { phase: PhaseLabel }>): PhaseGro
   return groups;
 }
 
-export function buildRoundRecap({ data, displayName }: BuildRoundRecapArgs): RoundRecapModel {
+export function buildRoundRecap({
+  data,
+  displayName,
+  traceOnly = false,
+}: BuildRoundRecapArgs): RoundRecapModel {
   const live = !data.resolved;
   const casts = [...data.casts].sort((a, b) => a.seq - b.seq);
 
-  if (casts.length === 0) {
+  // A scrapped replay generation (issue #352) has a Resolution Trace but no
+  // cast list — the scrap deleted its spell_casts. Every Trace step embeds its
+  // own source card + caster, so the step rows still render; only the
+  // tap-to-filter cast strip is absent.
+  const traceDriven = traceOnly && !live && casts.length === 0 && data.trace.length > 0;
+
+  if (casts.length === 0 && !traceDriven) {
     return {
       hasContent: false,
       castStrip: [],
@@ -334,5 +352,101 @@ export function buildRoundRecap({ data, displayName }: BuildRoundRecapArgs): Rou
     phases: groupByPhase(ordered),
     showReorderCaption: !live && castStrip.length > 1,
     endedInTieBreak: !live && data.layerZeroOutcome === "tie",
+  };
+}
+
+/**
+ * One player's layer-0 row inside a scrapped generation's disclosure (issue
+ * #352) — their first-attempt roll plus the reroll chain they were tied into,
+ * all resolved so the renderer only lays it out.
+ */
+export type ScrappedGenerationRollRow = {
+  playerId: string;
+  value: number;
+  modifierSnapshot: number;
+  discardedValue: number | null;
+  enteredByAdmin: boolean;
+  isBrewer: boolean;
+  rerollChain: RerollChainLevel[];
+};
+
+export type ScrappedGenerationRecap = {
+  generation: number;
+  brewerId: string | null;
+  cupsMade: number | null;
+  brewerModifierGain: number | null;
+  /** The generation's own Recap ledger, built from its Trace alone (no cast strip). */
+  recap: RoundRecapModel;
+  /**
+   * The generation's layer-0 rolls in display order (roster first, then any
+   * roller not on the roster), each with its own reroll chain — the #220
+   * nested rows, kept separate from generation 1's own layers.
+   */
+  firstAttemptRolls: ScrappedGenerationRollRow[];
+  /** true when the generation was decided by a tie-break rather than at layer 0. */
+  wentToTieBreak: boolean;
+};
+
+/**
+ * Issue #352: turn one retained scrapped replay generation into everything the
+ * collapsed generation-0 disclosure renders — its own Round Recap ledger (from
+ * the Trace, no cast strip) and its layer-0 rolls with their tie-break reroll
+ * chains, ordered by `roster`. All model work lives here; the component only
+ * lays the result out.
+ */
+export function buildScrappedGenerationRecap(
+  gen: ScrappedGeneration,
+  displayName: (playerId: string) => string,
+  roster: string[] = [],
+): ScrappedGenerationRecap {
+  const wentToTieBreak = gen.layers.some((l) => l.layer > 0);
+  const recap = buildRoundRecap({
+    data: {
+      resolved: true,
+      layerZeroOutcome: wentToTieBreak ? "tie" : "brewer",
+      trace: gen.trace,
+      casts: [],
+      scrappedGenerations: [],
+    },
+    displayName,
+    traceOnly: true,
+  });
+
+  const layerZeroRolls = gen.layers.find((l) => l.layer === 0)?.rolls ?? [];
+  const rollByPlayer = new Map(layerZeroRolls.map((r) => [r.playerId, r]));
+  // Roster (generation 1's participant order) first for the familiar ordering,
+  // then any generation-0-only roller — a gen-0 late-declare or a proxy for
+  // someone absent by gen 1 — in that generation's own snapshotted order, then
+  // any straggler. So a roll is never dropped and gen-0-only rollers keep a
+  // stable place rather than sorting arbitrarily.
+  const gen0Order = gen.layerParticipants.filter((lp) => lp.layer === 0).map((lp) => lp.playerId);
+  const orderedPlayerIds = [
+    ...roster.filter((id) => rollByPlayer.has(id)),
+    ...gen0Order.filter((id) => rollByPlayer.has(id) && !roster.includes(id)),
+    ...layerZeroRolls
+      .map((r) => r.playerId)
+      .filter((id) => !roster.includes(id) && !gen0Order.includes(id)),
+  ];
+  const firstAttemptRolls: ScrappedGenerationRollRow[] = orderedPlayerIds.map((playerId) => {
+    const roll = rollByPlayer.get(playerId)!;
+    return {
+      playerId,
+      value: roll.value,
+      modifierSnapshot: roll.modifierSnapshot,
+      discardedValue: roll.discardedValue,
+      enteredByAdmin: roll.enteredByAdmin,
+      isBrewer: gen.brewerId === playerId,
+      rerollChain: buildRerollChain(playerId, gen.layers),
+    };
+  });
+
+  return {
+    generation: gen.generation,
+    brewerId: gen.brewerId,
+    cupsMade: gen.cupsMade,
+    brewerModifierGain: gen.brewerModifierGain,
+    recap,
+    firstAttemptRolls,
+    wentToTieBreak,
   };
 }

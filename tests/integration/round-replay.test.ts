@@ -280,6 +280,21 @@ describe.skipIf(!hasAnonTestEnv)("round replay — Time for Brew (issue #315)", 
     expect(pendingCount).toBe(0);
     const { error: startErr } = await other.client.rpc("start_round");
     expect((startErr as { code?: string } | null)?.code).not.toBe("RFB47");
+
+    // Issue #352: get_round_recap now surfaces the retained generation-0 Recap
+    // payload so RoundReveal can hold it in a collapsed disclosure. The round
+    // is 'closed' again post-scrap, so its own trace is empty, but the scrapped
+    // generation carries generation 0's brewer, trace and rolls.
+    const { data: recapPayload, error: recapErr } = await caster.client.rpc("get_round_recap", {
+      p_round_id: roundId,
+    });
+    expect(recapErr).toBeNull();
+    const scrapped = (recapPayload as { scrapped_generations: Record<string, unknown>[] }).scrapped_generations;
+    expect(scrapped).toHaveLength(1);
+    expect(scrapped[0]!.generation).toBe(0);
+    expect(scrapped[0]!.brewer_id).toBe(other.googleSub);
+    expect(Array.isArray(scrapped[0]!.resolution_trace)).toBe(true);
+    expect((scrapped[0]!.rolls as unknown[]).length).toBeGreaterThan(0);
   });
 
   it("decline keeps the resolved round standing and clears the pending decision", async () => {
