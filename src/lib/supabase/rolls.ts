@@ -267,6 +267,14 @@ export async function resolveRound(
  * composing modifiers and picking the brewer. The renderer (#314) owns the
  * wording; SQL emits only these fields.
  */
+/**
+ * A Trace step's outcome. `applied`/`no-op` come from the 6-arg
+ * _rr_trace_step (before === after ⇒ `no-op`); `blocked` (issue #309, a ward
+ * pre-empted the effect) and `backfired` (issue #308, a nat-1 counterspell)
+ * are set explicitly via the 7-arg form's `outcome` override.
+ */
+export type TraceStepOutcome = "applied" | "no-op" | "blocked" | "backfired";
+
 export type ResolutionTraceStep = {
   index: number;
   displayKind: string;
@@ -279,7 +287,17 @@ export type ResolutionTraceStep = {
   targetPlayer: string | null;
   before: { type: string; value: number | string | null };
   after: { type: string; value: number | string | null };
-  outcome: "applied" | "no-op";
+  outcome: TraceStepOutcome;
+  /** Issue #308: this step's source cast was negated by a counter — render struck. */
+  negated: boolean;
+  /** Issue #308: a re-application of a backfired counter's transform onto its own caster. */
+  backfire: boolean;
+  /** Issue #308: a contested_negate step's d20 roll and DC, when present. */
+  contest: { d20: number | null; dc: number | null } | null;
+  /** Issue #309: which ward blocked this step, when `outcome === "blocked"`. */
+  ward: { wardCastId: string | null; wardCardName: string | null } | null;
+  /** Issue #311: a persistent (rest-of-day) modifier transfer/spend step. */
+  restOfDay: boolean;
 };
 
 /**
@@ -320,7 +338,17 @@ type RawTraceStep = {
   target_player: string | null;
   before: { type: string; value: number | string | null };
   after: { type: string; value: number | string | null };
-  outcome: "applied" | "no-op";
+  // 6-arg form always emits "applied" | "no-op"; the 7-arg form may override
+  // to "blocked" | "backfired". All the keys below are 7-arg extras merged in
+  // at the top level (migration 0080) and absent on a plain 6-arg step.
+  outcome: TraceStepOutcome;
+  negated?: boolean;
+  backfire?: boolean;
+  dc_d20?: number | null;
+  dc?: number | null;
+  ward_cast_id?: string | null;
+  ward_card_name?: string | null;
+  rest_of_day?: boolean;
 };
 
 type RawResolveRoundOutcome = {
@@ -348,7 +376,29 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
     before: raw.before,
     after: raw.after,
     outcome: raw.outcome,
+    negated: raw.negated ?? false,
+    backfire: raw.backfire ?? false,
+    contest:
+      raw.dc_d20 != null || raw.dc != null
+        ? { d20: raw.dc_d20 ?? null, dc: raw.dc ?? null }
+        : null,
+    ward:
+      raw.ward_cast_id != null || raw.ward_card_name != null
+        ? { wardCastId: raw.ward_cast_id ?? null, wardCardName: raw.ward_card_name ?? null }
+        : null,
+    restOfDay: raw.rest_of_day ?? false,
   };
+}
+
+/**
+ * Parses a raw `rounds.resolution_trace` JSON value (an array of 0080-shape
+ * step objects, or null/absent on a pre-rebuild resolved round) into typed
+ * steps. Shared by resolveRoundOutcome above and the Round Recap reader
+ * (getRoundRecap, issue #314).
+ */
+export function parseResolutionTrace(raw: unknown): ResolutionTraceStep[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawTraceStep[]).map(toTraceStep);
 }
 
 /**
