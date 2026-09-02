@@ -61,6 +61,10 @@ export type OrderChangedPayload = {
   roundId: string;
 };
 
+export type RoundReplayChangedPayload = {
+  roundId: string;
+};
+
 /**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
@@ -311,6 +315,32 @@ export async function broadcastOrderChanged(
     const result = await channel.httpSend("order-changed", payload);
     if (!result.success) {
       throw new Error(`broadcastOrderChanged: send failed with status ${result.status}`);
+    }
+  } finally {
+    await supabase.removeChannel(channel);
+  }
+}
+
+/**
+ * Broadcasts that a round's replay decision changed (issue #315): a
+ * pending_round_replay row was created (Time for Brew survived the reaction
+ * window and its round just resolved), confirmed (round scrapped, generation
+ * 1 begins), declined, or auto-declined by the stall sweep. Same
+ * one-event/just-refetch shape as the other room broadcasts — RoundReplayPrompt
+ * (and RoundReveal, which is what's mounted at announce time) re-renders the
+ * server tree so the blocking prompt / "waiting on X" banner appears or clears
+ * in lockstep on every device.
+ */
+export async function broadcastRoundReplayChanged(
+  supabase: SupabaseClient,
+  roomId: string,
+  payload: RoundReplayChangedPayload,
+): Promise<void> {
+  const channel = supabase.channel(roomChannelName(roomId));
+  try {
+    const result = await channel.httpSend("round-replay-changed", payload);
+    if (!result.success) {
+      throw new Error(`broadcastRoundReplayChanged: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);

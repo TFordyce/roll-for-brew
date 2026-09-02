@@ -24,6 +24,8 @@ import {
   withdrawDeclarationAction,
 } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
+import { autoDeclineStalledRoundReplays, getRoomPendingRoundReplay } from "@/lib/supabase/roundReplay";
+import { RoundReplayPrompt } from "@/app/rounds/RoundReplayPrompt";
 import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
@@ -80,6 +82,17 @@ export default async function HomePage() {
 
   const roomId = await enterTodaysRoom(supabase);
   const roster = await getRoomRoster(supabase, roomId);
+
+  // Round Replay — Time for Brew (issue #315, spec §11). While a scrap/keep
+  // decision is pending the round is 'resolved' (so getActiveRound returns
+  // null) yet start_round is locked room-wide, so this is read directly off
+  // the room. The lazy check-on-read sweep auto-declines any decision left
+  // past the existing 5-minute closed-round stall window ("no new clock").
+  await autoDeclineStalledRoundReplays(supabase);
+  const pendingRoundReplay = await getRoomPendingRoundReplay(supabase, roomId);
+  const pendingReplayCaster = pendingRoundReplay
+    ? roster.find((entry) => entry.playerId === pendingRoundReplay.casterId) ?? null
+    : null;
 
   let activeRound = await getActiveRound(supabase, roomId);
   if (activeRound) {
@@ -266,6 +279,15 @@ export default async function HomePage() {
           trigger={myPendingSpellDraw.trigger}
           catalogNames={spellCardCatalog.map((c) => c.name)}
           otherCount={myPendingSpellDraw.otherCount}
+        />
+      ) : null}
+
+      {pendingRoundReplay ? (
+        <RoundReplayPrompt
+          roomId={roomId}
+          roundId={pendingRoundReplay.roundId}
+          isCaster={pendingRoundReplay.casterId === playerId}
+          casterDisplayName={pendingReplayCaster?.displayName ?? null}
         />
       ) : null}
 

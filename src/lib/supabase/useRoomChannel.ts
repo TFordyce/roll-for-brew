@@ -12,6 +12,7 @@ import {
   type ReactionWindowChangedPayload,
   type RoundCancelledPayload,
   type RoundClosedPayload,
+  type RoundReplayChangedPayload,
   type RoundRevealedPayload,
   type RoundStartedPayload,
   type SpellCastChangedPayload,
@@ -29,6 +30,7 @@ type RoomBroadcastPayloadMap = {
   "round-started": RoundStartedPayload;
   "spell-cast-changed": SpellCastChangedPayload;
   "order-changed": OrderChangedPayload;
+  "round-replay-changed": RoundReplayChangedPayload;
 };
 
 export type RoomChannelEventHandlers = {
