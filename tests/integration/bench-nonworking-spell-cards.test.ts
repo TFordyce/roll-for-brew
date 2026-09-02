@@ -43,9 +43,11 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
 
   it("benches only cards from the documented non-working list", async () => {
     // Guards against the setup.ts list silently losing entries. 0074 benched
-    // 39; Saving Steep (#308) and the four ward cards (#309, migration 0082)
-    // are since implemented and un-benched, so 34.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(34);
+    // 39; Saving Steep (#308), the four ward cards (#309, migration 0082) and
+    // the three round-scoped modifier snapshot cards — Bes-Tea, Tea Leaf,
+    // Spillage (#343, migration 0087) — are since implemented and un-benched,
+    // so 31.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(31);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();

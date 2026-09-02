@@ -116,16 +116,18 @@ export async function signUpSignInAndEnterRoom(
  * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
  * each card is implemented and un-benched: 0074 benched 39; Saving Steep
  * (#308, migration 0081) and the four ward cards — Jinxed Biscuit,
- * Cast-Iron Kettle, Bag for Life, Eternal Steep (#309, migration 0082) — are
- * now live, so 34 remain here. A test that force-holds one of these must
+ * Cast-Iron Kettle, Bag for Life, Eternal Steep (#309, migration 0082) — and
+ * the three round-scoped modifier snapshot cards — Bes-Tea, Tea Leaf,
+ * Spillage (#343, migration 0087) — are now live, so 31 remain here. A test
+ * that force-holds one of these must
  * return it to the bench, not the deck, on cleanup — releaseHeldCards below
  * does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
-  "Bes-Tea", "Tea Party Revolt", "Last Drip",
+  "Tea Party Revolt", "Last Drip",
   "Brew-tal Swap", "Yorkshire Terror",
-  "Tea Cosy", "Tea Leaf", "Spillage", "Chai-nge of Heart",
+  "Tea Cosy", "Chai-nge of Heart",
   "Loose Leaf", "Stir the Pot", "PG Tipped",
   "Marked for Brew", "Sleeping Camomile", "Steaming Mug Bond",
   "Tea-tally Spent", "Loaf of Lipton", "Brew IOU", "Tea Heist",
