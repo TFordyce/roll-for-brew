@@ -277,6 +277,12 @@ export function RoundReveal({
     "reaction-window-changed": () => {
       if (!hasOpenReactionWindow) router.refresh();
     },
+    // Issue #315 (Round Replay): a surviving Time for Brew turns this
+    // just-announced round into a pending scrap/keep decision. This component
+    // is what's mounted at announce time — refresh so the server re-render
+    // swaps in the blocking prompt / "waiting on X" banner (and, on
+    // confirm/decline, swaps it back out).
+    "round-replay-changed": () => router.refresh(),
   });
 
   function dismissKettleModal() {

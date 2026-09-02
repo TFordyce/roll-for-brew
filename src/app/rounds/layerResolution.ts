@@ -7,7 +7,13 @@ import {
   resolveRoundOutcome,
   type CompletedLayer,
 } from "@/lib/supabase/rolls";
-import { broadcastLayerRollsRevealed, broadcastLayerTied, broadcastRoundRevealed } from "@/lib/supabase/realtime";
+import {
+  broadcastLayerRollsRevealed,
+  broadcastLayerTied,
+  broadcastRoundReplayChanged,
+  broadcastRoundRevealed,
+} from "@/lib/supabase/realtime";
+import { recordPendingRoundReplay } from "@/lib/supabase/roundReplay";
 import {
   applyForcedReroll,
   applyRollFlip,
@@ -39,6 +45,8 @@ export type ApplyLayerOutcomeDeps = {
   advanceRoundLayer: typeof advanceRoundLayer;
   broadcastRoundRevealed: typeof broadcastRoundRevealed;
   broadcastLayerTied: typeof broadcastLayerTied;
+  recordPendingRoundReplay: typeof recordPendingRoundReplay;
+  broadcastRoundReplayChanged: typeof broadcastRoundReplayChanged;
 };
 
 const defaultDeps: ApplyLayerOutcomeDeps = {
@@ -49,6 +57,8 @@ const defaultDeps: ApplyLayerOutcomeDeps = {
   advanceRoundLayer,
   broadcastRoundRevealed,
   broadcastLayerTied,
+  recordPendingRoundReplay,
+  broadcastRoundReplayChanged,
 };
 
 /**
@@ -115,6 +125,18 @@ export async function applyLayerOutcome(
         enteredByAdmin: r.enteredByAdmin,
       })),
     });
+
+    // Round Replay — Time for Brew (issue #315, spec §11). The round has now
+    // resolved and announced normally. If it carries a surviving (non-negated)
+    // round_replay cast, record the caster's pending scrap/keep decision — a
+    // no-op for every ordinary round — and nudge every device to surface the
+    // blocking prompt. A tie-break reroll layer (the `else` branch below)
+    // never reaches here, matching "resolves and announces normally" being a
+    // layer-0 brewer outcome.
+    const replayPending = await deps.recordPendingRoundReplay(supabase, roundId);
+    if (replayPending) {
+      await deps.broadcastRoundReplayChanged(supabase, roomId, { roundId });
+    }
   } else {
     const nextLayer = await deps.advanceRoundLayer(supabase, roundId, result.tiedPlayerIds);
 

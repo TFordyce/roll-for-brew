@@ -29,6 +29,8 @@ function fakeDeps(overrides: Partial<ApplyLayerOutcomeDeps> = {}): ApplyLayerOut
     advanceRoundLayer: vi.fn(async () => 1),
     broadcastRoundRevealed: vi.fn(async () => {}),
     broadcastLayerTied: vi.fn(async () => {}),
+    recordPendingRoundReplay: vi.fn(async () => false),
+    broadcastRoundReplayChanged: vi.fn(async () => {}),
     ...overrides,
   };
 }
@@ -165,5 +167,46 @@ describe("applyLayerOutcome", () => {
     await applyLayerOutcome(supabase, "round-42", twoRollLayer, deps);
 
     expect(deps.getRoundRoomId).toHaveBeenCalledWith(supabase, "round-42");
+  });
+
+  it("records a pending round replay after announcing, and nudges devices when one is pending (issue #315)", async () => {
+    const deps = fakeDeps({ recordPendingRoundReplay: vi.fn(async () => true) });
+
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
+
+    // Recorded only after the reveal has been broadcast — the round announces
+    // normally first (spec §11).
+    expect(deps.recordPendingRoundReplay).toHaveBeenCalledWith(supabase, "round-1");
+    const revealOrder = (deps.broadcastRoundRevealed as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0;
+    const recordOrder = (deps.recordPendingRoundReplay as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0;
+    expect(recordOrder).toBeGreaterThan(revealOrder);
+    expect(deps.broadcastRoundReplayChanged).toHaveBeenCalledWith(supabase, "room-1", { roundId: "round-1" });
+  });
+
+  it("does not nudge devices when no round replay is pending (the ordinary round)", async () => {
+    const deps = fakeDeps();
+
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
+
+    expect(deps.recordPendingRoundReplay).toHaveBeenCalledWith(supabase, "round-1");
+    expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
+  });
+
+  it("never records a pending round replay on a tie outcome", async () => {
+    const deps = fakeDeps({
+      resolveRoundOutcome: vi.fn(
+        async (): Promise<ResolveRoundOutcome> => ({
+          outcome: "tie",
+          layer: 0,
+          tiedPlayerIds: ["p1", "p2"],
+          cupsMade: 3,
+          trace: [],
+        }),
+      ),
+    });
+
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
+
+    expect(deps.recordPendingRoundReplay).not.toHaveBeenCalled();
   });
 });
