@@ -135,3 +135,7 @@ _Avoid_: round summary, effect breakdown, roll calculation (the per-tile display
 **Recap phase**:
 The band a Recap step falls in — `Before the roll`, `Reaction window`, or `Outcome` — derived from the source cast's window, not from Layer. Headers follow resolution order and repeat whenever the phase changes, so `Reaction window` can appear twice in one Recap. Distinct from **Layer** (tie-break reroll depth) and from a cast's own pre-roll/reaction timing.
 _Avoid_: phase (bare — always qualify as "Recap phase"), stage, band, layer.
+
+**Round replay** / **generation** / **scrapped attempt**:
+Time for Brew (`effect_kind = 'round_replay'`, spec #302 §11, ADR 0005) scraps a just-resolved round and replays it as a fresh round from Layer 0 — not a recompute. `rounds.replay_generation` counts the passes: generation 0 is the original attempt, generation 1 the replay. `_rr_scrap_round` snapshots each scrapped generation's Recap payload (its Resolution Trace, brewer, rolls, tie-break layers) into `rounds.scrapped_generations` before deleting its rows. The **canonical view is generation 1**, headlined normally; each **scrapped attempt** hangs above it in a collapsed disclosure holding that generation's own Round Recap and its own nested reroll rows, kept separate from generation 1's Layers. The scrap is a labelled boundary between two Recaps, not a Trace step.
+_Avoid_: pass (say "generation"), redo/rerun, do-over, replay layer (Layer is tie-break depth, not a generation).

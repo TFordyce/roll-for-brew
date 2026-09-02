@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildRoundRecap } from "./roundRecap";
-import type { RoundRecapCast, RoundRecapData } from "@/lib/supabase/roundRecap";
-import type { ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { buildRoundRecap, buildScrappedGenerationRecap } from "./roundRecap";
+import type { RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
+import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
 
 // --- fixture helpers ---------------------------------------------------
 
@@ -59,7 +59,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
 }
 
 function data(over: Partial<RoundRecapData> = {}): RoundRecapData {
-  return { resolved: true, layerZeroOutcome: "brewer", trace: [], casts: [], ...over };
+  return { resolved: true, layerZeroOutcome: "brewer", trace: [], casts: [], scrappedGenerations: [], ...over };
 }
 
 beforeEach(() => {
@@ -337,5 +337,171 @@ describe("buildRoundRecap", () => {
     expect(model.endedInTieBreak).toBe(true);
     expect(model.phases.map((p) => p.label)).toEqual(["Before the roll"]);
     expect(model.phases.flatMap((p) => p.steps)).toHaveLength(1);
+  });
+
+  it("traceOnly: renders trace steps with no cast list, empty cast strip", () => {
+    const trace: ResolutionTraceStep[] = [
+      step({
+        displayKind: "flat_modifier",
+        sourceCast: { castId: "C1", activeEffectId: null, cardName: "Lucky Sip", casterPlayerId: "cass" },
+        targetPlayer: "ada",
+        before: { type: "modifier", value: 1 },
+        after: { type: "modifier", value: 4 },
+      }),
+    ];
+    // Without the flag, a cast-less resolved round is "no content".
+    expect(buildRoundRecap({ data: data({ casts: [], trace }), displayName }).hasContent).toBe(false);
+    // With it, the step rows render and the strip is simply absent.
+    const model = buildRoundRecap({ data: data({ casts: [], trace }), displayName, traceOnly: true });
+    expect(model.hasContent).toBe(true);
+    expect(model.castStrip).toEqual([]);
+    expect(model.showReorderCaption).toBe(false);
+    expect(model.phases.flatMap((p) => p.steps).map((s) => s.sentence)).toEqual(["Cass played Lucky Sip on Ada"]);
+  });
+
+  it("traceOnly with an empty trace stays no-content", () => {
+    expect(buildRoundRecap({ data: data({ casts: [], trace: [] }), displayName, traceOnly: true }).hasContent).toBe(
+      false,
+    );
+  });
+});
+
+// --- buildScrappedGenerationRecap (issue #352) ------------------------
+
+function layer(over: Partial<CompletedLayer> & { layer: number }): CompletedLayer {
+  return {
+    rolls: [
+      { playerId: "ada", value: 10, modifierSnapshot: 2, discardedValue: null, enteredByAdmin: false },
+      { playerId: "ben", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+    ],
+    ...over,
+  };
+}
+
+function scrappedGen(over: Partial<ScrappedGeneration> = {}): ScrappedGeneration {
+  return {
+    generation: 0,
+    brewerId: "ada",
+    cupsMade: 3,
+    brewerModifierGain: 3,
+    resolvedAt: "2026-09-02T10:00:00Z",
+    trace: [],
+    layers: [layer({ layer: 0 })],
+    layerParticipants: [
+      { layer: 0, playerId: "ada" },
+      { layer: 0, playerId: "ben" },
+    ],
+    ...over,
+  };
+}
+
+describe("buildScrappedGenerationRecap", () => {
+  it("carries the generation's headline fields through", () => {
+    const model = buildScrappedGenerationRecap(scrappedGen(), displayName);
+    expect(model.generation).toBe(0);
+    expect(model.brewerId).toBe("ada");
+    expect(model.cupsMade).toBe(3);
+    expect(model.brewerModifierGain).toBe(3);
+  });
+
+  it("builds the Recap from the generation's Trace alone, no cast strip", () => {
+    const model = buildScrappedGenerationRecap(
+      scrappedGen({
+        trace: [
+          step({
+            displayKind: "flat_modifier",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Lucky Sip", casterPlayerId: "cass" },
+            targetPlayer: "ada",
+            before: { type: "modifier", value: 0 },
+            after: { type: "modifier", value: 2 },
+          }),
+        ],
+      }),
+      displayName,
+    );
+    expect(model.recap.hasContent).toBe(true);
+    expect(model.recap.castStrip).toEqual([]);
+    expect(model.recap.phases.flatMap((p) => p.steps)).toHaveLength(1);
+  });
+
+  it("layer-0 only: not a tie-break, every first-attempt row has an empty reroll chain", () => {
+    const model = buildScrappedGenerationRecap(scrappedGen(), displayName, ["ada", "ben"]);
+    expect(model.wentToTieBreak).toBe(false);
+    expect(model.recap.endedInTieBreak).toBe(false);
+    expect(model.firstAttemptRolls.map((r) => r.playerId)).toEqual(["ada", "ben"]);
+    expect(model.firstAttemptRolls.every((r) => r.rerollChain.length === 0)).toBe(true);
+  });
+
+  it("went to a tie-break: wentToTieBreak + endedInTieBreak, reroll chain on each row", () => {
+    const model = buildScrappedGenerationRecap(
+      scrappedGen({
+        layers: [layer({ layer: 0 }), layer({ layer: 1 })],
+        layerParticipants: [
+          { layer: 0, playerId: "ada" },
+          { layer: 0, playerId: "ben" },
+          { layer: 1, playerId: "ada" },
+          { layer: 1, playerId: "ben" },
+        ],
+        trace: [
+          step({
+            displayKind: "flat_modifier",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Lucky Sip", casterPlayerId: "cass" },
+            targetPlayer: "ada",
+            before: { type: "modifier", value: 0 },
+            after: { type: "modifier", value: 2 },
+          }),
+        ],
+      }),
+      displayName,
+      ["ada", "ben"],
+    );
+    expect(model.wentToTieBreak).toBe(true);
+    expect(model.recap.endedInTieBreak).toBe(true);
+    // ada 10+2 ties ben 12+0 at layer 0, and again at layer 1 (same fixture),
+    // so each row carries one reroll level, still tied.
+    expect(model.firstAttemptRolls.map((r) => r.rerollChain.map((c) => c.layer))).toEqual([[1], [1]]);
+  });
+
+  it("tie-break with no casts that generation: wentToTieBreak still set, recap empty", () => {
+    const model = buildScrappedGenerationRecap(
+      scrappedGen({ layers: [layer({ layer: 0 }), layer({ layer: 1 })], trace: [] }),
+      displayName,
+      ["ada", "ben"],
+    );
+    expect(model.wentToTieBreak).toBe(true);
+    expect(model.recap.hasContent).toBe(false);
+    expect(model.firstAttemptRolls).toHaveLength(2);
+  });
+
+  it("empty Trace (no casts that generation): recap has no content, headline still there", () => {
+    const model = buildScrappedGenerationRecap(scrappedGen({ trace: [] }), displayName);
+    expect(model.recap.hasContent).toBe(false);
+    expect(model.brewerId).toBe("ada");
+  });
+
+  it("orders first-attempt rolls: roster first, gen-0-only roller in snapshot order after", () => {
+    const model = buildScrappedGenerationRecap(
+      scrappedGen({
+        layers: [
+          layer({
+            layer: 0,
+            rolls: [
+              { playerId: "ben", value: 8, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+              { playerId: "ada", value: 10, modifierSnapshot: 2, discardedValue: null, enteredByAdmin: false },
+              { playerId: "cass", value: 15, modifierSnapshot: 1, discardedValue: null, enteredByAdmin: true },
+            ],
+          }),
+        ],
+        layerParticipants: [
+          { layer: 0, playerId: "ada" },
+          { layer: 0, playerId: "ben" },
+          { layer: 0, playerId: "cass" },
+        ],
+      }),
+      displayName,
+      ["ada", "ben"], // cass late-declared in gen 0 only
+    );
+    expect(model.firstAttemptRolls.map((r) => r.playerId)).toEqual(["ada", "ben", "cass"]);
+    expect(model.firstAttemptRolls[2]!.enteredByAdmin).toBe(true);
   });
 });
