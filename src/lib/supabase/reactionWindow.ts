@@ -132,18 +132,22 @@ export async function getReactionStack(
 /**
  * Calls cast_reaction_spell_card: casts the caller's held Reaction card into
  * the round's open window. targetCastId targets an existing stack entry
- * (CARD-target cards); targetPlayerId targets a player directly. Reopens the
+ * (CARD-target cards); targetPlayerId targets a player directly. spendAmount
+ * is Tea-tally Spent only — the modifier the caster burns, clamped server-side
+ * to [0, current effective modifier]; the RPC raises RFB45 if it is omitted
+ * for that card and RFB44 if the caster has no modifier to spend. Reopens the
  * poll for every other eligible holder (chaining) as a side effect.
  */
 export async function castReactionSpellCard(
   supabase: SupabaseClient,
   roundId: string,
-  options: { targetPlayerId?: string; targetCastId?: string } = {},
+  options: { targetPlayerId?: string; targetCastId?: string; spendAmount?: number } = {},
 ): Promise<string> {
   const { data, error } = await supabase.rpc("cast_reaction_spell_card", {
     p_round_id: roundId,
     p_target_player_id: options.targetPlayerId ?? null,
     p_target_cast_id: options.targetCastId ?? null,
+    p_spend_amount: options.spendAmount ?? null,
   });
   if (error) throw error;
   return data as string;
