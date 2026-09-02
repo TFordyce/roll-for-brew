@@ -389,8 +389,8 @@ describe.skipIf(!hasAnonTestEnv)("round replay — Time for Brew (issue #315)", 
   });
 
   // Issue #351 — spec #302 §11 AC: a roll-domain-ward holder does not re-roll
-  // in generation 1; a `roll-frozen` Trace step appears.
-  it("carries a roll-domain ward holder's layer-0 roll into generation 1 and emits a roll-frozen Trace step", async () => {
+  // in generation 1; a `roll_frozen` Trace step appears.
+  it("carries a negative roll-domain ward holder's layer-0 roll into generation 1 and emits a roll_frozen Trace step", async () => {
     const [caster, other] = await Promise.all([signUp("replay-k"), signUp("replay-l")]);
     const roundId = await openAndCloseRound(caster, [other]);
 
@@ -444,7 +444,7 @@ describe.skipIf(!hasAnonTestEnv)("round replay — Time for Brew (issue #315)", 
     expect(outErr).toBeNull();
 
     const frozenSteps = (outcome as { trace: Array<Record<string, unknown>> }).trace.filter(
-      (s) => s.display_kind === "roll-frozen",
+      (s) => s.display_kind === "roll_frozen",
     );
     expect(frozenSteps).toHaveLength(1);
     const step = frozenSteps[0]! as {
@@ -455,5 +455,48 @@ describe.skipIf(!hasAnonTestEnv)("round replay — Time for Brew (issue #315)", 
     expect(step.target_player).toBe(caster.googleSub);
     expect(step.before).toEqual({ type: "roll", value: 5 });
     expect(step.after).toEqual({ type: "roll", value: 5 });
+  });
+
+  // Issue #351 — the carry-over is gated on NEGATIVE polarity (decision: Tom,
+  // 2026-09-02). A positive roll-domain ward (Jinxed Biscuit) and a
+  // modifier-only ward (Eternal Steep) both get no interaction.
+  it.each([
+    { label: "Jinxed Biscuit (positive roll-domain)", card: "Jinxed Biscuit", params: { polarity: ["positive"], domain: ["modifier", "roll"] } },
+    { label: "Eternal Steep (modifier-only)", card: "Eternal Steep", params: { polarity: ["positive", "negative"], domain: ["modifier"] } },
+  ])("does not carry a roll over for $label", async ({ card, params }) => {
+    const [caster, other] = await Promise.all([signUp("replay-nofreeze"), signUp("replay-nofreeze2")]);
+    const roundId = await openAndCloseRound(caster, [other]);
+
+    await seedActiveEffect(admin, cleanup, {
+      roomId: caster.roomId,
+      targetPlayerId: caster.googleSub,
+      casterId: other.googleSub,
+      cardName: card,
+      effectKind: "ward",
+      effectParams: params,
+      roundsRemaining: null,
+    });
+
+    await seedRoll(roundId, caster.googleSub, 5);
+    await seedRoll(roundId, other.googleSub, 12);
+    await seedCast(roundId, caster.googleSub, "Time for Brew", { effectKind: "round_replay" });
+
+    await resolveToBrewer(caster.client, roundId, other.googleSub);
+    await caster.client.rpc("record_pending_round_replay", { p_round_id: roundId });
+    await caster.client.rpc("confirm_round_replay", { p_round_id: roundId });
+
+    const { data: round } = await admin
+      .from("rounds")
+      .select("replay_frozen_rollers")
+      .eq("id", roundId)
+      .single();
+    expect(round!.replay_frozen_rollers).toEqual([]);
+
+    // Every generation-0 roll was cleared — the whole table re-rolls.
+    const { count: rollCount } = await admin
+      .from("rolls")
+      .select("*", { count: "exact", head: true })
+      .eq("round_id", roundId);
+    expect(rollCount).toBe(0);
   });
 });

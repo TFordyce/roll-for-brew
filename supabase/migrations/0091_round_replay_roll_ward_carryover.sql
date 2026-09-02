@@ -1,32 +1,49 @@
--- Round replay: roll-domain ward carry-over + roll-frozen Trace step
+-- Round replay: roll-domain ward carry-over + roll_frozen Trace step
 -- (issue #351, spec #302 §11 acceptance criterion, ADR 0005). Rider on
 -- issue #315 / migration 0090 (Round replay -- Time for Brew), carved out of
 -- that slice's "core only" scope.
 --
 -- Spec #302 §11 AC: "A roll-domain-ward holder does not re-roll in
--- generation 1; a `roll-frozen` Trace step appears."
+-- generation 1; a `roll-frozen` Trace step appears." (The Trace step's
+-- display_kind is spelled `roll_frozen`, snake_case like every sibling kind.)
 --
 -- Per-holder roll-domain ward carry-over on scrap:
 --   * When a resolved round is scrapped for replay (confirm_round_replay ->
---     _rr_scrap_round), a participant who holds an ACTIVE roll-domain ward
---     -- spell_active_effects.effect_kind = 'ward' with 'roll' in
---     effect_params.domain -- keeps their generation-0 layer-0 roll instead
---     of re-rolling. Cast-Iron Kettle (polarity negative, domain
---     {roll, modifier}) is the charter case; the carry-over is flat,
---     regardless of whether a re-roll would help.
+--     _rr_scrap_round), a participant who holds an ACTIVE NEGATIVE-polarity
+--     roll-domain ward -- spell_active_effects.effect_kind = 'ward' with
+--     'roll' in effect_params.domain AND 'negative' in effect_params.polarity
+--     -- keeps their generation-0 layer-0 roll instead of re-rolling. The
+--     carry-over is flat: polarity gates WHICH wards trigger it, but a
+--     triggering ward always freezes the roll regardless of whether a
+--     re-roll would have helped.
 --   * Everyone else rolls fresh in generation 1 (unchanged from 0090).
---   * Modifier-only wards (Bag for Life, Eternal Steep) are not roll-domain
---     and get no carry-over. Jinxed Biscuit / Cast-Iron Kettle ARE
---     roll-domain (domain {modifier, roll}) so they do carry over.
---   * generation-1 resolve_round(uuid) emits a `roll-frozen` Trace step on
---     the carried-over player's own row (before === after, status-style, so
---     it never moves the composed value). Gated on replay_generation > 0 --
---     generation-0 rounds resolve byte-identically to 0089.
+--   * Card mapping (spell_card_effects, migration 0082):
+--       - Cast-Iron Kettle  polarity {negative}, domain {modifier, roll}
+--         -> the charter case, and the only current card that triggers.
+--       - Jinxed Biscuit     polarity {positive}, domain {modifier, roll}
+--         -> roll-domain but positive -> NO carry-over (spec: "Jinxed
+--         Biscuit: no interaction"). This is why polarity is in the filter,
+--         not just domain (decision: Tom, 2026-09-02).
+--       - Bag for Life / Eternal Steep  domain {modifier} only -> no
+--         carry-over.
+--   * generation-1 resolve_round(uuid) emits a `roll_frozen` Trace step on
+--     the carried-over player's own row (before === after -- it never moves
+--     the composed value). Gated on replay_generation > 0 -- generation-0
+--     rounds resolve byte-identically to 0089.
 --
 -- Ward lookup shares _rr_active_effects_as_of (issue #310) -- the same
 -- projection the resolver's ward phase (#309) reads. Computed inside
 -- _rr_scrap_round BEFORE its spell_casts delete, so a ward cast in the very
 -- round being scrapped still counts.
+--
+-- KNOWN TRADEOFF: the retained roll keeps its generation-0 rolls.modifier_
+-- snapshot verbatim (spec wording: "keeps their generation-0 layer-0 roll").
+-- _rr_scrap_round recomputes room_players.modifier for affected players, but
+-- the frozen roll's own snapshot is not refreshed, so a frozen roller can
+-- resolve generation 1 on a slightly stale modifier base. Cast-Iron Kettle
+-- also wards the modifier domain (negative), so negative modifier effects on
+-- the holder are filtered in gen-1 Phase 4a anyway; a full snapshot refresh
+-- is left for the #352 retention follow-up.
 --
 -- MIGRATION NUMBER: highest on rebuild/effect-resolver is 0090 at authoring
 -- time. Issue #352 (full row-level generation retention + RoundReveal gen-1
@@ -37,7 +54,7 @@
 -- ===========================================================================
 -- 1. rounds.replay_frozen_rollers -- the player ids whose layer-0 roll was
 --    carried over into the current replay generation. Written once by
---    _rr_scrap_round; read by resolve_round(uuid) for the `roll-frozen`
+--    _rr_scrap_round; read by resolve_round(uuid) for the `roll_frozen`
 --    Trace step. '{}' on a never-scrapped round.
 -- ===========================================================================
 alter table public.rounds
@@ -45,9 +62,10 @@ alter table public.rounds
 
 comment on column public.rounds.replay_frozen_rollers is
   'Issue #351: layer-0 rollers whose generation-0 roll _rr_scrap_round carried '
-  'over on scrap because they hold an active roll-domain ward -- they do not '
-  're-roll in the replay generation, and resolve_round emits a `roll-frozen` '
-  'Trace step for each. Empty unless the round has been scrapped for replay.';
+  'over on scrap because they hold an active negative-polarity roll-domain ward '
+  '-- they do not re-roll in the replay generation, and resolve_round emits a '
+  '`roll_frozen` Trace step for each. Empty unless the round has been scrapped '
+  'for replay.';
 
 -- ===========================================================================
 -- 2. _rr_scrap_round(uuid) -- the atomic rollback + generation bump.
@@ -56,7 +74,7 @@ comment on column public.rounds.replay_frozen_rollers is
 --    Shape: admin_delete_round (0085) minus deleting the round row.
 --    Re-emitted from 0090 for issue #351: roll-domain ward holders keep their
 --    generation-0 layer-0 roll, and the frozen roster is stamped onto
---    rounds.replay_frozen_rollers for resolve_round's `roll-frozen` step.
+--    rounds.replay_frozen_rollers for resolve_round's `roll_frozen` step.
 -- ===========================================================================
 create or replace function public._rr_scrap_round(p_round_id uuid)
 returns void
@@ -143,21 +161,24 @@ begin
     ) t
    where p is not null;
 
-  -- issue #351: participants holding an active roll-domain ward as of this
-  -- round keep their generation-0 layer-0 roll instead of re-rolling in
-  -- generation 1 (Cast-Iron Kettle is the charter case -- polarity negative,
-  -- domain {roll, modifier}; applied flat, regardless of whether a re-roll
-  -- would have helped). Modifier-only wards (Bag for Life, Eternal Steep) are
-  -- not roll-domain and get no carry-over. Computed BEFORE the spell_casts
-  -- delete below, since _rr_active_effects_as_of reads the Cast Log for a ward
-  -- cast in this very round. Polarity is not checked -- the carry-over is
-  -- unconditional for any roll-domain ward.
+  -- issue #351: participants holding an active NEGATIVE-polarity roll-domain
+  -- ward as of this round keep their generation-0 layer-0 roll instead of
+  -- re-rolling in generation 1. Cast-Iron Kettle (polarity {negative}, domain
+  -- {modifier, roll}) is the charter case and the only current card that
+  -- matches; Jinxed Biscuit is roll-domain but positive so it is excluded
+  -- ("Jinxed Biscuit: no interaction" -- decision: Tom, 2026-09-02), and the
+  -- modifier-only wards (Bag for Life, Eternal Steep) are excluded by domain.
+  -- The carry-over is flat once a ward matches -- polarity only gates which
+  -- wards trigger it, not whether a given roll is worth freezing. Computed
+  -- BEFORE the spell_casts delete below, since _rr_active_effects_as_of reads
+  -- the Cast Log for a ward cast in this very round.
   select coalesce(array_agg(distinct sae.target_player_id), array[]::text[])
     into v_roll_warded
     from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
    where sae.room_id = v_room_id
      and sae.effect_kind = 'ward'
      and sae.effect_params -> 'domain' ? 'roll'
+     and sae.effect_params -> 'polarity' ? 'negative'
      and sae.target_player_id in (
        select rp.player_id from public.round_participants rp
         where rp.round_id = p_round_id
@@ -249,7 +270,7 @@ comment on function public._rr_scrap_round(uuid) is
 
 -- ===========================================================================
 -- 3. resolve_round(uuid) -- re-emitted from 0089 with the generation-1
---    `roll-frozen` Trace step (see file header). Byte-identical to 0089 for
+--    `roll_frozen` Trace step (see file header). Byte-identical to 0089 for
 --    any generation-0 round.
 -- ===========================================================================
 
@@ -422,18 +443,18 @@ begin
   -- ------------------------------------------------------------------
   -- issue #351: roll-domain ward carry-over. On scrap for replay (#315),
   -- _rr_scrap_round kept the generation-0 layer-0 roll of every participant
-  -- holding an active roll-domain ward (Cast-Iron Kettle is the charter case)
-  -- instead of clearing it, so they do not re-roll in generation 1. Emit one
-  -- `roll-frozen` Trace step per such roller on their own row -- a status-style
-  -- marker (before === after), so it never moves the composed value. Gated on
-  -- replay_generation > 0, so generation-0 rounds are byte-identical.
+  -- holding an active negative-polarity roll-domain ward (Cast-Iron Kettle is
+  -- the charter case) instead of clearing it, so they do not re-roll in
+  -- generation 1. Emit one `roll_frozen` Trace step per such roller on their
+  -- own row -- before === after, so it never moves the composed value. Gated
+  -- on replay_generation > 0, so generation-0 rounds are byte-identical.
   -- ------------------------------------------------------------------
   if coalesce(v_gen, 0) > 0 and array_length(v_frozen_rollers, 1) is not null then
     for v_fz_i in 1 .. coalesce(array_length(v_players, 1), 0) loop
       if v_players[v_fz_i] = any (v_frozen_rollers) then
         v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
           v_step_index,
-          'roll-frozen',
+          'roll_frozen',
           jsonb_build_object(
             'cast_id', null,
             'active_effect_id', null,
@@ -442,8 +463,7 @@ begin
           ),
           v_players[v_fz_i],
           jsonb_build_object('type', 'roll', 'value', v_rolls[v_fz_i]),
-          jsonb_build_object('type', 'roll', 'value', v_rolls[v_fz_i]),
-          jsonb_build_object('frozen', true, 'generation', v_gen)
+          jsonb_build_object('type', 'roll', 'value', v_rolls[v_fz_i])
         ));
         v_step_index := v_step_index + 1;
       end if;
@@ -1596,4 +1616,4 @@ revoke execute on function public.resolve_round(uuid) from public, anon;
 grant execute on function public.resolve_round(uuid) to authenticated;
 
 comment on function public.resolve_round(uuid) is
-  'Authoritative layer-0 outcome resolver (issues #305-#311 / #342 / #344 / #351, ADR 0005): Phase 1 negate / redirect / backfire; a Pre-pass re-asserts whole-group negation on a ward-blocked Chai-nge / Tea Leaf / Spillage / Bes-Tea and emits its `warded` step (issue #344); Phase 2 ward projection; Phase 3 roll-input accounting; Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier; Phase 4b-pre synthesises each live Bitter Leech tick as a persistent_modifier_transfer pair, then negates a tick pair landing on a warded victim (issue #344); Phase 4b re-derives room_players.modifier = base + persistent spell delta for every player a transfer / spend cast touched this round (issue #311); Phase 5 brewer selection. Emits the Resolution Trace. In a replay generation (replay_generation > 0) it also emits a `roll-frozen` step for each roller whose roll _rr_scrap_round carried over for a roll-domain ward (issue #351). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';
+  'Authoritative layer-0 outcome resolver (issues #305-#311 / #342 / #344 / #351, ADR 0005): Phase 1 negate / redirect / backfire; a Pre-pass re-asserts whole-group negation on a ward-blocked Chai-nge / Tea Leaf / Spillage / Bes-Tea and emits its `warded` step (issue #344); Phase 2 ward projection; Phase 3 roll-input accounting; Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier; Phase 4b-pre synthesises each live Bitter Leech tick as a persistent_modifier_transfer pair, then negates a tick pair landing on a warded victim (issue #344); Phase 4b re-derives room_players.modifier = base + persistent spell delta for every player a transfer / spend cast touched this round (issue #311); Phase 5 brewer selection. Emits the Resolution Trace. In a replay generation (replay_generation > 0) it also emits a `roll_frozen` step for each roller whose roll _rr_scrap_round carried over for a negative-polarity roll-domain ward (issue #351). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';

@@ -161,10 +161,10 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
     }
     case "redirect":
       return `${played} — the effect is redirected to ${t}`;
-    case "roll-frozen":
-      // Issue #351: a roll-domain ward holder's roll carried over on a Time
-      // for Brew replay — no source cast, so `played` is unused.
-      return `${t}'s roll is frozen by a roll-domain ward — no reroll on replay`;
+    case "roll_frozen":
+      // Issue #351: on a Time for Brew replay, a negative-polarity roll-domain
+      // ward holder keeps their generation-0 roll — no source cast on the step.
+      return `${t}'s roll is held by a roll-domain ward — no reroll on replay`;
     case "warded": {
       const wardName = step.ward?.wardCardName ?? "A ward";
       if (!k) return `${wardName} wards ${t} — no modifier gained as brewer`;
@@ -183,9 +183,10 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
 
 function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState } {
   if (step.negated) return { label: "negated", kind: "negated" };
-  // Issue #351: `roll-frozen` is a before === after marker (6-arg _rr_trace_step
-  // ⇒ outcome "no-op"), but it is not a zero-impact effect — the roll was held.
-  if (step.displayKind === "roll-frozen") return { label: "frozen", kind: "applied" };
+  // Issue #351: `roll_frozen` is a before === after step — the roll was held,
+  // not moved — so it shares the muted "no-op" styling; the "frozen" label and
+  // the sentence carry why.
+  if (step.displayKind === "roll_frozen") return { label: "frozen", kind: "no-op" };
   if (step.displayKind === "contested_negate" && step.after.type === "status") {
     const v = String(step.after.value ?? "");
     if (v === CONTEST_BACKFIRED) return { label: "backfired", kind: "backfired" };
