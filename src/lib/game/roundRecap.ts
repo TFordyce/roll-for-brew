@@ -104,7 +104,13 @@ const CONTEST_COUNTERED = "countered";
 const CONTEST_BACKFIRED = "backfired";
 const CONTEST_NO_EFFECT = "no effect";
 
-const OUTCOME_KINDS = new Set(["declared_number_tea_maker", "tea_maker_override"]);
+const OUTCOME_KINDS = new Set([
+  "declared_number_tea_maker",
+  "tea_maker_override",
+  // Issue #321: a Cloud of Cream (targeting_skip) skip is a resolver-computed
+  // target-selection step, alongside the brewer-selection kinds.
+  "targeting_skip",
+]);
 
 function humanKind(kind: string): string {
   return kind.replace(/_/g, " ");
@@ -191,6 +197,11 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       if (!k) return `${wardName} wards ${t} — no modifier gained as brewer`;
       return `${wardName} wards ${t} — ${k} is blocked`;
     }
+    case "targeting_skip":
+      // Issue #321: Cloud of Cream — the holder is passed over for
+      // highest/lowest-modifier target selection; the substituted player gets
+      // their own lift / brewer step, so the skip needs no target here.
+      return `${k || "Cloud of Cream"} — ${t} is skipped for highest/lowest-modifier targeting`;
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
     case "tea_maker_override": {

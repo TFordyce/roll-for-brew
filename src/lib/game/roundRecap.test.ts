@@ -321,6 +321,36 @@ describe("buildRoundRecap", () => {
     expect(s.statusLabel).toBe("no effect");
   });
 
+  it("targeting skip (Cloud of Cream): a status→status step in the Outcome phase naming the skipped holder", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [cast({ castId: "C1", cardName: "Broken Biscuit", casterPlayerId: "ben", targetPlayerId: null, effectKind: "lowest_gains_highest_modifier", phase: "reaction" })],
+        trace: [
+          step({
+            displayKind: "targeting_skip",
+            sourceCast: { castId: null, activeEffectId: "AE1", cardName: "Cloud of Cream", casterPlayerId: "ada" },
+            targetPlayer: "ada",
+            before: { type: "status", value: "targetable" },
+            after: { type: "status", value: "skipped" },
+            outcome: "applied",
+          }),
+          step({
+            displayKind: "lowest_gains_highest_modifier",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Broken Biscuit", casterPlayerId: "ben" },
+            targetPlayer: "ben",
+            before: { type: "modifier", value: 0 },
+            after: { type: "modifier", value: 4 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const s = model.phases.flatMap((p) => p.steps)[0]!;
+    expect(s.displayKind).toBe("targeting_skip");
+    expect(s.sentence).toBe("Cloud of Cream — Ada is skipped for highest/lowest-modifier targeting");
+    expect(model.phases.find((p) => p.label === "Outcome")?.steps.some((x) => x.displayKind === "targeting_skip")).toBe(true);
+  });
+
   it("live round: pending steps in cast order, index '·', no numbers, no caption", () => {
     const casts: RoundRecapCast[] = [
       cast({ castId: "C1", cardName: "Steady Hand", casterPlayerId: "ada", targetPlayerId: "ada", phase: "preroll", onStack: true }),
