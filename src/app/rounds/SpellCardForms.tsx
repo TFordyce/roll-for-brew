@@ -10,6 +10,7 @@ import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { DispellableEffect, PendingCast } from "@/lib/supabase/spellCasts";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
+import { castTargetMode } from "@/lib/game/castTargeting";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 
 const initialState: SpellCastActionState = { status: "idle" };
@@ -68,7 +69,18 @@ export function DispelForm({
   );
 }
 
-/** The pre-roll cast form (issues #66/#67) — split out of SpellCardPanel so its cast result can render inline, and its CHOSEN_PLAYERS picker can enforce a minimum selection (issue #244). */
+/**
+ * The pre-roll cast form (issues #66/#67) — split out of SpellCardPanel so its
+ * cast result can render inline, and its CHOSEN_PLAYERS picker can enforce a
+ * minimum selection (issue #244).
+ *
+ * Target control per card is chosen by `castTargetMode` (issue #360): the
+ * effect-application rebuild's by-name OPPONENT/PLAYER cards need an explicit
+ * target at cast time (their `cast_spell_card` branch raises RFB46 with no
+ * deferred path), so they render an at-cast picker here instead of the
+ * "target chosen after declare-in" message — Stir the Pot gets its own
+ * exactly-two-other-players picker, the rest a single-target select.
+ */
 export function CastForm({
   roundId,
   held,
@@ -83,41 +95,80 @@ export function CastForm({
   const [state, formAction] = useActionState(castSpellCardAction, initialState);
   const [chosenCount, setChosenCount] = useState(0);
 
-  const isChosenPlayers = held.target === "CHOSEN_PLAYERS";
+  const mode = castTargetMode(held);
+  const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
+
+  // The checkbox picker is shared by the blanket CHOSEN_PLAYERS flow and Stir
+  // the Pot's exactly-two-others flow; only the count rule and copy differ.
+  const isTwoOthers = mode === "two-other-players";
+  const isChosenPlayers = mode === "chosen-players";
   const belowMinimum = isChosenPlayers && chosenCount < MIN_CHOSEN_PLAYERS;
+  const needsExactlyTwo = isTwoOthers && chosenCount !== 2;
+  const disableSubmit = belowMinimum || needsExactlyTwo;
 
   return (
     <form action={formAction} className="mt-3">
       <input type="hidden" name="roundId" value={roundId} />
-      {held.target === "OPPONENT" || held.target === "PLAYER" ? (
+      {mode === "deferred-target" ? (
         <p className="mb-2 font-body text-xs text-parchment-dim">
           Target is chosen once declare-in closes and the roster is final.
         </p>
-      ) : isChosenPlayers ? (
+      ) : mode === "at-cast-target" ? (
+        <label className="mb-2 block font-body text-xs text-parchment-dim">
+          Choose a target:
+          <select
+            name="targetPlayerId"
+            required
+            defaultValue=""
+            className="mt-1 w-full rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 text-sm text-parchment focus:border-gilt focus:outline-none"
+          >
+            <option value="" disabled>
+              Select a player…
+            </option>
+            {otherParticipants.map((p) => (
+              <option key={p.playerId} value={p.playerId}>
+                {p.displayName ?? p.email}
+              </option>
+            ))}
+          </select>
+          <span className="mt-1 block font-body text-xs text-parchment-dim">
+            You name the target now, so you can only cast this once that player has declared in.
+          </span>
+        </label>
+      ) : isChosenPlayers || isTwoOthers ? (
         <fieldset className="mb-2">
-          <legend className="mb-1 font-body text-xs text-parchment-dim">Choose up to 3 players:</legend>
+          <legend className="mb-1 font-body text-xs text-parchment-dim">
+            {isTwoOthers ? "Choose exactly 2 other players:" : "Choose up to 3 players:"}
+          </legend>
           <div className="flex flex-col gap-1">
-            {participants
-              .filter((p) => p.playerId !== selfPlayerId)
-              .map((p) => (
-                <label key={p.playerId} className="flex items-center gap-2 font-body text-sm text-parchment">
-                  <input
-                    type="checkbox"
-                    name="chosenPlayerIds"
-                    value={p.playerId}
-                    onChange={(e) => setChosenCount((count) => count + (e.target.checked ? 1 : -1))}
-                  />
-                  {p.displayName ?? p.email}
-                </label>
-              ))}
+            {otherParticipants.map((p) => (
+              <label key={p.playerId} className="flex items-center gap-2 font-body text-sm text-parchment">
+                <input
+                  type="checkbox"
+                  name="chosenPlayerIds"
+                  value={p.playerId}
+                  onChange={(e) => setChosenCount((count) => count + (e.target.checked ? 1 : -1))}
+                />
+                {p.displayName ?? p.email}
+              </label>
+            ))}
           </div>
-          {belowMinimum ? (
+          {needsExactlyTwo ? (
+            <p className="mt-1 font-body text-xs text-parchment-dim">
+              Choose exactly 2 other players ({chosenCount} selected).
+            </p>
+          ) : belowMinimum ? (
             <p className="mt-1 font-body text-xs text-parchment-dim">
               Choose at least {MIN_CHOSEN_PLAYERS} player{MIN_CHOSEN_PLAYERS === 1 ? "" : "s"}.
             </p>
           ) : null}
+          {isTwoOthers ? (
+            <p className="mt-1 font-body text-xs text-parchment-dim">
+              You name both targets now, so you can only cast this once they have declared in.
+            </p>
+          ) : null}
         </fieldset>
-      ) : held.effectKind === "declared_number_tea_maker" ? (
+      ) : mode === "declared-number" ? (
         <label className="mb-2 block font-body text-xs text-parchment-dim">
           Declare a number (1–20):
           <input
@@ -131,7 +182,7 @@ export function CastForm({
         </label>
       ) : null}
       <CastErrorMessage state={state} />
-      <SubmitButton className={buttonClassName} disabled={belowMinimum}>
+      <SubmitButton className={buttonClassName} disabled={disableSubmit}>
         Cast {held.cardName}
       </SubmitButton>
     </form>
