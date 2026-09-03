@@ -153,6 +153,11 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       return `${played} — ${t}'s die is flipped`;
     case "roll_swap":
       return `${played} — ${t}'s die is swapped`;
+    case "roll_pair_transform":
+      // Issue #318: the chosen-pair op rides along as a 7-arg Trace extra.
+      if (step.pairOp === "min") return `${played} — ${t} takes the lower of the linked pair`;
+      if (step.pairOp === "max") return `${played} — ${t} takes the higher of the linked pair`;
+      return `${played} — ${t}'s die is swapped with the linked player`;
     case "fixed_roll":
       return `${played} — ${t}'s die is fixed`;
     case "flat_modifier":

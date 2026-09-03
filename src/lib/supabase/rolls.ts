@@ -298,6 +298,8 @@ export type ResolutionTraceStep = {
   ward: { wardCastId: string | null; wardCardName: string | null } | null;
   /** Issue #311: a persistent (rest-of-day) modifier transfer/spend step. */
   restOfDay: boolean;
+  /** Issue #318: chosen-pair roll transform op — "swap" | "min" | "max". */
+  pairOp: string | null;
   /**
    * Issue #319: conditional-advantage (Gambler's Infusion) detail — the first
    * die and which branch it selected. null on every other step.
@@ -359,6 +361,7 @@ type RawTraceStep = {
   ward_cast_id?: string | null;
   ward_card_name?: string | null;
   rest_of_day?: boolean;
+  op?: string | null;
   // Issue #319: a conditional-advantage step (Gambler's Infusion) — which
   // branch the caster's first die selected, and the thresholds it was tested
   // against. Absent on every other step.
@@ -406,6 +409,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
         ? { wardCastId: raw.ward_cast_id ?? null, wardCardName: raw.ward_card_name ?? null }
         : null,
     restOfDay: raw.rest_of_day ?? false,
+    pairOp: raw.op ?? null,
     condition: raw.condition
       ? {
           firstDie: raw.condition.first_die,

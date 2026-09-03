@@ -17,6 +17,7 @@ import { recordPendingRoundReplay } from "@/lib/supabase/roundReplay";
 import {
   applyForcedReroll,
   applyRollFlip,
+  applyRollPairTransform,
   applyRollSwap,
   getForcedRerollTargets,
   hasActiveCastKind,
@@ -161,6 +162,7 @@ export type FinalizeReactionWindowDeps = {
   hasActiveCastKind: typeof hasActiveCastKind;
   applyRollFlip: typeof applyRollFlip;
   applyRollSwap: typeof applyRollSwap;
+  applyRollPairTransform: typeof applyRollPairTransform;
   applyLayerOutcome: typeof applyLayerOutcome;
 };
 
@@ -171,6 +173,7 @@ const defaultFinalizeDeps: FinalizeReactionWindowDeps = {
   hasActiveCastKind,
   applyRollFlip,
   applyRollSwap,
+  applyRollPairTransform,
   applyLayerOutcome,
 };
 
@@ -178,10 +181,11 @@ const defaultFinalizeDeps: FinalizeReactionWindowDeps = {
  * Runs once a layer's reaction window has closed (every eligible Reaction-
  * card holder passed in the same poll round, or nobody was eligible to begin
  * with): applies any still-active forced_reroll effects in place on the
- * layer's own rolls (Double Dunk, Milk First?, ...), then the two remaining
- * table-wide roll-transform effects (0033: Zariel's Fall/roll_flip, Dunkin
- * Disaster/roll_swap), in that fixed order — "flip before swap", the
- * documented tie of record for a player hit by both. Each apply_* RPC now
+ * layer's own rolls (Double Dunk, Milk First?, ...), then the remaining
+ * roll-transform effects (0033: Zariel's Fall/roll_flip, Dunkin
+ * Disaster/roll_swap; 0096: the chosen-pair transforms/roll_pair_transform),
+ * in that fixed order — "flip before swap before chosen-pair", the documented
+ * tie of record for a player hit by more than one. Each apply_* RPC now
  * also records its exact before→after into spell_casts.cast_inputs
  * (migration 0079, issue #306); resolve_round rebuilds every roller's final
  * roll from those recorded values, so the in-memory `rolls` patching below
@@ -222,6 +226,12 @@ export async function finalizeReactionWindow(
   }
   if (await deps.hasActiveCastKind(supabase, roundId, layer, "roll_swap")) {
     applyChanges(await deps.applyRollSwap(supabase, roundId, layer));
+  }
+  // Issue #318: chosen-pair roll transform (Brew-tal Swap / Stir the Pot /
+  // Steaming Mug Bond / Tea for Two) — order 5, after the automatic
+  // highest↔lowest roll_swap.
+  if (await deps.hasActiveCastKind(supabase, roundId, layer, "roll_pair_transform")) {
+    applyChanges(await deps.applyRollPairTransform(supabase, roundId, layer));
   }
 
   await deps.applyLayerOutcome(supabase, roundId, { ...completedLayer, rolls });
