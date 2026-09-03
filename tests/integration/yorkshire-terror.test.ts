@@ -1,20 +1,15 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
-import { STALL_TIMEOUT_MS } from "../../src/lib/game/stallTimeout";
+import { afterDeferredCastTargetSet } from "../../src/app/rounds/roundActionHelpers";
 import {
   createTestAdminClient,
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  stallTimeoutFuture as future,
 } from "./setup";
-
-// enforceStallTimeout's `now` is injected as a fixed instant just past the
-// 5-minute closed-round window so the timer fires without a real wait.
-function future() {
-  return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
-}
 
 // Runs against a real, dedicated test Supabase project. Covers issue #286:
 // Yorkshire Terror (Common, OPPONENT, Action) — "Choose a target. After they
@@ -271,53 +266,46 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     });
     expect((unblocked as { player_id: string }[]).length).toBe(3);
 
-    // The same finalize sequence resolveCompletedLayerIfAny now re-drives:
-    // no eligible reaction holder, so the window self-closes, and
-    // open_reaction_window attaches the (no-longer-pending) forced_reroll
-    // cast so it applies.
-    const { data: openData, error: openError } = await caster.client.rpc("open_reaction_window", {
-      p_round_id: roundId,
-      p_layer: 0,
-    });
-    expect(openError).toBeNull();
-    expect((openData as { is_closed: boolean }[])[0]!.is_closed).toBe(true);
+    // Drive the exact app glue setSpellCastTargetAction now runs after
+    // set_spell_cast_target: no window exists yet (resolveCompletedLayerIfAny
+    // bailed at the gate on the completing roll), so it opens one, which
+    // self-closes with no eligible reactor and finalises — attaching the
+    // no-longer-pending forced_reroll cast and resolving the round.
+    await afterDeferredCastTargetSet(caster.client, roundId as string);
 
-    const { data: targets } = await caster.client.rpc("get_forced_reroll_targets", {
-      p_round_id: roundId,
-      p_layer: 0,
-    });
-    expect((targets as { target_player_id: string }[]).map((r) => r.target_player_id)).toEqual([
-      target.googleSub,
-    ]);
+    const { data: resolvedRound } = await admin
+      .from("rounds")
+      .select("status, resolution_trace")
+      .eq("id", roundId)
+      .single();
+    expect(resolvedRound!.status).toBe("resolved");
 
-    const { data: newValue, error: applyError } = await caster.client.rpc("apply_forced_reroll", {
-      p_round_id: roundId,
-      p_layer: 0,
-      p_player_id: target.googleSub,
-    });
-    expect(applyError).toBeNull();
+    // The target's layer-0 roll was actually rerolled in place...
+    const { data: targetRoll } = await admin
+      .from("rolls")
+      .select("value")
+      .eq("round_id", roundId)
+      .eq("player_id", target.googleSub)
+      .eq("layer", 0)
+      .single();
+    expect(targetRoll!.value).not.toBe(4);
+    expect(targetRoll!.value).toBeGreaterThanOrEqual(1);
+    expect(targetRoll!.value).toBeLessThanOrEqual(20);
 
-    // The eventual reroll shows in the Resolution Trace as one forced_reroll
-    // step with typed before -> after roll values. resolve_round(uuid) is
-    // granted to `authenticated`, so call it as a player, not the admin.
-    const { data: outcome, error: resolveError } = await caster.client.rpc("resolve_round", {
-      p_round_id: roundId,
-    });
-    expect(resolveError).toBeNull();
+    // ...and it shows in the persisted Resolution Trace as one forced_reroll
+    // step with typed before -> after roll values.
     const rerollSteps = (
-      outcome as {
-        trace: {
-          display_kind: string;
-          target_player: string | null;
-          before: { type: string; value: number };
-          after: { type: string; value: number };
-        }[];
-      }
-    ).trace.filter((s) => s.display_kind === "forced_reroll");
+      (resolvedRound!.resolution_trace ?? []) as {
+        display_kind: string;
+        target_player: string | null;
+        before: { type: string; value: number };
+        after: { type: string; value: number };
+      }[]
+    ).filter((s) => s.display_kind === "forced_reroll");
     expect(rerollSteps).toHaveLength(1);
     expect(rerollSteps[0]!.target_player).toBe(target.googleSub);
     expect(rerollSteps[0]!.before).toEqual({ type: "roll", value: 4 });
-    expect(rerollSteps[0]!.after).toEqual({ type: "roll", value: newValue });
+    expect(rerollSteps[0]!.after).toEqual({ type: "roll", value: targetRoll!.value });
   });
 
   it("never-resolvable deferred target is force-negated by the stall timer as a recorded no-op (issue #325)", async () => {

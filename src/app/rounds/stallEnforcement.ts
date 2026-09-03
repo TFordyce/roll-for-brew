@@ -102,6 +102,9 @@ export async function enforceStallTimeout(
         if (completedLayer) {
           await applyLayerOutcome(supabase, roundId, completedLayer);
         }
+        // Both shapes can be outstanding on one round; the outcome is a
+        // single label for page.tsx's "did anything happen" check, so report
+        // the rarer forced_reroll recovery when it fired.
         return abandonedRerolls > 0
           ? { action: "deferredForcedRerollAbandoned" }
           : { action: "diceAutoResolved" };

@@ -30,7 +30,8 @@
 --
 -- The fix
 -- -------
--- Layer 0 is not "complete" while an un-negated forced_reroll cast for the
+-- Layer 0 is not "complete" while an un-negated, not-yet-window-attached
+-- (reaction_window_id is null -- i.e. pre-roll) forced_reroll cast for the
 -- round still has target_pending = true -- the same gate shape the pending
 -- dice_modifier cast (issue #252) already uses in these two functions.
 -- resolveCompletedLayerIfAny / finalizeReactionWindow both no-op until the
@@ -128,6 +129,7 @@ begin
        and effect_kind = 'forced_reroll'
        and target_pending = true
        and negated = false
+       and reaction_window_id is null
   ) then
     return;
   end if;
@@ -195,6 +197,7 @@ begin
        and effect_kind = 'forced_reroll'
        and target_pending = true
        and negated = false
+       and reaction_window_id is null
   ) then
     return;
   end if;
@@ -223,33 +226,27 @@ grant execute on function public.get_completed_layer_rolls_for_stall_resolution(
 -- Returns how many casts it negated, so the caller only re-runs layer
 -- resolution when there was something to recover.
 -- ---------------------------------------------------------------------------
-create function public.resolve_stalled_pending_forced_reroll_casts(p_round_id uuid)
+create or replace function public.resolve_stalled_pending_forced_reroll_casts(p_round_id uuid)
 returns integer
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_cast record;
-  v_count integer := 0;
+  v_count integer;
 begin
-  for v_cast in
-    select id from public.spell_casts
-     where round_id = p_round_id
-       and effect_kind = 'forced_reroll'
-       and target_pending = true
-       and negated = false
-       for update
-  loop
-    update public.spell_casts
-       set negated = true,
-           target_pending = false,
-           cast_inputs = coalesce(cast_inputs, '{}'::jsonb)
-             || jsonb_build_object('deferred_target_abandoned', true)
-     where id = v_cast.id;
-    v_count := v_count + 1;
-  end loop;
+  update public.spell_casts
+     set negated = true,
+         target_pending = false,
+         cast_inputs = coalesce(cast_inputs, '{}'::jsonb)
+           || jsonb_build_object('deferred_target_abandoned', true)
+   where round_id = p_round_id
+     and effect_kind = 'forced_reroll'
+     and target_pending = true
+     and negated = false
+     and reaction_window_id is null;
 
+  get diagnostics v_count = row_count;
   return v_count;
 end;
 $$;

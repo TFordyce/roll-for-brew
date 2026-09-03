@@ -1,8 +1,18 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { STALL_TIMEOUT_MS } from "../../src/lib/game/stallTimeout";
 
 export const TEST_URL = process.env.SUPABASE_TEST_URL;
 export const TEST_ANON_KEY = process.env.SUPABASE_TEST_ANON_KEY;
 export const TEST_SERVICE_ROLE_KEY = process.env.SUPABASE_TEST_SERVICE_ROLE_KEY;
+
+/**
+ * A fixed instant just past the 5-minute closed-round stall window, for
+ * enforceStallTimeout's injectable `now` — lets a stall-timeout test fire
+ * the timer without sleeping ~5 minutes for real.
+ */
+export function stallTimeoutFuture(): Date {
+  return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
+}
 
 export const hasTestEnv = Boolean(TEST_URL && TEST_SERVICE_ROLE_KEY);
 export const hasAnonTestEnv = Boolean(hasTestEnv && TEST_ANON_KEY);
