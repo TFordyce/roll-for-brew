@@ -124,8 +124,9 @@ export async function signUpSignInAndEnterRoom(
  * Teapot, Brew-merang (#316, migration 0093) — the four chosen-pair
  * roll-transform cards — Brew-tal Swap, Stir the Pot, Steaming Mug Bond, Tea
  * for Two (#318, migration 0096) — Gambler's Infusion (conditional advantage,
- * #319, migration 0095) — and the two fixed-roll cards — Steady Hand,
- * Sleeping Camomile (#317, migration 0094) — are now live, so 18 remain here.
+ * #319, migration 0095) — the two fixed-roll cards — Steady Hand,
+ * Sleeping Camomile (#317, migration 0094) — and Prophe-Tea (persistent
+ * advantage, #320, migration 0097) — are now live, so 17 remain here.
  * A test that force-holds one of these must return it to the bench, not the
  * deck, on cleanup — releaseHeldCards below does that.
  */
@@ -138,7 +139,7 @@ export const BENCHED_SPELL_CARDS = [
   "Marked for Brew",
   "Loaf of Lipton", "Brew IOU", "Tea Heist",
   "Stale Biscuit", "Liquid Courage",
-  "The Last Cuppa", "Earl of Earl Grey", "Prophe-Tea",
+  "The Last Cuppa", "Earl of Earl Grey",
   "Brewmageddon",
   // Dead effect kind (2)
   "Cloud of Cream", "Kettle Crash",
