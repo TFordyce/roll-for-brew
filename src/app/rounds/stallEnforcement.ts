@@ -8,6 +8,7 @@ import {
   getCurrentLayerRollerIds,
   getExpectedLayerRollerIds,
   getLayerEnteredAt,
+  resolveStalledPendingForcedRerollCasts,
   resolveStalledPendingSpellDice,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
@@ -17,7 +18,8 @@ export type StallOutcome =
   | { action: "none" }
   | { action: "cancelled" }
   | { action: "excluded"; playerIds: string[] }
-  | { action: "diceAutoResolved" };
+  | { action: "diceAutoResolved" }
+  | { action: "deferredForcedRerollAbandoned" };
 
 /**
  * Lazy check-on-read stall-timeout enforcement (issue #21): called from
@@ -36,17 +38,20 @@ export type StallOutcome =
  *    players' resolution proceed.
  *  - status 'closed', layer 0, every expected roller already rolled but a
  *    Pending Spell Die (issue #252, e.g. Cold Tea/Slipped Spoon's caster)
- *    is still unresolved -> auto-resolve it and let resolution proceed. Not
- *    a fourth independent clock — it's this same 5-minute-since-closed
- *    timer catching a stall shape the "did they roll" check above can't see
- *    (the caster already rolled; they just never gave their die a value).
- *    In practice this is the recovery path for a *pre-roll* pending die
- *    (Cold Tea/Slipped Spoon) — a Reaction-timed one (Six Sugars) is usually
- *    already resolved by the time its still-open reaction window would
- *    otherwise leave this same query blocked, but resolving it here too if
- *    it somehow isn't is harmless: applyLayerOutcome below is exactly what
- *    the ordinary (non-stalled) reaction-window-closes path already calls
- *    too, just via finalizeReactionWindow instead of directly.
+ *    is still unresolved, or a pre-roll forced_reroll cast (issue #325,
+ *    Yorkshire Terror) is still awaiting its deferred target -> auto-resolve
+ *    / force-negate it and let resolution proceed. Not a fourth independent
+ *    clock — it's this same 5-minute-since-closed timer catching stall
+ *    shapes the "did they roll" check above can't see (the caster already
+ *    rolled; they just never gave their die a value, or never named their
+ *    reroll's target). In practice the pending-die case is the recovery path
+ *    for a *pre-roll* pending die (Cold Tea/Slipped Spoon) — a Reaction-
+ *    timed one (Six Sugars) is usually already resolved by the time its
+ *    still-open reaction window would otherwise leave this same query
+ *    blocked, but resolving it here too if it somehow isn't is harmless:
+ *    applyLayerOutcome below is exactly what the ordinary (non-stalled)
+ *    reaction-window-closes path already calls too, just via
+ *    finalizeReactionWindow instead of directly.
  * Any exclusion that drops the layer's active (non-excluded) participant
  * count below 2 cancels the round outright instead of resolving it.
  */
@@ -85,13 +90,24 @@ export async function enforceStallTimeout(
     // nothing to do here, so this is the recovery path for that shape
     // instead (see this function's own doc comment above).
     if (layer === 0) {
-      const resolvedCount = await resolveStalledPendingSpellDice(supabase, roundId);
-      if (resolvedCount > 0) {
+      // Two shapes the "did they roll" check above can't see, both cleared
+      // by this same 5-minute timer: a Pending Spell Die never given a value
+      // (issue #252), and a pre-roll forced_reroll cast whose caster never
+      // named its deferred target (issue #325). Recover whichever is
+      // outstanding, then let resolution proceed.
+      const resolvedDice = await resolveStalledPendingSpellDice(supabase, roundId);
+      const abandonedRerolls = await resolveStalledPendingForcedRerollCasts(supabase, roundId);
+      if (resolvedDice > 0 || abandonedRerolls > 0) {
         const completedLayer = await getCompletedLayerRollsForStallResolution(supabase, roundId);
         if (completedLayer) {
           await applyLayerOutcome(supabase, roundId, completedLayer);
         }
-        return { action: "diceAutoResolved" };
+        // Both shapes can be outstanding on one round; the outcome is a
+        // single label for page.tsx's "did anything happen" check, so report
+        // the rarer forced_reroll recovery when it fired.
+        return abandonedRerolls > 0
+          ? { action: "deferredForcedRerollAbandoned" }
+          : { action: "diceAutoResolved" };
       }
     }
     return { action: "none" };

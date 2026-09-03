@@ -1,8 +1,18 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { STALL_TIMEOUT_MS } from "../../src/lib/game/stallTimeout";
 
 export const TEST_URL = process.env.SUPABASE_TEST_URL;
 export const TEST_ANON_KEY = process.env.SUPABASE_TEST_ANON_KEY;
 export const TEST_SERVICE_ROLE_KEY = process.env.SUPABASE_TEST_SERVICE_ROLE_KEY;
+
+/**
+ * A fixed instant just past the 5-minute closed-round stall window, for
+ * enforceStallTimeout's injectable `now` — lets a stall-timeout test fire
+ * the timer without sleeping ~5 minutes for real.
+ */
+export function stallTimeoutFuture(): Date {
+  return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
+}
 
 export const hasTestEnv = Boolean(TEST_URL && TEST_SERVICE_ROLE_KEY);
 export const hasAnonTestEnv = Boolean(hasTestEnv && TEST_ANON_KEY);
@@ -114,26 +124,26 @@ export async function signUpSignInAndEnterRoom(
 /**
  * The non-working spell cards still parked at location 'benched' (migration
  * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
- * each card is implemented and un-benched: 0074 benched 39; Saving Steep
- * (#308, migration 0081), the four ward cards — Jinxed Biscuit, Cast-Iron
- * Kettle, Bag for Life, Eternal Steep (#309, migration 0082) — the three
- * round-scoped modifier snapshot cards — Bes-Tea, Tea Leaf, Spillage (#343,
- * migration 0087) — and the three durable persistent-modifier cards —
- * Chai-nge of Heart, Tea-tally Spent, Bitter Leech (#342, migration 0088) —
- * the three Effect Invocation cards — Saucerer's Apprentice, Genie in the
- * Teapot, Brew-merang (#316, migration 0093) — the four chosen-pair
- * roll-transform cards — Brew-tal Swap, Stir the Pot, Steaming Mug Bond, Tea
- * for Two (#318, migration 0096) — Gambler's Infusion (conditional advantage,
- * #319, migration 0095) — the two fixed-roll cards — Steady Hand,
- * Sleeping Camomile (#317, migration 0094) — and Prophe-Tea (persistent
- * advantage, #320, migration 0097) — are now live, so 17 remain here.
- * A test that force-holds one of these must return it to the bench, not the
- * deck, on cleanup — releaseHeldCards below does that.
+ * each card is implemented and un-benched: 0074 benched 39; Yorkshire Terror
+ * (#286, migration 0075), Saving Steep (#308, migration 0081), the four ward
+ * cards — Jinxed Biscuit, Cast-Iron Kettle, Bag for Life, Eternal Steep
+ * (#309, migration 0082) — the three round-scoped modifier snapshot cards —
+ * Bes-Tea, Tea Leaf, Spillage (#343, migration 0087) — the three durable
+ * persistent-modifier cards — Chai-nge of Heart, Tea-tally Spent, Bitter
+ * Leech (#342, migration 0088) — the three Effect Invocation cards —
+ * Saucerer's Apprentice, Genie in the Teapot, Brew-merang (#316, migration
+ * 0093) — the four chosen-pair roll-transform cards — Brew-tal Swap, Stir the
+ * Pot, Steaming Mug Bond, Tea for Two (#318, migration 0096) — Gambler's
+ * Infusion (conditional advantage, #319, migration 0095) — the two
+ * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
+ * and Prophe-Tea (persistent advantage, #320, migration 0097) — are now
+ * live, so 16 remain here. A test that force-holds one of these must
+ * return it to the bench, not the deck, on cleanup — releaseHeldCards below
+ * does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
   "Tea Party Revolt", "Last Drip",
-  "Yorkshire Terror",
   "Tea Cosy",
   "Loose Leaf", "PG Tipped",
   "Marked for Brew",
