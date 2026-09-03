@@ -34,7 +34,9 @@
 -- "ward projection lives in the resolver" end state.
 --
 -- Migration numbering: master's highest after the rebuild/effect-resolver
--- merge (PR #364) and the 0099 fix (PR #365) is 0099. This is 0100.
+-- merge (PR #364) and the 0099 fix (PR #365) is 0099. Issue #289 (Calami-Tea)
+-- already claims 0100 on an unmerged branch, so this takes 0101. Re-verify at
+-- the #303 integrate-and-verify gate before the master merge.
 
 -- ---------------------------------------------------------------------------
 -- submit_roll(uuid)
