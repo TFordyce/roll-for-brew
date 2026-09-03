@@ -61,22 +61,12 @@ update public.spell_deck_instances sdi
 update public.spell_cards set duration_rounds = 2 where name = 'Cloud of Cream';
 
 -- ---------------------------------------------------------------------------
--- 3. Effect row: one CASTER-role `targeting_skip` row (replaces any prior
---    row; 0083 already deleted the retired hidden_modifier one).
--- ---------------------------------------------------------------------------
-delete from public.spell_card_effects
- where card_id in (select id from public.spell_cards where name = 'Cloud of Cream');
-
-insert into public.spell_card_effects (card_id, target_role, effect_kind, effect_params, ordinal)
-select id, 'CASTER', 'targeting_skip', '{}'::jsonb, 0
-  from public.spell_cards where name = 'Cloud of Cream';
-
--- ---------------------------------------------------------------------------
--- 4. effect_kind CHECK constraints -- add `targeting_skip` to all three.
---    spell_active_effects needs it (the flag lives there); the other two
---    for consistency with spec §15/§16 which widen the constraints together.
---    Lists carried forward from 0096 (spell_card_effects / spell_casts,
---    including `fixed_roll` / `roll_pair_transform`) and 0083
+-- 3. effect_kind CHECK constraints -- add `targeting_skip` to all three.
+--    Must run BEFORE the effect-row insert below, or that insert trips the
+--    old constraint. spell_active_effects needs it (the flag lives there);
+--    the other two for consistency with spec §15/§16 which widen the
+--    constraints together. Lists carried forward from 0096 (spell_card_effects
+--    / spell_casts, including `fixed_roll` / `roll_pair_transform`) and 0083
 --    (spell_active_effects).
 -- ---------------------------------------------------------------------------
 alter table public.spell_card_effects drop constraint spell_card_effects_effect_kind_check;
@@ -114,6 +104,18 @@ alter table public.spell_active_effects add constraint spell_active_effects_effe
     'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
     'round_replay', 'draw_redirect', 'targeting_skip'
   ));
+
+-- ---------------------------------------------------------------------------
+-- 4. Effect row: one CASTER-role `targeting_skip` row (replaces any prior
+--    row; 0083 already deleted the retired hidden_modifier one). Runs after
+--    section 3 so the widened constraint is already in place.
+-- ---------------------------------------------------------------------------
+delete from public.spell_card_effects
+ where card_id in (select id from public.spell_cards where name = 'Cloud of Cream');
+
+insert into public.spell_card_effects (card_id, target_role, effect_kind, effect_params, ordinal)
+select id, 'CASTER', 'targeting_skip', '{}'::jsonb, 0
+  from public.spell_cards where name = 'Cloud of Cream';
 
 -- ---------------------------------------------------------------------------
 -- 5. resolve_round(uuid) -- re-emitted from 0097's body (persistent advantage,
