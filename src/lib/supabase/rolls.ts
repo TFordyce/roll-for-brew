@@ -310,6 +310,11 @@ export type ResolutionTraceStep = {
     advantageAtOrAbove: number;
     disadvantageAtOrBelow: number;
   } | null;
+  /**
+   * Issue #289: per-round dice tick (Calami-Tea) detail — the die size and the
+   * value actually rolled against the roll this round. null on every other step.
+   */
+  diceTick: { die: number | null; rolled: number } | null;
 };
 
 /**
@@ -371,6 +376,10 @@ type RawTraceStep = {
     advantage_at_or_above: number;
     disadvantage_at_or_below: number;
   } | null;
+  // Issue #289: a per_round_dice_tick step (Calami-Tea) — the die size and the
+  // value rolled against the roll this round. Absent on every other step.
+  die?: number | null;
+  rolled?: number | null;
 };
 
 type RawResolveRoundOutcome = {
@@ -418,6 +427,8 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
           disadvantageAtOrBelow: raw.condition.disadvantage_at_or_below,
         }
       : null,
+    diceTick:
+      raw.rolled != null ? { die: raw.die ?? null, rolled: raw.rolled } : null,
   };
 }
 

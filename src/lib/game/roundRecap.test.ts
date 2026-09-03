@@ -56,6 +56,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     restOfDay: false,
     pairOp: null,
     condition: null,
+    diceTick: null,
     ...overrides,
   };
 }
@@ -349,6 +350,51 @@ describe("buildRoundRecap", () => {
     expect(s.displayKind).toBe("targeting_skip");
     expect(s.sentence).toBe("Cloud of Cream — Ada is skipped for highest/lowest-modifier targeting");
     expect(model.phases.find((p) => p.label === "Outcome")?.steps.some((x) => x.displayKind === "targeting_skip")).toBe(true);
+  });
+
+  it("per-round dice tick (Calami-Tea): sentence names the rolled die, not the before→after delta", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [cast({ castId: "C1", cardName: "Calami-Tea", casterPlayerId: "ada", targetPlayerId: "cass", effectKind: "per_round_dice_tick" })],
+        trace: [
+          step({
+            displayKind: "dice_tick",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Calami-Tea", casterPlayerId: "ada" },
+            targetPlayer: "cass",
+            before: { type: "roll", value: 14 },
+            after: { type: "roll", value: 11 },
+            outcome: "applied",
+            diceTick: { die: 4, rolled: 3 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const s = model.phases.flatMap((p) => p.steps)[0]!;
+    expect(s.sentence).toBe("Ada played Calami-Tea — Cass subtracts 3 from their roll");
+    expect(s.beforeAfter).toEqual({ label: "roll", from: "14", to: "11", unchanged: false });
+  });
+
+  it("per-round dice tick: names the true rolled die even when the roll floors at 1 (delta would under-report)", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [cast({ castId: "C1", cardName: "Calami-Tea", casterPlayerId: "ada", targetPlayerId: "cass", effectKind: "per_round_dice_tick" })],
+        trace: [
+          step({
+            displayKind: "dice_tick",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Calami-Tea", casterPlayerId: "ada" },
+            targetPlayer: "cass",
+            before: { type: "roll", value: 3 },
+            after: { type: "roll", value: 1 }, // floored: 3 - 4 -> 1, delta only 2
+            outcome: "applied",
+            diceTick: { die: 4, rolled: 4 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const s = model.phases.flatMap((p) => p.steps)[0]!;
+    expect(s.sentence).toBe("Ada played Calami-Tea — Cass subtracts 4 from their roll");
   });
 
   it("live round: pending steps in cast order, index '·', no numbers, no caption", () => {
