@@ -1,127 +1,691 @@
--- Tier A primitive 5 -- Targeting skip (issue #321, child of the
--- effect-application rebuild spec #302 / ADR 0005).
+-- Persistent advantage (Prophe-Tea) -- Tier A primitive 4 of the
+-- effect-application rebuild (issue #320, spec #302 sections 5 / 12 / 16,
+-- ADR 0005).
 --
--- Cloud of Cream (v2, Common, SELF, Action): "For the next 2 rounds, cards
--- that target the highest or lowest modifier can skip you and apply to the
--- next player instead."
+-- Prophe-Tea ("For the rest of the day, you roll every round with advantage.")
+-- becomes a rest-of-day `advantage` that lives as a spell_active_effects
+-- projection row, not a per-round spell_casts row. Everything the round-scoped
+-- advantage cards (Sugar Rush / Fortune's Flavour / Slipped Spoon) already do
+-- is reused; the only new machinery is:
 --
--- Model: a per-player flag carried as a persistent `spell_active_effects`
--- row (new effect_kind `targeting_skip`, CASTER role, duration 2 rounds).
--- resolve_round consults it in exactly two target-selection spots and
--- nowhere else (spec §12, primitive 5 -- "targeting, not the modifier
--- bucket"):
+--   1. record_active_effect_if_persistent promotes an `advantage` /
+--      `disadvantage` effect whose card has no duration_rounds when the effect
+--      row carries effect_params.persist = true -- an unbounded projection row
+--      (rounds_remaining NULL), the same "NULL = until dispelled / end of day"
+--      shape wards got in 0082. A round-scoped advantage (no `persist` marker)
+--      still no-ops here, so Sugar Rush is untouched.
 --
---   * Phase 4c `lowest_gains_highest_modifier` (Broken Biscuit) -- BOTH
---     sides, per Tom's call:
---       - the "highest modifier" source: a skipped plain-highest roller is
---         passed over and the next-highest non-skipped roller's composed
---         modifier is used as the lift value;
---       - the lowest beneficiaries: a skipped tied-lowest roller is dropped
---         and the lift moves to the next eligible roller in roll-ascending
---         order, keeping the beneficiary count the same.
---   * Phase 5 `tea_maker_override` mode `highest_modifier` -- a skipped
---     roller is passed over and the next-highest `modifier_snapshot` roller
---     is picked as brewer.
+--   2. submit_roll / submit_roll_as fold a live persistent advantage /
+--      disadvantage projection row (via _rr_active_effects_as_of) into
+--      v_has_advantage / v_has_disadvantage, so the two-dice draw, the
+--      rolls.discarded_value write and adv/disadv cancellation all work
+--      unchanged. In the CAST round Prophe-Tea also emits an ordinary
+--      `advantage` spell_casts row (target = caster), so that round already
+--      records cast_inputs.roll_transform and gets Phase 3 negate-unwind for
+--      free; later rounds ride the projection row alone.
 --
--- If every roller is skipped, each spot falls back to the plain
--- (unfiltered) pick so resolution still completes. The flag never changes a
--- skipped player's own composed modifier, and never touches the default
--- lowest-roll+composed-modifier brewer pick or any other eligibility rule.
+--   3. resolve_round Phase 3, per roller, emits one `advantage` /
+--      `disadvantage` Trace step for a live persistent projection row BEFORE
+--      the roll_transform walk (advantage resolves at submit_roll, before the
+--      reaction window -- spec section 2), seeding v_running with the
+--      advantage-kept die so a later reaction-window transform on the same
+--      roller chains off it rather than collapsing this step to zero-impact.
+--      Skipped for a roller who also has an advantage / disadvantage
+--      spell_casts row this round (its cast round -- the walk emits that step).
+--      before -> after: after is the kept die (rolls.value, or the earliest
+--      recorded roll_transform `before` when a later transform overwrote
+--      rolls.value); before is least/greatest(kept, rolls.discarded_value) by
+--      polarity. v_rolls is never mutated -- the eager shim already kept the
+--      right die. AC note (#320): on a projection-only round there is no
+--      spell_casts row to record before -> after onto and spec section 5
+--      forbids per-round mutation of the projection row, so rolls.value +
+--      rolls.discarded_value (persisted by the shim, migration 0049/0051) are
+--      the durable record the resolver adopts here -- no RNG is re-run.
 --
--- Trace: a `targeting_skip` step (status `targetable` -> `skipped`) on the
--- skipped player's row, attributed to their own Cloud of Cream active
--- effect. The substituted player then gets their normal lift / brewer step,
--- so the Trace as a whole reflects the skip.
+--   4. rebuild_active_effects_projection's replay gate grows advantage /
+--      disadvantage so the debug rebuild reproduces the projection row.
 --
--- Un-benches Cloud of Cream (#284 / migration 0074 parked it at
--- location = 'benched'; migration 0083 removed its dead `hidden_modifier`
--- effect row).
+-- Negating the originating cast re-projects the advantage away
+-- (_rr_active_effects_as_of already filters a negated source cast, #310) and
+-- dispel ends it early through the same path -- both are covered without new
+-- code here. Roll-domain ward x advantage / disadvantage is out of scope for
+-- ALL advantage cards until #335 adds the submit_roll ward pre-check (spec
+-- section 7 lists advantage / disadvantage as in-scope; no advantage card,
+-- round-scoped or persistent, honours it yet) -- persistent advantage
+-- introduces no regression and inherits the round-scoped behaviour unchanged.
+-- A modifier-domain ward never interacts with a roll-domain advantage.
 --
--- Migration numbering: on rebuild/effect-resolver 0097 is #320 (persistent
--- advantage, merged) and 0098 is #325 (deferred forced_reroll layer-0 hold,
--- merged); this takes 0099. resolve_round here is rebased onto 0097's body
--- (0098 leaves resolve_round untouched). The #303 integrate gate re-verifies
--- branch migration numbering against master's highest before the master merge.
+-- Migration numbering: master's highest is 0077; rebuild/effect-resolver runs
+-- 0078-0096. This is 0097. Re-check at the #303 integrate-and-verify gate and
+-- renumber to sit after master's current highest.
 
 -- ---------------------------------------------------------------------------
--- 1. Un-bench Cloud of Cream. Guarded on location so this is a no-op where
---    0074 never ran; never touches an instance a player currently holds.
+-- 1. Un-bench Prophe-Tea (migration 0074 parked it at 'benched'). Guarded on
+--    location so this is a no-op if 0074 never ran and never touches an
+--    instance a player currently holds.
 -- ---------------------------------------------------------------------------
 update public.spell_deck_instances sdi
    set location = 'in_deck', held_by_player = null
   from public.spell_cards sc
  where sc.id = sdi.card_id
-   and sc.name = 'Cloud of Cream'
+   and sc.name = 'Prophe-Tea'
    and sdi.location = 'benched';
 
 -- ---------------------------------------------------------------------------
--- 2. Duration: "for the next 2 rounds" = duration_rounds 2 (cast round + 1),
---    consistent with how the ward cards map "next N rounds" to N.
+-- 2. Prophe-Tea's effect row: a CASTER-targeted `advantage` marked persistent.
+--    Prophe-Tea.duration_rounds stays NULL ("rest of the day" = unbounded);
+--    the `persist` marker is what tells record_active_effect_if_persistent to
+--    promote it to an unbounded projection row rather than treating it as a
+--    round-scoped advantage like Sugar Rush.
 -- ---------------------------------------------------------------------------
-update public.spell_cards set duration_rounds = 2 where name = 'Cloud of Cream';
+insert into public.spell_card_effects (card_id, target_role, effect_kind, effect_params)
+values (
+  (select id from public.spell_cards where name = 'Prophe-Tea'),
+  'CASTER', 'advantage', '{"persist": true}'::jsonb
+);
 
 -- ---------------------------------------------------------------------------
--- 3. Effect row: one CASTER-role `targeting_skip` row (replaces any prior
---    row; 0083 already deleted the retired hidden_modifier one).
+-- 3. record_active_effect_if_persistent -- re-emitted from 0082 with one new
+--    exception: a NULL-duration `advantage` / `disadvantage` whose effect row
+--    carries effect_params.persist = true records an unbounded projection row
+--    (rounds_remaining NULL) instead of early-returning. Everything else is
+--    byte-for-byte 0082.
 -- ---------------------------------------------------------------------------
-delete from public.spell_card_effects
- where card_id in (select id from public.spell_cards where name = 'Cloud of Cream');
+create or replace function public.record_active_effect_if_persistent(
+  p_room_id uuid, p_caster_id text, p_target_player_id text, p_card_id uuid,
+  p_effect_kind text, p_effect_params jsonb, p_source_cast_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_duration integer;
+  v_new_seq bigint;
+  v_new_round uuid;
+begin
+  select duration_rounds into v_duration
+    from public.spell_cards
+   where id = p_card_id;
 
-insert into public.spell_card_effects (card_id, target_role, effect_kind, effect_params, ordinal)
-select id, 'CASTER', 'targeting_skip', '{}'::jsonb, 0
-  from public.spell_cards where name = 'Cloud of Cream';
+  -- Non-ward persistent effects still need a positive duration; a NULL there
+  -- means "not persistent" for them (unchanged from 0032) -- EXCEPT an
+  -- advantage / disadvantage effect row explicitly marked persist = true
+  -- (issue #320: Prophe-Tea's rest-of-day advantage), which records an
+  -- unbounded row exactly as a NULL-duration ward does.
+  if v_duration is null
+     and p_effect_kind <> 'ward'
+     and not (
+       p_effect_kind in ('advantage', 'disadvantage')
+       and coalesce((p_effect_params ->> 'persist')::boolean, false)
+     )
+  then
+    return;
+  end if;
+
+  -- Ward-blocks-ward (spec section 7): a strictly earlier-seq ward on this
+  -- target whose domain AND polarity sets overlap this incoming ward
+  -- suppresses it. A ward already recorded whose source cast is in an earlier
+  -- round (or has no source cast) always counts as earlier.
+  if p_effect_kind = 'ward' then
+    select seq, round_id into v_new_seq, v_new_round
+      from public.spell_casts where id = p_source_cast_id;
+
+    if exists (
+      select 1
+        from public.spell_active_effects sae
+        left join public.spell_casts wc on wc.id = sae.source_cast_id
+       where sae.room_id = p_room_id
+         and sae.target_player_id = p_target_player_id
+         and sae.effect_kind = 'ward'
+         and public._rr_ward_wards_ward(sae.effect_params, p_effect_params)
+         and (
+           wc.id is null
+           or v_new_seq is null
+           or wc.round_id is distinct from v_new_round
+           or wc.seq < v_new_seq
+         )
+    ) then
+      return;
+    end if;
+  end if;
+
+  insert into public.spell_active_effects (
+    room_id, target_player_id, caster_id, source_cast_id, card_id,
+    effect_kind, effect_params, rounds_remaining
+  )
+  values (
+    p_room_id, p_target_player_id, p_caster_id, p_source_cast_id, p_card_id,
+    p_effect_kind, p_effect_params, v_duration   -- NULL for an unbounded ward / persistent advantage
+  );
+end;
+$$;
+
+revoke execute on function public.record_active_effect_if_persistent(uuid, text, text, uuid, text, jsonb, uuid) from public, anon;
 
 -- ---------------------------------------------------------------------------
--- 4. effect_kind CHECK constraints -- add `targeting_skip` to all three.
---    spell_active_effects needs it (the flag lives there); the other two
---    for consistency with spec §15/§16 which widen the constraints together.
---    Lists carried forward from 0096 (spell_card_effects / spell_casts,
---    including `fixed_roll` / `roll_pair_transform`) and 0083
---    (spell_active_effects).
+-- 4. submit_roll / submit_roll_as -- re-emitted from 0096 with one addition:
+--    a live persistent advantage / disadvantage projection row on the roller
+--    (_rr_active_effects_as_of) sets v_has_advantage / v_has_disadvantage the
+--    same way a round-scoped advantage spell_casts row does. Everything below
+--    that -- the second-die draw, discarded_value, adv/disadv cancellation,
+--    the fixed-roll shim, the conditional-advantage branch, the
+--    roll_transform recording -- is byte-for-byte 0096. The roll_transform
+--    UPDATE simply matches no rows in a non-cast round (no advantage cast
+--    exists), which is the intended no-op.
 -- ---------------------------------------------------------------------------
-alter table public.spell_card_effects drop constraint spell_card_effects_effect_kind_check;
-alter table public.spell_card_effects add constraint spell_card_effects_effect_kind_check
-  check (effect_kind in (
-    'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
-    'advantage', 'disadvantage', 'dispel',
-    'forced_reroll', 'contested_negate', 'redirect',
-    'reset_persistent_modifier',
-    'roll_swap', 'roll_flip', 'fixed_roll', 'roll_pair_transform', 'lowest_gains_highest_modifier',
-    'tea_maker_override', 'declared_number_tea_maker', 'wild_dispatch',
-    'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
-    'round_replay', 'draw_redirect', 'targeting_skip'
-  ));
 
-alter table public.spell_casts drop constraint spell_casts_effect_kind_check;
-alter table public.spell_casts add constraint spell_casts_effect_kind_check
-  check (effect_kind is null or effect_kind in (
-    'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
-    'advantage', 'disadvantage', 'dispel',
-    'forced_reroll', 'contested_negate', 'redirect',
-    'reset_persistent_modifier',
-    'roll_swap', 'roll_flip', 'fixed_roll', 'roll_pair_transform', 'lowest_gains_highest_modifier',
-    'tea_maker_override', 'declared_number_tea_maker', 'wild_dispatch',
-    'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
-    'round_replay', 'draw_redirect', 'targeting_skip'
-  ));
+create or replace function public.submit_roll(p_round_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_player_id text;
+  v_status text;
+  v_room_id uuid;
+  v_layer integer;
+  v_modifier integer;
+  v_value integer;
+  v_first_value integer;
+  v_second_value integer;
+  v_discarded_value integer;
+  v_has_advantage boolean;      -- a PLAIN advantage cast (no condition)
+  v_has_disadvantage boolean;
+  v_condition jsonb;            -- effect_params.condition of a conditional cast
+  v_cond_branch text;          -- 'advantage' | 'disadvantage' | 'none' | null
+  v_cond_adv_at integer;
+  v_cond_dis_at integer;
+  v_eff_advantage boolean;     -- plain OR condition-selected advantage
+  v_eff_disadvantage boolean;
+  v_cancelled boolean;
+  v_dice jsonb;
+  v_fixed_applied boolean := false;   -- issue #317
+begin
+  v_player_id := public.current_player_id(p_round_id);
 
-alter table public.spell_active_effects drop constraint spell_active_effects_effect_kind_check;
-alter table public.spell_active_effects add constraint spell_active_effects_effect_kind_check
-  check (effect_kind in (
-    'flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier',
-    'declared_number_tea_maker',
-    'advantage', 'disadvantage',
-    'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
-    'round_replay', 'draw_redirect', 'targeting_skip'
-  ));
+  select status, room_id, current_layer into v_status, v_room_id, v_layer
+    from public.rounds
+   where id = p_round_id;
+
+  if v_status is null then
+    raise exception 'submit_roll: round not found';
+  end if;
+
+  if v_status <> 'closed' then
+    raise exception 'submit_roll: round is not closed for rolling'
+      using errcode = 'RFB01';
+  end if;
+
+  if not public.is_expected_layer_roller(p_round_id, v_player_id, v_layer) then
+    raise exception 'submit_roll: caller is not expected to roll in the current layer'
+      using errcode = 'RFB02';
+  end if;
+
+  select modifier into v_modifier
+    from public.room_players
+   where room_id = v_room_id and player_id = v_player_id;
+  v_modifier := coalesce(v_modifier, 0);
+
+  -- Plain (unconditional) advantage / disadvantage casts. The `? 'condition'`
+  -- exclusion is on the advantage side only: a conditional cast is always
+  -- effect_kind 'advantage' (Gambler's Infusion; there is no conditional
+  -- disadvantage card), so the disadvantage probe needs no matching guard.
+  v_has_advantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = v_player_id
+       and target_pending = false and effect_kind = 'advantage'
+       and not (coalesce(effect_params, '{}'::jsonb) ? 'condition')
+  );
+  v_has_disadvantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = v_player_id
+       and target_pending = false and effect_kind = 'disadvantage'
+  );
+
+  if v_layer = 0 then
+    -- issue #320: a rest-of-day persistent advantage / disadvantage
+    -- (Prophe-Tea) lives as a spell_active_effects projection row, not a
+    -- spell_casts row. Fold a live one into the same booleans the round-scoped
+    -- advantage cards set, so the two-dice draw / discarded_value /
+    -- cancellation all apply.
+    if not v_has_advantage then
+      v_has_advantage := exists (
+        select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+         where sae.room_id = v_room_id
+           and sae.effect_kind = 'advantage'
+           and sae.target_player_id = v_player_id
+      );
+    end if;
+    if not v_has_disadvantage then
+      v_has_disadvantage := exists (
+        select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+         where sae.room_id = v_room_id
+           and sae.effect_kind = 'disadvantage'
+           and sae.target_player_id = v_player_id
+      );
+    end if;
+
+    select casts.effect_params -> 'condition'
+      into v_condition
+      from public.spell_casts casts
+     where casts.round_id = p_round_id and casts.target_player_id = v_player_id
+       and casts.target_pending = false and casts.effect_kind = 'advantage'
+       and casts.effect_params ? 'condition'
+     limit 1;
+  end if;
+
+  v_value := floor(random() * 20 + 1)::integer;
+  v_first_value := v_value;
+  v_discarded_value := null;
+
+  -- issue #317: fixed-roll shim. Records the before->after (order 0) and
+  -- returns the constant die; a roll-domain ward instead records a `warded`
+  -- marker and returns v_first_value with applied = false. A fixed die has
+  -- nothing to take advantage / disadvantage on, so the blocks below are
+  -- all guarded on `not v_fixed_applied`.
+  select f.value, f.applied into v_value, v_fixed_applied
+    from public._rr_apply_fixed_roll(p_round_id, v_player_id, v_layer, v_room_id, v_first_value) f;
+
+  v_cond_branch := null;
+  if v_condition is not null then
+    v_cond_adv_at := coalesce((v_condition ->> 'advantage_at_or_above')::integer, 15);
+    v_cond_dis_at := coalesce((v_condition ->> 'disadvantage_at_or_below')::integer, 5);
+    if v_first_value >= v_cond_adv_at then
+      v_cond_branch := 'advantage';
+    elsif v_first_value <= v_cond_dis_at then
+      v_cond_branch := 'disadvantage';
+    else
+      v_cond_branch := 'none';
+    end if;
+  end if;
+
+  v_eff_advantage := v_has_advantage or v_cond_branch is not distinct from 'advantage';
+  v_eff_disadvantage := v_has_disadvantage or v_cond_branch is not distinct from 'disadvantage';
+  v_cancelled := v_eff_advantage and v_eff_disadvantage;
+
+  if not v_fixed_applied and v_eff_advantage <> v_eff_disadvantage then
+    v_second_value := floor(random() * 20 + 1)::integer;
+    if v_eff_advantage then
+      v_discarded_value := least(v_value, v_second_value);
+      v_value := greatest(v_value, v_second_value);
+    else
+      v_discarded_value := greatest(v_value, v_second_value);
+      v_value := least(v_value, v_second_value);
+    end if;
+  end if;
+
+  insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot, discarded_value)
+  values (p_round_id, v_player_id, v_layer, v_value, 'in_app', v_modifier, v_discarded_value);
+
+  -- Record the roll transform onto the advantage / disadvantage cast(s).
+  if not v_fixed_applied and (v_eff_advantage or v_eff_disadvantage or v_condition is not null) then
+    if v_cancelled or v_second_value is null then
+      v_dice := jsonb_build_array(v_first_value);
+    else
+      v_dice := jsonb_build_array(v_first_value, v_second_value);
+    end if;
+
+    -- Plain advantage / disadvantage casts (Sugar Rush, Slipped Spoon, ...).
+    update public.spell_casts casts
+       set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+             'roll_transform', jsonb_build_object(
+               'kind', casts.effect_kind,
+               'order', 1,
+               'cancelled', v_cancelled,
+               'dice', v_dice,
+               'players', jsonb_build_array(jsonb_build_object(
+                 'player_id', v_player_id,
+                 'before', v_first_value,
+                 'after', v_value
+               ))
+             ))
+     where casts.round_id = p_round_id
+       and casts.target_player_id = v_player_id
+       and casts.target_pending = false
+       and casts.effect_kind in ('advantage', 'disadvantage')
+       and not (coalesce(casts.effect_params, '{}'::jsonb) ? 'condition');
+
+    -- Conditional advantage cast (Gambler's Infusion): same shape plus the
+    -- `condition` object naming the branch the first die selected.
+    if v_condition is not null then
+      update public.spell_casts casts
+         set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+               'roll_transform', jsonb_build_object(
+                 'kind', 'advantage',
+                 'order', 1,
+                 'cancelled', v_cancelled,
+                 'condition', jsonb_build_object(
+                   'first_die', v_first_value,
+                   'branch', v_cond_branch,
+                   'advantage_at_or_above', v_cond_adv_at,
+                   'disadvantage_at_or_below', v_cond_dis_at
+                 ),
+                 'dice', v_dice,
+                 'players', jsonb_build_array(jsonb_build_object(
+                   'player_id', v_player_id,
+                   'before', v_first_value,
+                   'after', v_value
+                 ))
+               ))
+       where casts.round_id = p_round_id
+         and casts.target_player_id = v_player_id
+         and casts.target_pending = false
+         and casts.effect_kind = 'advantage'
+         and casts.effect_params ? 'condition';
+    end if;
+  end if;
+
+  return v_value;
+end;
+$$;
+
+revoke execute on function public.submit_roll(uuid) from public, anon;
+grant execute on function public.submit_roll(uuid) to authenticated;
+
+create or replace function public.submit_roll_as(p_round_id uuid, p_player_id text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller text;
+  v_is_admin boolean;
+  v_status text;
+  v_room_id uuid;
+  v_layer integer;
+  v_modifier integer;
+  v_value integer;
+  v_first_value integer;
+  v_second_value integer;
+  v_discarded_value integer;
+  v_has_advantage boolean;
+  v_has_disadvantage boolean;
+  v_condition jsonb;
+  v_cond_branch text;
+  v_cond_adv_at integer;
+  v_cond_dis_at integer;
+  v_eff_advantage boolean;
+  v_eff_disadvantage boolean;
+  v_cancelled boolean;
+  v_dice jsonb;
+  v_fixed_applied boolean := false;   -- issue #317
+begin
+  v_caller := public.current_player_id();
+
+  select is_admin into v_is_admin from public.players where id = v_caller;
+  if not coalesce(v_is_admin, false) then
+    raise exception 'submit_roll_as: caller is not an admin';
+  end if;
+
+  select status, room_id, current_layer into v_status, v_room_id, v_layer
+    from public.rounds
+   where id = p_round_id;
+
+  if v_status is null then
+    raise exception 'submit_roll_as: round not found';
+  end if;
+
+  if not exists (select 1 from public.rooms where id = v_room_id and is_test) then
+    raise exception 'submit_roll_as: round is not in the Test Room';
+  end if;
+
+  if v_status <> 'closed' then
+    raise exception 'submit_roll_as: round is not closed for rolling'
+      using errcode = 'RFB01';
+  end if;
+
+  if not public.is_expected_layer_roller(p_round_id, p_player_id, v_layer) then
+    raise exception 'submit_roll_as: target player is not expected to roll in the current layer'
+      using errcode = 'RFB02';
+  end if;
+
+  select modifier into v_modifier
+    from public.room_players
+   where room_id = v_room_id and player_id = p_player_id;
+  v_modifier := coalesce(v_modifier, 0);
+
+  v_has_advantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = p_player_id
+       and target_pending = false and effect_kind = 'advantage'
+       and not (coalesce(effect_params, '{}'::jsonb) ? 'condition')
+  );
+  v_has_disadvantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = p_player_id
+       and target_pending = false and effect_kind = 'disadvantage'
+  );
+
+  if v_layer = 0 then
+    -- issue #320: a rest-of-day persistent advantage / disadvantage
+    -- (Prophe-Tea) lives as a spell_active_effects projection row, not a
+    -- spell_casts row. Fold a live one into the same booleans the round-scoped
+    -- advantage cards set, so the two-dice draw / discarded_value /
+    -- cancellation all apply.
+    if not v_has_advantage then
+      v_has_advantage := exists (
+        select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+         where sae.room_id = v_room_id
+           and sae.effect_kind = 'advantage'
+           and sae.target_player_id = p_player_id
+      );
+    end if;
+    if not v_has_disadvantage then
+      v_has_disadvantage := exists (
+        select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+         where sae.room_id = v_room_id
+           and sae.effect_kind = 'disadvantage'
+           and sae.target_player_id = p_player_id
+      );
+    end if;
+
+    select casts.effect_params -> 'condition'
+      into v_condition
+      from public.spell_casts casts
+     where casts.round_id = p_round_id and casts.target_player_id = p_player_id
+       and casts.target_pending = false and casts.effect_kind = 'advantage'
+       and casts.effect_params ? 'condition'
+     limit 1;
+  end if;
+
+  v_value := floor(random() * 20 + 1)::integer;
+  v_first_value := v_value;
+  v_discarded_value := null;
+
+  -- issue #317: fixed-roll shim. Records the before->after (order 0) and
+  -- returns the constant die; a roll-domain ward instead records a `warded`
+  -- marker and returns v_first_value with applied = false. A fixed die has
+  -- nothing to take advantage / disadvantage on, so the blocks below are
+  -- all guarded on `not v_fixed_applied`.
+  select f.value, f.applied into v_value, v_fixed_applied
+    from public._rr_apply_fixed_roll(p_round_id, p_player_id, v_layer, v_room_id, v_first_value) f;
+
+  v_cond_branch := null;
+  if v_condition is not null then
+    v_cond_adv_at := coalesce((v_condition ->> 'advantage_at_or_above')::integer, 15);
+    v_cond_dis_at := coalesce((v_condition ->> 'disadvantage_at_or_below')::integer, 5);
+    if v_first_value >= v_cond_adv_at then
+      v_cond_branch := 'advantage';
+    elsif v_first_value <= v_cond_dis_at then
+      v_cond_branch := 'disadvantage';
+    else
+      v_cond_branch := 'none';
+    end if;
+  end if;
+
+  v_eff_advantage := v_has_advantage or v_cond_branch is not distinct from 'advantage';
+  v_eff_disadvantage := v_has_disadvantage or v_cond_branch is not distinct from 'disadvantage';
+  v_cancelled := v_eff_advantage and v_eff_disadvantage;
+
+  if not v_fixed_applied and v_eff_advantage <> v_eff_disadvantage then
+    v_second_value := floor(random() * 20 + 1)::integer;
+    if v_eff_advantage then
+      v_discarded_value := least(v_value, v_second_value);
+      v_value := greatest(v_value, v_second_value);
+    else
+      v_discarded_value := greatest(v_value, v_second_value);
+      v_value := least(v_value, v_second_value);
+    end if;
+  end if;
+
+  insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot, discarded_value)
+  values (p_round_id, p_player_id, v_layer, v_value, 'in_app', v_modifier, v_discarded_value);
+
+  if not v_fixed_applied and (v_eff_advantage or v_eff_disadvantage or v_condition is not null) then
+    if v_cancelled or v_second_value is null then
+      v_dice := jsonb_build_array(v_first_value);
+    else
+      v_dice := jsonb_build_array(v_first_value, v_second_value);
+    end if;
+
+    update public.spell_casts casts
+       set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+             'roll_transform', jsonb_build_object(
+               'kind', casts.effect_kind,
+               'order', 1,
+               'cancelled', v_cancelled,
+               'dice', v_dice,
+               'players', jsonb_build_array(jsonb_build_object(
+                 'player_id', p_player_id,
+                 'before', v_first_value,
+                 'after', v_value
+               ))
+             ))
+     where casts.round_id = p_round_id
+       and casts.target_player_id = p_player_id
+       and casts.target_pending = false
+       and casts.effect_kind in ('advantage', 'disadvantage')
+       and not (coalesce(casts.effect_params, '{}'::jsonb) ? 'condition');
+
+    if v_condition is not null then
+      update public.spell_casts casts
+         set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+               'roll_transform', jsonb_build_object(
+                 'kind', 'advantage',
+                 'order', 1,
+                 'cancelled', v_cancelled,
+                 'condition', jsonb_build_object(
+                   'first_die', v_first_value,
+                   'branch', v_cond_branch,
+                   'advantage_at_or_above', v_cond_adv_at,
+                   'disadvantage_at_or_below', v_cond_dis_at
+                 ),
+                 'dice', v_dice,
+                 'players', jsonb_build_array(jsonb_build_object(
+                   'player_id', p_player_id,
+                   'before', v_first_value,
+                   'after', v_value
+                 ))
+               ))
+       where casts.round_id = p_round_id
+         and casts.target_player_id = p_player_id
+         and casts.target_pending = false
+         and casts.effect_kind = 'advantage'
+         and casts.effect_params ? 'condition';
+    end if;
+  end if;
+
+  return v_value;
+end;
+$$;
+
+revoke execute on function public.submit_roll_as(uuid, text) from public, anon;
+grant execute on function public.submit_roll_as(uuid, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 5. resolve_round(uuid) -- re-emitted from 0097's body (persistent advantage,
---    #320) with the issue #321 targeting-skip logic folded into Phase 4c and
---    Phase 5 (see header). Everything else is byte-identical to 0097.
---    (Rebased from 0096 -> 0097 when #320 merged into rebuild/effect-resolver
---    ahead of this slice; #303 gate re-verifies migration ordering.)
+-- 5. rebuild_active_effects_projection -- re-emitted from 0088 with the replay
+--    gate widened so an advantage / disadvantage promotion cast is replayed
+--    (record_active_effect_if_persistent still applies the persist filter, so a
+--    round-scoped advantage cast replayed here is a no-op). Otherwise
+--    byte-for-byte 0088.
 -- ---------------------------------------------------------------------------
+
+create or replace function public.rebuild_active_effects_projection(p_room_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cast record;
+begin
+  delete from public.spell_active_effects where room_id = p_room_id;
+
+  for v_cast in
+    select sc.id as cast_id, r.room_id, sc.caster_id, sc.target_player_id,
+           sdi.card_id, sc.effect_kind, sc.effect_params
+      from public.spell_casts sc
+      join public.rounds r on r.id = sc.round_id
+      join public.spell_deck_instances sdi on sdi.id = sc.card_instance_id
+      join public.spell_cards card on card.id = sdi.card_id
+     where r.room_id = p_room_id
+       -- negated casts are replayed too -- see the header: the incremental
+       -- path's physical set keeps them.
+       and (
+         sc.effect_kind = 'declared_number_tea_maker'
+         or (
+           sc.target_pending = false
+           and sc.target_player_id is not null
+           and (card.duration_rounds is not null or sc.effect_kind in ('ward', 'advantage', 'disadvantage'))
+           -- issue #342: resolve_round's synthetic Bitter Leech tick rows carry
+           -- Bitter Leech's card_instance_id (duration_rounds = 3) but are not
+           -- promotion sources -- the real anchor cast already produced the
+           -- projection row; replaying them would multiply it.
+           and coalesce((sc.cast_inputs ->> 'bitter_leech_tick')::boolean, false) = false
+         )
+       )
+     order by sc.seq
+  loop
+    if v_cast.effect_kind = 'declared_number_tea_maker' then
+      insert into public.spell_active_effects (
+        room_id, target_player_id, caster_id, source_cast_id, card_id,
+        effect_kind, effect_params, rounds_remaining
+      )
+      values (
+        v_cast.room_id, coalesce(v_cast.target_player_id, v_cast.caster_id),
+        v_cast.caster_id, v_cast.cast_id, v_cast.card_id,
+        v_cast.effect_kind, v_cast.effect_params, 1   -- one-shot: its cast round only
+      );
+    else
+      perform public.record_active_effect_if_persistent(
+        v_cast.room_id, v_cast.caster_id, v_cast.target_player_id,
+        v_cast.card_id, v_cast.effect_kind, v_cast.effect_params, v_cast.cast_id
+      );
+    end if;
+  end loop;
+end;
+$$;
+
+-- Debug / maintenance only: not for players. service_role (backend + the
+-- admin/test client) is the sole caller, matching 0048's precedent for
+-- open_reaction_window.
+revoke execute on function public.rebuild_active_effects_projection(uuid) from public, anon, authenticated;
+grant execute on function public.rebuild_active_effects_projection(uuid) to service_role;
+
+comment on function public.rebuild_active_effects_projection(uuid) is
+  'Issue #310: debug/maintenance op -- rebuild a room''s spell_active_effects '
+  'projection from scratch by replaying its Cast Log in seq order. The '
+  'steady-state path stays incremental; this must produce the same row set.';
+
+-- ---------------------------------------------------------------------------
+-- 6. resolve_round(uuid) -- re-emitted from 0096. The only change vs 0096 is a
+--    new Phase 3 sub-block, run per roller BEFORE the roll_transform walk (so a
+--    reaction-window transform on the same roller chains off the persistent
+--    advantage's kept die instead of masking it): for every live persistent
+--    advantage / disadvantage projection row on a roller who does NOT also have
+--    an advantage / disadvantage spell_casts row this round, emit one
+--    `advantage` / `disadvantage` Trace step and seed v_running with the kept
+--    die. before -> after is derived from the roll row + the earliest recorded
+--    roll_transform `before`; v_rolls is NOT touched -- the eager shim already
+--    kept the right die at submit_roll. A v_has_persistent_adv probe (after
+--    Phase 2) gates the sub-block; declarations v_pa_value / v_pa_discarded /
+--    v_pa_kept support it.
+-- ---------------------------------------------------------------------------
+
 create or replace function public.resolve_round(p_round_id uuid)
 returns jsonb
 language plpgsql
@@ -185,21 +749,6 @@ declare
   v_lghm_cast record;
   v_high_roll_composed numeric;
   v_lowest_roll integer;
-
-  -- issue #321 (Cloud of Cream / Targeting skip): players carrying a live
-  -- `targeting_skip` active effect are dropped from highest/lowest-modifier
-  -- *target selection* -- Phase 4c (lowest_gains_highest_modifier, both the
-  -- highest-modifier source and the lowest beneficiary) and Phase 5
-  -- (tea_maker_override mode `highest_modifier`) -- and the next eligible
-  -- player is used. The flag never changes a skipped player's own composed
-  -- modifier, nor the default lowest-roll brewer pick.
-  v_skip_map jsonb := '{}'::jsonb;   -- { player_id: { ae_id, caster_id } }
-  v_skip_players text[] := array[]::text[];
-  v_lghm_natural text[] := array[]::text[];
-  v_lghm_beneficiaries text[] := array[]::text[];
-  v_lghm_high_pid text;
-  v_lghm_plain_high_pid text;
-  v_tmo_plain_high text;
 
   v_override record;
   v_declared record;
@@ -1397,27 +1946,6 @@ begin
   end loop;
 
   -- ------------------------------------------------------------------
-  -- issue #321 (Cloud of Cream): collect the players carrying a live
-  -- `targeting_skip` active effect, keyed for Trace attribution. Read once
-  -- here; consumed by Phase 4c and Phase 5 below. DISTINCT ON so two Cloud of
-  -- Cream instances on one player collapse to their earliest.
-  -- ------------------------------------------------------------------
-  select coalesce(
-           jsonb_object_agg(pid, jsonb_build_object('ae_id', ae_id, 'caster_id', caster_id)),
-           '{}'::jsonb)
-    into v_skip_map
-    from (
-      select distinct on (sae.target_player_id)
-             sae.target_player_id as pid, sae.id as ae_id, sae.caster_id as caster_id
-        from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
-       where sae.room_id = v_room_id
-         and sae.effect_kind = 'targeting_skip'
-         and sae.target_player_id is not null
-       order by sae.target_player_id, sae.created_at
-    ) s;
-  v_skip_players := array(select jsonb_object_keys(v_skip_map));
-
-  -- ------------------------------------------------------------------
   -- Phase 4c: lowest_gains_highest_modifier (Broken Biscuit).
   -- ------------------------------------------------------------------
   select true into v_has_lghm
@@ -1444,106 +1972,57 @@ begin
 
     v_lowest_roll := (select min(x) from unnest(v_rolls) x);
 
-    -- The plain highest roller (roll desc, then player id asc) -- kept for
-    -- issue #321 Trace attribution below.
-    select v_players[i] into v_lghm_plain_high_pid
-      from generate_subscripts(v_players, 1) i
-     order by v_rolls[i] desc, v_players[i]
-     limit 1;
+    select v_composed[array_position(v_players, t.pid)]
+      into v_high_roll_composed
+      from (
+        select v_players[i] as pid
+          from generate_subscripts(v_players, 1) i
+         order by v_rolls[i] desc, v_players[i]
+         limit 1
+      ) t;
 
-    -- issue #321: the "highest modifier" source. Normally the plain highest
-    -- roller's composed modifier; a Cloud of Cream holder is skipped and the
-    -- next-highest non-skipped roller is used. If every roller is skipped,
-    -- fall back to the plain highest so the lift still resolves.
-    select v_players[i] into v_lghm_high_pid
-      from generate_subscripts(v_players, 1) i
-     where not (v_players[i] = any (v_skip_players))
-     order by v_rolls[i] desc, v_players[i]
-     limit 1;
-    if v_lghm_high_pid is null then
-      v_lghm_high_pid := v_lghm_plain_high_pid;
-    end if;
-    v_high_roll_composed := v_composed[array_position(v_players, v_lghm_high_pid)];
+    for v_i in 1 .. array_length(v_players, 1) loop
+      if v_rolls[v_i] = v_lowest_roll then
+        -- issue #309: a warded tied-lowest roller is excluded from the lift
+        -- (lowest_gains_highest_modifier is statically positive). Others are
+        -- still lifted. The lghm cast is a reaction, so its seq is after any
+        -- pre-roll ward.
+        v_ward_hit := public._rr_ward_hit(v_ward_map, v_players[v_i], 'modifier', 'positive', v_lghm_seq);
+        if v_ward_hit is not null then
+          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+            v_step_index,
+            'warded',
+            jsonb_build_object(
+              'cast_id', to_jsonb(v_lghm_cast.id),
+              'active_effect_id', null,
+              'card_name', to_jsonb(v_lghm_cast.name),
+              'caster_player_id', to_jsonb(v_lghm_cast.caster_id)
+            ),
+            v_players[v_i],
+            jsonb_build_object('type', 'modifier', 'value', v_composed[v_i]),
+            jsonb_build_object('type', 'modifier', 'value', v_composed[v_i]),
+            jsonb_build_object(
+              'blocked_cast_id', to_jsonb(v_lghm_cast.id),
+              'ward_cast_id', v_ward_hit -> 'ward_cast_id',
+              'ward_card_name', v_ward_hit -> 'ward_card_name',
+              'target', to_jsonb(v_players[v_i]),
+              'would_be_before', v_composed[v_i],
+              'would_be_after', v_high_roll_composed,
+              'outcome', 'blocked'
+            )
+          ));
+          v_step_index := v_step_index + 1;
+          v_ward_hit := null;
+          continue;
+        end if;
 
-    -- issue #321 Trace: the plain highest roller was skipped off the source.
-    if v_lghm_plain_high_pid is not null
-       and v_lghm_plain_high_pid <> v_lghm_high_pid
-       and (v_skip_map ? v_lghm_plain_high_pid) then
-      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-        v_step_index,
-        'targeting_skip',
-        jsonb_build_object(
-          'cast_id', null,
-          'active_effect_id', v_skip_map -> v_lghm_plain_high_pid -> 'ae_id',
-          'card_name', to_jsonb('Cloud of Cream'::text),
-          'caster_player_id', v_skip_map -> v_lghm_plain_high_pid -> 'caster_id'
-        ),
-        v_lghm_plain_high_pid,
-        jsonb_build_object('type', 'status', 'value', 'targetable'),
-        jsonb_build_object('type', 'status', 'value', 'skipped')
-      ));
-      v_step_index := v_step_index + 1;
-    end if;
+        v_before := v_composed[v_i];
+        v_after := v_high_roll_composed;
+        v_composed[v_i] := v_after;
 
-    -- issue #321: beneficiaries. Normally every tied-lowest roller; a Cloud
-    -- of Cream holder among them is skipped and the lift moves to the next
-    -- eligible (non-skipped) roller in roll-ascending order, keeping the
-    -- beneficiary count the same ("apply to the next player instead").
-    select coalesce(array_agg(v_players[i] order by v_rolls[i], v_players[i]), array[]::text[])
-      into v_lghm_natural
-      from generate_subscripts(v_players, 1) i
-     where v_rolls[i] = v_lowest_roll;
-
-    if coalesce(array_length(v_skip_players, 1), 0) = 0
-       or not (v_lghm_natural && v_skip_players) then
-      v_lghm_beneficiaries := v_lghm_natural;
-    else
-      select coalesce(array_agg(pid order by rk), array[]::text[])
-        into v_lghm_beneficiaries
-        from (
-          select v_players[i] as pid,
-                 row_number() over (order by v_rolls[i], v_players[i]) as rk
-            from generate_subscripts(v_players, 1) i
-           where not (v_players[i] = any (v_skip_players))
-        ) s
-       where rk <= coalesce(array_length(v_lghm_natural, 1), 0);
-      -- every roller skipped -> nobody eligible; keep the natural set.
-      if coalesce(array_length(v_lghm_beneficiaries, 1), 0) = 0 then
-        v_lghm_beneficiaries := v_lghm_natural;
-      end if;
-    end if;
-
-    -- issue #321 Trace: one step per natural beneficiary the skip removed.
-    foreach v_pid in array v_lghm_natural loop
-      if (v_skip_map ? v_pid) and not (v_pid = any (v_lghm_beneficiaries)) then
         v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
           v_step_index,
-          'targeting_skip',
-          jsonb_build_object(
-            'cast_id', null,
-            'active_effect_id', v_skip_map -> v_pid -> 'ae_id',
-            'card_name', to_jsonb('Cloud of Cream'::text),
-            'caster_player_id', v_skip_map -> v_pid -> 'caster_id'
-          ),
-          v_pid,
-          jsonb_build_object('type', 'status', 'value', 'targetable'),
-          jsonb_build_object('type', 'status', 'value', 'skipped')
-        ));
-        v_step_index := v_step_index + 1;
-      end if;
-    end loop;
-
-    foreach v_pid in array v_lghm_beneficiaries loop
-      v_i := array_position(v_players, v_pid);
-      -- issue #309: a warded beneficiary is excluded from the lift
-      -- (lowest_gains_highest_modifier is statically positive). Others are
-      -- still lifted. The lghm cast is a reaction, so its seq is after any
-      -- pre-roll ward.
-      v_ward_hit := public._rr_ward_hit(v_ward_map, v_players[v_i], 'modifier', 'positive', v_lghm_seq);
-      if v_ward_hit is not null then
-        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-          v_step_index,
-          'warded',
+          'lowest_gains_highest_modifier',
           jsonb_build_object(
             'cast_id', to_jsonb(v_lghm_cast.id),
             'active_effect_id', null,
@@ -1551,41 +2030,11 @@ begin
             'caster_player_id', to_jsonb(v_lghm_cast.caster_id)
           ),
           v_players[v_i],
-          jsonb_build_object('type', 'modifier', 'value', v_composed[v_i]),
-          jsonb_build_object('type', 'modifier', 'value', v_composed[v_i]),
-          jsonb_build_object(
-            'blocked_cast_id', to_jsonb(v_lghm_cast.id),
-            'ward_cast_id', v_ward_hit -> 'ward_cast_id',
-            'ward_card_name', v_ward_hit -> 'ward_card_name',
-            'target', to_jsonb(v_players[v_i]),
-            'would_be_before', v_composed[v_i],
-            'would_be_after', v_high_roll_composed,
-            'outcome', 'blocked'
-          )
+          jsonb_build_object('type', 'modifier', 'value', v_before),
+          jsonb_build_object('type', 'modifier', 'value', v_after)
         ));
         v_step_index := v_step_index + 1;
-        v_ward_hit := null;
-        continue;
       end if;
-
-      v_before := v_composed[v_i];
-      v_after := v_high_roll_composed;
-      v_composed[v_i] := v_after;
-
-      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-        v_step_index,
-        'lowest_gains_highest_modifier',
-        jsonb_build_object(
-          'cast_id', to_jsonb(v_lghm_cast.id),
-          'active_effect_id', null,
-          'card_name', to_jsonb(v_lghm_cast.name),
-          'caster_player_id', to_jsonb(v_lghm_cast.caster_id)
-        ),
-        v_players[v_i],
-        jsonb_build_object('type', 'modifier', 'value', v_before),
-        jsonb_build_object('type', 'modifier', 'value', v_after)
-      ));
-      v_step_index := v_step_index + 1;
     end loop;
   end if;
 
@@ -1865,42 +2314,11 @@ begin
          order by v_rolls[i] desc, v_players[i]
          limit 1;
       else
-        -- 'highest_modifier'. issue #321: a Cloud of Cream holder is skipped
-        -- and the next-highest `modifier_snapshot` roller is picked; if every
-        -- roller is skipped, fall back to the plain highest.
-        select r.player_id into v_tmo_plain_high
-          from public.rolls r
-         where r.round_id = p_round_id and r.layer = 0
-         order by r.modifier_snapshot desc, r.player_id
-         limit 1;
-
         select r.player_id into v_brewer_id
           from public.rolls r
          where r.round_id = p_round_id and r.layer = 0
-           and not (r.player_id = any (v_skip_players))
          order by r.modifier_snapshot desc, r.player_id
          limit 1;
-
-        if v_brewer_id is null then
-          v_brewer_id := v_tmo_plain_high;
-        elsif v_tmo_plain_high is not null
-              and v_tmo_plain_high <> v_brewer_id
-              and (v_skip_map ? v_tmo_plain_high) then
-          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-            v_step_index,
-            'targeting_skip',
-            jsonb_build_object(
-              'cast_id', null,
-              'active_effect_id', v_skip_map -> v_tmo_plain_high -> 'ae_id',
-              'card_name', to_jsonb('Cloud of Cream'::text),
-              'caster_player_id', v_skip_map -> v_tmo_plain_high -> 'caster_id'
-            ),
-            v_tmo_plain_high,
-            jsonb_build_object('type', 'status', 'value', 'targetable'),
-            jsonb_build_object('type', 'status', 'value', 'skipped')
-          ));
-          v_step_index := v_step_index + 1;
-        end if;
       end if;
 
       v_no_modifier_gain := v_override.no_modifier_gain;
@@ -1998,6 +2416,3 @@ $$;
 
 revoke execute on function public.resolve_round(uuid) from public, anon;
 grant execute on function public.resolve_round(uuid) to authenticated;
-
-comment on function public.resolve_round(uuid) is
-  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351, ADR 0005). Phase 0a/0b Effect Invocation; Phase 1 negate / redirect / backfire (+ #344 ward Pre-pass); Phase 2 ward projection; Phase 3 roll-input accounting (fixed_roll / roll_pair_transform / conditional advantage); Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier -- issue #321: a Cloud of Cream (targeting_skip) holder is skipped from both the highest-modifier source and the lowest beneficiary set, and the next eligible roller is used; Phase 4b-pre Bitter Leech ticks; Phase 4b persistent modifier delta projection; Phase 5 brewer selection -- issue #321: a targeting_skip holder is skipped from tea_maker_override mode highest_modifier. Emits the Resolution Trace (one targeting_skip step per skipped player). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';

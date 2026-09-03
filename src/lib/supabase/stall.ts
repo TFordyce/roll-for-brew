@@ -152,6 +152,28 @@ export async function resolveStalledPendingSpellDice(supabase: SupabaseClient, r
 }
 
 /**
+ * Calls the resolve_stalled_pending_forced_reroll_casts RPC (0098, issue
+ * #325): force-negates every pre-roll forced_reroll cast (Yorkshire Terror,
+ * WILD/TABLE fan-out) still awaiting its deferred target once
+ * enforceStallTimeout's own hasStalled check has fired — the terminal no-op
+ * for a target the caster never named, so the layer-0 hold
+ * (get_current_layer_rolls_if_complete's new gate) releases. Returns how
+ * many casts it negated, so the caller only re-runs layer resolution when
+ * there was something to recover. Sibling of resolveStalledPendingSpellDice
+ * above.
+ */
+export async function resolveStalledPendingForcedRerollCasts(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc("resolve_stalled_pending_forced_reroll_casts", {
+    p_round_id: roundId,
+  });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
  * Calls the cancel_round RPC: cancels a stalled round (issue #21). A no-op
  * if the round has already left 'open'/'closed' by the time this runs.
  */
