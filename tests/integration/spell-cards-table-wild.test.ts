@@ -147,13 +147,16 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
       target_pending: boolean;
       target_role: string;
     }[];
+    // issue #289: Calami-Tea is now a per_round_dice_tick anchor cast (one per
+    // chosen player), still emitted synchronously at cast time.
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       target_player_id: target.googleSub,
-      effect_kind: "flat_modifier",
+      effect_kind: "per_round_dice_tick",
       target_pending: false,
       target_role: "CHOSEN_PLAYERS",
     });
+    expect(rows[0]!.effect_params).toMatchObject({ die: 4, sign: -1 });
   });
 
   it("Calami-Tea rejects more chosen players than the card's max_targets", async () => {

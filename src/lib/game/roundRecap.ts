@@ -166,6 +166,15 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       return `${played} — ${t}'s die is swapped with the linked player`;
     case "fixed_roll":
       return `${played} — ${t}'s die is fixed`;
+    case "dice_tick": {
+      // Issue #289: Calami-Tea — a fresh 1dN rolled against the target's roll
+      // every round the effect is live. `diceTick.rolled` is the true die (the
+      // before→after delta under-reports it when the roll floors at 1).
+      const rolled = step.diceTick?.rolled;
+      return rolled != null
+        ? `${played} — ${t} subtracts ${rolled} from their roll`
+        : `${played} — ${t} subtracts a die from their roll`;
+    }
     case "flat_modifier":
     case "dice_modifier":
       return `${played} on ${t}`;
