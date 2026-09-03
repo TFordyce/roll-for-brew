@@ -38,6 +38,14 @@
 --     _rr_active_effects_as_of's call off duration_rounds = 3, matching how
 --     Bitter Leech and the ward cards read "next N rounds".
 --
+--   * Natural-1 interaction (Tom's call): the roll is floored at 1, but a roll
+--     Calami-Tea dragged down to that floor is NOT a natural 1 -- resolve_round
+--     records which rollers were reduced (v_dice_reduced) and _rr_pick_lowest
+--     (now 4-arg) keeps them out of the natural-1 auto-lose pool, so a genuine
+--     natural 1 elsewhere still brews. A raw 1 that merely hit the floor
+--     unchanged stays a natural 1. A Calami-reduced roll still competes in the
+--     ordinary lowest-roll + composed-modifier path.
+--
 --   * Ward interaction: a negative-polarity roll-domain ward on a target
 --     (Cast-Iron Kettle) blocks that round's tick -- the synth cast goes in
 --     negated (the walk's is_negated branch leaves the roll untouched) and a
@@ -126,10 +134,69 @@ update public.spell_cards
  where name = 'Calami-Tea';
 
 -- ---------------------------------------------------------------------------
--- 4. resolve_round(uuid) -- re-emitted from 0099's body with a Phase 3-pre
---    (Calami-Tea per-round dice tick synthesis + ward pre-pass) and a
---    `per_round_dice_tick` branch in the Phase 3 roll-transform walk. Every
---    other phase is byte-identical to 0099.
+-- 4. _rr_pick_lowest -- re-emitted from 0078 with a 4th arg `p_dice_reduced`
+--    (parallel boolean[]; NULL == all-natural). A natural 1 is the "auto-lose"
+--    roll; a roll Calami-Tea dragged down to the 1 floor this round is NOT a
+--    natural 1, so it is excluded from that pool -- a genuine natural 1 sorts
+--    below it and brews (Tom's call, issue #289). A Calami-reduced roll still
+--    competes normally in the ordinary lowest-roll + composed-modifier path.
+--    Only resolve_round calls this; the 3-arg call sites (tie-break layers,
+--    which have no Calami reduction) bind here via the NULL default.
+-- ---------------------------------------------------------------------------
+drop function if exists public._rr_pick_lowest(text[], integer[], numeric[]);
+
+create or replace function public._rr_pick_lowest(
+  p_players text[], p_rolls integer[], p_modifier numeric[],
+  p_dice_reduced boolean[] default null
+)
+returns text[]
+language plpgsql
+immutable
+as $$
+declare
+  v_result text[];
+  v_min numeric;
+begin
+  -- Natural-1 auto-lose. A Calami-Tea (per_round_dice_tick) roll floored to 1
+  -- this round carries p_dice_reduced[i] = true and is not eligible here.
+  if exists (
+    select 1 from generate_subscripts(p_rolls, 1) i
+     where p_rolls[i] = 1 and not coalesce(p_dice_reduced[i], false)
+  ) then
+    select min(p_modifier[i]) into v_min
+      from generate_subscripts(p_players, 1) i
+     where p_rolls[i] = 1 and not coalesce(p_dice_reduced[i], false);
+    select array_agg(p_players[i] order by p_players[i]) into v_result
+      from generate_subscripts(p_players, 1) i
+     where p_rolls[i] = 1 and not coalesce(p_dice_reduced[i], false)
+       and p_modifier[i] = v_min;
+    return v_result;
+  end if;
+
+  if not exists (select 1 from unnest(p_rolls) x where x <> 20) then
+    select min(p_modifier[i]) into v_min from generate_subscripts(p_players, 1) i;
+    select array_agg(p_players[i] order by p_players[i]) into v_result
+      from generate_subscripts(p_players, 1) i where p_modifier[i] = v_min;
+    return v_result;
+  end if;
+
+  select min(p_rolls[i] + p_modifier[i]) into v_min
+    from generate_subscripts(p_players, 1) i where p_rolls[i] <> 20;
+  select array_agg(p_players[i] order by p_players[i]) into v_result
+    from generate_subscripts(p_players, 1) i
+   where p_rolls[i] <> 20 and (p_rolls[i] + p_modifier[i]) = v_min;
+  return v_result;
+end;
+$$;
+revoke execute on function public._rr_pick_lowest(text[], integer[], numeric[], boolean[]) from public, anon;
+grant execute on function public._rr_pick_lowest(text[], integer[], numeric[], boolean[]) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 5. resolve_round(uuid) -- re-emitted from 0099's body with a Phase 3-pre
+--    (Calami-Tea per-round dice tick synthesis + ward pre-pass), a
+--    `per_round_dice_tick` branch in the Phase 3 roll-transform walk (which
+--    also records v_dice_reduced), and the layer-0 _rr_pick_lowest call
+--    passing v_dice_reduced. Every other phase is byte-identical to 0099.
 -- ---------------------------------------------------------------------------
 create or replace function public.resolve_round(p_round_id uuid)
 returns jsonb
@@ -195,6 +262,10 @@ declare
   v_dt_roll integer;
   v_dt_layer0_roll integer;
   v_dt_ward jsonb;
+  -- issue #289: parallel to v_players -- true where a per_round_dice_tick
+  -- (Calami-Tea) dragged this roller's value strictly below its running roll
+  -- this round, so _rr_pick_lowest can keep them out of the natural-1 pool.
+  v_dice_reduced boolean[] := array[]::boolean[];
 
   v_has_lghm boolean := false;
   v_lghm_cast record;
@@ -334,6 +405,7 @@ begin
     v_base := v_base || v_row.modifier_snapshot::numeric;
     v_composed := v_composed || v_row.modifier_snapshot::numeric;
     v_snapshots := v_snapshots || v_row.modifier_snapshot::numeric;
+    v_dice_reduced := v_dice_reduced || false;   -- issue #289: set in Phase 3
     v_effects_json := jsonb_set(v_effects_json, array[v_row.player_id], '[]'::jsonb, true);
   end loop;
 
@@ -1175,6 +1247,14 @@ begin
         v_before := coalesce(v_running, v_rolls[v_i])::numeric;
         v_after := greatest(1, v_before + coalesce(v_row.tick_sign, -1) * coalesce(v_row.tick_rolled, 0));
         v_running := v_after;
+
+        -- issue #289 (Tom's call): a roll dragged down here is not a natural 1
+        -- -- flag it so _rr_pick_lowest keeps it out of the nat-1 auto-lose
+        -- pool. Only when the value actually dropped (a raw 1 hitting the floor
+        -- is still a natural 1).
+        if v_after < v_before then
+          v_dice_reduced[v_i] := true;
+        end if;
 
         v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
           v_step_index,
@@ -2102,7 +2182,9 @@ begin
   end if;
 
   if v_brewer_id is null then
-    v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed);
+    -- issue #289: v_dice_reduced excludes a Calami-Tea-floored roll from the
+    -- natural-1 auto-lose pool (a real natural 1 still brews).
+    v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
 
     if array_length(v_tied, 1) > 1 then
       update public.rounds set resolution_trace = v_trace where id = p_round_id;
@@ -2177,4 +2259,4 @@ revoke execute on function public.resolve_round(uuid) from public, anon;
 grant execute on function public.resolve_round(uuid) to authenticated;
 
 comment on function public.resolve_round(uuid) is
-  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351 / #289, ADR 0005). Phase 0a/0b Effect Invocation; Phase 1 negate / redirect / backfire (+ #344 ward Pre-pass); Phase 2 ward projection; Phase 3-pre issue #289: synthesises each live Calami-Tea per_round_dice_tick as a child cast carrying a freshly-rolled 1dN in the Cast Log, negated + a warded step when a negative roll-domain ward covers the target; Phase 3 roll-input accounting (fixed_roll / roll_pair_transform / conditional advantage / per_round_dice_tick -- the tick subtracts its recorded die from the roll, floor 1); Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier -- issue #321: a Cloud of Cream (targeting_skip) holder is skipped from both the highest-modifier source and the lowest beneficiary set, and the next eligible roller is used; Phase 4b-pre Bitter Leech ticks; Phase 4b persistent modifier delta projection; Phase 5 brewer selection -- issue #321: a targeting_skip holder is skipped from tea_maker_override mode highest_modifier. Emits the Resolution Trace (one targeting_skip step per skipped player). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';
+  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351 / #289, ADR 0005). Phase 0a/0b Effect Invocation; Phase 1 negate / redirect / backfire (+ #344 ward Pre-pass); Phase 2 ward projection; Phase 3-pre issue #289: synthesises each live Calami-Tea per_round_dice_tick as a child cast carrying a freshly-rolled 1dN in the Cast Log, negated + a warded step when a negative roll-domain ward covers the target; Phase 3 roll-input accounting (fixed_roll / roll_pair_transform / conditional advantage / per_round_dice_tick -- the tick subtracts its recorded die from the roll, floor 1, and flags the roller in v_dice_reduced so the 4-arg _rr_pick_lowest keeps a Calami-floored 1 out of the natural-1 auto-lose pool); Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier -- issue #321: a Cloud of Cream (targeting_skip) holder is skipped from both the highest-modifier source and the lowest beneficiary set, and the next eligible roller is used; Phase 4b-pre Bitter Leech ticks; Phase 4b persistent modifier delta projection; Phase 5 brewer selection -- issue #321: a targeting_skip holder is skipped from tea_maker_override mode highest_modifier. Emits the Resolution Trace (one targeting_skip step per skipped player). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';

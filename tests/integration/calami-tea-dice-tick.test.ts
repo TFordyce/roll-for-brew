@@ -37,6 +37,7 @@ type TraceStep = {
 type ResolveOutcome = {
   outcome: "brewer" | "tie";
   brewer_id: string | null;
+  tied_player_ids: string[] | null;
   trace: TraceStep[];
 };
 
@@ -330,6 +331,35 @@ describe.skipIf(!hasAnonTestEnv)("Calami-Tea per-round dice tick (issue #289)", 
     );
     expect(warded).toBeDefined();
     expect(warded).toMatchObject({ outcome: "blocked", ward_card_name: "Cast-Iron Kettle" });
+  });
+
+  it("a genuine natural 1 still brews when another player is Calami-floored to 1", async () => {
+    const nat1 = await signUp("calami-nat1-A");
+    const victim = await signUp("calami-nat1-B");
+    const high = await signUp("calami-nat1-C");
+
+    const r1 = await startRound(nat1, [victim, high]);
+    await forceHold(admin, nat1.googleSub, "Calami-Tea");
+    const { error: castErr } = await nat1.client.rpc("cast_spell_card", {
+      p_round_id: r1,
+      p_chosen_player_ids: [victim.googleSub],
+    });
+    expect(castErr).toBeNull();
+
+    await closeRound(nat1, r1);
+    await seedRoll(r1, nat1.googleSub, 1); // genuine natural 1
+    await seedRoll(r1, victim.googleSub, 2); // 2 - 1d4 -> always floored to 1
+    await seedRoll(r1, high.googleSub, 15);
+    const out = await resolve(nat1.client, r1);
+
+    // victim's roll landed on the floor and is flagged reduced ...
+    const vStep = diceTickStep(out, victim.googleSub);
+    expect(vStep!.after).toEqual({ type: "roll", value: 1 });
+
+    // ... so the natural-1 roller is the sole nat-1 loser and brews outright;
+    // the Calami-floored victim is spared.
+    expect(out.outcome).toBe("brewer");
+    expect(out.brewer_id).toBe(nat1.googleSub);
   });
 
   it("rejects more chosen players than the card's max_targets", async () => {
