@@ -121,7 +121,8 @@ export async function signUpSignInAndEnterRoom(
  * migration 0087) — and the three durable persistent-modifier cards —
  * Chai-nge of Heart, Tea-tally Spent, Bitter Leech (#342, migration 0088) —
  * and the three Effect Invocation cards — Saucerer's Apprentice, Genie in the
- * Teapot, Brew-merang (#316, migration 0093) — are now live, so 25 remain
+ * Teapot, Brew-merang (#316, migration 0093) — and Gambler's Infusion
+ * (conditional advantage, #319, migration 0095) — are now live, so 24 remain
  * here. A test that force-holds one of these must return it to the bench, not
  * the deck, on cleanup — releaseHeldCards below does that.
  */
@@ -135,7 +136,7 @@ export const BENCHED_SPELL_CARDS = [
   "Loaf of Lipton", "Brew IOU", "Tea Heist",
   "Stale Biscuit", "Liquid Courage",
   "The Last Cuppa", "Earl of Earl Grey", "Prophe-Tea",
-  "Gambler's Infusion", "Steady Hand", "Tea for Two",
+  "Steady Hand", "Tea for Two",
   "Brewmageddon",
   // Dead effect kind (2)
   "Cloud of Cream", "Kettle Crash",

@@ -298,6 +298,16 @@ export type ResolutionTraceStep = {
   ward: { wardCastId: string | null; wardCardName: string | null } | null;
   /** Issue #311: a persistent (rest-of-day) modifier transfer/spend step. */
   restOfDay: boolean;
+  /**
+   * Issue #319: conditional-advantage (Gambler's Infusion) detail — the first
+   * die and which branch it selected. null on every other step.
+   */
+  condition: {
+    firstDie: number;
+    branch: "advantage" | "disadvantage" | "none";
+    advantageAtOrAbove: number;
+    disadvantageAtOrBelow: number;
+  } | null;
 };
 
 /**
@@ -349,6 +359,15 @@ type RawTraceStep = {
   ward_cast_id?: string | null;
   ward_card_name?: string | null;
   rest_of_day?: boolean;
+  // Issue #319: a conditional-advantage step (Gambler's Infusion) — which
+  // branch the caster's first die selected, and the thresholds it was tested
+  // against. Absent on every other step.
+  condition?: {
+    first_die: number;
+    branch: "advantage" | "disadvantage" | "none";
+    advantage_at_or_above: number;
+    disadvantage_at_or_below: number;
+  } | null;
 };
 
 type RawResolveRoundOutcome = {
@@ -387,6 +406,14 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
         ? { wardCastId: raw.ward_cast_id ?? null, wardCardName: raw.ward_card_name ?? null }
         : null,
     restOfDay: raw.rest_of_day ?? false,
+    condition: raw.condition
+      ? {
+          firstDie: raw.condition.first_die,
+          branch: raw.condition.branch,
+          advantageAtOrAbove: raw.condition.advantage_at_or_above,
+          disadvantageAtOrBelow: raw.condition.disadvantage_at_or_below,
+        }
+      : null,
   };
 }
 
