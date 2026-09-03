@@ -1287,4 +1287,115 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     expect(await roomModifier(p2.roomId, p2.googleSub)).toBe(0);
     await admin.from("admin_round_deletions").delete().eq("round_id", roundId);
   });
+
+  // ----------------------------------------------------------------------
+  // Conditional advantage — Gambler's Infusion (issue #319). The eager shim
+  // records which branch the first die selected into roll_transform.condition;
+  // resolve_round Phase 3 adopts `after` and names the branch on the step.
+  // ----------------------------------------------------------------------
+
+  function gamblerCastInputs(
+    playerId: string,
+    branch: "advantage" | "disadvantage" | "none",
+    firstDie: number,
+    dice: number[],
+    after: number,
+  ) {
+    return {
+      roll_transform: {
+        kind: "advantage",
+        order: 1,
+        cancelled: false,
+        condition: {
+          first_die: firstDie,
+          branch,
+          advantage_at_or_above: 15,
+          disadvantage_at_or_below: 5,
+        },
+        dice,
+        players: [{ player_id: playerId, before: firstDie, after }],
+      },
+    };
+  }
+
+  const GAMBLER_CONDITION = {
+    condition: { advantage_at_or_above: 15, disadvantage_at_or_below: 5 },
+  };
+
+  it("Gambler's Infusion — first die >= 15 takes the advantage branch; resolver adopts the high die", async () => {
+    const p1 = await signUp("rr-gambler-adv-1");
+    const p2 = await signUp("rr-gambler-adv-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 17);
+    await seedRoll(roundId, p2.googleSub, 8);
+    await seedCast(roundId, p1.googleSub, "Gambler's Infusion", {
+      effectKind: "advantage",
+      effectParams: GAMBLER_CONDITION,
+      targetPlayerId: p1.googleSub,
+      castInputs: gamblerCastInputs(p1.googleSub, "advantage", 17, [17, 19], 19),
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // p1 kept 19 -> p2 (8) is the lowest and brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    const step = out.trace.find((s) => s.before.type === "roll" && s.target_player === p1.googleSub)!;
+    expect(step.display_kind).toBe("advantage");
+    expect(step.before).toEqual({ type: "roll", value: 17 });
+    expect(step.after).toEqual({ type: "roll", value: 19 });
+    expect((step as unknown as { condition: { branch: string } }).condition.branch).toBe("advantage");
+
+    // Idempotent re-resolve.
+    const again = await resolve(p1.client, roundId);
+    expect(JSON.stringify(again.trace)).toBe(JSON.stringify(out.trace));
+  });
+
+  it("Gambler's Infusion — first die <= 5 takes the disadvantage branch; resolver adopts the low die", async () => {
+    const p1 = await signUp("rr-gambler-dis-1");
+    const p2 = await signUp("rr-gambler-dis-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 4);
+    await seedRoll(roundId, p2.googleSub, 8);
+    await seedCast(roundId, p1.googleSub, "Gambler's Infusion", {
+      effectKind: "advantage",
+      effectParams: GAMBLER_CONDITION,
+      targetPlayerId: p1.googleSub,
+      castInputs: gamblerCastInputs(p1.googleSub, "disadvantage", 4, [4, 2], 2),
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // p1 dropped to 2 -> p1 is the lowest and brews.
+    expect(out.brewer_id).toBe(p1.googleSub);
+    const step = out.trace.find((s) => s.before.type === "roll" && s.target_player === p1.googleSub)!;
+    expect(step.display_kind).toBe("disadvantage");
+    expect(step.before).toEqual({ type: "roll", value: 4 });
+    expect(step.after).toEqual({ type: "roll", value: 2 });
+    expect((step as unknown as { condition: { branch: string } }).condition.branch).toBe("disadvantage");
+  });
+
+  it("Gambler's Infusion — first die between the thresholds is a kept zero-impact conditional_advantage step", async () => {
+    const p1 = await signUp("rr-gambler-none-1");
+    const p2 = await signUp("rr-gambler-none-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 9);
+    await seedRoll(roundId, p2.googleSub, 3);
+    await seedCast(roundId, p1.googleSub, "Gambler's Infusion", {
+      effectKind: "advantage",
+      effectParams: GAMBLER_CONDITION,
+      targetPlayerId: p1.googleSub,
+      castInputs: gamblerCastInputs(p1.googleSub, "none", 9, [9], 9),
+    });
+
+    const out = await resolve(p1.client, roundId);
+
+    // p1's roll stands at 9 -> p2 (3) is the lowest and brews.
+    expect(out.brewer_id).toBe(p2.googleSub);
+    const step = out.trace.find((s) => s.before.type === "roll" && s.target_player === p1.googleSub)!;
+    expect(step.display_kind).toBe("conditional_advantage");
+    expect(step.before).toEqual({ type: "roll", value: 9 });
+    expect(step.after).toEqual({ type: "roll", value: 9 });
+    expect(step.outcome).toBe("no-op");
+    expect((step as unknown as { condition: { branch: string } }).condition.branch).toBe("none");
+  });
 });

@@ -68,11 +68,12 @@
 -- a follow-up issue.
 --
 -- Migration numbering: master's highest is 0077; rebuild/effect-resolver runs
--- 0078-0093. This is 0094. NOTE: sibling Tier A slices are in flight against
--- the same branch -- #317 (Fixed-roll) also claims 0094 and #319 (conditional
--- advantage) claims 0095; the numbers and any overlapping re-emitted bodies
--- (submit_roll / resolve_round) reconcile at the #303 integrate-and-verify
--- gate. Re-check and renumber there to sit after master's current highest.
+-- 0078-0095. This is 0096, renumbered from a first-cut 0094 after sibling Tier
+-- A slice #319 (conditional advantage) merged as 0095. Section 8's resolve_round
+-- is therefore re-emitted from 0095's body (the #319 version), with the #318
+-- roll_pair_transform edits layered on top -- see that section's header. Sibling
+-- #317 (Fixed-roll) is still open and also first-cut 0094; its number and any
+-- further overlapping re-emitted bodies reconcile at the #303 integrate gate.
 
 -- ---------------------------------------------------------------------------
 -- 1. Un-bench the four cards (migration 0074 parked them at 'benched').
@@ -972,7 +973,7 @@ begin
   -- spell_card_effects rows, so each is a by-name branch emitting one
   -- roll_pair_transform cast; apply_roll_pair_transform runs it at
   -- reaction-window finalize (its pre-roll rows are attached to the layer-0
-  -- window by attach_pre_roll_roll_pair_transform_casts, migration 0094) and
+  -- window by attach_pre_roll_roll_pair_transform_casts, migration 0096) and
   -- resolve_round Phase 3 adopts the result. No deferred-target path this
   -- slice -- an explicit target / pair is required at cast time (RFB46), the
   -- Bes-Tea / Chai-nge of Heart tradeoff.
@@ -1594,12 +1595,15 @@ revoke execute on function public.cast_spell_card(uuid, text, text[], integer, t
 grant execute on function public.cast_spell_card(uuid, text, text[], integer, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
--- 8. resolve_round(uuid) -- re-emitted from 0093. Diffs vs 0093:
+-- 8. resolve_round(uuid) -- re-emitted from 0095 (sibling #319 body, which
+--    itself re-emitted 0093). Diffs vs 0095:
 --      * the eager-roll-kind filter in Phase 0a (copy materialisation), the
 --        seize `keepable` test, and the Phase 3 accounting loop all grow
 --        `roll_pair_transform`;
---      * Phase 3 reads the roll_transform `op` and passes it as a 7-arg
---        Trace extra so the Recap renderer can word swap / min / max.
+--      * Phase 3 reads the roll_transform `op` (`pair_op`) and folds it into
+--        the same 7-arg _rr_trace_step `p_extra` #319 uses for `condition` --
+--        a step is either chosen-pair or conditional-advantage, never both --
+--        so the Recap renderer can word swap / min / max.
 -- ---------------------------------------------------------------------------
 create or replace function public.resolve_round(p_round_id uuid)
 returns jsonb
@@ -1658,6 +1662,7 @@ declare
   v_after numeric;
   v_running numeric;
   v_eff_target text;
+  v_disp_kind text;   -- issue #319: Phase 3 branch-aware display kind
 
   v_has_lghm boolean := false;
   v_lghm_cast record;
@@ -2320,13 +2325,14 @@ begin
              casts.negated as is_negated,
              sc.name as card_name,
              (rt.rt ->> 'order')::integer as ord,
-             (rt.rt ->> 'op') as pair_op,
+             (rt.rt ->> 'op') as pair_op,   -- issue #318: chosen-pair op
              (pe.value ->> 'before')::numeric as p_before,
              (pe.value ->> 'after')::numeric as p_after,
              coalesce((pe.value -> 'warded')::text = 'true', false) as is_warded,
              (pe.value ->> 'would_be_after')::numeric as would_be_after,
              pe.value ->> 'ward_cast_id' as ward_cast_id,
-             pe.value ->> 'ward_card_name' as ward_card_name
+             pe.value ->> 'ward_card_name' as ward_card_name,
+             rt.rt -> 'condition' as condition   -- issue #319: conditional advantage
         from public.spell_casts casts
         join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
         join public.spell_cards sc on sc.id = sdi.card_id
@@ -2379,9 +2385,23 @@ begin
       v_after := v_row.p_after;
       v_running := v_after;
 
+      -- issue #319: a conditional-advantage cast (Gambler's Infusion) keeps
+      -- effect_kind 'advantage', but the branch its first die selected is
+      -- recorded in roll_transform.condition. Name that branch on the step:
+      -- 'advantage' / 'disadvantage' for a met threshold, else a zero-impact
+      -- 'conditional_advantage' step (before === after).
+      v_disp_kind := v_row.kind;
+      if v_row.condition is not null then
+        v_disp_kind := case v_row.condition ->> 'branch'
+          when 'advantage' then 'advantage'
+          when 'disadvantage' then 'disadvantage'
+          else 'conditional_advantage'
+        end;
+      end if;
+
       v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
         v_step_index,
-        v_row.kind,
+        v_disp_kind,
         jsonb_build_object(
           'cast_id', to_jsonb(v_row.cast_id),
           'active_effect_id', null,
@@ -2391,10 +2411,16 @@ begin
         v_pid,
         jsonb_build_object('type', 'roll', 'value', v_before),
         jsonb_build_object('type', 'roll', 'value', v_after),
-        -- issue #318: carry the chosen-pair op so the Recap renderer can tell
-        -- swap / set-both-lower / set-both-higher apart.
-        case when v_row.pair_op is not null
-          then jsonb_build_object('op', v_row.pair_op) else null end
+        case
+          -- issue #318: carry the chosen-pair op so the Recap renderer can
+          -- tell swap / set-both-lower / set-both-higher apart.
+          when v_row.pair_op is not null
+            then jsonb_build_object('op', v_row.pair_op)
+          -- issue #319: conditional advantage names which branch fired.
+          when v_row.condition is not null
+            then jsonb_build_object('condition', v_row.condition)
+          else null
+        end
       ));
       v_step_index := v_step_index + 1;
     end loop;

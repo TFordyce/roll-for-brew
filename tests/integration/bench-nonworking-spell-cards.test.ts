@@ -46,10 +46,11 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     // 39; Saving Steep (#308), the four ward cards (#309, migration 0082), the
     // three round-scoped modifier snapshot cards (#343, migration 0087), the
     // three durable persistent-modifier cards (#342, migration 0088), the
-    // three Effect Invocation cards (#316, migration 0093) and the four
-    // chosen-pair roll-transform cards (#318, migration 0094) are since
-    // implemented and un-benched, so 21.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(21);
+    // three Effect Invocation cards (#316, migration 0093), the four
+    // chosen-pair roll-transform cards (#318, migration 0096) and Gambler's
+    // Infusion (#319, migration 0095) are since implemented and un-benched,
+    // so 20.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(20);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();

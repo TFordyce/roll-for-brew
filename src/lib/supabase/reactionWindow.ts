@@ -240,7 +240,7 @@ export async function applyRollFlip(supabase: SupabaseClient, roundId: string, l
 }
 
 /**
- * Calls apply_roll_pair_transform (0094, issue #318 — Brew-tal Swap / Stir the
+ * Calls apply_roll_pair_transform (0096, issue #318 — Brew-tal Swap / Stir the
  * Pot / Steaming Mug Bond / Tea for Two): per un-negated roll_pair_transform
  * cast, swaps or sets-both-lower / sets-both-higher over the caster-named pair
  * in cast_inputs.pair, respecting a roll-domain ward on either end. Like

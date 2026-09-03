@@ -300,6 +300,16 @@ export type ResolutionTraceStep = {
   restOfDay: boolean;
   /** Issue #318: chosen-pair roll transform op — "swap" | "min" | "max". */
   pairOp: string | null;
+  /**
+   * Issue #319: conditional-advantage (Gambler's Infusion) detail — the first
+   * die and which branch it selected. null on every other step.
+   */
+  condition: {
+    firstDie: number;
+    branch: "advantage" | "disadvantage" | "none";
+    advantageAtOrAbove: number;
+    disadvantageAtOrBelow: number;
+  } | null;
 };
 
 /**
@@ -352,6 +362,15 @@ type RawTraceStep = {
   ward_card_name?: string | null;
   rest_of_day?: boolean;
   op?: string | null;
+  // Issue #319: a conditional-advantage step (Gambler's Infusion) — which
+  // branch the caster's first die selected, and the thresholds it was tested
+  // against. Absent on every other step.
+  condition?: {
+    first_die: number;
+    branch: "advantage" | "disadvantage" | "none";
+    advantage_at_or_above: number;
+    disadvantage_at_or_below: number;
+  } | null;
 };
 
 type RawResolveRoundOutcome = {
@@ -391,6 +410,14 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
         : null,
     restOfDay: raw.rest_of_day ?? false,
     pairOp: raw.op ?? null,
+    condition: raw.condition
+      ? {
+          firstDie: raw.condition.first_die,
+          branch: raw.condition.branch,
+          advantageAtOrAbove: raw.condition.advantage_at_or_above,
+          disadvantageAtOrBelow: raw.condition.disadvantage_at_or_below,
+        }
+      : null,
   };
 }
 

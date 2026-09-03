@@ -10,7 +10,7 @@ import {
 } from "./setup";
 
 // Runs against a real Supabase stack. Covers issue #318 -- Tier A primitive 2,
-// the chosen-pair roll transform (migration 0094): swap / set-both-lower /
+// the chosen-pair roll transform (migration 0096): swap / set-both-lower /
 // set-both-higher over a caster-named pair, generalising roll_swap past the
 // automatic highest<->lowest pick. Cards: Brew-tal Swap (Reaction, swap),
 // Stir the Pot (Action, swap two OTHER players), Steaming Mug Bond (Action,

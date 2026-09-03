@@ -183,7 +183,7 @@ const defaultFinalizeDeps: FinalizeReactionWindowDeps = {
  * with): applies any still-active forced_reroll effects in place on the
  * layer's own rolls (Double Dunk, Milk First?, ...), then the remaining
  * roll-transform effects (0033: Zariel's Fall/roll_flip, Dunkin
- * Disaster/roll_swap; 0094: the chosen-pair transforms/roll_pair_transform),
+ * Disaster/roll_swap; 0096: the chosen-pair transforms/roll_pair_transform),
  * in that fixed order — "flip before swap before chosen-pair", the documented
  * tie of record for a player hit by more than one. Each apply_* RPC now
  * also records its exact before→after into spell_casts.cast_inputs

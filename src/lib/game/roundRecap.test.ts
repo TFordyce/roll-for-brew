@@ -55,6 +55,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     ward: null,
     restOfDay: false,
     pairOp: null,
+    condition: null,
     ...overrides,
   };
 }
@@ -271,6 +272,53 @@ describe("buildRoundRecap", () => {
     const s = model.phases[0]!.steps[0]!;
     expect(s.sentence).toBe("Cloak of Milk wards Ada — Scalding Pour is blocked");
     expect(s.statusLabel).toBe("blocked");
+  });
+
+  it("conditional advantage (Gambler's Infusion): a met threshold renders as a plain advantage step", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [cast({ castId: "C1", cardName: "Gambler's Infusion", casterPlayerId: "ada", targetPlayerId: "ada", effectKind: "advantage" })],
+        trace: [
+          step({
+            displayKind: "advantage",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Gambler's Infusion", casterPlayerId: "ada" },
+            targetPlayer: "ada",
+            before: { type: "roll", value: 17 },
+            after: { type: "roll", value: 19 },
+            outcome: "applied",
+            condition: { firstDie: 17, branch: "advantage", advantageAtOrAbove: 15, disadvantageAtOrBelow: 5 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const s = model.phases.flatMap((p) => p.steps)[0]!;
+    expect(s.sentence).toBe("Ada played Gambler's Infusion — Ada rolls with advantage");
+    expect(s.beforeAfter).toEqual({ label: "roll", from: "17", to: "19", unchanged: false });
+  });
+
+  it("conditional advantage (Gambler's Infusion): neither threshold met is a kept zero-impact step", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [cast({ castId: "C1", cardName: "Gambler's Infusion", casterPlayerId: "ada", targetPlayerId: "ada", effectKind: "advantage" })],
+        trace: [
+          step({
+            displayKind: "conditional_advantage",
+            sourceCast: { castId: "C1", activeEffectId: null, cardName: "Gambler's Infusion", casterPlayerId: "ada" },
+            targetPlayer: "ada",
+            before: { type: "roll", value: 9 },
+            after: { type: "roll", value: 9 },
+            outcome: "no-op",
+            condition: { firstDie: 9, branch: "none", advantageAtOrAbove: 15, disadvantageAtOrBelow: 5 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const s = model.phases.flatMap((p) => p.steps)[0]!;
+    expect(s.sentence).toBe("Ada played Gambler's Infusion — Ada's first die was 9; neither threshold met, the roll stands");
+    expect(s.beforeAfter).toEqual({ label: "roll", from: "9", to: "9", unchanged: true });
+    expect(s.statusLabel).toBe("no effect");
   });
 
   it("live round: pending steps in cast order, index '·', no numbers, no caption", () => {
