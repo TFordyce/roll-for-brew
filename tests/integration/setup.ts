@@ -125,7 +125,8 @@ export async function signUpSignInAndEnterRoom(
  * roll-transform cards — Brew-tal Swap, Stir the Pot, Steaming Mug Bond, Tea
  * for Two (#318, migration 0096) — Gambler's Infusion (conditional advantage,
  * #319, migration 0095) — and the two fixed-roll cards — Steady Hand,
- * Sleeping Camomile (#317, migration 0094) — are now live, so 18 remain here.
+ * Sleeping Camomile (#317, migration 0094) — and Cloud of Cream (targeting
+ * skip, #321, migration 0099) — are now live, so 17 remain here.
  * A test that force-holds one of these must return it to the bench, not the
  * deck, on cleanup — releaseHeldCards below does that.
  */
@@ -140,8 +141,8 @@ export const BENCHED_SPELL_CARDS = [
   "Stale Biscuit", "Liquid Courage",
   "The Last Cuppa", "Earl of Earl Grey", "Prophe-Tea",
   "Brewmageddon",
-  // Dead effect kind (2)
-  "Cloud of Cream", "Kettle Crash",
+  // Dead effect kind (1)
+  "Kettle Crash",
 ] as const;
 
 /**
