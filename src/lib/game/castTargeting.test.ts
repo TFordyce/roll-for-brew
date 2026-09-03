@@ -21,13 +21,21 @@ describe("castTargetMode", () => {
   });
 
   it("routes the rebuild by-name OPPONENT / PLAYER cards to an at-cast single-target select", () => {
-    for (const name of ["Steaming Mug Bond", "Tea for Two", "Bes-Tea", "Tea Leaf", "Spillage", "Chai-nge of Heart"]) {
+    const opponentCards = ["Steaming Mug Bond", "Bes-Tea", "Tea Leaf", "Spillage", "Chai-nge of Heart"];
+    for (const name of opponentCards) {
       expect(castTargetMode(card({ cardName: name, target: "OPPONENT" }))).toBe("at-cast-target");
     }
+    // Tea for Two is stamped PLAYER, not OPPONENT.
+    expect(castTargetMode(card({ cardName: "Tea for Two", target: "PLAYER" }))).toBe("at-cast-target");
   });
 
   it("routes Stir the Pot to a two-other-players picker even though it is stamped OPPONENT", () => {
     expect(castTargetMode(card({ cardName: "Stir the Pot", target: "OPPONENT" }))).toBe("two-other-players");
+  });
+
+  it("never lets a name match override a non-OPPONENT/PLAYER stamp", () => {
+    expect(castTargetMode(card({ cardName: "Stir the Pot", target: "SELF" }))).toBe("none");
+    expect(castTargetMode(card({ cardName: "Bes-Tea", target: "TABLE" }))).toBe("none");
   });
 
   it("still renders the CHOSEN_PLAYERS checkbox picker for CHOSEN_PLAYERS cards", () => {
@@ -46,7 +54,7 @@ describe("castTargetMode", () => {
     expect(castTargetMode(card({ target: "WILD" }))).toBe("none");
   });
 
-  it("exposes the two name sets it keys off, kept in sync with cast_spell_card's by-name branches", () => {
+  it("exposes the two name sets it keys off (mirroring cast_spell_card's by-name branches)", () => {
     expect(AT_CAST_TARGET_CARDS.has("Chai-nge of Heart")).toBe(true);
     expect(TWO_OTHER_PLAYER_CARDS.has("Stir the Pot")).toBe(true);
     // Stir the Pot is handled by its own picker, not the single-target select.

@@ -103,8 +103,8 @@ export function CastForm({
   const isTwoOthers = mode === "two-other-players";
   const isChosenPlayers = mode === "chosen-players";
   const belowMinimum = isChosenPlayers && chosenCount < MIN_CHOSEN_PLAYERS;
-  const wrongTwoCount = isTwoOthers && chosenCount !== 2;
-  const disableSubmit = belowMinimum || wrongTwoCount;
+  const needsExactlyTwo = isTwoOthers && chosenCount !== 2;
+  const disableSubmit = belowMinimum || needsExactlyTwo;
 
   return (
     <form action={formAction} className="mt-3">
@@ -132,7 +132,7 @@ export function CastForm({
             ))}
           </select>
           <span className="mt-1 block font-body text-xs text-parchment-dim">
-            This card takes its target now, so it only lands once that player has declared in.
+            You name the target now, so you can only cast this once that player has declared in.
           </span>
         </label>
       ) : isChosenPlayers || isTwoOthers ? (
@@ -153,7 +153,7 @@ export function CastForm({
               </label>
             ))}
           </div>
-          {wrongTwoCount ? (
+          {needsExactlyTwo ? (
             <p className="mt-1 font-body text-xs text-parchment-dim">
               Choose exactly 2 other players ({chosenCount} selected).
             </p>
@@ -164,7 +164,7 @@ export function CastForm({
           ) : null}
           {isTwoOthers ? (
             <p className="mt-1 font-body text-xs text-parchment-dim">
-              This card takes its targets now, so it only lands once they have declared in.
+              You name both targets now, so you can only cast this once they have declared in.
             </p>
           ) : null}
         </fieldset>

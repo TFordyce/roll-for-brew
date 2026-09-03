@@ -1,3 +1,5 @@
+import type { HeldSpellCard } from "@/lib/supabase/spellCards";
+
 /**
  * Which target control `CastForm` renders for a held Action card, at cast time.
  *
@@ -37,7 +39,7 @@ export const TWO_OTHER_PLAYER_CARDS: ReadonlySet<string> = new Set([
 ]);
 
 export type CastTargetMode =
-  /** No picker — SELF / TABLE / WILD, or an OPPONENT/PLAYER card handled elsewhere. */
+  /** No picker — SELF / TABLE / WILD / CARD. */
   | "none"
   /** OPPONENT / PLAYER card armed now, target chosen after declare-in closes. */
   | "deferred-target"
@@ -50,16 +52,15 @@ export type CastTargetMode =
   /** The declare-a-number (1–20) tea-maker input. */
   | "declared-number";
 
-type HeldForTargeting = {
-  cardName: string;
-  target: string;
-  effectKind: string | null;
-};
+type HeldForTargeting = Pick<HeldSpellCard, "cardName" | "target" | "effectKind">;
 
 export function castTargetMode(held: HeldForTargeting): CastTargetMode {
-  if (TWO_OTHER_PLAYER_CARDS.has(held.cardName)) return "two-other-players";
-  if (AT_CAST_TARGET_CARDS.has(held.cardName)) return "at-cast-target";
-  if (held.target === "OPPONENT" || held.target === "PLAYER") return "deferred-target";
+  // The by-name pickers only apply to the OPPONENT / PLAYER stamps those cards
+  // actually carry — a name match alone never overrides a SELF / TABLE stamp.
+  const singleOtherStamp = held.target === "OPPONENT" || held.target === "PLAYER";
+  if (singleOtherStamp && TWO_OTHER_PLAYER_CARDS.has(held.cardName)) return "two-other-players";
+  if (singleOtherStamp && AT_CAST_TARGET_CARDS.has(held.cardName)) return "at-cast-target";
+  if (singleOtherStamp) return "deferred-target";
   if (held.target === "CHOSEN_PLAYERS") return "chosen-players";
   if (held.effectKind === "declared_number_tea_maker") return "declared-number";
   return "none";
