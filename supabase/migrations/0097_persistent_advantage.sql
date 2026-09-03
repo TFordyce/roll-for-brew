@@ -24,14 +24,23 @@
 --      records cast_inputs.roll_transform and gets Phase 3 negate-unwind for
 --      free; later rounds ride the projection row alone.
 --
---   3. resolve_round Phase 3 emits one `advantage` / `disadvantage` Trace step
---      per live persistent projection row on a roller who does NOT also have an
---      advantage / disadvantage spell_casts row this round (its cast round --
---      that path already emitted the step). before -> after is derived from the
---      roll row (rolls.value is the kept die, rolls.discarded_value the other).
---      The roll value itself is already correct -- the eager shim kept the
---      high / low die at submit_roll -- so the step is player-clarity only and
---      never mutates v_rolls.
+--   3. resolve_round Phase 3, per roller, emits one `advantage` /
+--      `disadvantage` Trace step for a live persistent projection row BEFORE
+--      the roll_transform walk (advantage resolves at submit_roll, before the
+--      reaction window -- spec section 2), seeding v_running with the
+--      advantage-kept die so a later reaction-window transform on the same
+--      roller chains off it rather than collapsing this step to zero-impact.
+--      Skipped for a roller who also has an advantage / disadvantage
+--      spell_casts row this round (its cast round -- the walk emits that step).
+--      before -> after: after is the kept die (rolls.value, or the earliest
+--      recorded roll_transform `before` when a later transform overwrote
+--      rolls.value); before is least/greatest(kept, rolls.discarded_value) by
+--      polarity. v_rolls is never mutated -- the eager shim already kept the
+--      right die. AC note (#320): on a projection-only round there is no
+--      spell_casts row to record before -> after onto and spec section 5
+--      forbids per-round mutation of the projection row, so rolls.value +
+--      rolls.discarded_value (persisted by the shim, migration 0049/0051) are
+--      the durable record the resolver adopts here -- no RNG is re-run.
 --
 --   4. rebuild_active_effects_projection's replay gate grows advantage /
 --      disadvantage so the debug rebuild reproduces the projection row.
@@ -39,9 +48,12 @@
 -- Negating the originating cast re-projects the advantage away
 -- (_rr_active_effects_as_of already filters a negated source cast, #310) and
 -- dispel ends it early through the same path -- both are covered without new
--- code here. Ward interaction for the advantage shim stays as it is for the
--- round-scoped advantage cards (no roll-domain ward pre-check -- deferred to
--- #335); persistent advantage inherits that unchanged.
+-- code here. Roll-domain ward x advantage / disadvantage is out of scope for
+-- ALL advantage cards until #335 adds the submit_roll ward pre-check (spec
+-- section 7 lists advantage / disadvantage as in-scope; no advantage card,
+-- round-scoped or persistent, honours it yet) -- persistent advantage
+-- introduces no regression and inherits the round-scoped behaviour unchanged.
+-- A modifier-domain ward never interacts with a roll-domain advantage.
 --
 -- Migration numbering: master's highest is 0077; rebuild/effect-resolver runs
 -- 0078-0096. This is 0097. Re-check at the #303 integrate-and-verify gate and
@@ -233,11 +245,12 @@ begin
        and target_pending = false and effect_kind = 'disadvantage'
   );
 
-  -- issue #320: a rest-of-day persistent advantage / disadvantage (Prophe-Tea)
-  -- lives as a spell_active_effects projection row, not a spell_casts row.
-  -- Fold a live one into the same booleans the round-scoped advantage cards
-  -- set, so the two-dice draw / discarded_value / cancellation all apply.
   if v_layer = 0 then
+    -- issue #320: a rest-of-day persistent advantage / disadvantage
+    -- (Prophe-Tea) lives as a spell_active_effects projection row, not a
+    -- spell_casts row. Fold a live one into the same booleans the round-scoped
+    -- advantage cards set, so the two-dice draw / discarded_value /
+    -- cancellation all apply.
     if not v_has_advantage then
       v_has_advantage := exists (
         select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
@@ -254,9 +267,7 @@ begin
            and sae.target_player_id = v_player_id
       );
     end if;
-  end if;
 
-  if v_layer = 0 then
     select casts.effect_params -> 'condition'
       into v_condition
       from public.spell_casts casts
@@ -449,11 +460,12 @@ begin
        and target_pending = false and effect_kind = 'disadvantage'
   );
 
-  -- issue #320: a rest-of-day persistent advantage / disadvantage (Prophe-Tea)
-  -- lives as a spell_active_effects projection row, not a spell_casts row.
-  -- Fold a live one into the same booleans the round-scoped advantage cards
-  -- set, so the two-dice draw / discarded_value / cancellation all apply.
   if v_layer = 0 then
+    -- issue #320: a rest-of-day persistent advantage / disadvantage
+    -- (Prophe-Tea) lives as a spell_active_effects projection row, not a
+    -- spell_casts row. Fold a live one into the same booleans the round-scoped
+    -- advantage cards set, so the two-dice draw / discarded_value /
+    -- cancellation all apply.
     if not v_has_advantage then
       v_has_advantage := exists (
         select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
@@ -470,9 +482,7 @@ begin
            and sae.target_player_id = p_player_id
       );
     end if;
-  end if;
 
-  if v_layer = 0 then
     select casts.effect_params -> 'condition'
       into v_condition
       from public.spell_casts casts
@@ -663,14 +673,17 @@ comment on function public.rebuild_active_effects_projection(uuid) is
 
 -- ---------------------------------------------------------------------------
 -- 6. resolve_round(uuid) -- re-emitted from 0096. The only change vs 0096 is a
---    new Phase 3 sub-block, run per roller right after the roll_transform
---    walk: for every live persistent advantage / disadvantage projection row
---    on a roller who does NOT also have an advantage / disadvantage
---    spell_casts row this round, emit one `advantage` / `disadvantage` Trace
---    step. before -> after is read from the roll row (value = kept die,
---    discarded_value = the other); v_rolls is NOT touched -- the eager shim
---    already kept the right die at submit_roll. Two new declarations
---    (v_pa_value / v_pa_discarded) support it.
+--    new Phase 3 sub-block, run per roller BEFORE the roll_transform walk (so a
+--    reaction-window transform on the same roller chains off the persistent
+--    advantage's kept die instead of masking it): for every live persistent
+--    advantage / disadvantage projection row on a roller who does NOT also have
+--    an advantage / disadvantage spell_casts row this round, emit one
+--    `advantage` / `disadvantage` Trace step and seed v_running with the kept
+--    die. before -> after is derived from the roll row + the earliest recorded
+--    roll_transform `before`; v_rolls is NOT touched -- the eager shim already
+--    kept the right die at submit_roll. A v_has_persistent_adv probe (after
+--    Phase 2) gates the sub-block; declarations v_pa_value / v_pa_discarded /
+--    v_pa_kept support it.
 -- ---------------------------------------------------------------------------
 
 create or replace function public.resolve_round(p_round_id uuid)
@@ -774,6 +787,7 @@ declare
   v_has_persistent_adv boolean := false;
   v_pa_value integer;
   v_pa_discarded integer;
+  v_pa_kept integer;
 begin
   select status, room_id, current_layer, replay_generation, replay_frozen_rollers
     into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers
@@ -1405,6 +1419,93 @@ begin
     v_pid := v_players[v_i];
     v_running := null;
 
+    -- issue #320: persistent advantage / disadvantage (Prophe-Tea). A
+    -- rest-of-day advantage lives as a spell_active_effects projection row --
+    -- no spell_casts row this round, so nothing for the roll_transform walk
+    -- below to pick up. Advantage resolves at submit_roll, BEFORE the reaction
+    -- window (spec section 2), so emit its clarity step FIRST and seed
+    -- v_running with the advantage-kept die: a later reaction-window transform
+    -- on the same roller then chains off it instead of collapsing this step to
+    -- a zero-impact one. v_rolls is never touched -- the eager shim already
+    -- kept the right die. Skipped for a roller who also has an advantage /
+    -- disadvantage spell_casts row this round (its cast round): the walk emits
+    -- that step itself. AC note (#320): with no cast row on a projection-only
+    -- round there is nothing in the Cast Log to record before->after onto, and
+    -- spec section 5 forbids mutating the projection row per round -- the kept
+    -- die + rolls.discarded_value (persisted by the shim, migration 0049/0051)
+    -- are the durable record the resolver adopts here without re-running RNG.
+    if v_has_persistent_adv then
+      for v_row in
+        select sae.id as effect_id, sae.effect_kind as kind,
+               sae.caster_id as caster_id, scp.name as card_name
+          from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+          join public.spell_cards scp on scp.id = sae.card_id
+         where sae.room_id = v_room_id
+           and sae.effect_kind in ('advantage', 'disadvantage')
+           and sae.target_player_id = v_pid
+           and not exists (
+             select 1 from public.spell_casts c
+              where c.round_id = p_round_id
+                and c.target_player_id = v_pid
+                and c.target_pending = false
+                and c.effect_kind in ('advantage', 'disadvantage')
+           )
+         order by sae.created_at
+      loop
+        select r.value, r.discarded_value into v_pa_value, v_pa_discarded
+          from public.rolls r
+         where r.round_id = p_round_id and r.layer = 0 and r.player_id = v_pid;
+
+        -- The advantage-kept die is rolls.value UNLESS a later reaction-window
+        -- transform overwrote it -- in which case that transform recorded the
+        -- value it read (the kept die) as its own `before`. Take the earliest
+        -- recorded `before` if there is one, else rolls.value.
+        select (pe.value ->> 'before')::integer
+          into v_pa_kept
+          from public.spell_casts casts
+          cross join lateral jsonb_array_elements(
+            casts.cast_inputs -> 'roll_transform' -> 'players') as pe(value)
+         where casts.round_id = p_round_id
+           and casts.effect_kind in
+             ('advantage', 'disadvantage', 'forced_reroll', 'roll_flip',
+              'roll_swap', 'fixed_roll', 'roll_pair_transform')
+           and casts.cast_inputs ? 'roll_transform'
+           and pe.value ->> 'player_id' = v_pid
+         order by (casts.cast_inputs -> 'roll_transform' ->> 'order')::integer,
+                  casts.seq
+         limit 1;
+        v_pa_kept := coalesce(v_pa_kept, v_pa_value);
+
+        v_after := v_pa_kept::numeric;
+        if v_pa_discarded is null then
+          -- advantage and disadvantage cancelled to a single die, or a fixed
+          -- roll suppressed the second draw: a zero-impact step.
+          v_before := v_after;
+        elsif v_row.kind = 'advantage' then
+          v_before := least(v_pa_kept, v_pa_discarded)::numeric;
+        else
+          v_before := greatest(v_pa_kept, v_pa_discarded)::numeric;
+        end if;
+
+        v_running := v_after;   -- the roll_transform walk chains from the kept die
+
+        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+          v_step_index,
+          v_row.kind,
+          jsonb_build_object(
+            'cast_id', null,
+            'active_effect_id', to_jsonb(v_row.effect_id),
+            'card_name', to_jsonb(v_row.card_name),
+            'caster_player_id', to_jsonb(v_row.caster_id)
+          ),
+          v_pid,
+          jsonb_build_object('type', 'roll', 'value', v_before),
+          jsonb_build_object('type', 'roll', 'value', v_after)
+        ));
+        v_step_index := v_step_index + 1;
+      end loop;
+    end if;
+
     for v_row in
       select casts.id as cast_id,
              casts.seq as seq,
@@ -1512,65 +1613,6 @@ begin
       ));
       v_step_index := v_step_index + 1;
     end loop;
-
-    -- issue #320: persistent advantage / disadvantage (Prophe-Tea). A
-    -- rest-of-day advantage lives as a spell_active_effects projection row
-    -- with no spell_casts row and so no roll_transform entry to walk above.
-    -- The eager shim already kept the high / low die into rolls.value +
-    -- rolls.discarded_value at submit_roll, so the roll value is correct
-    -- already -- emit one clarity step per live projection row, deriving
-    -- before -> after from the roll row, and do NOT touch v_rolls. Skip a
-    -- roller who ALSO has an advantage / disadvantage spell_casts row this
-    -- round (its cast round): that path emitted the step in the walk above.
-    if v_has_persistent_adv then
-      for v_row in
-        select sae.id as effect_id, sae.effect_kind as kind,
-               sae.caster_id as caster_id, scp.name as card_name
-          from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
-          join public.spell_cards scp on scp.id = sae.card_id
-         where sae.room_id = v_room_id
-           and sae.effect_kind in ('advantage', 'disadvantage')
-           and sae.target_player_id = v_pid
-           and not exists (
-             select 1 from public.spell_casts c
-              where c.round_id = p_round_id
-                and c.target_player_id = v_pid
-                and c.target_pending = false
-                and c.effect_kind in ('advantage', 'disadvantage')
-           )
-         order by sae.created_at
-      loop
-        select r.value, r.discarded_value into v_pa_value, v_pa_discarded
-          from public.rolls r
-         where r.round_id = p_round_id and r.layer = 0 and r.player_id = v_pid;
-
-        v_after := coalesce(v_running, v_pa_value)::numeric;
-        if v_running is not null or v_pa_discarded is null then
-          -- another roll transform already ran this round, or advantage and
-          -- disadvantage cancelled to a single die: a zero-impact step.
-          v_before := v_after;
-        elsif v_row.kind = 'advantage' then
-          v_before := least(v_pa_value, v_pa_discarded)::numeric;
-        else
-          v_before := greatest(v_pa_value, v_pa_discarded)::numeric;
-        end if;
-
-        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-          v_step_index,
-          v_row.kind,
-          jsonb_build_object(
-            'cast_id', null,
-            'active_effect_id', to_jsonb(v_row.effect_id),
-            'card_name', to_jsonb(v_row.card_name),
-            'caster_player_id', to_jsonb(v_row.caster_id)
-          ),
-          v_pid,
-          jsonb_build_object('type', 'roll', 'value', v_before),
-          jsonb_build_object('type', 'roll', 'value', v_after)
-        ));
-        v_step_index := v_step_index + 1;
-      end loop;
-    end if;
 
     -- issue #308: backfire re-applies the victim group's eager roll
     -- transforms once more onto the reactor (this player), after their own.

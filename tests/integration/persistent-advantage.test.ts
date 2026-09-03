@@ -249,6 +249,71 @@ describe.skipIf(!hasAnonTestEnv)("persistent advantage — Prophe-Tea (issue #32
     expect(out2.trace.filter((s) => s.display_kind === "advantage")).toHaveLength(1);
   });
 
+  it("stacks before a reaction-window transform on the same roller (advantage step first, not zero-impact)", async () => {
+    const caster = await signUp("prophe-stack");
+    const other = await signUp("prophe-stack-other");
+
+    await seedActiveEffect(admin, cleanup, {
+      roomId: caster.roomId,
+      targetPlayerId: caster.googleSub,
+      casterId: caster.googleSub,
+      cardName: "Prophe-Tea",
+      effectKind: "advantage",
+      effectParams: { persist: true },
+      roundsRemaining: null,
+    });
+
+    const roundId = await openAndCloseRound(caster, [other]);
+    // Advantage at submit kept 15 (other die 6); a reaction-window forced_reroll
+    // then overwrote the roll with 4. rolls.value is the post-reroll 4.
+    await seedRollWithDiscard(roundId, caster.googleSub, 4, 6);
+    await seedRollWithDiscard(roundId, other.googleSub, 12, null);
+
+    const { data: win } = await admin
+      .from("spell_reaction_windows")
+      .insert({ round_id: roundId, layer: 0, status: "closed" })
+      .select("id")
+      .single();
+    const donor = await forceHold(admin, other.googleSub, "Yorkshire Terror");
+    await admin
+      .from("spell_deck_instances")
+      .update({ location: "in_deck", held_by_player: null })
+      .eq("id", donor);
+    await admin.from("spell_casts").insert({
+      round_id: roundId,
+      caster_id: other.googleSub,
+      card_instance_id: donor,
+      target_player_id: caster.googleSub,
+      target_pending: false,
+      effect_kind: "forced_reroll",
+      effect_params: {},
+      reaction_window_id: win!.id,
+      cast_inputs: {
+        roll_transform: {
+          kind: "forced_reroll",
+          order: 2,
+          players: [{ player_id: caster.googleSub, before: 15, after: 4 }],
+        },
+      },
+    });
+
+    const out = await resolve(caster.client, roundId);
+    const rollSteps = out.trace.filter((s) => s.target_player === caster.googleSub && s.before.type === "roll");
+    // advantage step FIRST — before = the lower of the two advantage dice (6),
+    // after = the kept die (15) — NOT collapsed to 15 -> 15.
+    expect(rollSteps[0]).toMatchObject({
+      display_kind: "advantage",
+      before: { type: "roll", value: 6 },
+      after: { type: "roll", value: 15 },
+    });
+    // then the forced_reroll, chained off the kept die 15 -> 4.
+    expect(rollSteps[1]).toMatchObject({
+      display_kind: "forced_reroll",
+      before: { type: "roll", value: 15 },
+      after: { type: "roll", value: 4 },
+    });
+  });
+
   it("negating the originating cast re-projects the advantage away", async () => {
     const caster = await signUp("prophe-negate");
     const other = await signUp("prophe-negate-other");
