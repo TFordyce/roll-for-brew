@@ -120,10 +120,11 @@ export async function signUpSignInAndEnterRoom(
  * round-scoped modifier snapshot cards — Bes-Tea, Tea Leaf, Spillage (#343,
  * migration 0087) — and the three durable persistent-modifier cards —
  * Chai-nge of Heart, Tea-tally Spent, Bitter Leech (#342, migration 0088) —
- * and the two fixed-roll cards — Steady Hand, Sleeping Camomile (#317,
- * migration 0094) — are now live, so 26 remain here. A test that force-holds
- * one of these must return it to the bench, not the deck, on cleanup —
- * releaseHeldCards below does that.
+ * the three Effect Invocation cards — Saucerer's Apprentice, Genie in the
+ * Teapot, Brew-merang (#316, migration 0093) — and the two fixed-roll cards —
+ * Steady Hand, Sleeping Camomile (#317, migration 0094) — are now live, so 23
+ * remain here. A test that force-holds one of these must return it to the
+ * bench, not the deck, on cleanup — releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
@@ -133,10 +134,9 @@ export const BENCHED_SPELL_CARDS = [
   "Loose Leaf", "Stir the Pot", "PG Tipped",
   "Marked for Brew", "Steaming Mug Bond",
   "Loaf of Lipton", "Brew IOU", "Tea Heist",
-  "Stale Biscuit", "Saucerer's Apprentice", "Liquid Courage",
+  "Stale Biscuit", "Liquid Courage",
   "The Last Cuppa", "Earl of Earl Grey", "Prophe-Tea",
-  "Genie in the Teapot",
-  "Gambler's Infusion", "Brew-merang", "Tea for Two",
+  "Gambler's Infusion", "Tea for Two",
   "Brewmageddon",
   // Dead effect kind (2)
   "Cloud of Cream", "Kettle Crash",

@@ -1,10 +1,10 @@
 -- Tier A primitive 1 -- Fixed-roll (issue #317, spec #302 section 12 / ADR 0005).
 --
--- Migration number: the rebuild branch's highest was 0092
--- (0092_round_replay_roll_ward_carryover). PR #356 (issue #316, Effect
--- Invocation) is open into rebuild/effect-resolver and already claims 0093,
--- so this slice is 0094. Re-check at the #303 integrate-and-verify gate and
--- renumber to sit after master's current highest.
+-- Migration number: this branch merged rebuild/effect-resolver after PR #356
+-- (issue #316, Effect Invocation) landed migration 0093, so this slice is
+-- 0094. Sibling slices #318 / #319 (PR #358, migration 0095) race the same
+-- numbers -- re-check and renumber to sit after master's current highest at
+-- the #303 integrate-and-verify gate.
 --
 -- What changes
 -- ------------
@@ -488,11 +488,14 @@ grant execute on function public.submit_roll_as(uuid, text) to authenticated;
 -- ===========================================================================
 -- 5. resolve_round(uuid) -- Phase 3 adopts the recorded fixed_roll value
 -- ===========================================================================
--- Re-emitted from 0092 with 'fixed_roll' added to the Phase 3 effect-kind
--- filter (one line). Everything else is byte-for-byte 0092. NOTE: PR #356
--- (issue #316) also re-emits resolve_round from 0092 (Phase 0a/0b invocation)
--- -- whichever of #316 / #317 merges into rebuild/effect-resolver second must
--- rebase its resolve_round re-emit onto the other's body.
+-- Re-emitted from 0093 (issue #316's Phase 0a/0b invocation body -- this
+-- branch merged rebuild/effect-resolver after #316 landed) with 'fixed_roll'
+-- added to the Phase 3 effect-kind filter (one line) + a Phase 3 comment.
+-- Everything else is byte-for-byte 0093.
+--
+-- Sibling slices #318 (chosen-pair) and #319 (conditional advantage, PR #358,
+-- migration 0095) also re-emit resolve_round / submit_roll* -- their bodies
+-- and the migration numbering reconcile at the #303 integrate-and-verify gate.
 
 create or replace function public.resolve_round(p_round_id uuid)
 returns jsonb
@@ -577,6 +580,18 @@ declare
 
   -- Pre-pass (issue #344) working state
   v_wb record;
+
+  -- Phase 0 (issue #316: Effect Invocation) working state
+  v_has_invocations boolean := false;
+  v_inv record;
+  v_src_row record;
+  v_cp jsonb;
+  v_row_cp jsonb;
+  v_inv_instance uuid;
+  v_copy_target text;
+  v_copy_parent uuid;
+  v_copy_role text;
+  v_copy_ci jsonb;
 begin
   select status, room_id, current_layer, replay_generation, replay_frozen_rollers
     into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers
@@ -687,6 +702,95 @@ begin
         ));
         v_step_index := v_step_index + 1;
       end if;
+    end loop;
+  end if;
+
+  -- ------------------------------------------------------------------
+  -- Phase 0a: Effect Invocation -- materialise Saucerer's Apprentice copies
+  -- (issue #316, spec §10). Runs BEFORE Phase 1 so a copied contested_negate
+  -- flows through the counter machinery natively. For every live copy (not
+  -- itself negated, source not broken, source caster not holding block_copy)
+  -- insert one concrete spell_casts row per source effect row -- caster = the
+  -- Apprentice, target = the Apprentice caster (a card-targeted counter keeps
+  -- the source's parent_cast_id and re-resolves against the same card), all
+  -- RNG copied verbatim from cast_inputs.copy_inputs so this stays pure. The
+  -- guard on (source_cast_id, is_copy, generation) makes the insert
+  -- idempotent, matching the Bitter Leech tick pattern (issue #342).
+  -- ------------------------------------------------------------------
+  select exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id
+       and effect_kind is null
+       and (cast_inputs ? 'copied_cast_id' or cast_inputs ? 'seized_cast_id')
+  ) into v_has_invocations;
+
+  if v_has_invocations then
+    for v_inv in select * from public._rr_invocation_resolution(p_round_id) loop
+      if v_inv.invocation_kind <> 'copy'
+         or v_inv.invocation_negated
+         or v_inv.source_broken
+         or v_inv.ward_cast_id is not null then
+        continue;
+      end if;
+
+      if exists (
+        select 1 from public.spell_casts
+         where round_id = p_round_id
+           and source_cast_id = v_inv.invocation_cast_id
+           and cast_inputs ? 'is_copy'
+           and coalesce(generation, 0) = coalesce(v_gen, 0)
+      ) then
+        continue;
+      end if;
+
+      select card_instance_id into v_inv_instance
+        from public.spell_casts where id = v_inv.invocation_cast_id;
+      select cast_inputs -> 'copy_inputs' -> 'by_cast' into v_cp
+        from public.spell_casts where id = v_inv.invocation_cast_id;
+      v_cp := coalesce(v_cp, '{}'::jsonb);
+
+      for v_src_row in
+        select id, effect_kind, effect_params, parent_cast_id, reaction_window_id
+          from public.spell_casts
+         where card_instance_id = v_inv.source_group
+         order by seq
+      loop
+        if v_src_row.effect_kind in ('contested_negate', 'redirect') then
+          v_copy_target := null;
+          v_copy_parent := v_src_row.parent_cast_id;
+          v_copy_role   := 'CARD';
+        else
+          v_copy_target := v_inv.invocation_caster;
+          v_copy_parent := null;
+          v_copy_role   := 'CASTER';
+        end if;
+
+        -- this source row's fresh RNG, drawn at cast time by
+        -- _rr_build_copy_inputs and keyed by the row's own id.
+        v_row_cp := coalesce(v_cp -> v_src_row.id::text, '{}'::jsonb);
+        v_copy_ci := jsonb_build_object('is_copy', true, 'copy_of_cast_id', v_src_row.id);
+        if v_src_row.effect_kind = 'contested_negate' and v_row_cp ? 'dc_d20' then
+          v_copy_ci := v_copy_ci
+            || jsonb_build_object('dc_d20', (v_row_cp->>'dc_d20')::int, 'dc', (v_row_cp->>'dc')::int);
+        elsif v_src_row.effect_kind = 'dice_modifier' and v_row_cp ? 'dice_roll' then
+          v_copy_ci := v_copy_ci || jsonb_build_object('dice_roll', (v_row_cp->>'dice_roll')::int);
+        elsif v_src_row.effect_kind in ('advantage', 'disadvantage', 'forced_reroll', 'roll_flip', 'roll_swap')
+              and v_row_cp ? 'roll_transform' then
+          v_copy_ci := v_copy_ci || jsonb_build_object('roll_transform', v_row_cp -> 'roll_transform');
+        end if;
+
+        insert into public.spell_casts (
+          round_id, caster_id, card_instance_id, target_player_id, target_pending,
+          effect_kind, effect_params, cast_inputs, parent_cast_id, reaction_window_id,
+          target_role, source_cast_id, generation
+        )
+        values (
+          p_round_id, v_inv.invocation_caster, v_inv_instance, v_copy_target, false,
+          v_src_row.effect_kind, v_src_row.effect_params, v_copy_ci, v_copy_parent,
+          v_src_row.reaction_window_id, v_copy_role, v_inv.invocation_cast_id,
+          coalesce(v_gen, 0)
+        );
+      end loop;
     end loop;
   end if;
 
@@ -900,6 +1004,160 @@ begin
   end loop;
 
   -- ------------------------------------------------------------------
+  -- Phase 0b: Effect Invocation -- seize retarget + copy / seize outcome
+  -- (issue #316, spec §10). Runs AFTER Phase 1's counter block, which clears
+  -- `negated` for the whole round when a counter is present -- so the seize
+  -- collapse-negation of non-kept rows is re-asserted every run, the same way
+  -- the #344 Pre-pass re-asserts ward-block negation.
+  --
+  --   * seize: the seized cast group retargets to its own caster. A fan-out
+  --     (same effect_kind + params across N players) collapses to one CASTER
+  --     row, the rest negated; a compound card keeps every distinct effect,
+  --     each on the caster; already-executed eager roll rows are negated
+  --     (Phase 3 unwinds them on the original target -- no re-apply).
+  --   * a block_copy ward on the source caster, or a negated / broken-chain
+  --     source, makes the copy / seize a no-op -- the card is still burned.
+  -- ------------------------------------------------------------------
+  if v_has_invocations then
+    for v_inv in select * from public._rr_invocation_resolution(p_round_id) loop
+
+      -- ---- block_copy ward: card burned, outcome blocked ----
+      if v_inv.ward_cast_id is not null then
+        -- clear any cache a prior resolve wrote before the ward was in play
+        -- (defensive -- inputs are stable for a closed round, but keep the
+        -- derivation and the cache in lock-step regardless).
+        update public.spell_casts set seized_by_cast_id = null, copied_cast_id = null
+         where round_id = p_round_id
+           and (seized_by_cast_id = v_inv.invocation_cast_id or id = v_inv.invocation_cast_id);
+
+        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+          v_step_index, 'warded',
+          jsonb_build_object(
+            'cast_id', to_jsonb(v_inv.invocation_cast_id),
+            'active_effect_id', null,
+            'card_name', to_jsonb(case when v_inv.invocation_kind = 'seize'
+                                       then 'Brew-merang' else 'Saucerer''s Apprentice' end),
+            'caster_player_id', to_jsonb(v_inv.invocation_caster)),
+          coalesce(v_inv.source_caster, v_inv.invocation_caster),
+          jsonb_build_object('type', 'status', 'value', 'cast'),
+          jsonb_build_object('type', 'status', 'value', 'blocked'),
+          jsonb_build_object(
+            'blocked_cast_id', to_jsonb(v_inv.invocation_cast_id),
+            'ward_cast_id', to_jsonb(v_inv.ward_cast_id),
+            'ward_card_name', to_jsonb(v_inv.ward_card_name),
+            'target', to_jsonb(coalesce(v_inv.source_caster, v_inv.invocation_caster)),
+            'invocation_kind', v_inv.invocation_kind,
+            'outcome', 'blocked')));
+        v_step_index := v_step_index + 1;
+        continue;
+      end if;
+
+      -- ---- negated invoker / broken source: no-op, card burned ----
+      if v_inv.invocation_negated or v_inv.source_broken then
+        update public.spell_casts set seized_by_cast_id = null, copied_cast_id = null
+         where round_id = p_round_id
+           and (seized_by_cast_id = v_inv.invocation_cast_id or id = v_inv.invocation_cast_id);
+
+        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+          v_step_index, v_inv.invocation_kind,
+          jsonb_build_object(
+            'cast_id', to_jsonb(v_inv.invocation_cast_id),
+            'active_effect_id', null,
+            'card_name', to_jsonb(case when v_inv.invocation_kind = 'seize'
+                                       then 'Brew-merang' else 'Saucerer''s Apprentice' end),
+            'caster_player_id', to_jsonb(v_inv.invocation_caster)),
+          coalesce(v_inv.source_caster, v_inv.invocation_caster),
+          jsonb_build_object('type', 'status', 'value', 'cast'),
+          jsonb_build_object('type', 'status', 'value', 'no effect'),
+          jsonb_build_object(
+            'invocation_kind', v_inv.invocation_kind,
+            'outcome', 'no-op',
+            'reason', case when v_inv.invocation_negated then 'countered' else 'source broken' end)));
+        v_step_index := v_step_index + 1;
+        continue;
+      end if;
+
+      -- ---- live copy: header step (materialised rows resolved in Phase 0a) ----
+      if v_inv.invocation_kind = 'copy' then
+        update public.spell_casts
+           set copied_cast_id = v_inv.source_parent_cast_id
+         where id = v_inv.invocation_cast_id;
+
+        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+          v_step_index, 'copy',
+          jsonb_build_object(
+            'cast_id', to_jsonb(v_inv.invocation_cast_id),
+            'active_effect_id', null,
+            'card_name', to_jsonb('Saucerer''s Apprentice'::text),
+            'caster_player_id', to_jsonb(v_inv.invocation_caster)),
+          v_inv.invocation_caster,
+          jsonb_build_object('type', 'status', 'value', 'cast'),
+          jsonb_build_object('type', 'status', 'value', 'copied'),
+          jsonb_build_object(
+            'copied_cast_id', to_jsonb(v_inv.source_parent_cast_id),
+            'landed_on', to_jsonb(v_inv.invocation_caster),
+            'outcome', 'applied')));
+        v_step_index := v_step_index + 1;
+        continue;
+      end if;
+
+      -- ---- live seize: retarget the seized group to its own caster ----
+      if not exists (
+        select 1 from public.spell_casts
+         where round_id = p_round_id
+           and card_instance_id = v_inv.source_group
+           and seized_by_cast_id = v_inv.invocation_cast_id
+      ) then
+        update public.spell_casts sc set
+          target_player_id = case when r.rn = 1 and r.keepable
+                                  then v_inv.source_caster else sc.target_player_id end,
+          target_role      = case when r.rn = 1 and r.keepable
+                                  then 'CASTER' else sc.target_role end,
+          target_pending   = false,
+          negated          = case when r.rn = 1 and r.keepable then sc.negated else true end,
+          seized_by_cast_id = v_inv.invocation_cast_id,
+          cast_inputs      = case when r.rn = 1 and r.keepable
+                                  then coalesce(sc.cast_inputs, '{}'::jsonb)
+                                       || jsonb_build_object('seized_kept', true)
+                                  else sc.cast_inputs end
+        from (
+          select id,
+                 (effect_kind is not null
+                  and effect_kind not in
+                    ('advantage', 'disadvantage', 'forced_reroll', 'roll_flip', 'roll_swap')) as keepable,
+                 row_number() over (partition by effect_kind, effect_params order by seq) as rn
+            from public.spell_casts
+           where round_id = p_round_id and card_instance_id = v_inv.source_group
+        ) r
+        where r.id = sc.id;
+      end if;
+
+      -- every run: re-assert negation on the non-kept seized rows.
+      update public.spell_casts
+         set negated = true
+       where round_id = p_round_id
+         and seized_by_cast_id = v_inv.invocation_cast_id
+         and not coalesce((cast_inputs ->> 'seized_kept')::boolean, false);
+
+      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+        v_step_index, 'seize',
+        jsonb_build_object(
+          'cast_id', to_jsonb(v_inv.invocation_cast_id),
+          'active_effect_id', null,
+          'card_name', to_jsonb('Brew-merang'::text),
+          'caster_player_id', to_jsonb(v_inv.invocation_caster)),
+        v_inv.source_caster,
+        jsonb_build_object('type', 'status', 'value', 'cast'),
+        jsonb_build_object('type', 'status', 'value', 'seized'),
+        jsonb_build_object(
+          'seized_by_cast_id', to_jsonb(v_inv.invocation_cast_id),
+          'source_caster', to_jsonb(v_inv.source_caster),
+          'outcome', 'applied')));
+      v_step_index := v_step_index + 1;
+    end loop;
+  end if;
+
+  -- ------------------------------------------------------------------
   -- Phase 2: ward projection (issue #309).
   --
   -- Load every active ward (spell_active_effects.effect_kind = 'ward')
@@ -946,10 +1204,11 @@ begin
   -- ------------------------------------------------------------------
   -- Phase 3: roll-input accounting (issue #306/#308/#309/#317).
   -- issue #317: `fixed_roll` (Steady Hand = 10, Sleeping Camomile = 1) is a
-  -- pre-roll kind recorded by submit_roll into cast_inputs.roll_transform at
-  -- order 0 -- it replaces the die, and any later flip/swap chains off it.
-  -- Its recorded entry (normal or `warded`) flows through the generic branches
-  -- below exactly like the reaction-window transforms.
+  -- pre-roll kind recorded by submit_roll (via _rr_apply_fixed_roll) into
+  -- cast_inputs.roll_transform at order 0 -- it replaces the die, and any
+  -- later flip/swap chains off it. Its recorded entry (normal or `warded`)
+  -- flows through the generic branches below exactly like the reaction-window
+  -- transforms.
   -- ------------------------------------------------------------------
   for v_i in 1 .. coalesce(array_length(v_players, 1), 0) loop
     v_pid := v_players[v_i];
@@ -1841,4 +2100,5 @@ revoke execute on function public.resolve_round(uuid) from public, anon;
 grant execute on function public.resolve_round(uuid) to authenticated;
 
 comment on function public.resolve_round(uuid) is
-  'Authoritative layer-0 outcome resolver (issues #305-#311 / #342 / #344 / #351 / #317, ADR 0005): Phase 1 negate / redirect / backfire; a Pre-pass re-asserts whole-group negation on a ward-blocked Chai-nge / Tea Leaf / Spillage / Bes-Tea and emits its `warded` step (issue #344); Phase 2 ward projection; Phase 3 roll-input accounting; Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier; Phase 4b-pre synthesises each live Bitter Leech tick as a persistent_modifier_transfer pair, then negates a tick pair landing on a warded victim (issue #344); Phase 4b re-derives room_players.modifier = base + persistent spell delta for every player a transfer / spend cast touched this round (issue #311); Phase 5 brewer selection. Emits the Resolution Trace. In a replay generation (replay_generation > 0) it also emits a `roll_frozen` step for each roller whose roll _rr_scrap_round carried over for a negative-polarity roll-domain ward (issue #351). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';
+  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316 / #317 / #342 / #344 / #351, ADR 0005): Phase 0a materialises Saucerer''s Apprentice copies + Phase 0b retargets Brew-merang seizes / renders copy / seize / block_copy outcomes (issue #316); Phase 1 negate / redirect / backfire; a Pre-pass re-asserts whole-group negation on a ward-blocked Chai-nge / Tea Leaf / Spillage / Bes-Tea and emits its `warded` step (issue #344); Phase 2 ward projection; Phase 3 roll-input accounting; Phase 4a modifier composition; Phase 4c lowest_gains_highest_modifier; Phase 4b-pre synthesises each live Bitter Leech tick as a persistent_modifier_transfer pair, then negates a tick pair landing on a warded victim (issue #344); Phase 4b re-derives room_players.modifier = base + persistent spell delta for every player a transfer / spend cast touched this round (issue #311); Phase 5 brewer selection. Emits the Resolution Trace. In a replay generation (replay_generation > 0) it also emits a `roll_frozen` step for each roller whose roll _rr_scrap_round carried over for a negative-polarity roll-domain ward (issue #351). Pure and idempotent over its inputs. Layer > 0 bypasses all spell logic (issue #219).';
+
