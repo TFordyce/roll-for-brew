@@ -231,8 +231,8 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
 
     await admin.from("rolls").insert([
       { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 12, input_mode: "manual", modifier_snapshot: 0 },
-      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 4, input_mode: "manual", modifier_snapshot: 0 },
-      { round_id: roundId, player_id: third.googleSub, layer: 0, value: 8, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 15, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: third.googleSub, layer: 0, value: 18, input_mode: "manual", modifier_snapshot: 0 },
     ]);
 
     // The gate holds: every roll is in, but layer 0 isn't "complete" while
@@ -270,17 +270,21 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     // set_spell_cast_target: no window exists yet (resolveCompletedLayerIfAny
     // bailed at the gate on the completing roll), so it opens one, which
     // self-closes with no eligible reactor and finalises — attaching the
-    // no-longer-pending forced_reroll cast and resolving the round.
+    // no-longer-pending forced_reroll cast and driving resolution.
     await afterDeferredCastTargetSet(caster.client, roundId as string);
 
-    const { data: resolvedRound } = await admin
-      .from("rounds")
-      .select("status, resolution_trace")
-      .eq("id", roundId)
+    // A layer-0 reaction window now exists (the glue opened it for the first
+    // time) and the forced_reroll cast is attached to it.
+    const { data: castRow } = await admin
+      .from("spell_casts")
+      .select("reaction_window_id, target_pending, negated, cast_inputs")
+      .eq("id", castId)
       .single();
-    expect(resolvedRound!.status).toBe("resolved");
+    expect(castRow!.reaction_window_id).not.toBeNull();
+    expect(castRow).toMatchObject({ target_pending: false, negated: false });
 
-    // The target's layer-0 roll was actually rerolled in place...
+    // The target's layer-0 roll was rerolled in place, and the eager shim
+    // recorded the before -> after onto the cast's cast_inputs.
     const { data: targetRoll } = await admin
       .from("rolls")
       .select("value")
@@ -288,12 +292,23 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
       .eq("player_id", target.googleSub)
       .eq("layer", 0)
       .single();
-    expect(targetRoll!.value).not.toBe(4);
+    expect(targetRoll!.value).not.toBe(15);
     expect(targetRoll!.value).toBeGreaterThanOrEqual(1);
     expect(targetRoll!.value).toBeLessThanOrEqual(20);
+    expect((castRow!.cast_inputs as { roll_transform?: { players: { before: number; after: number }[] } }).roll_transform)
+      .toMatchObject({ players: [{ before: 15, after: targetRoll!.value }] });
 
-    // ...and it shows in the persisted Resolution Trace as one forced_reroll
-    // step with typed before -> after roll values.
+    // The round is no longer stuck behind the hold: it either resolved, or
+    // (if the reroll happened to tie the lowest) advanced to a tie-break
+    // layer. Either way the forced_reroll shows in the persisted Resolution
+    // Trace as one step with typed before -> after roll values.
+    const { data: resolvedRound } = await admin
+      .from("rounds")
+      .select("status, current_layer, resolution_trace")
+      .eq("id", roundId)
+      .single();
+    expect(resolvedRound!.status === "resolved" || resolvedRound!.current_layer >= 1).toBe(true);
+
     const rerollSteps = (
       (resolvedRound!.resolution_trace ?? []) as {
         display_kind: string;
@@ -304,7 +319,7 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     ).filter((s) => s.display_kind === "forced_reroll");
     expect(rerollSteps).toHaveLength(1);
     expect(rerollSteps[0]!.target_player).toBe(target.googleSub);
-    expect(rerollSteps[0]!.before).toEqual({ type: "roll", value: 4 });
+    expect(rerollSteps[0]!.before).toEqual({ type: "roll", value: 15 });
     expect(rerollSteps[0]!.after).toEqual({ type: "roll", value: targetRoll!.value });
   });
 
