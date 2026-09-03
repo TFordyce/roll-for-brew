@@ -124,6 +124,7 @@ describe.skipIf(!hasAnonTestEnv)("fixed-roll primitive (#317): Steady Hand, Slee
       effectParams: Record<string, unknown>;
       targetPlayerId: string | null;
       castInputs?: Record<string, unknown>;
+      negated?: boolean;
     },
   ): Promise<string> {
     const instanceId = await forceHold(admin, casterId, donorCard);
@@ -143,6 +144,7 @@ describe.skipIf(!hasAnonTestEnv)("fixed-roll primitive (#317): Steady Hand, Slee
         effect_kind: row.effectKind,
         effect_params: row.effectParams,
         cast_inputs: row.castInputs ?? null,
+        negated: row.negated ?? false,
       })
       .select("id")
       .single();
@@ -281,16 +283,17 @@ describe.skipIf(!hasAnonTestEnv)("fixed-roll primitive (#317): Steady Hand, Slee
     const target = await signUp("fr-ward-target");
     await forceHold(admin, caster.googleSub, "Sleeping Camomile");
 
-    // Cast-Iron Kettle shape: negative polarity, roll + modifier domain,
-    // carried forward from an earlier round (source cast in its own resolved
-    // round, per #310).
+    // A roll-domain ward carried forward from an earlier round (source cast in
+    // its own resolved round, per #310). Both polarities so the outcome does
+    // not hinge on the random d20 the target rolls — forcing a 1 is negative
+    // for any roll >= 2 and neutral (never warded) only on an exact natural 1.
     await seedActiveEffect(admin, cleanup, {
       roomId: target.roomId,
       targetPlayerId: target.googleSub,
       casterId: target.googleSub,
       cardName: "Cast-Iron Kettle",
       effectKind: "ward",
-      effectParams: { polarity: ["negative"], domain: ["modifier", "roll"] },
+      effectParams: { polarity: ["positive", "negative"], domain: ["roll"] },
     });
 
     const roundId = await startRound(caster, [target]);
@@ -387,5 +390,130 @@ describe.skipIf(!hasAnonTestEnv)("fixed-roll primitive (#317): Steady Hand, Slee
     // caster (4) is the lowest and brews.
     expect(out.brewer_id).toBe(caster.googleSub);
     expect(out.trace.some((s) => s.display_kind === "fixed_roll")).toBe(false);
+  });
+
+  // --------------------------------------------------------------------
+  // Countered fixed_roll — Phase 3 logical unwind (spec #302 §8)
+  // --------------------------------------------------------------------
+
+  it("a negated (countered) fixed_roll is logically unwound: Phase 3 adopts the recorded `before` and emits no step", async () => {
+    const caster = await signUp("fr-neg-caster");
+    const target = await signUp("fr-neg-target");
+    const roundId = await startRound(caster, [target]);
+    await closeRound(caster, roundId);
+
+    await seedRoll(roundId, caster.googleSub, 8);
+    await seedRoll(roundId, target.googleSub, 17);
+
+    // A fixed_roll cast that recorded a normal 17 -> 1 transform, then got
+    // countered: resolve_round Phase 1 short-circuits with no counters, so the
+    // hand-set `negated` stands and Phase 3 takes its is_negated branch.
+    await seedCast(roundId, caster.googleSub, "Sleeping Camomile", {
+      effectKind: "fixed_roll",
+      effectParams: { value: 1 },
+      targetPlayerId: target.googleSub,
+      negated: true,
+      castInputs: {
+        roll_transform: {
+          kind: "fixed_roll",
+          order: 0,
+          players: [{ player_id: target.googleSub, before: 17, after: 1 }],
+        },
+      },
+    });
+
+    const out = await resolve(caster.client, roundId);
+
+    // No fixed_roll step for a negated transform; target keeps their real 17,
+    // so the caster (8) is lowest and brews.
+    expect(out.trace.some((s) => s.display_kind === "fixed_roll")).toBe(false);
+    expect(out.brewer_id).toBe(caster.googleSub);
+  });
+
+  // --------------------------------------------------------------------
+  // Idempotence (ADR 0005 invariant)
+  // --------------------------------------------------------------------
+
+  it("resolve_round over a fixed_roll is idempotent — a second run yields the same brewer and Trace", async () => {
+    const caster = await signUp("fr-idem-caster");
+    const target = await signUp("fr-idem-target");
+    const roundId = await startRound(caster, [target]);
+    await closeRound(caster, roundId);
+
+    await seedRoll(roundId, caster.googleSub, 15);
+    await seedRoll(roundId, target.googleSub, 12);
+    await seedCast(roundId, caster.googleSub, "Steady Hand", {
+      effectKind: "fixed_roll",
+      effectParams: { value: 10 },
+      targetPlayerId: caster.googleSub,
+      castInputs: {
+        roll_transform: {
+          kind: "fixed_roll",
+          order: 0,
+          players: [{ player_id: caster.googleSub, before: 15, after: 10 }],
+        },
+      },
+    });
+
+    const first = await resolve(caster.client, roundId);
+    const second = await resolve(caster.client, roundId);
+
+    expect(second.brewer_id).toBe(first.brewer_id);
+    expect(second.brewer_id).toBe(caster.googleSub); // fixed 10 < target 12
+    expect(second.trace).toEqual(first.trace);
+  });
+
+  // --------------------------------------------------------------------
+  // Chaining — a later roll_flip composes onto the fixed value (order 0 -> 3)
+  // --------------------------------------------------------------------
+
+  it("a later roll_flip chains off the fixed value: Phase 3 walks fixed_roll then roll_flip", async () => {
+    const caster = await signUp("fr-chain-caster");
+    const target = await signUp("fr-chain-target");
+    const roundId = await startRound(caster, [target]);
+    await closeRound(caster, roundId);
+
+    await seedRoll(roundId, caster.googleSub, 6);
+    await seedRoll(roundId, target.googleSub, 5);
+
+    // fixed_roll sets the target to 10 (order 0); a later roll_flip records
+    // 10 -> 11 (order 3), its `before` chained from the fixed value.
+    await seedCast(roundId, caster.googleSub, "Sleeping Camomile", {
+      effectKind: "fixed_roll",
+      effectParams: { value: 10 },
+      targetPlayerId: target.googleSub,
+      castInputs: {
+        roll_transform: {
+          kind: "fixed_roll",
+          order: 0,
+          players: [{ player_id: target.googleSub, before: 5, after: 10 }],
+        },
+      },
+    });
+    await seedCast(roundId, caster.googleSub, "Fortune's Flavour", {
+      effectKind: "roll_flip",
+      effectParams: {},
+      targetPlayerId: null,
+      castInputs: {
+        roll_transform: {
+          kind: "roll_flip",
+          order: 3,
+          players: [{ player_id: target.googleSub, before: 10, after: 11 }],
+        },
+      },
+    });
+
+    const out = await resolve(caster.client, roundId);
+
+    const targetRollSteps = out.trace.filter(
+      (s) => s.target_player === target.googleSub && s.before.type === "roll",
+    );
+    expect(targetRollSteps.map((s) => s.display_kind)).toEqual(["fixed_roll", "roll_flip"]);
+    expect(targetRollSteps[0]!.after).toEqual({ type: "roll", value: 10 });
+    expect(targetRollSteps[1]!.before).toEqual({ type: "roll", value: 10 });
+    expect(targetRollSteps[1]!.after).toEqual({ type: "roll", value: 11 });
+
+    // Final adopted roll is 11; the caster (6) is lowest and brews.
+    expect(out.brewer_id).toBe(caster.googleSub);
   });
 });

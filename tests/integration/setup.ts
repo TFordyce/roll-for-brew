@@ -122,9 +122,8 @@ export async function signUpSignInAndEnterRoom(
  * Chai-nge of Heart, Tea-tally Spent, Bitter Leech (#342, migration 0088) —
  * and the two fixed-roll cards — Steady Hand, Sleeping Camomile (#317,
  * migration 0094) — are now live, so 26 remain here. A test that force-holds
- * one of these must
- * return it to the bench, not the deck, on cleanup — releaseHeldCards below
- * does that.
+ * one of these must return it to the bench, not the deck, on cleanup —
+ * releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows

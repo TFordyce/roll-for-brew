@@ -28,11 +28,18 @@
 --   }
 --
 -- Recording point: submit_roll / submit_roll_as (like advantage / disadvantage
--- -- fixed_roll is a pre-roll Action kind, not a reaction-window one). The
--- affected player still submits a roll; its value is forced. The card text's
--- "skip your roll" / "does not roll" is honoured in spirit only -- a genuine
--- exempt-from-rolling state (Tea Cosy) is a separate Tier B primitive (#294)
--- and out of scope here.
+-- -- fixed_roll is a pre-roll Action kind, not a reaction-window one), factored
+-- into the shared helper `_rr_apply_fixed_roll`. The affected player still
+-- submits a roll; its value is forced. The card text's "skip your roll" /
+-- "does not roll" is honoured in spirit only -- a genuine exempt-from-rolling
+-- state (Tea Cosy) is a separate Tier B primitive (#294) and out of scope here.
+--
+-- Advantage / disadvantage on the same player as a non-warded fixed_roll: a
+-- fixed die has nothing to take advantage on, so the second draw and its
+-- roll_transform recording are skipped -- the advantage / disadvantage cast
+-- simply records nothing and contributes nothing in Phase 3. (Pathological:
+-- needs two self-buff casts on one player.) A warded fixed_roll does not
+-- suppress it -- the ward blocked the fix, so the real roll + advantage stand.
 --
 -- Ward interaction: a matching earlier-seq roll-domain ward on the affected
 -- player is a pre-apply check in submit_roll (via _rr_active_ward_gate, spec
@@ -112,12 +119,125 @@ update public.spell_deck_instances sdi
    and sdi.location = 'benched';
 
 -- ===========================================================================
--- 4. submit_roll / submit_roll_as -- record the fixed_roll before->after
+-- 4. _rr_apply_fixed_roll -- the fixed-roll eager shim
 -- ===========================================================================
--- Re-emitted from 0079 with the issue #317 fixed_roll arm added (before the
--- rolls insert: resolve the constant + roll-domain ward pre-check; after it:
--- record the roll_transform). The advantage / disadvantage logic is byte-for-
--- byte 0079.
+-- Factored out so submit_roll and submit_roll_as carry one call, not a
+-- duplicated ~35-line block each (cf. _rr_active_ward_gate). Given the fixed
+-- cast + the value the player rolled, it records the before->after into the
+-- cast's cast_inputs.roll_transform (kind 'fixed_roll', order 0 -- it replaces
+-- the die, so a later flip / swap chains off it) and returns the constant to
+-- persist. An earlier-seq roll-domain ward pre-empts the override: it records
+-- a `warded` marker (before == after, plus would_be_after / ward_cast_id /
+-- ward_card_name -- same shape as apply_forced_reroll's) and returns the
+-- rolled value unchanged. A no-op returning the rolled value when the player
+-- has no such cast or the layer is > 0.
+--
+-- `applied` = "the die was replaced": false for no-cast AND for warded, so the
+-- caller runs its normal advantage / disadvantage path in both those cases and
+-- skips it only when the fix actually took effect (a fixed die has nothing to
+-- take advantage on).
+
+create or replace function public._rr_apply_fixed_roll(
+  p_round_id uuid, p_player_id text, p_layer integer,
+  p_room_id uuid, p_rolled_value integer
+)
+returns table (value integer, applied boolean)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_fixed_value integer;
+  v_before_seq bigint;
+  v_polarity text;
+  v_warded boolean := false;
+  v_ward record;
+begin
+  if p_layer <> 0 then
+    return query select p_rolled_value, false;
+    return;
+  end if;
+
+  select (sc.effect_params ->> 'value')::integer, sc.seq
+    into v_fixed_value, v_before_seq
+    from public.spell_casts sc
+   where sc.round_id = p_round_id
+     and sc.target_player_id = p_player_id
+     and sc.target_pending = false
+     and sc.effect_kind = 'fixed_roll'
+     and sc.negated = false            -- pre-resolve invariant; negation is
+   order by sc.seq                     -- resolver-written (Phase 1)
+   limit 1;
+
+  if v_fixed_value is null then
+    return query select p_rolled_value, false;
+    return;
+  end if;
+
+  -- Polarity of the fix vs what the player actually rolled, mirroring
+  -- roll_flip's "computed from the actual pre-value" (spec section 7). A
+  -- neutral fix (constant == roll) is never warded.
+  v_polarity := case
+    when v_fixed_value > p_rolled_value then 'positive'
+    when v_fixed_value < p_rolled_value then 'negative'
+    else 'neutral' end;
+
+  if v_polarity <> 'neutral' then
+    select g.ward_cast_id, g.ward_card_name into v_ward
+      from public._rr_active_ward_gate(
+        p_room_id, p_player_id, 'roll', v_polarity, p_round_id, v_before_seq) g;
+    v_warded := found;
+  end if;
+
+  update public.spell_casts casts
+     set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+           'roll_transform', jsonb_build_object(
+             'kind', 'fixed_roll',
+             'order', 0,
+             'players', jsonb_build_array(
+               case when v_warded then jsonb_build_object(
+                 'player_id', p_player_id,
+                 'before', p_rolled_value,
+                 'after', p_rolled_value,
+                 'warded', true,
+                 'would_be_after', v_fixed_value,
+                 'ward_cast_id', v_ward.ward_cast_id,
+                 'ward_card_name', v_ward.ward_card_name
+               ) else jsonb_build_object(
+                 'player_id', p_player_id,
+                 'before', p_rolled_value,
+                 'after', v_fixed_value
+               ) end
+             )
+           ))
+   where casts.round_id = p_round_id
+     and casts.target_player_id = p_player_id
+     and casts.target_pending = false
+     and casts.effect_kind = 'fixed_roll'
+     and casts.negated = false;
+
+  if v_warded then
+    return query select p_rolled_value, false;
+  else
+    return query select v_fixed_value, true;
+  end if;
+end;
+$$;
+
+revoke execute on function public._rr_apply_fixed_roll(uuid, text, integer, uuid, integer) from public, anon;
+grant execute on function public._rr_apply_fixed_roll(uuid, text, integer, uuid, integer) to authenticated;
+
+comment on function public._rr_apply_fixed_roll(uuid, text, integer, uuid, integer) is
+  'Issue #317: the fixed-roll eager shim (Steady Hand / Sleeping Camomile). Records a non-negated fixed_roll cast''s before->after into cast_inputs.roll_transform (order 0) and returns (constant, applied=true); an earlier-seq roll-domain ward instead records a `warded` marker and returns (rolled_value, applied=false). A no-op returning (rolled_value, false) when there is no such cast or the layer is > 0. Called by submit_roll / submit_roll_as before the rolls insert; resolve_round Phase 3 adopts the recorded entry.';
+
+-- ===========================================================================
+-- 4b. submit_roll / submit_roll_as -- call the fixed-roll shim
+-- ===========================================================================
+-- Re-emitted from 0079. The ONLY change vs 0079 is the _rr_apply_fixed_roll
+-- call just after the initial d20 draw, plus gating the advantage /
+-- disadvantage draw + recording on `not v_fixed_applied` (a fixed die has
+-- nothing to take advantage on). The advantage / disadvantage bodies
+-- themselves are byte-for-byte 0079.
 
 create or replace function public.submit_roll(p_round_id uuid)
 returns integer
@@ -139,13 +259,7 @@ declare
   v_has_disadvantage boolean;
   v_cancelled boolean;
   v_dice jsonb;
-  -- issue #317: Fixed-roll (Steady Hand = 10, Sleeping Camomile = 1).
-  v_fixed_value integer;
-  v_fixed_before integer;
-  v_fixed_seq bigint;
-  v_fixed_polarity text;
-  v_fixed_warded boolean := false;
-  v_fixed_ward record;
+  v_fixed_applied boolean := false;   -- issue #317
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -188,53 +302,23 @@ begin
   v_discarded_value := null;
   v_cancelled := v_has_advantage and v_has_disadvantage;
 
-  if v_has_advantage <> v_has_disadvantage then
+  -- issue #317: fixed-roll shim. Records the before->after (order 0) and
+  -- returns the constant; a roll-domain ward instead records a `warded`
+  -- marker and returns v_first_value with applied=false.
+  select f.value, f.applied into v_value, v_fixed_applied
+    from public._rr_apply_fixed_roll(p_round_id, v_player_id, v_layer, v_room_id, v_first_value) f;
+
+  -- A fixed die has nothing to take advantage / disadvantage on, so skip the
+  -- second draw + its recording when the override took effect. Bodies below
+  -- are byte-for-byte 0079.
+  if not v_fixed_applied and v_has_advantage <> v_has_disadvantage then
     v_second_value := floor(random() * 20 + 1)::integer;
     if v_has_advantage then
-      v_discarded_value := least(v_value, v_second_value);
-      v_value := greatest(v_value, v_second_value);
+      v_discarded_value := least(v_first_value, v_second_value);
+      v_value := greatest(v_first_value, v_second_value);
     else
-      v_discarded_value := greatest(v_value, v_second_value);
-      v_value := least(v_value, v_second_value);
-    end if;
-  end if;
-
-  -- issue #317: Fixed-roll. A non-negated, resolved-target fixed_roll cast on
-  -- this player (Steady Hand: self, value 10; Sleeping Camomile: opponent,
-  -- value 1) overrides their d20 to the card's constant. The card text ("skip
-  -- your roll" / "does not roll") is honoured in spirit -- the player still
-  -- submits, the value is forced; a genuine exempt-from-rolling state is a
-  -- separate Tier B primitive (#294). A matching earlier-seq roll-domain ward
-  -- pre-empts the override (no mutation, a `warded` marker instead).
-  if v_layer = 0 then
-    select (sc.effect_params ->> 'value')::integer, sc.seq
-      into v_fixed_value, v_fixed_seq
-      from public.spell_casts sc
-     where sc.round_id = p_round_id
-       and sc.target_player_id = v_player_id
-       and sc.target_pending = false
-       and sc.effect_kind = 'fixed_roll'
-       and sc.negated = false
-     order by sc.seq
-     limit 1;
-  end if;
-
-  if v_fixed_value is not null then
-    v_fixed_before := v_value;
-    v_fixed_polarity := case
-      when v_fixed_value > v_fixed_before then 'positive'
-      when v_fixed_value < v_fixed_before then 'negative'
-      else 'neutral' end;
-
-    if v_fixed_polarity <> 'neutral' then
-      select g.ward_cast_id, g.ward_card_name into v_fixed_ward
-        from public._rr_active_ward_gate(
-          v_room_id, v_player_id, 'roll', v_fixed_polarity, p_round_id, v_fixed_seq) g;
-      v_fixed_warded := found;
-    end if;
-
-    if not v_fixed_warded then
-      v_value := v_fixed_value;
+      v_discarded_value := greatest(v_first_value, v_second_value);
+      v_value := least(v_first_value, v_second_value);
     end if;
   end if;
 
@@ -242,7 +326,7 @@ begin
   values (p_round_id, v_player_id, v_layer, v_value, 'in_app', v_modifier, v_discarded_value);
 
   -- Record the roll transform onto the advantage / disadvantage cast(s).
-  if v_has_advantage or v_has_disadvantage then
+  if not v_fixed_applied and (v_has_advantage or v_has_disadvantage) then
     if v_cancelled then
       v_dice := jsonb_build_array(v_first_value);
     elsif v_second_value is not null then
@@ -268,39 +352,6 @@ begin
        and casts.target_player_id = v_player_id
        and casts.target_pending = false
        and casts.effect_kind in ('advantage', 'disadvantage');
-  end if;
-
-  -- issue #317: record the fixed_roll before->after (order 0), or -- when a
-  -- roll-domain ward pre-empted it above -- a `warded` marker whose shape
-  -- matches the reaction-window shim's (apply_forced_reroll etc.).
-  -- resolve_round Phase 3 adopts it with no recomputation.
-  if v_fixed_value is not null then
-    update public.spell_casts casts
-       set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
-             'roll_transform', jsonb_build_object(
-               'kind', 'fixed_roll',
-               'order', 0,
-               'players', jsonb_build_array(
-                 case when v_fixed_warded then jsonb_build_object(
-                   'player_id', v_player_id,
-                   'before', v_fixed_before,
-                   'after', v_fixed_before,
-                   'warded', true,
-                   'would_be_after', v_fixed_value,
-                   'ward_cast_id', v_fixed_ward.ward_cast_id,
-                   'ward_card_name', v_fixed_ward.ward_card_name
-                 ) else jsonb_build_object(
-                   'player_id', v_player_id,
-                   'before', v_fixed_before,
-                   'after', v_fixed_value
-                 ) end
-               )
-             ))
-     where casts.round_id = p_round_id
-       and casts.target_player_id = v_player_id
-       and casts.target_pending = false
-       and casts.effect_kind = 'fixed_roll'
-       and casts.negated = false;
   end if;
 
   return v_value;
@@ -331,13 +382,7 @@ declare
   v_has_disadvantage boolean;
   v_cancelled boolean;
   v_dice jsonb;
-  -- issue #317: Fixed-roll (Steady Hand = 10, Sleeping Camomile = 1).
-  v_fixed_value integer;
-  v_fixed_before integer;
-  v_fixed_seq bigint;
-  v_fixed_polarity text;
-  v_fixed_warded boolean := false;
-  v_fixed_ward record;
+  v_fixed_applied boolean := false;   -- issue #317
 begin
   v_caller := public.current_player_id();
 
@@ -389,55 +434,25 @@ begin
   v_discarded_value := null;
   v_cancelled := v_has_advantage and v_has_disadvantage;
 
-  if v_has_advantage <> v_has_disadvantage then
+  -- issue #317: fixed-roll shim -- see submit_roll. Kept in lockstep.
+  select f.value, f.applied into v_value, v_fixed_applied
+    from public._rr_apply_fixed_roll(p_round_id, p_player_id, v_layer, v_room_id, v_first_value) f;
+
+  if not v_fixed_applied and v_has_advantage <> v_has_disadvantage then
     v_second_value := floor(random() * 20 + 1)::integer;
     if v_has_advantage then
-      v_discarded_value := least(v_value, v_second_value);
-      v_value := greatest(v_value, v_second_value);
+      v_discarded_value := least(v_first_value, v_second_value);
+      v_value := greatest(v_first_value, v_second_value);
     else
-      v_discarded_value := greatest(v_value, v_second_value);
-      v_value := least(v_value, v_second_value);
-    end if;
-  end if;
-
-  -- issue #317: Fixed-roll -- see submit_roll for the rationale. Kept in
-  -- lockstep with submit_roll's block (0049 already duplicates this logic).
-  if v_layer = 0 then
-    select (sc.effect_params ->> 'value')::integer, sc.seq
-      into v_fixed_value, v_fixed_seq
-      from public.spell_casts sc
-     where sc.round_id = p_round_id
-       and sc.target_player_id = p_player_id
-       and sc.target_pending = false
-       and sc.effect_kind = 'fixed_roll'
-       and sc.negated = false
-     order by sc.seq
-     limit 1;
-  end if;
-
-  if v_fixed_value is not null then
-    v_fixed_before := v_value;
-    v_fixed_polarity := case
-      when v_fixed_value > v_fixed_before then 'positive'
-      when v_fixed_value < v_fixed_before then 'negative'
-      else 'neutral' end;
-
-    if v_fixed_polarity <> 'neutral' then
-      select g.ward_cast_id, g.ward_card_name into v_fixed_ward
-        from public._rr_active_ward_gate(
-          v_room_id, p_player_id, 'roll', v_fixed_polarity, p_round_id, v_fixed_seq) g;
-      v_fixed_warded := found;
-    end if;
-
-    if not v_fixed_warded then
-      v_value := v_fixed_value;
+      v_discarded_value := greatest(v_first_value, v_second_value);
+      v_value := least(v_first_value, v_second_value);
     end if;
   end if;
 
   insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot, discarded_value)
   values (p_round_id, p_player_id, v_layer, v_value, 'in_app', v_modifier, v_discarded_value);
 
-  if v_has_advantage or v_has_disadvantage then
+  if not v_fixed_applied and (v_has_advantage or v_has_disadvantage) then
     if v_cancelled or v_second_value is null then
       v_dice := jsonb_build_array(v_first_value);
     else
@@ -461,36 +476,6 @@ begin
        and casts.target_player_id = p_player_id
        and casts.target_pending = false
        and casts.effect_kind in ('advantage', 'disadvantage');
-  end if;
-
-  -- issue #317: record the fixed_roll before->after (order 0) / warded marker.
-  if v_fixed_value is not null then
-    update public.spell_casts casts
-       set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
-             'roll_transform', jsonb_build_object(
-               'kind', 'fixed_roll',
-               'order', 0,
-               'players', jsonb_build_array(
-                 case when v_fixed_warded then jsonb_build_object(
-                   'player_id', p_player_id,
-                   'before', v_fixed_before,
-                   'after', v_fixed_before,
-                   'warded', true,
-                   'would_be_after', v_fixed_value,
-                   'ward_cast_id', v_fixed_ward.ward_cast_id,
-                   'ward_card_name', v_fixed_ward.ward_card_name
-                 ) else jsonb_build_object(
-                   'player_id', p_player_id,
-                   'before', v_fixed_before,
-                   'after', v_fixed_value
-                 ) end
-               )
-             ))
-     where casts.round_id = p_round_id
-       and casts.target_player_id = p_player_id
-       and casts.target_pending = false
-       and casts.effect_kind = 'fixed_roll'
-       and casts.negated = false;
   end if;
 
   return v_value;
