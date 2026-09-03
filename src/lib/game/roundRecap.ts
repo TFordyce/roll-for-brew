@@ -141,6 +141,12 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       return `${played} — ${t} rolls with advantage`;
     case "disadvantage":
       return `${played} — ${t} rolls with disadvantage`;
+    case "conditional_advantage":
+      // Issue #319: Gambler's Infusion, first die met neither threshold — a
+      // zero-impact step. (A met threshold resolves to advantage/disadvantage.)
+      return step.condition
+        ? `${played} — ${t}'s first die was ${step.condition.firstDie}; neither threshold met, the roll stands`
+        : `${played} — ${t}'s roll stands`;
     case "forced_reroll":
       return `${played} — ${t} must reroll`;
     case "roll_flip":
