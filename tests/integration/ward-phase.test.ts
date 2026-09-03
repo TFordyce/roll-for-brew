@@ -543,6 +543,232 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
   });
 
   // ----------------------------------------------------------------------
+  // Roll-domain wards at submit_roll time (issue #335, fast-follow to #309):
+  // a static advantage (positive) / disadvantage (negative) is warded off
+  // before the roll -- the second d20 is never drawn and the transform
+  // records a `warded` marker for resolve_round Phase 3.
+  // ----------------------------------------------------------------------
+
+  it("a positive roll-domain ward blocks a static advantage at submit_roll: no second die is drawn and the transform records a warded marker", async () => {
+    const p1 = await signUp("wp-sr-adv-1");
+    const p2 = await signUp("wp-sr-adv-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    // p1 holds a pre-roll self-advantage cast (Sugar Rush shape).
+    const advCastId = await seedCast(roundId, p1.googleSub, "Sugar Rush", {
+      effectKind: "advantage",
+      effectParams: {},
+      targetPlayerId: p1.googleSub,
+    });
+    // ...and a positive roll-domain ward that predates the roll.
+    await seedWard(
+      p1.roomId,
+      p1.googleSub,
+      p1.googleSub,
+      { polarity: ["positive"], domain: ["roll"] },
+      5,
+      "Jinxed Biscuit",
+    );
+
+    const { error } = await p1.client.rpc("submit_roll", { p_round_id: roundId });
+    expect(error).toBeNull();
+
+    // No advantage draw: the discarded d20 slot stays empty.
+    const { data: roll } = await admin
+      .from("rolls")
+      .select("value, discarded_value")
+      .eq("round_id", roundId)
+      .eq("layer", 0)
+      .eq("player_id", p1.googleSub)
+      .single();
+    expect(roll!.discarded_value).toBeNull();
+
+    // The advantage cast carries a warded marker (roll untouched).
+    const { data: castRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs")
+      .eq("id", advCastId)
+      .single();
+    const entry = (
+      castRow!.cast_inputs as {
+        roll_transform: { players: { player_id: string; before: number; after: number; warded?: boolean; ward_card_name?: string }[] };
+      }
+    ).roll_transform.players[0]!;
+    expect(entry.warded).toBe(true);
+    expect(entry.before).toBe(entry.after);
+    expect(entry.before).toBe(roll!.value);
+    expect(entry.ward_card_name).toBe("Jinxed Biscuit");
+  });
+
+  it("resolve_round emits a warded step for an advantage warded off at submit_roll, over the un-inflated roll", async () => {
+    const p1 = await signUp("wp-sr-adv-res-1");
+    const p2 = await signUp("wp-sr-adv-res-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedCast(roundId, p1.googleSub, "Sugar Rush", {
+      effectKind: "advantage",
+      effectParams: {},
+      targetPlayerId: p1.googleSub,
+    });
+    await seedWard(
+      p1.roomId,
+      p1.googleSub,
+      p1.googleSub,
+      { polarity: ["positive"], domain: ["roll"] },
+      5,
+      "Jinxed Biscuit",
+    );
+    await p1.client.rpc("submit_roll", { p_round_id: roundId });
+    const { data: p1Roll } = await admin
+      .from("rolls")
+      .select("value")
+      .eq("round_id", roundId)
+      .eq("layer", 0)
+      .eq("player_id", p1.googleSub)
+      .single();
+    await seedRoll(roundId, p2.googleSub, 11);
+
+    const out = await resolve(p1.client, roundId);
+
+    const warded = out.trace.find(
+      (s) => s.display_kind === "warded" && s.target_player === p1.googleSub && s.before.type === "roll",
+    );
+    expect(warded).toBeDefined();
+    expect(warded!.ward_card_name).toBe("Jinxed Biscuit");
+    expect(warded!.outcome).toBe("blocked");
+    // The step sits over the natural roll and does not move it.
+    expect(warded!.before.value).toBe(p1Roll!.value);
+    expect(warded!.after.value).toBe(p1Roll!.value);
+  });
+
+  it("a negative-only roll-domain ward does not touch a static advantage: the second die is still drawn", async () => {
+    const p1 = await signUp("wp-sr-adv-ctrl-1");
+    const p2 = await signUp("wp-sr-adv-ctrl-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedCast(roundId, p1.googleSub, "Sugar Rush", {
+      effectKind: "advantage",
+      effectParams: {},
+      targetPlayerId: p1.googleSub,
+    });
+    // Wrong polarity for a positive effect.
+    await seedWard(
+      p1.roomId,
+      p1.googleSub,
+      p1.googleSub,
+      { polarity: ["negative"], domain: ["roll"] },
+      5,
+      "Cast-Iron Kettle",
+    );
+
+    await p1.client.rpc("submit_roll", { p_round_id: roundId });
+    await seedRoll(roundId, p2.googleSub, 10);
+
+    const { data: roll } = await admin
+      .from("rolls")
+      .select("discarded_value")
+      .eq("round_id", roundId)
+      .eq("layer", 0)
+      .eq("player_id", p1.googleSub)
+      .single();
+    expect(roll!.discarded_value).not.toBeNull();
+
+    const out = await resolve(p1.client, roundId);
+    expect(out.trace.some((s) => s.display_kind === "warded")).toBe(false);
+  });
+
+  it("a negative roll-domain ward blocks a static disadvantage at submit_roll: no second die is drawn and a warded step is emitted", async () => {
+    const p1 = await signUp("wp-sr-dis-1");
+    const p2 = await signUp("wp-sr-dis-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    const disCastId = await seedCast(roundId, p1.googleSub, "Slipped Spoon", {
+      effectKind: "disadvantage",
+      effectParams: {},
+      targetPlayerId: p1.googleSub,
+    });
+    await seedWard(
+      p1.roomId,
+      p1.googleSub,
+      p1.googleSub,
+      { polarity: ["negative"], domain: ["roll"] },
+      5,
+      "Cast-Iron Kettle",
+    );
+
+    await p1.client.rpc("submit_roll", { p_round_id: roundId });
+
+    const { data: roll } = await admin
+      .from("rolls")
+      .select("value, discarded_value")
+      .eq("round_id", roundId)
+      .eq("layer", 0)
+      .eq("player_id", p1.googleSub)
+      .single();
+    expect(roll!.discarded_value).toBeNull();
+
+    const { data: castRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs")
+      .eq("id", disCastId)
+      .single();
+    const entry = (
+      castRow!.cast_inputs as { roll_transform: { players: { warded?: boolean; ward_card_name?: string }[] } }
+    ).roll_transform.players[0]!;
+    expect(entry.warded).toBe(true);
+    expect(entry.ward_card_name).toBe("Cast-Iron Kettle");
+
+    await seedRoll(roundId, p2.googleSub, 1);
+    const out = await resolve(p1.client, roundId);
+    expect(
+      out.trace.some((s) => s.display_kind === "warded" && s.target_player === p1.googleSub && s.before.type === "roll"),
+    ).toBe(true);
+  });
+
+  it("submit_roll_as blocks a static advantage the same way for the admin-puppet path", async () => {
+    const admin1 = await signUp("wp-sra-adv-1");
+    // Make admin1 an admin and put the round in the Test Room.
+    await admin.from("players").update({ is_admin: true }).eq("id", admin1.googleSub);
+    await admin.from("rooms").update({ is_test: true }).eq("id", admin1.roomId);
+    const p2 = await signUp("wp-sra-adv-2");
+    const roundId = await openAndCloseRound(admin1, [p2]);
+    const advCastId = await seedCast(roundId, p2.googleSub, "Sugar Rush", {
+      effectKind: "advantage",
+      effectParams: {},
+      targetPlayerId: p2.googleSub,
+    });
+    await seedWard(
+      admin1.roomId,
+      p2.googleSub,
+      p2.googleSub,
+      { polarity: ["positive"], domain: ["roll"] },
+      5,
+      "Jinxed Biscuit",
+    );
+
+    const { error } = await admin1.client.rpc("submit_roll_as", {
+      p_round_id: roundId,
+      p_player_id: p2.googleSub,
+    });
+    expect(error).toBeNull();
+
+    const { data: roll } = await admin
+      .from("rolls")
+      .select("discarded_value")
+      .eq("round_id", roundId)
+      .eq("layer", 0)
+      .eq("player_id", p2.googleSub)
+      .single();
+    expect(roll!.discarded_value).toBeNull();
+
+    const { data: castRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs")
+      .eq("id", advCastId)
+      .single();
+    const entry = (
+      castRow!.cast_inputs as { roll_transform: { players: { warded?: boolean }[] } }
+    ).roll_transform.players[0]!;
+    expect(entry.warded).toBe(true);
+  });
+
+  // ----------------------------------------------------------------------
   // rounds_remaining NULL = unbounded; dispel
   // ----------------------------------------------------------------------
 
