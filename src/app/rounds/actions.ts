@@ -37,6 +37,7 @@ import {
 } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
+  afterDeferredCastTargetSet,
   afterPendingSpellDieResolved,
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
@@ -469,6 +470,11 @@ export async function setSpellCastTargetAction(
   const supabase = await createClient();
   try {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
+    // Issue #325: a pre-roll forced_reroll cast (Yorkshire Terror) may have
+    // been holding layer 0 open until this target landed — drive resolution
+    // from wherever it stalled. A no-op for every other deferred target, and
+    // when rolling isn't finished yet.
+    await afterDeferredCastTargetSet(supabase, roundId);
   } catch (error) {
     return resolveSpellCastError(error);
   }

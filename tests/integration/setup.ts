@@ -114,25 +114,25 @@ export async function signUpSignInAndEnterRoom(
 /**
  * The non-working spell cards still parked at location 'benched' (migration
  * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
- * each card is implemented and un-benched: 0074 benched 39; Saving Steep
- * (#308, migration 0081), the four ward cards — Jinxed Biscuit, Cast-Iron
- * Kettle, Bag for Life, Eternal Steep (#309, migration 0082) — the three
- * round-scoped modifier snapshot cards — Bes-Tea, Tea Leaf, Spillage (#343,
- * migration 0087) — and the three durable persistent-modifier cards —
- * Chai-nge of Heart, Tea-tally Spent, Bitter Leech (#342, migration 0088) —
- * the three Effect Invocation cards — Saucerer's Apprentice, Genie in the
- * Teapot, Brew-merang (#316, migration 0093) — the four chosen-pair
- * roll-transform cards — Brew-tal Swap, Stir the Pot, Steaming Mug Bond, Tea
- * for Two (#318, migration 0096) — Gambler's Infusion (conditional advantage,
- * #319, migration 0095) — and the two fixed-roll cards — Steady Hand,
- * Sleeping Camomile (#317, migration 0094) — are now live, so 18 remain here.
- * A test that force-holds one of these must return it to the bench, not the
- * deck, on cleanup — releaseHeldCards below does that.
+ * each card is implemented and un-benched: 0074 benched 39; Yorkshire Terror
+ * (#286, migration 0075), Saving Steep (#308, migration 0081), the four ward
+ * cards — Jinxed Biscuit, Cast-Iron Kettle, Bag for Life, Eternal Steep
+ * (#309, migration 0082) — the three round-scoped modifier snapshot cards —
+ * Bes-Tea, Tea Leaf, Spillage (#343, migration 0087) — and the three durable
+ * persistent-modifier cards — Chai-nge of Heart, Tea-tally Spent, Bitter
+ * Leech (#342, migration 0088) — the three Effect Invocation cards —
+ * Saucerer's Apprentice, Genie in the Teapot, Brew-merang (#316, migration
+ * 0093) — the four chosen-pair roll-transform cards — Brew-tal Swap, Stir the
+ * Pot, Steaming Mug Bond, Tea for Two (#318, migration 0096) — Gambler's
+ * Infusion (conditional advantage, #319, migration 0095) — and the two
+ * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
+ * are now live, so 17 remain here. A test that force-holds one of these must
+ * return it to the bench, not the deck, on cleanup — releaseHeldCards below
+ * does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
   "Tea Party Revolt", "Last Drip",
-  "Yorkshire Terror",
   "Tea Cosy",
   "Loose Leaf", "PG Tipped",
   "Marked for Brew",

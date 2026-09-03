@@ -84,6 +84,46 @@ export async function afterPendingSpellDieResolved(
   supabase: Awaited<ReturnType<typeof createClient>>,
   roundId: string,
 ) {
+  await reEnterLayerZeroResolution(supabase, roundId);
+}
+
+/**
+ * Re-enters layer resolution once a deferred spell-cast target has just been
+ * set (issue #325) — the counterpart to afterPendingSpellDieResolved above,
+ * for the same reason: get_current_layer_rolls_if_complete's forced_reroll
+ * gate (0098) may have left the round's layer-0 rolls "complete but blocked"
+ * the whole time a pre-roll forced_reroll cast (Yorkshire Terror) sat
+ * awaiting its target, and the roll that completed layer 0 already ran its
+ * own resolveCompletedLayerIfAny and bailed at that gate. The
+ * nobody-holds-a-Reaction path never opened a window
+ * (resolveCompletedLayerIfAny returned before open_reaction_window), so it
+ * still needs to — which now opens it for the first time and picks the
+ * no-longer-pending cast up via open_reaction_window's own attach pass. A
+ * no-op for every deferred target that isn't a forced_reroll, and for a
+ * forced_reroll target set before rolling finished (the rolls simply aren't
+ * complete yet).
+ */
+export async function afterDeferredCastTargetSet(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  roundId: string,
+) {
+  await reEnterLayerZeroResolution(supabase, roundId);
+}
+
+/**
+ * Shared body of afterPendingSpellDieResolved / afterDeferredCastTargetSet:
+ * a late input (a Pending Spell Die's value, a deferred cast's target) has
+ * cleared a layer-0 completeness gate, so drive resolution from wherever it
+ * stalled — finalizeReactionWindow if a layer-0 reaction window already
+ * exists (open, or closed-but-blocked), else resolveCompletedLayerIfAny,
+ * which may now open that window for the first time. Calling
+ * resolveCompletedLayerIfAny when a window is already open would try to open
+ * a second one and collide with spell_reaction_windows_one_open_per_round.
+ */
+async function reEnterLayerZeroResolution(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  roundId: string,
+) {
   const hasWindow = await hasLayerZeroReactionWindow(supabase, roundId);
   if (hasWindow) {
     await finalizeReactionWindow(supabase, roundId);

@@ -43,15 +43,16 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
 
   it("benches only cards from the documented non-working list", async () => {
     // Guards against the setup.ts list silently losing entries. 0074 benched
-    // 39; Saving Steep (#308), the four ward cards (#309, migration 0082), the
-    // three round-scoped modifier snapshot cards (#343, migration 0087), the
-    // three durable persistent-modifier cards (#342, migration 0088), the
-    // three Effect Invocation cards (#316, migration 0093), the four
-    // chosen-pair roll-transform cards (#318, migration 0096), Gambler's
-    // Infusion (#319, migration 0095) and the two fixed-roll cards — Steady
-    // Hand, Sleeping Camomile (#317, migration 0094) — are since implemented
-    // and un-benched, so 18.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(18);
+    // 39; Yorkshire Terror (#286, migration 0075), Saving Steep (#308), the
+    // four ward cards (#309, migration 0082), the three round-scoped modifier
+    // snapshot cards (#343, migration 0087), the three durable
+    // persistent-modifier cards (#342, migration 0088), the three Effect
+    // Invocation cards (#316, migration 0093), the four chosen-pair
+    // roll-transform cards (#318, migration 0096), Gambler's Infusion (#319,
+    // migration 0095) and the two fixed-roll cards — Steady Hand, Sleeping
+    // Camomile (#317, migration 0094) — are since implemented and un-benched,
+    // so 17.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(17);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();

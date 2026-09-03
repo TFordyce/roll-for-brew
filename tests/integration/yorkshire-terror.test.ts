@@ -1,5 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
+import { STALL_TIMEOUT_MS } from "../../src/lib/game/stallTimeout";
 import {
   createTestAdminClient,
   createTestCleanup,
@@ -7,6 +9,12 @@ import {
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
 } from "./setup";
+
+// enforceStallTimeout's `now` is injected as a fixed instant just past the
+// 5-minute closed-round window so the timer fires without a real wait.
+function future() {
+  return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
+}
 
 // Runs against a real, dedicated test Supabase project. Covers issue #286:
 // Yorkshire Terror (Common, OPPONENT, Action) — "Choose a target. After they
@@ -147,8 +155,9 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     // set_spell_cast_target still has an open window to attach to — the only
     // ordering where its late-attach matters. The deferred + no-eligible-
     // reactor path (window closes and the layer finalizes in the same request,
-    // before set_spell_cast_target can run) is the KNOWN GAP documented in
-    // migration 0075's header and left to a follow-up.
+    // before set_spell_cast_target can run) was the KNOWN GAP documented in
+    // migration 0075's header; issue #325 / migration 0098 closes it, covered
+    // by "deferred target, no reactor: layer 0 holds …" below.
     const reactor = await signUp("yorkshire-deferred-reactor");
     await forceHold(admin, caster.googleSub, "Yorkshire Terror");
     await forceHold(admin, reactor.googleSub, "Milk First?");
@@ -198,6 +207,175 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     expect((afterTargets as { target_player_id: string }[]).map((r) => r.target_player_id)).toEqual([
       target.googleSub,
     ]);
+  });
+
+  it("deferred target, no reactor: layer 0 holds until set_spell_cast_target, then the reroll lands (issue #325)", async () => {
+    const [caster, target, third] = await Promise.all([
+      signUp("yt-325-caster"),
+      signUp("yt-325-target"),
+      signUp("yt-325-third"),
+    ]);
+    // No one holds a Reaction card — the path where open_reaction_window
+    // closes the window on the spot and the layer used to finalize before
+    // set_spell_cast_target could run.
+    await forceHold(admin, caster.googleSub, "Yorkshire Terror");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await third.client.rpc("declare_in", { p_round_id: roundId });
+
+    // Cast with no target — defers (target_pending = true).
+    const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: null,
+    });
+    expect(castError).toBeNull();
+
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+
+    await admin.from("rolls").insert([
+      { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 12, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 4, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: third.googleSub, layer: 0, value: 8, input_mode: "manual", modifier_snapshot: 0 },
+    ]);
+
+    // The gate holds: every roll is in, but layer 0 isn't "complete" while
+    // the forced_reroll cast is still target_pending.
+    const { data: blocked, error: blockedError } = await caster.client.rpc(
+      "get_current_layer_rolls_if_complete",
+      { p_round_id: roundId },
+    );
+    expect(blockedError).toBeNull();
+    expect(blocked).toEqual([]);
+
+    // The round has not resolved.
+    const { data: heldRound } = await admin
+      .from("rounds")
+      .select("status")
+      .eq("id", roundId)
+      .single();
+    expect(heldRound!.status).toBe("closed");
+
+    // The caster names the target after the layer would otherwise have
+    // finalised — no RFB03.
+    const { error: setError } = await caster.client.rpc("set_spell_cast_target", {
+      p_cast_id: castId,
+      p_target_player_id: target.googleSub,
+    });
+    expect(setError).toBeNull();
+
+    // Gate released — the three rolls are now visible.
+    const { data: unblocked } = await caster.client.rpc("get_current_layer_rolls_if_complete", {
+      p_round_id: roundId,
+    });
+    expect((unblocked as { player_id: string }[]).length).toBe(3);
+
+    // The same finalize sequence resolveCompletedLayerIfAny now re-drives:
+    // no eligible reaction holder, so the window self-closes, and
+    // open_reaction_window attaches the (no-longer-pending) forced_reroll
+    // cast so it applies.
+    const { data: openData, error: openError } = await caster.client.rpc("open_reaction_window", {
+      p_round_id: roundId,
+      p_layer: 0,
+    });
+    expect(openError).toBeNull();
+    expect((openData as { is_closed: boolean }[])[0]!.is_closed).toBe(true);
+
+    const { data: targets } = await caster.client.rpc("get_forced_reroll_targets", {
+      p_round_id: roundId,
+      p_layer: 0,
+    });
+    expect((targets as { target_player_id: string }[]).map((r) => r.target_player_id)).toEqual([
+      target.googleSub,
+    ]);
+
+    const { data: newValue, error: applyError } = await caster.client.rpc("apply_forced_reroll", {
+      p_round_id: roundId,
+      p_layer: 0,
+      p_player_id: target.googleSub,
+    });
+    expect(applyError).toBeNull();
+
+    // The eventual reroll shows in the Resolution Trace as one forced_reroll
+    // step with typed before -> after roll values. resolve_round(uuid) is
+    // granted to `authenticated`, so call it as a player, not the admin.
+    const { data: outcome, error: resolveError } = await caster.client.rpc("resolve_round", {
+      p_round_id: roundId,
+    });
+    expect(resolveError).toBeNull();
+    const rerollSteps = (
+      outcome as {
+        trace: {
+          display_kind: string;
+          target_player: string | null;
+          before: { type: string; value: number };
+          after: { type: string; value: number };
+        }[];
+      }
+    ).trace.filter((s) => s.display_kind === "forced_reroll");
+    expect(rerollSteps).toHaveLength(1);
+    expect(rerollSteps[0]!.target_player).toBe(target.googleSub);
+    expect(rerollSteps[0]!.before).toEqual({ type: "roll", value: 4 });
+    expect(rerollSteps[0]!.after).toEqual({ type: "roll", value: newValue });
+  });
+
+  it("never-resolvable deferred target is force-negated by the stall timer as a recorded no-op (issue #325)", async () => {
+    const [caster, target, third] = await Promise.all([
+      signUp("yt-325-stall-caster"),
+      signUp("yt-325-stall-target"),
+      signUp("yt-325-stall-third"),
+    ]);
+    await forceHold(admin, caster.googleSub, "Yorkshire Terror");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await third.client.rpc("declare_in", { p_round_id: roundId });
+
+    const { data: castId } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: null,
+    });
+
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+
+    await admin.from("rolls").insert([
+      { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 3, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 15, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: third.googleSub, layer: 0, value: 9, input_mode: "manual", modifier_snapshot: 0 },
+    ]);
+
+    // The caster never names a target. Once the 5-minute closed-round stall
+    // timer fires, enforceStallTimeout force-negates the outstanding cast and
+    // lets the round resolve off the un-rerolled rolls.
+    const outcome = await enforceStallTimeout(caster.client, roundId as string, future);
+    expect(outcome).toEqual({ action: "deferredForcedRerollAbandoned" });
+
+    const { data: castRow } = await admin
+      .from("spell_casts")
+      .select("negated, target_pending, cast_inputs")
+      .eq("id", castId)
+      .single();
+    expect(castRow).toMatchObject({ negated: true, target_pending: false });
+    expect((castRow!.cast_inputs as { deferred_target_abandoned?: boolean }).deferred_target_abandoned).toBe(true);
+
+    const { data: round } = await admin
+      .from("rounds")
+      .select("status, brewer_id")
+      .eq("id", roundId)
+      .single();
+    // caster rolled lowest (3) and no reroll was applied, so caster brews.
+    expect(round).toMatchObject({ status: "resolved", brewer_id: caster.googleSub });
+
+    const { data: targetRoll } = await admin
+      .from("rolls")
+      .select("value")
+      .eq("round_id", roundId)
+      .eq("player_id", target.googleSub)
+      .eq("layer", 0)
+      .single();
+    expect(targetRoll!.value).toBe(15);
   });
 
   it("rejects casting Yorkshire Terror on yourself", async () => {
