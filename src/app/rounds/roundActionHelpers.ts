@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { drawSpellCardAs, recordPendingSpellDraw } from "@/lib/supabase/spellCards";
@@ -90,6 +91,32 @@ export async function afterPendingSpellDieResolved(
   } else {
     await resolveCompletedLayerIfAny(supabase, roundId);
   }
+}
+
+/**
+ * Re-enters layer resolution once a deferred spell-cast target has just been
+ * set (issue #325). The only state this needs to unstick is the forced_reroll
+ * hold from migration 0098: while a pre-roll forced_reroll cast (Yorkshire
+ * Terror) sat awaiting its target, get_current_layer_rolls_if_complete
+ * reported layer 0 incomplete, so the roll that completed the layer ran
+ * resolveCompletedLayerIfAny and bailed at that gate *before opening a
+ * reaction window*. Now that the target is set, re-run that path so the
+ * window opens for the first time — open_reaction_window's own attach pass
+ * then picks the no-longer-pending cast up, and the nobody-holds-a-Reaction
+ * case self-closes and finalises.
+ *
+ * If a layer-0 window already exists this is a deliberate no-op: it never
+ * does for the forced_reroll hold (no window opens while the gate holds), and
+ * for any other deferred target (advantage, a modifier) the ordinary
+ * reaction/pass flow owns finalisation — re-driving it here would either cut
+ * an open window short or collide with spell_reaction_windows_one_open_per_round.
+ */
+export async function afterDeferredCastTargetSet(
+  supabase: SupabaseClient,
+  roundId: string,
+) {
+  if (await hasLayerZeroReactionWindow(supabase, roundId)) return;
+  await resolveCompletedLayerIfAny(supabase, roundId);
 }
 
 /**

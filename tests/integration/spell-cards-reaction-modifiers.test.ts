@@ -17,7 +17,7 @@ import {
 // get_round_modifier_effects the same way a pre-roll Action cast already
 // does (the modifier bucket doesn't distinguish how a cast was made).
 //
-// Six Sugars' dice_modifier casts with resolved_value left null until the
+// Six Sugars' dice_modifier casts with no cast_inputs.dice_roll until the
 // caster resolves it (issue #252, migration 0069) — resolved here via
 // resolve_pending_spell_die_in_app immediately after casting, same as the
 // compound-card tests (spell-cards-compound.test.ts).
@@ -65,10 +65,31 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
 
     const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
     const pendingCastId = (pending as { cast_id: string }[])[0]!.cast_id;
+
+    // Issue #306: the unrolled sentinel is the ABSENCE of cast_inputs.dice_roll,
+    // not resolved_value IS NULL.
+    const { data: preRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs")
+      .eq("id", pendingCastId)
+      .single();
+    expect(preRow!.cast_inputs ?? {}).not.toHaveProperty("dice_roll");
+
     const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
       p_cast_id: pendingCastId,
     });
     expect(resolveError).toBeNull();
+
+    // #312: resolution writes cast_inputs.dice_roll (raw, unsigned) — the sole
+    // source of truth now that resolved_value is dropped.
+    const { data: postRow } = await admin
+      .from("spell_casts")
+      .select("cast_inputs")
+      .eq("id", pendingCastId)
+      .single();
+    const diceRoll = (postRow!.cast_inputs as { dice_roll: number }).dice_roll;
+    expect(diceRoll).toBeGreaterThanOrEqual(1);
+    expect(diceRoll).toBeLessThanOrEqual(6);
 
     const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
       p_round_id: roundId,

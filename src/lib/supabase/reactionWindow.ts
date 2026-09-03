@@ -132,18 +132,22 @@ export async function getReactionStack(
 /**
  * Calls cast_reaction_spell_card: casts the caller's held Reaction card into
  * the round's open window. targetCastId targets an existing stack entry
- * (CARD-target cards); targetPlayerId targets a player directly. Reopens the
+ * (CARD-target cards); targetPlayerId targets a player directly. spendAmount
+ * is Tea-tally Spent only — the modifier the caster burns, clamped server-side
+ * to [0, current effective modifier]; the RPC raises RFB45 if it is omitted
+ * for that card and RFB44 if the caster has no modifier to spend. Reopens the
  * poll for every other eligible holder (chaining) as a side effect.
  */
 export async function castReactionSpellCard(
   supabase: SupabaseClient,
   roundId: string,
-  options: { targetPlayerId?: string; targetCastId?: string } = {},
+  options: { targetPlayerId?: string; targetCastId?: string; spendAmount?: number } = {},
 ): Promise<string> {
   const { data, error } = await supabase.rpc("cast_reaction_spell_card", {
     p_round_id: roundId,
     p_target_player_id: options.targetPlayerId ?? null,
     p_target_cast_id: options.targetCastId ?? null,
+    p_spend_amount: options.spendAmount ?? null,
   });
   if (error) throw error;
   return data as string;
@@ -236,21 +240,35 @@ export async function applyRollFlip(supabase: SupabaseClient, roundId: string, l
 }
 
 /**
- * Calls apply_lowest_gains_highest_modifier (0033, Broken Biscuit): adds the
- * highest modifier on the table to the layer's lowest roller's roll.
+ * Calls apply_roll_pair_transform (0096, issue #318 — Brew-tal Swap / Stir the
+ * Pot / Steaming Mug Bond / Tea for Two): per un-negated roll_pair_transform
+ * cast, swaps or sets-both-lower / sets-both-higher over the caster-named pair
+ * in cast_inputs.pair, respecting a roll-domain ward on either end. Like
+ * apply_roll_swap it also records the per-player before→after into
+ * cast_inputs.roll_transform for resolve_round Phase 3 to adopt.
  */
-export async function applyLowestGainsHighestModifier(
+export async function applyRollPairTransform(
   supabase: SupabaseClient,
   roundId: string,
   layer: number,
 ): Promise<RollChange[]> {
-  const { data, error } = await supabase.rpc("apply_lowest_gains_highest_modifier", {
-    p_round_id: roundId,
-    p_layer: layer,
-  });
+  const { data, error } = await supabase.rpc("apply_roll_pair_transform", { p_round_id: roundId, p_layer: layer });
   if (error) throw error;
   return ((data ?? []) as { player_id: string; value: number }[]).map((row) => ({ playerId: row.player_id, value: row.value }));
 }
+
+// apply_lowest_gains_highest_modifier (0033, Broken Biscuit) is gone:
+// lowest_gains_highest_modifier moved into resolve_round as pure modifier
+// math on the composed modifiers (migration 0078, issue #305), and the
+// orphaned fan-out RPC was dropped in migration 0083 (issue #312).
+//
+// applyForcedReroll / applyRollFlip / applyRollSwap still run at
+// finalizeReactionWindow and still mutate rolls.value in place (RoundReveal
+// / round history / the reveal broadcast read it), but as of migration 0079
+// (issue #306) they ALSO record their exact per-player before→after into
+// spell_casts.cast_inputs.roll_transform, and resolve_round rebuilds every
+// roller's final roll from those recorded values alone — so rolls.value is
+// now a resolver-agreeing cache, not the resolver's input.
 
 export type TeaMakerOverride = {
   mode: "highest_modifier" | "highest_roll" | "chosen";

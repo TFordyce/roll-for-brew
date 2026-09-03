@@ -11,12 +11,14 @@ import {
 } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { confirmRoundReplay, declineRoundReplay } from "@/lib/supabase/roundReplay";
 import {
   broadcastOrderChanged,
   broadcastPlayerDeclaredIn,
   broadcastPlayerWithdrew,
   broadcastReactionWindowChanged,
   broadcastRoundClosed,
+  broadcastRoundReplayChanged,
   broadcastRoundStarted,
   broadcastSpellCastChanged,
 } from "@/lib/supabase/realtime";
@@ -35,6 +37,7 @@ import {
 } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
+  afterDeferredCastTargetSet,
   afterPendingSpellDieResolved,
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
@@ -467,6 +470,11 @@ export async function setSpellCastTargetAction(
   const supabase = await createClient();
   try {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
+    // Issue #325: a pre-roll forced_reroll cast (Yorkshire Terror) may have
+    // been holding layer 0 open until this target landed — drive resolution
+    // from wherever it stalled. A no-op for every other deferred target, and
+    // when rolling isn't finished yet.
+    await afterDeferredCastTargetSet(supabase, roundId);
   } catch (error) {
     return resolveSpellCastError(error);
   }
@@ -605,6 +613,47 @@ export async function notifyOrderChangedAction(formData: FormData) {
   const supabase = await createClient();
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastOrderChanged(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+}
+
+/**
+ * The Time for Brew caster scraps the just-announced round (issue #315, spec
+ * §11). confirm_round_replay runs _rr_scrap_round — the round is backed out
+ * to a freshly-closed generation-1 round awaiting rolls — then this broadcasts
+ * round-closed (every device re-enters the roll phase) and
+ * round-replay-changed (the blocking prompt clears).
+ */
+export async function confirmRoundReplayAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("confirmRoundReplayAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await confirmRoundReplay(supabase, roundId);
+  await broadcastRoundReplayChanged(supabase, roomId, { roundId });
+  await broadcastRoundClosed(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+}
+
+/**
+ * The Time for Brew caster keeps the just-announced round (issue #315). The
+ * round stands, the card is spent. Idempotent — a race with the stall
+ * auto-decline is fine.
+ */
+export async function declineRoundReplayAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("declineRoundReplayAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await declineRoundReplay(supabase, roundId);
+  await broadcastRoundReplayChanged(supabase, roomId, { roundId });
 
   revalidateRoundSurfaces();
 }

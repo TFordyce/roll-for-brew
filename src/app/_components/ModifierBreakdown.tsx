@@ -7,9 +7,12 @@ import { getModifierBreakdown, type ModifierBreakdown as Breakdown } from "@/lib
 
 /**
  * Wraps a player's modifier number in a tap/click target that opens a small
- * popover breaking it down into its two sources — cups made as brewer, and
- * logged modifier_adjustments (issue #184, get_modifier_breakdown 0054) —
- * both room-scoped. Deliberately click-driven rather than hover-driven so
+ * popover breaking it down into its three sources — cups made as brewer,
+ * logged modifier_adjustments, and the rest-of-day spell modifier delta
+ * (persistent_modifier_transfer / persistent_modifier_spend, issue #311) —
+ * all room-scoped (issue #184, get_modifier_breakdown 0054 / 0085). The three
+ * reconcile to room_players.modifier. Deliberately click-driven rather than
+ * hover-driven so
  * the same interaction works identically on mobile and desktop (no
  * hover-only affordance) — used from both PlayerTile (Room roster) and
  * RoundReveal (round results).
@@ -102,6 +105,10 @@ export function ModifierBreakdown({
               <div className="flex items-center justify-between gap-2">
                 <dt className="text-parchment-dim">Adjustments:</dt>
                 <dd>{formatModifier(breakdown.adjustments)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <dt className="text-parchment-dim">Spell effects:</dt>
+                <dd>{formatModifier(breakdown.spellEffects)}</dd>
               </div>
             </dl>
           ) : null}

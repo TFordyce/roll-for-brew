@@ -19,7 +19,7 @@ import {
 // of a compound cast now compose into get_round_modifier_effects.
 //
 // Both cards' caster-facing half is a dice_modifier (1d4), which since
-// issue #252 (migration 0069) casts with resolved_value left null until the
+// issue #252 (migration 0069) casts with no cast_inputs.dice_roll until the
 // caster resolves it via resolve_pending_spell_die_in_app — these tests call
 // that immediately after casting so the rest of each assertion (the
 // non-dice half, and the resolved die's 1-4 range) is unaffected.
@@ -37,6 +37,34 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
   function signUp(label: string) {
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
+
+  it("layer 0 stays incomplete until the pending die is rolled — cast_inputs.dice_roll sentinel (issue #306)", async () => {
+    const caster = await signUp("die-gate-caster");
+    const target = await signUp("die-gate-target");
+    await forceHold(admin, caster.googleSub, "Cold Tea");
+
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await caster.client.rpc("cast_spell_card", { p_round_id: roundId, p_target_player_id: target.googleSub });
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+
+    await caster.client.rpc("submit_roll", { p_round_id: roundId });
+    await target.client.rpc("submit_roll", { p_round_id: roundId });
+
+    // Everyone has rolled, but the caster's 1d4 is still unrolled -> layer 0
+    // is not "complete" yet.
+    const { data: blocked } = await caster.client.rpc("get_current_layer_rolls_if_complete", { p_round_id: roundId });
+    expect(blocked ?? []).toHaveLength(0);
+
+    const { data: pending } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+    await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: (pending as { cast_id: string }[])[0]!.cast_id,
+    });
+
+    const { data: complete } = await caster.client.rpc("get_current_layer_rolls_if_complete", { p_round_id: roundId });
+    expect(complete as unknown[]).toHaveLength(2);
+  });
 
   it("Cold Tea applies both the opponent's -3 penalty and the caster's 1d4 bonus", async () => {
     const [caster, target] = await Promise.all([
@@ -133,7 +161,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
 
     const { data: casts, error: castsError } = await admin
       .from("spell_casts")
-      .select("target_player_id, effect_kind, effect_params, resolved_value")
+      .select("target_player_id, effect_kind, effect_params, cast_inputs")
       .eq("round_id", roundId);
     expect(castsError).toBeNull();
 
@@ -141,7 +169,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       target_player_id: string;
       effect_kind: string;
       effect_params: Record<string, unknown>;
-      resolved_value: number | null;
+      cast_inputs: { dice_roll?: number } | null;
     }[];
     expect(rows).toHaveLength(2);
 
@@ -150,7 +178,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       target_player_id: target.googleSub,
       effect_kind: "disadvantage",
       effect_params: {},
-      resolved_value: null,
+      cast_inputs: null,
     });
 
     const casterRow = rows.find((r) => r.target_player_id === caster.googleSub);
@@ -159,7 +187,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
       effect_kind: "dice_modifier",
       effect_params: { dice: "1d4" },
     });
-    expect(casterRow!.resolved_value).toBeGreaterThanOrEqual(1);
-    expect(casterRow!.resolved_value).toBeLessThanOrEqual(4);
+    // #312: resolved_value is dropped; the rolled die lives in
+    // cast_inputs.dice_roll (raw, unsigned — 1d4 sign is +1).
+    expect(casterRow!.cast_inputs!.dice_roll).toBeGreaterThanOrEqual(1);
+    expect(casterRow!.cast_inputs!.dice_roll).toBeLessThanOrEqual(4);
   });
 });

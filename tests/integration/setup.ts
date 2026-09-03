@@ -1,8 +1,18 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { STALL_TIMEOUT_MS } from "../../src/lib/game/stallTimeout";
 
 export const TEST_URL = process.env.SUPABASE_TEST_URL;
 export const TEST_ANON_KEY = process.env.SUPABASE_TEST_ANON_KEY;
 export const TEST_SERVICE_ROLE_KEY = process.env.SUPABASE_TEST_SERVICE_ROLE_KEY;
+
+/**
+ * A fixed instant just past the 5-minute closed-round stall window, for
+ * enforceStallTimeout's injectable `now` — lets a stall-timeout test fire
+ * the timer without sleeping ~5 minutes for real.
+ */
+export function stallTimeoutFuture(): Date {
+  return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
+}
 
 export const hasTestEnv = Boolean(TEST_URL && TEST_SERVICE_ROLE_KEY);
 export const hasAnonTestEnv = Boolean(hasTestEnv && TEST_ANON_KEY);
@@ -112,27 +122,37 @@ export async function signUpSignInAndEnterRoom(
 }
 
 /**
- * The 39 non-working spell cards parked at location 'benched' by migration
- * 0074 (issue #284) so draw_spell_card skips them. Kept in sync with that
- * migration's name list by hand. A test that force-holds one of these must
- * return it to the bench, not the deck, on cleanup — releaseHeldCards below
- * does that.
+ * The non-working spell cards still parked at location 'benched' (migration
+ * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
+ * each card is implemented and un-benched: 0074 benched 39; Yorkshire Terror
+ * (#286, migration 0075), Saving Steep (#308, migration 0081), the four ward
+ * cards — Jinxed Biscuit, Cast-Iron Kettle, Bag for Life, Eternal Steep
+ * (#309, migration 0082) — the three round-scoped modifier snapshot cards —
+ * Bes-Tea, Tea Leaf, Spillage (#343, migration 0087) — the three durable
+ * persistent-modifier cards — Chai-nge of Heart, Tea-tally Spent, Bitter
+ * Leech (#342, migration 0088) — the three Effect Invocation cards —
+ * Saucerer's Apprentice, Genie in the Teapot, Brew-merang (#316, migration
+ * 0093) — the four chosen-pair roll-transform cards — Brew-tal Swap, Stir the
+ * Pot, Steaming Mug Bond, Tea for Two (#318, migration 0096) — Gambler's
+ * Infusion (conditional advantage, #319, migration 0095) — the two
+ * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
+ * Prophe-Tea (persistent advantage, #320, migration 0097) — and Cloud of
+ * Cream (targeting skip, #321, migration 0099) — are now live, so 15 remain
+ * here. A test that force-holds one of these must return it to the bench,
+ * not the deck, on cleanup — releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
-  // No effect rows (37)
-  "Bes-Tea", "Tea Party Revolt", "Last Drip", "Saving Steep",
-  "Brew-tal Swap", "Yorkshire Terror",
-  "Tea Cosy", "Tea Leaf", "Spillage", "Chai-nge of Heart", "Bag for Life",
-  "Loose Leaf", "Stir the Pot", "PG Tipped", "Jinxed Biscuit",
-  "Marked for Brew", "Sleeping Camomile", "Steaming Mug Bond",
-  "Tea-tally Spent", "Loaf of Lipton", "Brew IOU", "Tea Heist",
-  "Stale Biscuit", "Saucerer's Apprentice", "Bitter Leech", "Liquid Courage",
-  "Eternal Steep", "The Last Cuppa", "Earl of Earl Grey", "Prophe-Tea",
-  "Genie in the Teapot",
-  "Gambler's Infusion", "Steady Hand", "Brew-merang", "Tea for Two",
-  "Cast-Iron Kettle", "Brewmageddon",
-  // Dead effect kind (2)
-  "Cloud of Cream", "Kettle Crash",
+  // No effect rows
+  "Tea Party Revolt", "Last Drip",
+  "Tea Cosy",
+  "Loose Leaf", "PG Tipped",
+  "Marked for Brew",
+  "Loaf of Lipton", "Brew IOU", "Tea Heist",
+  "Stale Biscuit", "Liquid Courage",
+  "The Last Cuppa", "Earl of Earl Grey",
+  "Brewmageddon",
+  // Dead effect kind (1)
+  "Kettle Crash",
 ] as const;
 
 /**
@@ -200,6 +220,110 @@ export async function forceDraw(
     .from("spell_draws")
     .insert({ player_id: playerId, card_instance_id: instance.id, trigger: "nat1" });
   if (drawError) throw drawError;
+}
+
+/**
+ * Seeds a persistent active effect the way it exists after #310: a real
+ * spell_casts row (the Cast Log anchor — spell_active_effects.source_cast_id
+ * is NOT NULL) plus the projected spell_active_effects row pointing at it.
+ *
+ * By default the source cast lands in a fresh `resolved` round created just
+ * for the seed (tracked for teardown), so the effect reads as "carried
+ * forward from an earlier round" without colliding with a test's own
+ * start_round (rounds_one_active_per_room only guards open/closed rounds).
+ * Pass `roundId` to anchor the cast in an existing round instead.
+ *
+ * rounds_remaining is stored verbatim as the immutable duration snapshot
+ * (#310); how many rounds are actually left is derived by
+ * _rr_active_effects_as_of at read time.
+ */
+export async function seedActiveEffect(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+  opts: {
+    roomId: string;
+    targetPlayerId: string;
+    casterId: string;
+    cardName: string;
+    effectKind: string;
+    effectParams?: Record<string, unknown>;
+    roundsRemaining?: number | null;
+    roundId?: string;
+  },
+): Promise<{ effectId: string; castId: string; roundId: string }> {
+  const {
+    roomId,
+    targetPlayerId,
+    casterId,
+    cardName,
+    effectKind,
+    effectParams = {},
+    roundsRemaining = null,
+  } = opts;
+
+  const { data: card, error: cardError } = await admin
+    .from("spell_cards")
+    .select("id")
+    .eq("name", cardName)
+    .single();
+  if (cardError) throw cardError;
+
+  const { data: instance, error: instanceError } = await admin
+    .from("spell_deck_instances")
+    .select("id")
+    .eq("card_id", card.id)
+    .single();
+  if (instanceError) throw instanceError;
+
+  let roundId = opts.roundId;
+  if (!roundId) {
+    const { data: round, error: roundError } = await admin
+      .from("rounds")
+      .insert({
+        room_id: roomId,
+        started_by: casterId,
+        status: "resolved",
+        resolved_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (roundError) throw roundError;
+    roundId = round.id as string;
+    cleanup.trackRound(roundId);
+  }
+
+  const { data: cast, error: castError } = await admin
+    .from("spell_casts")
+    .insert({
+      round_id: roundId,
+      caster_id: casterId,
+      card_instance_id: instance.id,
+      target_player_id: targetPlayerId,
+      target_pending: false,
+      effect_kind: effectKind,
+      effect_params: effectParams,
+    })
+    .select("id")
+    .single();
+  if (castError) throw castError;
+
+  const { data: effect, error: effectError } = await admin
+    .from("spell_active_effects")
+    .insert({
+      room_id: roomId,
+      target_player_id: targetPlayerId,
+      caster_id: casterId,
+      source_cast_id: cast.id,
+      card_id: card.id,
+      effect_kind: effectKind,
+      effect_params: effectParams,
+      rounds_remaining: roundsRemaining,
+    })
+    .select("id")
+    .single();
+  if (effectError) throw effectError;
+
+  return { effectId: effect.id as string, castId: cast.id as string, roundId };
 }
 
 /**

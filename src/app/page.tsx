@@ -24,6 +24,8 @@ import {
   withdrawDeclarationAction,
 } from "@/app/rounds/actions";
 import { enforceStallTimeout } from "@/app/rounds/stallEnforcement";
+import { autoDeclineStalledRoundReplays, getRoomPendingRoundReplay } from "@/lib/supabase/roundReplay";
+import { RoundReplayPrompt } from "@/app/rounds/RoundReplayPrompt";
 import { RoomIdleLive } from "@/app/rounds/RoomIdleLive";
 import { RoundOpenLive } from "@/app/rounds/RoundOpenLive";
 import { RoundReveal } from "@/app/rounds/RoundReveal";
@@ -47,6 +49,8 @@ import {
 } from "@/lib/supabase/spellCasts";
 import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
 import { getMyRateableRound } from "@/lib/supabase/brewRatings";
+import { getRoomRounds } from "@/lib/supabase/stats";
+import { RoundRecapHistory } from "@/app/_components/RoundRecapHistory";
 import { initialsFrom } from "@/lib/game/initials";
 import { Nav } from "@/app/Nav";
 import { CardFrame } from "@/app/_components/CardFrame";
@@ -78,6 +82,17 @@ export default async function HomePage() {
 
   const roomId = await enterTodaysRoom(supabase);
   const roster = await getRoomRoster(supabase, roomId);
+
+  // Round Replay — Time for Brew (issue #315, spec §11). While a scrap/keep
+  // decision is pending the round is 'resolved' (so getActiveRound returns
+  // null) yet start_round is locked room-wide, so this is read directly off
+  // the room. The lazy check-on-read sweep auto-declines any decision left
+  // past the existing 5-minute closed-round stall window ("no new clock").
+  await autoDeclineStalledRoundReplays(supabase);
+  const pendingRoundReplay = await getRoomPendingRoundReplay(supabase, roomId);
+  const pendingReplayCaster = pendingRoundReplay
+    ? roster.find((entry) => entry.playerId === pendingRoundReplay.casterId) ?? null
+    : null;
 
   let activeRound = await getActiveRound(supabase, roomId);
   if (activeRound) {
@@ -235,6 +250,19 @@ export default async function HomePage() {
   const rateableRound = await getMyRateableRound(supabase, playerId);
   const raterInitials = initialsFrom(player?.display_name ?? null, player?.email ?? user.email ?? "");
 
+  // Room history (issue #314): every resolved round of today's room, each
+  // expandable to its full Round Recap ledger via the same renderer.
+  const roomRounds = await getRoomRounds(supabase, roomId);
+  const recapHistoryEntries = roomRounds.map((r) => ({
+    roundId: r.roundId,
+    resolvedAt: r.resolvedAt,
+    cupsMade: r.cupsMade,
+    brewerName: r.brewerDisplayName ?? r.brewerEmail,
+  }));
+  const namesByPlayerId: Record<string, string> = Object.fromEntries(
+    roster.map((entry) => [entry.playerId, entry.displayName ?? entry.email]),
+  );
+
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
       <ParallaxBackdrop playerId={playerId} />
@@ -251,6 +279,15 @@ export default async function HomePage() {
           trigger={myPendingSpellDraw.trigger}
           catalogNames={spellCardCatalog.map((c) => c.name)}
           otherCount={myPendingSpellDraw.otherCount}
+        />
+      ) : null}
+
+      {pendingRoundReplay ? (
+        <RoundReplayPrompt
+          roomId={roomId}
+          roundId={pendingRoundReplay.roundId}
+          isCaster={pendingRoundReplay.casterId === playerId}
+          casterDisplayName={pendingReplayCaster?.displayName ?? null}
         />
       ) : null}
 
@@ -418,6 +455,8 @@ export default async function HomePage() {
           <MenuLive roomId={roomId} roundId={orderRoundId} />
         </section>
       ) : null}
+
+      <RoundRecapHistory entries={recapHistoryEntries} namesByPlayerId={namesByPlayerId} />
 
       {activeRound && openReactionWindow ? (
         <ReactionBanner

@@ -67,21 +67,11 @@ export function ReactionBanner({
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t-4 border-gilt bg-tavern-panel p-3 shadow-[0_-8px_24px_rgb(0_0_0_/_0.5)]">
+      {/* The stack list moved to the Round Recap ledger (issue #314); this
+          banner keeps only the cast/pass controls. */}
       <p className="mb-2 font-display text-sm uppercase tracking-widest text-gilt-bright">
         Reaction window open
-        {stack.length > 0 ? ` — ${stack.length} card${stack.length > 1 ? "s" : ""} on the stack` : ""}
       </p>
-
-      {stack.length > 0 ? (
-        <ul className="mb-2 space-y-0.5 font-body text-xs text-parchment-dim">
-          {stack.map((entry) => (
-            <li key={entry.castId}>
-              {entry.casterName} cast <strong className="text-parchment">{entry.cardName}</strong>
-              {entry.negated ? " (negated)" : ""}
-            </li>
-          ))}
-        </ul>
-      ) : null}
 
       {eligible && heldReactionCard && !alreadyPassed ? (
         <form action={castFormAction} className="mb-2 flex flex-wrap items-center gap-2">

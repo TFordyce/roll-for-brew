@@ -1,51 +1,65 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getRoundParticipants, getRoundRoomId } from "@/lib/supabase/rounds";
-import { advanceRoundLayer, getCurrentLayerRollsIfComplete, resolveRound, type CompletedLayer } from "@/lib/supabase/rolls";
-import { broadcastLayerRollsRevealed, broadcastLayerTied, broadcastRoundRevealed } from "@/lib/supabase/realtime";
-import { getRoundModifierEffects } from "@/lib/supabase/spellCasts";
+import { getRoundRoomId } from "@/lib/supabase/rounds";
+import {
+  advanceRoundLayer,
+  getCurrentLayerRollsIfComplete,
+  resolveRound,
+  resolveRoundOutcome,
+  type CompletedLayer,
+} from "@/lib/supabase/rolls";
+import {
+  broadcastLayerRollsRevealed,
+  broadcastLayerTied,
+  broadcastRoundReplayChanged,
+  broadcastRoundRevealed,
+} from "@/lib/supabase/realtime";
+import { recordPendingRoundReplay } from "@/lib/supabase/roundReplay";
 import {
   applyForcedReroll,
-  applyLowestGainsHighestModifier,
   applyRollFlip,
+  applyRollPairTransform,
   applyRollSwap,
   getForcedRerollTargets,
-  getTeaMakerOverride,
   hasActiveCastKind,
   openReactionWindow,
   resolveDeclaredNumberTeaMaker,
 } from "@/lib/supabase/reactionWindow";
-import { resolveLayer } from "@/lib/game/resolveLayer";
-import { composeModifier } from "@/lib/game/modifierBucket";
 
 /**
  * applyLayerOutcome's persistence/broadcast calls, factored out as an
  * injectable seam: production callers get defaultDeps (the real
- * supabase-backed functions below), while applyLayerOutcome.test.ts passes
- * fakes so it can assert on the brewer/tie branches without a live Supabase
- * client.
+ * supabase-backed functions below), while layerResolution.test.ts passes
+ * fakes so it can assert on the brewer/tie orchestration without a live
+ * Supabase client.
+ *
+ * The outcome math itself (modifier composition, lowest_gains_highest_
+ * modifier, tea_maker_override / declared_number, the lowest-roll pick) now
+ * lives in the authoritative SQL resolve_round(uuid) behind resolveRoundOutcome
+ * (migration 0078, issue #305) — this module only orchestrates persistence
+ * and broadcast around its result.
  */
 export type ApplyLayerOutcomeDeps = {
   getRoundRoomId: typeof getRoundRoomId;
-  getRoundParticipants: typeof getRoundParticipants;
-  getRoundModifierEffects: typeof getRoundModifierEffects;
-  getTeaMakerOverride: typeof getTeaMakerOverride;
+  resolveRoundOutcome: typeof resolveRoundOutcome;
   resolveDeclaredNumberTeaMaker: typeof resolveDeclaredNumberTeaMaker;
   resolveRound: typeof resolveRound;
   advanceRoundLayer: typeof advanceRoundLayer;
   broadcastRoundRevealed: typeof broadcastRoundRevealed;
   broadcastLayerTied: typeof broadcastLayerTied;
+  recordPendingRoundReplay: typeof recordPendingRoundReplay;
+  broadcastRoundReplayChanged: typeof broadcastRoundReplayChanged;
 };
 
 const defaultDeps: ApplyLayerOutcomeDeps = {
   getRoundRoomId,
-  getRoundParticipants,
-  getRoundModifierEffects,
-  getTeaMakerOverride,
+  resolveRoundOutcome,
   resolveDeclaredNumberTeaMaker,
   resolveRound,
   advanceRoundLayer,
   broadcastRoundRevealed,
   broadcastLayerTied,
+  recordPendingRoundReplay,
+  broadcastRoundReplayChanged,
 };
 
 /**
@@ -64,75 +78,46 @@ export async function applyLayerOutcome(
 ): Promise<void> {
   const { rolls, layer } = completedLayer;
 
-  // Inscribed Saucer/tea_maker_override (0033) decide the brewer by a rule
-  // other than "lowest roll+modifier wins" — checked before resolveLayer
-  // runs at all, "regardless of totals"/"instead of the lowest" per their
-  // card text. Declared-number takes precedence (it's a one-time, whole-round
-  // override); a 'chosen' override still awaiting its target (Wild Brew
-  // Surge branch 6, caster hasn't picked yet) is left for a later attempt —
-  // this layer resolves normally in the meantime rather than blocking.
-  const declaredNumberBrewer = await deps.resolveDeclaredNumberTeaMaker(supabase, roundId, layer);
-  const override = declaredNumberBrewer ? null : await deps.getTeaMakerOverride(supabase, roundId);
-
-  let brewerId: string | null = declaredNumberBrewer;
-  let noModifierGain = false;
-
-  if (!brewerId && override && !override.targetPending) {
-    if (override.mode === "chosen") {
-      brewerId = override.chosenPlayerId;
-    } else if (override.mode === "highest_roll") {
-      brewerId = [...rolls].sort((a, b) => b.value - a.value)[0]?.playerId ?? null;
-    } else {
-      brewerId = [...rolls].sort((a, b) => b.modifierSnapshot - a.modifierSnapshot)[0]?.playerId ?? null;
-    }
-    noModifierGain = override.noModifierGain;
-  }
-
-  // Spell effects (fresh casts and lingering multi-round ones alike) only
-  // reach the original roll (layer 0). A tie-break reroll layer resolves on
-  // each player's plain persistent modifier alone — composeModifier is never
-  // consulted for it (issue #219).
-  let outcome: { outcome: "brewer"; playerId: string } | ReturnType<typeof resolveLayer>;
-  if (brewerId) {
-    outcome = { outcome: "brewer", playerId: brewerId };
-  } else if (layer === 0) {
-    const effectsByPlayer = await deps.getRoundModifierEffects(supabase, roundId);
-    outcome = resolveLayer(
-      rolls.map((r) => ({
-        playerId: r.playerId,
-        roll: r.value,
-        modifier: composeModifier(r.modifierSnapshot, effectsByPlayer.get(r.playerId) ?? []),
-      })),
-    );
-  } else {
-    outcome = resolveLayer(
-      rolls.map((r) => ({ playerId: r.playerId, roll: r.value, modifier: r.modifierSnapshot })),
-    );
-  }
+  // The authoritative SQL resolver owns all the outcome math (issue #305):
+  // modifier composition, lowest_gains_highest_modifier as modifier math,
+  // tea_maker_override / declared_number precedence, and the lowest-roll
+  // pick — plus emitting the Resolution Trace onto rounds.resolution_trace.
+  // A tie-break reroll layer (layer > 0) bypasses all spell logic inside it
+  // (issue #219). It is a pure read: it does not flip the round to resolved
+  // and does not burn the declared_number one-shot.
+  const result = await deps.resolveRoundOutcome(supabase, roundId);
 
   const roomId = await deps.getRoundRoomId(supabase, roundId);
 
-  if (outcome.outcome === "brewer") {
+  if (result.outcome === "brewer") {
+    // Inscribed Saucer's declared number is a one-time trigger: resolve_round
+    // only reads it, so burn it here now that the brewer it named is being
+    // committed. Keeping this out of resolve_round is what lets that function
+    // stay a pure, idempotent function of its inputs (ADR 0005).
+    if (result.brewerSource === "declared_number") {
+      await deps.resolveDeclaredNumberTeaMaker(supabase, roundId, layer);
+    }
+
     // cups_made is the number of cups the brewer owes everyone who played
-    // this round — the round's original participant count, not the
-    // (possibly much narrower) tied subset that rolled the final layer.
-    const participants = await deps.getRoundParticipants(supabase, roundId);
-    const cupsMade = participants.length;
+    // this round — the round's original participant count (computed in
+    // resolve_round), not the narrower tied subset that rolled the final
+    // layer.
+    const cupsMade = result.cupsMade;
 
     // Only passed when true, so an ordinary brewing round's resolveRound
     // call keeps its original 4-arg shape (existing tests assert on it
     // exactly) — noModifierGain only ever comes from a tea_maker_override
     // cast (Drip Tray).
-    if (noModifierGain) {
-      await deps.resolveRound(supabase, roundId, outcome.playerId, cupsMade, true);
+    if (result.noModifierGain) {
+      await deps.resolveRound(supabase, roundId, result.brewerId, cupsMade, true);
     } else {
-      await deps.resolveRound(supabase, roundId, outcome.playerId, cupsMade);
+      await deps.resolveRound(supabase, roundId, result.brewerId, cupsMade);
     }
 
     await deps.broadcastRoundRevealed(supabase, roomId, {
       roundId,
       layer,
-      brewerId: outcome.playerId,
+      brewerId: result.brewerId,
       cupsMade,
       rolls: rolls.map((r) => ({
         playerId: r.playerId,
@@ -141,13 +126,25 @@ export async function applyLayerOutcome(
         enteredByAdmin: r.enteredByAdmin,
       })),
     });
+
+    // Round Replay — Time for Brew (issue #315, spec §11). The round has now
+    // resolved and announced normally. If it carries a surviving (non-negated)
+    // round_replay cast, record the caster's pending scrap/keep decision — a
+    // no-op for every ordinary round — and nudge every device to surface the
+    // blocking prompt. A tie-break reroll layer (the `else` branch below)
+    // never reaches here, matching "resolves and announces normally" being a
+    // layer-0 brewer outcome.
+    const replayPending = await deps.recordPendingRoundReplay(supabase, roundId);
+    if (replayPending) {
+      await deps.broadcastRoundReplayChanged(supabase, roomId, { roundId });
+    }
   } else {
-    const nextLayer = await deps.advanceRoundLayer(supabase, roundId, outcome.tiedPlayerIds);
+    const nextLayer = await deps.advanceRoundLayer(supabase, roundId, result.tiedPlayerIds);
 
     await deps.broadcastLayerTied(supabase, roomId, {
       roundId,
       layer: nextLayer,
-      tiedPlayerIds: outcome.tiedPlayerIds,
+      tiedPlayerIds: result.tiedPlayerIds,
     });
   }
 }
@@ -165,7 +162,7 @@ export type FinalizeReactionWindowDeps = {
   hasActiveCastKind: typeof hasActiveCastKind;
   applyRollFlip: typeof applyRollFlip;
   applyRollSwap: typeof applyRollSwap;
-  applyLowestGainsHighestModifier: typeof applyLowestGainsHighestModifier;
+  applyRollPairTransform: typeof applyRollPairTransform;
   applyLayerOutcome: typeof applyLayerOutcome;
 };
 
@@ -176,7 +173,7 @@ const defaultFinalizeDeps: FinalizeReactionWindowDeps = {
   hasActiveCastKind,
   applyRollFlip,
   applyRollSwap,
-  applyLowestGainsHighestModifier,
+  applyRollPairTransform,
   applyLayerOutcome,
 };
 
@@ -184,16 +181,22 @@ const defaultFinalizeDeps: FinalizeReactionWindowDeps = {
  * Runs once a layer's reaction window has closed (every eligible Reaction-
  * card holder passed in the same poll round, or nobody was eligible to begin
  * with): applies any still-active forced_reroll effects in place on the
- * layer's own rolls (Double Dunk, Milk First?, ...), then any of the three
- * table-wide roll-transform effects (0033: Zariel's Fall/roll_flip, Dunkin
- * Disaster/roll_swap, Broken Biscuit/lowest_gains_highest_modifier), in that
- * fixed order — a deliberate simplification for the rare case of more than
- * one landing on the same layer, rather than trying to reason about card-text
- * precedence between them — and re-runs resolveLayer against the updated
- * entries via applyLayerOutcome. Distinct from the tie-break mechanism, which
- * spawns a new layer instead of mutating the current one (issue #68's AC). A
- * negated cast never reaches here: get_forced_reroll_targets/
- * has_active_cast_kind already exclude one.
+ * layer's own rolls (Double Dunk, Milk First?, ...), then the remaining
+ * roll-transform effects (0033: Zariel's Fall/roll_flip, Dunkin
+ * Disaster/roll_swap; 0096: the chosen-pair transforms/roll_pair_transform),
+ * in that fixed order — "flip before swap before chosen-pair", the documented
+ * tie of record for a player hit by more than one. Each apply_* RPC now
+ * also records its exact before→after into spell_casts.cast_inputs
+ * (migration 0079, issue #306); resolve_round rebuilds every roller's final
+ * roll from those recorded values, so the in-memory `rolls` patching below
+ * only feeds the reveal broadcast, not the outcome. Hands off to
+ * applyLayerOutcome, which calls the authoritative resolve_round. Broken
+ * Biscuit/lowest_gains_highest_modifier is no longer applied here: it moved
+ * into resolve_round as pure modifier math on the composed modifiers, so it
+ * lifts the composed modifier rather than mutating a roll value (issue #305).
+ * Distinct from the tie-break mechanism, which spawns a new layer instead of
+ * mutating the current one (issue #68's AC). A negated cast never reaches
+ * here: get_forced_reroll_targets/has_active_cast_kind already exclude one.
  */
 export async function finalizeReactionWindow(
   supabase: SupabaseClient,
@@ -224,8 +227,11 @@ export async function finalizeReactionWindow(
   if (await deps.hasActiveCastKind(supabase, roundId, layer, "roll_swap")) {
     applyChanges(await deps.applyRollSwap(supabase, roundId, layer));
   }
-  if (await deps.hasActiveCastKind(supabase, roundId, layer, "lowest_gains_highest_modifier")) {
-    applyChanges(await deps.applyLowestGainsHighestModifier(supabase, roundId, layer));
+  // Issue #318: chosen-pair roll transform (Brew-tal Swap / Stir the Pot /
+  // Steaming Mug Bond / Tea for Two) — order 5, after the automatic
+  // highest↔lowest roll_swap.
+  if (await deps.hasActiveCastKind(supabase, roundId, layer, "roll_pair_transform")) {
+    applyChanges(await deps.applyRollPairTransform(supabase, roundId, layer));
   }
 
   await deps.applyLayerOutcome(supabase, roundId, { ...completedLayer, rolls });

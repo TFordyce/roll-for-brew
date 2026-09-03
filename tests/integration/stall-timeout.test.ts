@@ -1,18 +1,21 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
-import { STALL_TIMEOUT_MS } from "../../src/lib/game/stallTimeout";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  hasAnonTestEnv,
+  signUpSignInAndEnterRoom,
+  stallTimeoutFuture as future,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises
 // enforceStallTimeout (src/app/rounds/stallEnforcement.ts) against the RPCs
 // added in supabase/migrations/0009_stall_timeout.sql. Real elapsed time
 // isn't waited out — enforceStallTimeout's `now` parameter is injected as a
-// fixed instant STALL_TIMEOUT_MS+ after real setup, which is exactly what
-// makes this testable without sleeping ~5 minutes per test.
-function future() {
-  return new Date(Date.now() + STALL_TIMEOUT_MS + 5_000);
-}
+// fixed instant STALL_TIMEOUT_MS+ after real setup (stallTimeoutFuture),
+// which is exactly what makes this testable without sleeping ~5 minutes per
+// test.
 
 async function seedRoll(
   admin: SupabaseClient,

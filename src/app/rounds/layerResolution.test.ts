@@ -1,43 +1,55 @@
 import { describe, expect, it, vi } from "vitest";
-import type { CompletedLayer } from "@/lib/supabase/rolls";
-import type { ModifierEffect } from "@/lib/game/modifierBucket";
+import type { CompletedLayer, ResolveRoundOutcome } from "@/lib/supabase/rolls";
 import { applyLayerOutcome, type ApplyLayerOutcomeDeps } from "./layerResolution";
 
 const supabase = {} as never;
 
+/**
+ * The outcome math itself lives in the authoritative SQL resolve_round(uuid)
+ * and is covered by tests/integration/resolve-round.test.ts. These unit
+ * tests pin only what applyLayerOutcome still owns: the persistence and
+ * broadcast wiring around whichever outcome the resolver returns.
+ */
 function fakeDeps(overrides: Partial<ApplyLayerOutcomeDeps> = {}): ApplyLayerOutcomeDeps {
   return {
     getRoundRoomId: vi.fn(async () => "room-1"),
-    getRoundParticipants: vi.fn(async () =>
-      [{ playerId: "p1" }, { playerId: "p2" }, { playerId: "p3" }] as Awaited<
-        ReturnType<ApplyLayerOutcomeDeps["getRoundParticipants"]>
-      >,
+    resolveRoundOutcome: vi.fn(
+      async (): Promise<ResolveRoundOutcome> => ({
+        outcome: "brewer",
+        layer: 0,
+        brewerId: "p1",
+        brewerSource: "default",
+        cupsMade: 3,
+        noModifierGain: false,
+        trace: [],
+      }),
     ),
-    getRoundModifierEffects: vi.fn(async () => new Map<string, ModifierEffect[]>()),
-    getTeaMakerOverride: vi.fn(async () => null),
     resolveDeclaredNumberTeaMaker: vi.fn(async () => null),
     resolveRound: vi.fn(async () => {}),
     advanceRoundLayer: vi.fn(async () => 1),
     broadcastRoundRevealed: vi.fn(async () => {}),
     broadcastLayerTied: vi.fn(async () => {}),
+    recordPendingRoundReplay: vi.fn(async () => false),
+    broadcastRoundReplayChanged: vi.fn(async () => {}),
     ...overrides,
   };
 }
 
+const twoRollLayer: CompletedLayer = {
+  layer: 0,
+  rolls: [
+    { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+    { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
+  ],
+};
+
 describe("applyLayerOutcome", () => {
-  it("resolves a clear-cut layer: persists the brewer with the round's full participant count and broadcasts the reveal", async () => {
+  it("persists a brewer outcome via the 4-arg resolve_round and broadcasts the reveal", async () => {
     const deps = fakeDeps();
-    const completedLayer: CompletedLayer = {
-      layer: 0,
-      rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p3", value: 20, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
 
+    expect(deps.resolveRoundOutcome).toHaveBeenCalledWith(supabase, "round-1");
     expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p1", 3);
     expect(deps.broadcastRoundRevealed).toHaveBeenCalledWith(supabase, "room-1", {
       roundId: "round-1",
@@ -47,47 +59,97 @@ describe("applyLayerOutcome", () => {
       rolls: [
         { playerId: "p1", value: 5, discardedValue: null, enteredByAdmin: false },
         { playerId: "p2", value: 12, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p3", value: 20, discardedValue: null, enteredByAdmin: false },
       ],
     });
     expect(deps.advanceRoundLayer).not.toHaveBeenCalled();
     expect(deps.broadcastLayerTied).not.toHaveBeenCalled();
   });
 
-  it("uses the round's original participant count for cupsMade even when only a narrower tied subset rolled this layer", async () => {
+  it("takes cupsMade from the resolver result, not this layer's roller count", async () => {
+    // Only p1/p2 rolled this reroll layer, but the round has 3 participants.
     const deps = fakeDeps({
-      getRoundParticipants: vi.fn(async () =>
-        [{ playerId: "p1" }, { playerId: "p2" }, { playerId: "p3" }] as Awaited<
-          ReturnType<ApplyLayerOutcomeDeps["getRoundParticipants"]>
-        >,
+      resolveRoundOutcome: vi.fn(
+        async (): Promise<ResolveRoundOutcome> => ({
+          outcome: "brewer",
+          layer: 1,
+          brewerId: "p1",
+          brewerSource: "default",
+          cupsMade: 3,
+          noModifierGain: false,
+          trace: [],
+        }),
       ),
     });
-    // Only p1/p2 are in this reroll layer, but the round has 3 participants overall.
-    const completedLayer: CompletedLayer = {
-      layer: 1,
-      rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+    await applyLayerOutcome(supabase, "round-1", { ...twoRollLayer, layer: 1 }, deps);
 
     expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p1", 3);
+    // The broadcast carries which layer actually decided it (issue #220
+    // piece 4).
+    expect(deps.broadcastRoundRevealed).toHaveBeenCalledWith(
+      supabase,
+      "room-1",
+      expect.objectContaining({ layer: 1 }),
+    );
   });
 
-  it("resolves a tied layer: advances to the next reroll layer and broadcasts the tie", async () => {
-    const deps = fakeDeps();
-    const completedLayer: CompletedLayer = {
-      layer: 0,
-      rolls: [
-        { playerId: "p1", value: 10, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 10, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p3", value: 15, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
+  it("burns the declared-number one-shot only when the resolver picked the brewer that way", async () => {
+    const declaredDeps = fakeDeps({
+      resolveRoundOutcome: vi.fn(
+        async (): Promise<ResolveRoundOutcome> => ({
+          outcome: "brewer",
+          layer: 0,
+          brewerId: "p2",
+          brewerSource: "declared_number",
+          cupsMade: 3,
+          noModifierGain: false,
+          trace: [],
+        }),
+      ),
+    });
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, declaredDeps);
+    expect(declaredDeps.resolveDeclaredNumberTeaMaker).toHaveBeenCalledWith(supabase, "round-1", 0);
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+    // A default-pick brewer must not touch it.
+    const defaultDeps = fakeDeps();
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, defaultDeps);
+    expect(defaultDeps.resolveDeclaredNumberTeaMaker).not.toHaveBeenCalled();
+  });
+
+  it("passes the no-modifier-gain flag through to resolve_round (Drip Tray)", async () => {
+    const deps = fakeDeps({
+      resolveRoundOutcome: vi.fn(
+        async (): Promise<ResolveRoundOutcome> => ({
+          outcome: "brewer",
+          layer: 0,
+          brewerId: "p2",
+          brewerSource: "tea_maker_override:highest_roll",
+          cupsMade: 3,
+          noModifierGain: true,
+          trace: [],
+        }),
+      ),
+    });
+
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
+
+    expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p2", 3, true);
+  });
+
+  it("advances to the next reroll layer and broadcasts the tie on a tie outcome", async () => {
+    const deps = fakeDeps({
+      resolveRoundOutcome: vi.fn(
+        async (): Promise<ResolveRoundOutcome> => ({
+          outcome: "tie",
+          layer: 0,
+          tiedPlayerIds: ["p1", "p2"],
+          cupsMade: 3,
+          trace: [],
+        }),
+      ),
+    });
+
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
 
     expect(deps.advanceRoundLayer).toHaveBeenCalledWith(supabase, "round-1", ["p1", "p2"]);
     expect(deps.broadcastLayerTied).toHaveBeenCalledWith(supabase, "room-1", {
@@ -97,111 +159,54 @@ describe("applyLayerOutcome", () => {
     });
     expect(deps.resolveRound).not.toHaveBeenCalled();
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
-    expect(deps.getRoundParticipants).not.toHaveBeenCalled();
   });
 
-  it("resolves a nat-1 outright, ignoring who has the lowest total", async () => {
+  it("looks up the room via the given roundId", async () => {
     const deps = fakeDeps();
-    const completedLayer: CompletedLayer = {
-      layer: 0,
-      rolls: [
-        { playerId: "p1", value: 1, modifierSnapshot: 5, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 2, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
-
-    expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p1", 3);
-  });
-
-  it("looks up the room via the given roundId before persisting either outcome", async () => {
-    const deps = fakeDeps();
-    const completedLayer: CompletedLayer = {
-      layer: 0,
-      rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
-
-    await applyLayerOutcome(supabase, "round-42", completedLayer, deps);
+    await applyLayerOutcome(supabase, "round-42", twoRollLayer, deps);
 
     expect(deps.getRoundRoomId).toHaveBeenCalledWith(supabase, "round-42");
   });
 
-  it("folds an active spell-card modifier effect into the LayerEntry before resolving (issue #67)", async () => {
-    const deps = fakeDeps({
-      // p2 would win outright on raw roll+modifier (12+0=12 vs p1's 5+0=5),
-      // but a +10 flat modifier on p1 flips the outcome to p1.
-      getRoundModifierEffects: vi.fn(async () =>
-        new Map<string, ModifierEffect[]>([["p1", [{ kind: "flat", delta: 10 }]]]),
-      ),
-    });
-    const completedLayer: CompletedLayer = {
-      layer: 0,
-      rolls: [
-        { playerId: "p1", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
+  it("records a pending round replay after announcing, and nudges devices when one is pending (issue #315)", async () => {
+    const deps = fakeDeps({ recordPendingRoundReplay: vi.fn(async () => true) });
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
 
-    // p1's composed total (5 + 10 = 15) now loses to p2's untouched 12, so
-    // p2 brews instead of p1 — proof the modifier bucket, not just the raw
-    // roll, decided the outcome. cupsMade is 3 (the fake's participant
-    // count), unrelated to this layer's 2 rollers.
-    expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p2", 3);
+    // Recorded only after the reveal has been broadcast — the round announces
+    // normally first (spec §11).
+    expect(deps.recordPendingRoundReplay).toHaveBeenCalledWith(supabase, "round-1");
+    const revealOrder = (deps.broadcastRoundRevealed as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0;
+    const recordOrder = (deps.recordPendingRoundReplay as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0] ?? 0;
+    expect(recordOrder).toBeGreaterThan(revealOrder);
+    expect(deps.broadcastRoundReplayChanged).toHaveBeenCalledWith(supabase, "room-1", { roundId: "round-1" });
   });
 
-  it("does not let a spell-card flat modifier mask a nat-1's roll-only precedence", async () => {
-    const deps = fakeDeps({
-      getRoundModifierEffects: vi.fn(async () =>
-        new Map<string, ModifierEffect[]>([["p1", [{ kind: "flat", delta: 999 }]]]),
-      ),
-    });
-    const completedLayer: CompletedLayer = {
-      layer: 0,
-      rolls: [
-        { playerId: "p1", value: 1, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 2, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
+  it("does not nudge devices when no round replay is pending (the ordinary round)", async () => {
+    const deps = fakeDeps();
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
 
-    expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p1", 3);
+    expect(deps.recordPendingRoundReplay).toHaveBeenCalledWith(supabase, "round-1");
+    expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
   });
 
-  it("ignores an active spell-card modifier effect on a tie-break reroll layer (issue #219)", async () => {
+  it("never records a pending round replay on a tie outcome", async () => {
     const deps = fakeDeps({
-      // Without the effect, p2 wins outright as brewer (5 < 12). A +10 flat
-      // effect on p2 would flip that to p1 if it were wrongly composed in —
-      // proof this reroll layer never consults the effects map at all.
-      getRoundModifierEffects: vi.fn(async () =>
-        new Map<string, ModifierEffect[]>([["p2", [{ kind: "flat", delta: 10 }]]]),
+      resolveRoundOutcome: vi.fn(
+        async (): Promise<ResolveRoundOutcome> => ({
+          outcome: "tie",
+          layer: 0,
+          tiedPlayerIds: ["p1", "p2"],
+          cupsMade: 3,
+          trace: [],
+        }),
       ),
     });
-    const completedLayer: CompletedLayer = {
-      layer: 1,
-      rolls: [
-        { playerId: "p1", value: 12, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-        { playerId: "p2", value: 5, modifierSnapshot: 0, discardedValue: null, enteredByAdmin: false },
-      ],
-    };
 
-    await applyLayerOutcome(supabase, "round-1", completedLayer, deps);
+    await applyLayerOutcome(supabase, "round-1", twoRollLayer, deps);
 
-    expect(deps.getRoundModifierEffects).not.toHaveBeenCalled();
-    expect(deps.resolveRound).toHaveBeenCalledWith(supabase, "round-1", "p2", 3);
-    // The broadcast carries which layer actually decided it (issue #220
-    // piece 4) — a listener showing layer 0's own roll needs this to know
-    // payload.rolls here is layer 1's reroll, not layer 0's original roll.
-    expect(deps.broadcastRoundRevealed).toHaveBeenCalledWith(
-      supabase,
-      "room-1",
-      expect.objectContaining({ layer: 1 }),
-    );
+    expect(deps.recordPendingRoundReplay).not.toHaveBeenCalled();
   });
 });

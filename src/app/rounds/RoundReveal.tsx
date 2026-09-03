@@ -11,9 +11,14 @@ import { firstNameOrFallback } from "@/lib/game/displayName";
 import { buildRerollChain } from "@/lib/game/rerollChain";
 import { getRoundModifierEffectDetails, type ModifierEffectDetail } from "@/lib/supabase/spellCasts";
 import { getRoundLayerHistory, type CompletedLayer } from "@/lib/supabase/rolls";
+import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
+import { buildRoundRecap } from "@/lib/game/roundRecap";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
+import { RoundRecap, scrollToRecapPlayer } from "@/app/_components/RoundRecap";
+import { RerollChainRows } from "@/app/_components/RerollChainRows";
+import { ScrappedGenerationDisclosure } from "@/app/_components/ScrappedGenerationDisclosure";
 
 export type RoundRevealParticipant = {
   playerId: string;
@@ -85,18 +90,6 @@ export type RoundRevealParticipant = {
  */
 const RESULTS_TIMEOUT_MS = 5 * 60 * 1000;
 
-// Static Tailwind margin-left classes for each reroll-chain nesting depth
-// (issue #220 decision 3: "chained ties nest further, not in place") — a
-// dynamically-interpolated arbitrary value (`ml-[${i * 20}px]`) can't be
-// picked up by Tailwind's JIT purge, so each depth needs its own literal
-// class. A chain nesting deeper than this list is vanishingly rare (it
-// means the same tied subset rerolled and tied again this many times in a
-// row); falls back to the deepest defined indent rather than stop indenting.
-const REROLL_INDENT_CLASSES = ["ml-5", "ml-10", "ml-14", "ml-20", "ml-24"];
-function rerollIndentClass(chainIndex: number): string {
-  return REROLL_INDENT_CLASSES[chainIndex] ?? REROLL_INDENT_CLASSES[REROLL_INDENT_CLASSES.length - 1] ?? "ml-5";
-}
-
 export function RoundReveal({
   roomId,
   roundId,
@@ -134,6 +127,12 @@ export function RoundReveal({
   // just leaves every row without its reroll history rather than breaking
   // the reveal.
   const [history, setHistory] = useState<CompletedLayer[]>([]);
+  // The Round Recap "Ledger" data (issue #314): the Resolution Trace + this
+  // round's cast list. Fetched client-side (no realtime broadcast carries it)
+  // and refetched on every reveal/resolve so it flips from the live pending
+  // ledger to the resolved one. Best-effort: the Recap is additive, so a
+  // failed fetch just falls back to the plain reveal below.
+  const [recap, setRecap] = useState<RoundRecapData | null>(null);
   // Bumped by every layer-rolls-revealed broadcast (any layer, not just 0)
   // and by round-revealed, to retrigger the history fetch below — issue
   // #220 piece 4's "the dependent row needs to populate live ... once a
@@ -161,6 +160,7 @@ export function RoundReveal({
     setShowKettleModal(false);
     setEffectDetails([]);
     setHistory([]);
+    setRecap(null);
     setHistoryRefreshToken(0);
     clearResultsTimeout();
     return clearResultsTimeout;
@@ -201,6 +201,23 @@ export function RoundReveal({
     // comment above) — every reroll layer's own completion needs to
     // refetch this even though `rolls` (layer 0 only, below) doesn't change.
   }, [rolls, roundId, historyRefreshToken]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const supabase = createClient();
+    getRoundRecap(supabase, roundId)
+      .then((data) => {
+        if (!cancelled) setRecap(data);
+      })
+      .catch(() => {
+        // Best-effort — the plain reveal below still renders.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // historyRefreshToken bumps on every layer reveal and on round-revealed,
+    // which is exactly when the Trace (and so the Recap) changes.
+  }, [roundId, historyRefreshToken]);
 
   useRoomChannel(roomId, roundId, {
     // Scoped to layer 0 — this drives the *primary* row's own die (every
@@ -250,6 +267,12 @@ export function RoundReveal({
     "reaction-window-changed": () => {
       if (!hasOpenReactionWindow) router.refresh();
     },
+    // Issue #315 (Round Replay): a surviving Time for Brew turns this
+    // just-announced round into a pending scrap/keep decision. This component
+    // is what's mounted at announce time — refresh so the server re-render
+    // swaps in the blocking prompt / "waiting on X" banner (and, on
+    // confirm/decline, swaps it back out).
+    "round-replay-changed": () => router.refresh(),
   });
 
   function dismissKettleModal() {
@@ -266,6 +289,27 @@ export function RoundReveal({
   const brewer = participants.find((p) => p.playerId === brewerId);
   const displayNameByPlayerId = new Map(participants.map((p) => [p.playerId, p.displayName ?? p.email]));
   const casterName = (playerId: string) => displayNameByPlayerId.get(playerId) ?? playerId;
+  const firstNameByPlayerId = new Map(
+    participants.map((p) => [p.playerId, firstNameOrFallback(p.displayName, p.email)]),
+  );
+
+  // Issue #314: the Round Recap ledger, primary content whenever this round
+  // has >= 1 cast. Zero-cast rounds get hasContent === false and everything
+  // below renders exactly as before. layerZeroOutcome (the tie-break note)
+  // rides on the RPC payload, so nothing extra to thread through here.
+  const recapDisplayName = (playerId: string) => firstNameByPlayerId.get(playerId) ?? playerId;
+  const recapModel = recap
+    ? buildRoundRecap({
+        data: recap,
+        displayName: recapDisplayName,
+      })
+    : null;
+  const hasRecap = recapModel?.hasContent ?? false;
+
+  // Issue #352: a replayed round. The canonical view below is generation 1;
+  // generation 0's own Recap (its Trace, brewer, first-attempt rolls, and any
+  // tie-break reroll rows) hangs above it in a collapsed disclosure.
+  const scrappedGenerations = recap?.scrappedGenerations ?? [];
 
   return (
     <>
@@ -285,6 +329,16 @@ export function RoundReveal({
           </div>
         </div>
       ) : null}
+
+      {scrappedGenerations.length > 0 ? (
+        <ScrappedGenerationDisclosure
+          generations={scrappedGenerations}
+          roster={participants.map((p) => p.playerId)}
+          displayName={recapDisplayName}
+        />
+      ) : null}
+
+      {hasRecap && recapModel ? <RoundRecap model={recapModel} /> : null}
 
       <CardFrame title="Rolling">
         <ul className="divide-y divide-gilt-dark/40">
@@ -317,7 +371,13 @@ export function RoundReveal({
               <li key={p.playerId} className="py-2">
                 <div className="flex items-center justify-between gap-3">
                   <ModifierBreakdown playerId={p.playerId} roomId={roomId} modifier={p.modifier} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-y-0.5 sm:flex-row sm:items-center sm:gap-x-2">
+                  <div
+                    className={`flex min-w-0 flex-1 flex-col gap-y-0.5 sm:flex-row sm:items-center sm:gap-x-2 ${
+                      hasRecap ? "cursor-pointer" : ""
+                    }`}
+                    onClick={hasRecap ? () => scrollToRecapPlayer(p.playerId) : undefined}
+                    title={hasRecap ? "Jump to this player's Recap steps" : undefined}
+                  >
                     <span className="font-body text-sm text-parchment" title={p.displayName ?? p.email}>
                       {firstNameOrFallback(p.displayName, p.email)}
                     </span>
@@ -354,37 +414,7 @@ export function RoundReveal({
                   </span>
                 </div>
 
-                {rerollChain.map((level, i) => {
-                  // A reroll layer never carries a discarded die or effect
-                  // badge (issue #219 exempted tie-break rerolls from both),
-                  // so the total is always a plain roll+modifier sum, or the
-                  // bare roll for a nat-1/nat-20 — same rule classifyRollCalculation
-                  // applies to layer 0's own badge above.
-                  const levelCalc = classifyRollCalculation(level.roll, level.modifier);
-                  const levelBadgeValue = levelCalc.kind === "sum" ? levelCalc.total : level.roll;
-
-                  return (
-                    <div
-                      key={level.layer}
-                      className={`mt-1.5 flex items-center justify-between gap-3 border-l-2 border-dashed border-gilt-dark py-1.5 pl-3 ${rerollIndentClass(i)}`}
-                    >
-                      <span className="font-body text-[10px] uppercase tracking-widest text-parchment-dim">
-                        Reroll {i + 1}
-                        {level.tied ? (
-                          <span className="ml-1.5 inline-flex items-center gap-1 rounded-full border border-ember-bright bg-ember/25 px-2 py-0.5 text-[10px] normal-case tracking-normal text-parchment">
-                            Tied again
-                          </span>
-                        ) : null}
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <RollCalculation roll={level.roll} modifier={level.modifier} rich discardedRoll={null} />
-                        <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-2 border-gilt bg-tavern-panel-dark font-display text-xs text-parchment">
-                          {levelBadgeValue}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
+                <RerollChainRows chain={rerollChain} />
               </li>
             );
           })}

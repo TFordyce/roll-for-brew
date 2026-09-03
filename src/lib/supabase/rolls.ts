@@ -260,3 +260,216 @@ export async function resolveRound(
   });
   if (error) throw error;
 }
+
+/**
+ * One step of a round's Resolution Trace (migration 0078, ADR 0005): the
+ * structured record resolve_round emits for every effect it applied while
+ * composing modifiers and picking the brewer. The renderer (#314) owns the
+ * wording; SQL emits only these fields.
+ */
+/**
+ * A Trace step's outcome. `applied`/`no-op` come from the 6-arg
+ * _rr_trace_step (before === after ⇒ `no-op`); `blocked` (issue #309, a ward
+ * pre-empted the effect) and `backfired` (issue #308, a nat-1 counterspell)
+ * are set explicitly via the 7-arg form's `outcome` override.
+ */
+export type TraceStepOutcome = "applied" | "no-op" | "blocked" | "backfired";
+
+export type ResolutionTraceStep = {
+  index: number;
+  displayKind: string;
+  sourceCast: {
+    castId: string | null;
+    activeEffectId: string | null;
+    cardName: string | null;
+    casterPlayerId: string | null;
+  };
+  targetPlayer: string | null;
+  before: { type: string; value: number | string | null };
+  after: { type: string; value: number | string | null };
+  outcome: TraceStepOutcome;
+  /** Issue #308: this step's source cast was negated by a counter — render struck. */
+  negated: boolean;
+  /** Issue #308: a re-application of a backfired counter's transform onto its own caster. */
+  backfire: boolean;
+  /** Issue #308: a contested_negate step's d20 roll and DC, when present. */
+  contest: { d20: number | null; dc: number | null } | null;
+  /** Issue #309: which ward blocked this step, when `outcome === "blocked"`. */
+  ward: { wardCastId: string | null; wardCardName: string | null } | null;
+  /** Issue #311: a persistent (rest-of-day) modifier transfer/spend step. */
+  restOfDay: boolean;
+  /** Issue #318: chosen-pair roll transform op — "swap" | "min" | "max". */
+  pairOp: string | null;
+  /**
+   * Issue #319: conditional-advantage (Gambler's Infusion) detail — the first
+   * die and which branch it selected. null on every other step.
+   */
+  condition: {
+    firstDie: number;
+    branch: "advantage" | "disadvantage" | "none";
+    advantageAtOrAbove: number;
+    disadvantageAtOrBelow: number;
+  } | null;
+};
+
+/**
+ * The outcome of the authoritative layer-0 resolver, resolve_round(uuid)
+ * (migration 0078). `brewer` carries the picked brewer plus the cups-made
+ * count and whether a tea_maker_override suppressed their modifier gain;
+ * `tie` carries the tied roster that must reroll in the next layer. Either
+ * way `trace` is the round's Resolution Trace (empty for a tie-break reroll
+ * layer, which bypasses all spell logic).
+ */
+export type ResolveRoundOutcome =
+  | {
+      outcome: "brewer";
+      layer: number;
+      brewerId: string;
+      brewerSource: string;
+      cupsMade: number;
+      noModifierGain: boolean;
+      trace: ResolutionTraceStep[];
+    }
+  | {
+      outcome: "tie";
+      layer: number;
+      tiedPlayerIds: string[];
+      cupsMade: number;
+      trace: ResolutionTraceStep[];
+    };
+
+type RawTraceStep = {
+  index: number;
+  display_kind: string;
+  source_cast: {
+    cast_id: string | null;
+    active_effect_id: string | null;
+    card_name: string | null;
+    caster_player_id: string | null;
+  };
+  target_player: string | null;
+  before: { type: string; value: number | string | null };
+  after: { type: string; value: number | string | null };
+  // 6-arg form always emits "applied" | "no-op"; the 7-arg form may override
+  // to "blocked" | "backfired". All the keys below are 7-arg extras merged in
+  // at the top level (migration 0080) and absent on a plain 6-arg step.
+  outcome: TraceStepOutcome;
+  negated?: boolean;
+  backfire?: boolean;
+  dc_d20?: number | null;
+  dc?: number | null;
+  ward_cast_id?: string | null;
+  ward_card_name?: string | null;
+  rest_of_day?: boolean;
+  op?: string | null;
+  // Issue #319: a conditional-advantage step (Gambler's Infusion) — which
+  // branch the caster's first die selected, and the thresholds it was tested
+  // against. Absent on every other step.
+  condition?: {
+    first_die: number;
+    branch: "advantage" | "disadvantage" | "none";
+    advantage_at_or_above: number;
+    disadvantage_at_or_below: number;
+  } | null;
+};
+
+type RawResolveRoundOutcome = {
+  outcome: "brewer" | "tie";
+  layer: number;
+  brewer_id: string | null;
+  brewer_source: string | null;
+  tied_player_ids: string[] | null;
+  cups_made: number;
+  no_modifier_gain: boolean;
+  trace: RawTraceStep[];
+};
+
+function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
+  return {
+    index: raw.index,
+    displayKind: raw.display_kind,
+    sourceCast: {
+      castId: raw.source_cast?.cast_id ?? null,
+      activeEffectId: raw.source_cast?.active_effect_id ?? null,
+      cardName: raw.source_cast?.card_name ?? null,
+      casterPlayerId: raw.source_cast?.caster_player_id ?? null,
+    },
+    targetPlayer: raw.target_player,
+    before: raw.before,
+    after: raw.after,
+    outcome: raw.outcome,
+    negated: raw.negated ?? false,
+    backfire: raw.backfire ?? false,
+    contest:
+      raw.dc_d20 != null || raw.dc != null
+        ? { d20: raw.dc_d20 ?? null, dc: raw.dc ?? null }
+        : null,
+    ward:
+      raw.ward_cast_id != null || raw.ward_card_name != null
+        ? { wardCastId: raw.ward_cast_id ?? null, wardCardName: raw.ward_card_name ?? null }
+        : null,
+    restOfDay: raw.rest_of_day ?? false,
+    pairOp: raw.op ?? null,
+    condition: raw.condition
+      ? {
+          firstDie: raw.condition.first_die,
+          branch: raw.condition.branch,
+          advantageAtOrAbove: raw.condition.advantage_at_or_above,
+          disadvantageAtOrBelow: raw.condition.disadvantage_at_or_below,
+        }
+      : null,
+  };
+}
+
+/**
+ * Parses a raw `rounds.resolution_trace` JSON value (an array of 0080-shape
+ * step objects, or null/absent on a pre-rebuild resolved round) into typed
+ * steps. Shared by resolveRoundOutcome above and the Round Recap reader
+ * (getRoundRecap, issue #314).
+ */
+export function parseResolutionTrace(raw: unknown): ResolutionTraceStep[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as RawTraceStep[]).map(toTraceStep);
+}
+
+/**
+ * Calls the authoritative resolve_round(uuid) RPC (migration 0078): composes
+ * every player's round modifier, applies lowest_gains_highest_modifier as
+ * modifier math, resolves tea_maker_override / declared_number precedence,
+ * and picks the brewer (or the tied roster) — writing the Resolution Trace
+ * onto rounds.resolution_trace. It does NOT flip the round to resolved; the
+ * caller persists a brewer via resolveRound (the 4-arg RPC) or a tie via
+ * advanceRoundLayer, exactly as before.
+ */
+export async function resolveRoundOutcome(
+  supabase: SupabaseClient,
+  roundId: string,
+): Promise<ResolveRoundOutcome> {
+  const { data, error } = await supabase.rpc("resolve_round", { p_round_id: roundId });
+  if (error) throw error;
+
+  const raw = data as RawResolveRoundOutcome;
+  const trace = (raw.trace ?? []).map(toTraceStep);
+  const cupsMade = raw.cups_made;
+
+  if (raw.outcome === "tie") {
+    if (!raw.tied_player_ids?.length) {
+      throw new Error("resolve_round returned a tie with no tied_player_ids");
+    }
+    return { outcome: "tie", layer: raw.layer, tiedPlayerIds: raw.tied_player_ids, cupsMade, trace };
+  }
+
+  if (!raw.brewer_id) {
+    throw new Error("resolve_round returned a brewer outcome with no brewer_id");
+  }
+
+  return {
+    outcome: "brewer",
+    layer: raw.layer,
+    brewerId: raw.brewer_id,
+    brewerSource: raw.brewer_source ?? "default",
+    cupsMade,
+    noModifierGain: raw.no_modifier_gain,
+    trace,
+  };
+}

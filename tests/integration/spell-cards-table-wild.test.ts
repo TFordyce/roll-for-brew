@@ -198,13 +198,15 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
 
     const { data: dispatchRows, error: dispatchError } = await admin
       .from("spell_casts")
-      .select("resolved_value, effect_kind, effect_params")
+      .select("effect_kind, effect_params, cast_inputs")
       .eq("round_id", roundId)
       .eq("effect_kind", "wild_dispatch")
       .order("cast_at", { ascending: true })
       .limit(1);
     expect(dispatchError).toBeNull();
-    const branch = dispatchRows![0]!.resolved_value as number;
+    // #312: resolved_value is dropped; the d6 branch pick is recorded into the
+    // Cast Log (issue #307) as cast_inputs.branch, the resolver's only source.
+    const branch = (dispatchRows![0]!.cast_inputs as { branch: number }).branch;
     expect(branch).toBeGreaterThanOrEqual(1);
     expect(branch).toBeLessThanOrEqual(6);
 
@@ -318,7 +320,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     });
   });
 
-  it("Inscribed Saucer (declared_number_tea_maker) names the first matching roller and consumes itself", async () => {
+  it("Inscribed Saucer (declared_number_tea_maker) names the first matching roller as a pure, repeatable read (#310)", async () => {
     const [caster, target] = await Promise.all([signUp("saucer-caster"), signUp("saucer-target")]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
@@ -346,12 +348,23 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     expect(matchError).toBeNull();
     expect(matched).toBe(target.googleSub);
 
-    // One-time trigger: a second call finds nothing left to consume.
+    // #310: it no longer physically consumes the sentinel — it's a pure,
+    // idempotent read, so a repeat call in the same round returns the same
+    // player. "One shot" is now enforced by the sentinel being a duration-1
+    // projection row that ages out once this round resolves (covered by the
+    // resolve-round / spell-active-effects expiry tests).
     const { data: secondMatch } = await caster.client.rpc("resolve_declared_number_tea_maker", {
       p_round_id: roundId,
       p_layer: 0,
     });
-    expect(secondMatch).toBeNull();
+    expect(secondMatch).toBe(target.googleSub);
+
+    const { data: sentinelRow } = await admin
+      .from("spell_active_effects")
+      .select("effect_kind, rounds_remaining")
+      .eq("room_id", caster.roomId)
+      .eq("effect_kind", "declared_number_tea_maker");
+    expect(sentinelRow).toEqual([{ effect_kind: "declared_number_tea_maker", rounds_remaining: 1 }]);
   });
 
   it("cast_spell_card rejects a declared_number_tea_maker card cast without a number", async () => {
