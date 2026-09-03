@@ -2,11 +2,10 @@
 -- deferred target (issue #325, a follow-up slice off rebuild/effect-resolver
 -- to the incremental data-row fix in PR #324 / migration 0075; ADR 0005 #302).
 --
--- Migration number: the rebuild branch's highest merged is 0096
--- (0096_chosen_pair_roll_transform). 0097 is claimed by a sibling slice
--- (#320, persistent advantage). This is 0098. Re-check the number at the
--- integrate step (branching strategy in #303) and renumber to sit after the
--- branch's current highest.
+-- Migration number: on rebuild/effect-resolver 0097 is persistent advantage
+-- (#320, merged) and 0099 is the targeting-skip slice (#321, in flight), so
+-- this sits at 0098. Re-check the number at the integrate step (branching
+-- strategy in #303) if the branch has moved again.
 --
 -- The gap (documented as a KNOWN GAP in 0075:101-117)
 -- --------------------------------------------------
