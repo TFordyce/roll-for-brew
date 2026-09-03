@@ -158,6 +158,8 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       if (step.pairOp === "min") return `${played} — ${t} takes the lower of the linked pair`;
       if (step.pairOp === "max") return `${played} — ${t} takes the higher of the linked pair`;
       return `${played} — ${t}'s die is swapped with the linked player`;
+    case "fixed_roll":
+      return `${played} — ${t}'s die is fixed`;
     case "flat_modifier":
     case "dice_modifier":
       return `${played} on ${t}`;

@@ -68,12 +68,19 @@
 -- a follow-up issue.
 --
 -- Migration numbering: master's highest is 0077; rebuild/effect-resolver runs
--- 0078-0095. This is 0096, renumbered from a first-cut 0094 after sibling Tier
--- A slice #319 (conditional advantage) merged as 0095. Section 8's resolve_round
--- is therefore re-emitted from 0095's body (the #319 version), with the #318
--- roll_pair_transform edits layered on top -- see that section's header. Sibling
--- #317 (Fixed-roll) is still open and also first-cut 0094; its number and any
--- further overlapping re-emitted bodies reconcile at the #303 integrate gate.
+-- 0078-0095. This is 0096, renumbered from a first-cut 0094 after both sibling
+-- Tier A slices merged ahead of it -- #317 (fixed_roll) took 0094 and #319
+-- (conditional advantage) took 0095. Because all three re-emit shared function
+-- bodies and this migration replays last, it carries the UNION of their edits:
+--   * §2b re-emits submit_roll / submit_roll_as with BOTH #319's
+--     conditional-advantage branch and #317's _rr_apply_fixed_roll shim call
+--     (0095 had dropped the latter -- see that section's header);
+--   * §2 keeps `fixed_roll` in the effect_kind CHECK lists (this drop/re-add
+--     runs after 0094 and would otherwise strip it);
+--   * §8 re-emits resolve_round from 0095's body with `fixed_roll` (#317) and
+--     `roll_pair_transform` (#318) both added to Phase 3's kind filter.
+-- This is the #303 integrate-gate reconciliation done early so the branch is
+-- release-clean; the gate should still re-verify the numbering.
 
 -- ---------------------------------------------------------------------------
 -- 1. Un-bench the four cards (migration 0074 parked them at 'benched').
@@ -93,6 +100,8 @@ update public.spell_deck_instances sdi
 --    widens all constraints together) even though these four cards carry no
 --    effect rows this slice. spell_active_effects does NOT: a chosen-pair
 --    transform is round-scoped, never promoted to a persistent effect.
+--    `fixed_roll` (sibling #317, migration 0094) is carried in the list too --
+--    this drop/re-add runs after 0094 and would otherwise strip it.
 -- ---------------------------------------------------------------------------
 alter table public.spell_card_effects drop constraint spell_card_effects_effect_kind_check;
 alter table public.spell_card_effects add constraint spell_card_effects_effect_kind_check
@@ -101,7 +110,7 @@ alter table public.spell_card_effects add constraint spell_card_effects_effect_k
     'advantage', 'disadvantage', 'dispel',
     'forced_reroll', 'contested_negate', 'redirect',
     'reset_persistent_modifier',
-    'roll_swap', 'roll_flip', 'roll_pair_transform', 'lowest_gains_highest_modifier',
+    'roll_swap', 'roll_flip', 'fixed_roll', 'roll_pair_transform', 'lowest_gains_highest_modifier',
     'tea_maker_override', 'declared_number_tea_maker', 'wild_dispatch',
     'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
     'round_replay', 'draw_redirect'
@@ -114,11 +123,500 @@ alter table public.spell_casts add constraint spell_casts_effect_kind_check
     'advantage', 'disadvantage', 'dispel',
     'forced_reroll', 'contested_negate', 'redirect',
     'reset_persistent_modifier',
-    'roll_swap', 'roll_flip', 'roll_pair_transform', 'lowest_gains_highest_modifier',
+    'roll_swap', 'roll_flip', 'fixed_roll', 'roll_pair_transform', 'lowest_gains_highest_modifier',
     'tea_maker_override', 'declared_number_tea_maker', 'wild_dispatch',
     'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
     'round_replay', 'draw_redirect'
   ));
+
+-- 2a. _rr_apply_fixed_roll -- re-emitted from 0094 (#317) with a merge fix:
+--     v_ward is now seeded to a NULL row before the ward-gate lookup so the
+--     later UPDATE's v_ward.* field refs are always valid (PL/pgSQL rejects
+--     a field ref on a never-assigned record at plan time, even in the
+--     untaken CASE branch, when the gate returns no row).
+-- ---------------------------------------------------------------------------
+create or replace function public._rr_apply_fixed_roll(
+  p_round_id uuid, p_player_id text, p_layer integer,
+  p_room_id uuid, p_rolled_value integer
+)
+returns table (value integer, applied boolean)
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_fixed_value integer;
+  v_before_seq bigint;
+  v_polarity text;
+  v_warded boolean := false;
+  v_ward record;
+begin
+  if p_layer <> 0 then
+    return query select p_rolled_value, false;
+    return;
+  end if;
+
+  select (sc.effect_params ->> 'value')::integer, sc.seq
+    into v_fixed_value, v_before_seq
+    from public.spell_casts sc
+   where sc.round_id = p_round_id
+     and sc.target_player_id = p_player_id
+     and sc.target_pending = false
+     and sc.effect_kind = 'fixed_roll'
+     and sc.negated = false            -- pre-resolve invariant; negation is
+   order by sc.seq                     -- resolver-written (Phase 1)
+   limit 1;
+
+  if v_fixed_value is null then
+    return query select p_rolled_value, false;
+    return;
+  end if;
+
+  -- Polarity of the fix vs what the player actually rolled, mirroring
+  -- roll_flip's "computed from the actual pre-value" (spec section 7). A
+  -- neutral fix (constant == roll) is never warded.
+  v_polarity := case
+    when v_fixed_value > p_rolled_value then 'positive'
+    when v_fixed_value < p_rolled_value then 'negative'
+    else 'neutral' end;
+
+  -- issue #318 merge fix: v_ward must be assigned before the UPDATE below
+  -- references v_ward.* -- PL/pgSQL rejects a field ref on a never-assigned
+  -- record at plan time even inside the untaken CASE branch. A no-row gate
+  -- result otherwise leaves it unassigned.
+  select null::uuid as ward_cast_id, null::text as ward_card_name into v_ward;
+  if v_polarity <> 'neutral' then
+    select g.ward_cast_id, g.ward_card_name into v_ward
+      from public._rr_active_ward_gate(
+        p_room_id, p_player_id, 'roll', v_polarity, p_round_id, v_before_seq) g;
+    v_warded := found;
+  end if;
+
+  update public.spell_casts casts
+     set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+           'roll_transform', jsonb_build_object(
+             'kind', 'fixed_roll',
+             'order', 0,
+             'players', jsonb_build_array(
+               case when v_warded then jsonb_build_object(
+                 'player_id', p_player_id,
+                 'before', p_rolled_value,
+                 'after', p_rolled_value,
+                 'warded', true,
+                 'would_be_after', v_fixed_value,
+                 'ward_cast_id', v_ward.ward_cast_id,
+                 'ward_card_name', v_ward.ward_card_name
+               ) else jsonb_build_object(
+                 'player_id', p_player_id,
+                 'before', p_rolled_value,
+                 'after', v_fixed_value
+               ) end
+             )
+           ))
+   where casts.round_id = p_round_id
+     and casts.target_player_id = p_player_id
+     and casts.target_pending = false
+     and casts.effect_kind = 'fixed_roll'
+     and casts.negated = false;
+
+  if v_warded then
+    return query select p_rolled_value, false;
+  else
+    return query select v_fixed_value, true;
+  end if;
+end;
+$$;
+
+revoke execute on function public._rr_apply_fixed_roll(uuid, text, integer, uuid, integer) from public, anon;
+grant execute on function public._rr_apply_fixed_roll(uuid, text, integer, uuid, integer) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 2b. submit_roll / submit_roll_as -- re-emitted as the UNION of sibling
+--     slices #317 (fixed_roll, migration 0094) and #319 (conditional
+--     advantage, migration 0095). Both re-emitted these two from 0079 and
+--     0095 (numerically later, so last to win at replay) dropped #317's
+--     _rr_apply_fixed_roll hook. This 0096 body carries BOTH: the #319
+--     conditional-advantage branch AND the #317 fixed-roll shim call, the
+--     latter guarding the second-draw and roll-transform-recording blocks
+--     on `not v_fixed_applied` (a fixed die has nothing to take advantage
+--     on). Reconciles at the #303 integrate gate; emitted here so this
+--     branch is release-clean.
+-- ---------------------------------------------------------------------------
+create or replace function public.submit_roll(p_round_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_player_id text;
+  v_status text;
+  v_room_id uuid;
+  v_layer integer;
+  v_modifier integer;
+  v_value integer;
+  v_first_value integer;
+  v_second_value integer;
+  v_discarded_value integer;
+  v_has_advantage boolean;      -- a PLAIN advantage cast (no condition)
+  v_has_disadvantage boolean;
+  v_condition jsonb;            -- effect_params.condition of a conditional cast
+  v_cond_branch text;          -- 'advantage' | 'disadvantage' | 'none' | null
+  v_cond_adv_at integer;
+  v_cond_dis_at integer;
+  v_eff_advantage boolean;     -- plain OR condition-selected advantage
+  v_eff_disadvantage boolean;
+  v_cancelled boolean;
+  v_dice jsonb;
+  v_fixed_applied boolean := false;   -- issue #317
+begin
+  v_player_id := public.current_player_id(p_round_id);
+
+  select status, room_id, current_layer into v_status, v_room_id, v_layer
+    from public.rounds
+   where id = p_round_id;
+
+  if v_status is null then
+    raise exception 'submit_roll: round not found';
+  end if;
+
+  if v_status <> 'closed' then
+    raise exception 'submit_roll: round is not closed for rolling'
+      using errcode = 'RFB01';
+  end if;
+
+  if not public.is_expected_layer_roller(p_round_id, v_player_id, v_layer) then
+    raise exception 'submit_roll: caller is not expected to roll in the current layer'
+      using errcode = 'RFB02';
+  end if;
+
+  select modifier into v_modifier
+    from public.room_players
+   where room_id = v_room_id and player_id = v_player_id;
+  v_modifier := coalesce(v_modifier, 0);
+
+  -- Plain (unconditional) advantage / disadvantage casts. The `? 'condition'`
+  -- exclusion is on the advantage side only: a conditional cast is always
+  -- effect_kind 'advantage' (Gambler's Infusion; there is no conditional
+  -- disadvantage card), so the disadvantage probe needs no matching guard.
+  v_has_advantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = v_player_id
+       and target_pending = false and effect_kind = 'advantage'
+       and not (coalesce(effect_params, '{}'::jsonb) ? 'condition')
+  );
+  v_has_disadvantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = v_player_id
+       and target_pending = false and effect_kind = 'disadvantage'
+  );
+
+  if v_layer = 0 then
+    select casts.effect_params -> 'condition'
+      into v_condition
+      from public.spell_casts casts
+     where casts.round_id = p_round_id and casts.target_player_id = v_player_id
+       and casts.target_pending = false and casts.effect_kind = 'advantage'
+       and casts.effect_params ? 'condition'
+     limit 1;
+  end if;
+
+  v_value := floor(random() * 20 + 1)::integer;
+  v_first_value := v_value;
+  v_discarded_value := null;
+
+  -- issue #317: fixed-roll shim. Records the before->after (order 0) and
+  -- returns the constant die; a roll-domain ward instead records a `warded`
+  -- marker and returns v_first_value with applied = false. A fixed die has
+  -- nothing to take advantage / disadvantage on, so the blocks below are
+  -- all guarded on `not v_fixed_applied`.
+  select f.value, f.applied into v_value, v_fixed_applied
+    from public._rr_apply_fixed_roll(p_round_id, v_player_id, v_layer, v_room_id, v_first_value) f;
+
+  v_cond_branch := null;
+  if v_condition is not null then
+    v_cond_adv_at := coalesce((v_condition ->> 'advantage_at_or_above')::integer, 15);
+    v_cond_dis_at := coalesce((v_condition ->> 'disadvantage_at_or_below')::integer, 5);
+    if v_first_value >= v_cond_adv_at then
+      v_cond_branch := 'advantage';
+    elsif v_first_value <= v_cond_dis_at then
+      v_cond_branch := 'disadvantage';
+    else
+      v_cond_branch := 'none';
+    end if;
+  end if;
+
+  v_eff_advantage := v_has_advantage or v_cond_branch is not distinct from 'advantage';
+  v_eff_disadvantage := v_has_disadvantage or v_cond_branch is not distinct from 'disadvantage';
+  v_cancelled := v_eff_advantage and v_eff_disadvantage;
+
+  if not v_fixed_applied and v_eff_advantage <> v_eff_disadvantage then
+    v_second_value := floor(random() * 20 + 1)::integer;
+    if v_eff_advantage then
+      v_discarded_value := least(v_value, v_second_value);
+      v_value := greatest(v_value, v_second_value);
+    else
+      v_discarded_value := greatest(v_value, v_second_value);
+      v_value := least(v_value, v_second_value);
+    end if;
+  end if;
+
+  insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot, discarded_value)
+  values (p_round_id, v_player_id, v_layer, v_value, 'in_app', v_modifier, v_discarded_value);
+
+  -- Record the roll transform onto the advantage / disadvantage cast(s).
+  if not v_fixed_applied and (v_eff_advantage or v_eff_disadvantage or v_condition is not null) then
+    if v_cancelled or v_second_value is null then
+      v_dice := jsonb_build_array(v_first_value);
+    else
+      v_dice := jsonb_build_array(v_first_value, v_second_value);
+    end if;
+
+    -- Plain advantage / disadvantage casts (Sugar Rush, Slipped Spoon, ...).
+    update public.spell_casts casts
+       set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+             'roll_transform', jsonb_build_object(
+               'kind', casts.effect_kind,
+               'order', 1,
+               'cancelled', v_cancelled,
+               'dice', v_dice,
+               'players', jsonb_build_array(jsonb_build_object(
+                 'player_id', v_player_id,
+                 'before', v_first_value,
+                 'after', v_value
+               ))
+             ))
+     where casts.round_id = p_round_id
+       and casts.target_player_id = v_player_id
+       and casts.target_pending = false
+       and casts.effect_kind in ('advantage', 'disadvantage')
+       and not (coalesce(casts.effect_params, '{}'::jsonb) ? 'condition');
+
+    -- Conditional advantage cast (Gambler's Infusion): same shape plus the
+    -- `condition` object naming the branch the first die selected.
+    if v_condition is not null then
+      update public.spell_casts casts
+         set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+               'roll_transform', jsonb_build_object(
+                 'kind', 'advantage',
+                 'order', 1,
+                 'cancelled', v_cancelled,
+                 'condition', jsonb_build_object(
+                   'first_die', v_first_value,
+                   'branch', v_cond_branch,
+                   'advantage_at_or_above', v_cond_adv_at,
+                   'disadvantage_at_or_below', v_cond_dis_at
+                 ),
+                 'dice', v_dice,
+                 'players', jsonb_build_array(jsonb_build_object(
+                   'player_id', v_player_id,
+                   'before', v_first_value,
+                   'after', v_value
+                 ))
+               ))
+       where casts.round_id = p_round_id
+         and casts.target_player_id = v_player_id
+         and casts.target_pending = false
+         and casts.effect_kind = 'advantage'
+         and casts.effect_params ? 'condition';
+    end if;
+  end if;
+
+  return v_value;
+end;
+$$;
+
+revoke execute on function public.submit_roll(uuid) from public, anon;
+grant execute on function public.submit_roll(uuid) to authenticated;
+
+create or replace function public.submit_roll_as(p_round_id uuid, p_player_id text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller text;
+  v_is_admin boolean;
+  v_status text;
+  v_room_id uuid;
+  v_layer integer;
+  v_modifier integer;
+  v_value integer;
+  v_first_value integer;
+  v_second_value integer;
+  v_discarded_value integer;
+  v_has_advantage boolean;
+  v_has_disadvantage boolean;
+  v_condition jsonb;
+  v_cond_branch text;
+  v_cond_adv_at integer;
+  v_cond_dis_at integer;
+  v_eff_advantage boolean;
+  v_eff_disadvantage boolean;
+  v_cancelled boolean;
+  v_dice jsonb;
+  v_fixed_applied boolean := false;   -- issue #317
+begin
+  v_caller := public.current_player_id();
+
+  select is_admin into v_is_admin from public.players where id = v_caller;
+  if not coalesce(v_is_admin, false) then
+    raise exception 'submit_roll_as: caller is not an admin';
+  end if;
+
+  select status, room_id, current_layer into v_status, v_room_id, v_layer
+    from public.rounds
+   where id = p_round_id;
+
+  if v_status is null then
+    raise exception 'submit_roll_as: round not found';
+  end if;
+
+  if not exists (select 1 from public.rooms where id = v_room_id and is_test) then
+    raise exception 'submit_roll_as: round is not in the Test Room';
+  end if;
+
+  if v_status <> 'closed' then
+    raise exception 'submit_roll_as: round is not closed for rolling'
+      using errcode = 'RFB01';
+  end if;
+
+  if not public.is_expected_layer_roller(p_round_id, p_player_id, v_layer) then
+    raise exception 'submit_roll_as: target player is not expected to roll in the current layer'
+      using errcode = 'RFB02';
+  end if;
+
+  select modifier into v_modifier
+    from public.room_players
+   where room_id = v_room_id and player_id = p_player_id;
+  v_modifier := coalesce(v_modifier, 0);
+
+  v_has_advantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = p_player_id
+       and target_pending = false and effect_kind = 'advantage'
+       and not (coalesce(effect_params, '{}'::jsonb) ? 'condition')
+  );
+  v_has_disadvantage := v_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and target_player_id = p_player_id
+       and target_pending = false and effect_kind = 'disadvantage'
+  );
+
+  if v_layer = 0 then
+    select casts.effect_params -> 'condition'
+      into v_condition
+      from public.spell_casts casts
+     where casts.round_id = p_round_id and casts.target_player_id = p_player_id
+       and casts.target_pending = false and casts.effect_kind = 'advantage'
+       and casts.effect_params ? 'condition'
+     limit 1;
+  end if;
+
+  v_value := floor(random() * 20 + 1)::integer;
+  v_first_value := v_value;
+  v_discarded_value := null;
+
+  -- issue #317: fixed-roll shim. Records the before->after (order 0) and
+  -- returns the constant die; a roll-domain ward instead records a `warded`
+  -- marker and returns v_first_value with applied = false. A fixed die has
+  -- nothing to take advantage / disadvantage on, so the blocks below are
+  -- all guarded on `not v_fixed_applied`.
+  select f.value, f.applied into v_value, v_fixed_applied
+    from public._rr_apply_fixed_roll(p_round_id, p_player_id, v_layer, v_room_id, v_first_value) f;
+
+  v_cond_branch := null;
+  if v_condition is not null then
+    v_cond_adv_at := coalesce((v_condition ->> 'advantage_at_or_above')::integer, 15);
+    v_cond_dis_at := coalesce((v_condition ->> 'disadvantage_at_or_below')::integer, 5);
+    if v_first_value >= v_cond_adv_at then
+      v_cond_branch := 'advantage';
+    elsif v_first_value <= v_cond_dis_at then
+      v_cond_branch := 'disadvantage';
+    else
+      v_cond_branch := 'none';
+    end if;
+  end if;
+
+  v_eff_advantage := v_has_advantage or v_cond_branch is not distinct from 'advantage';
+  v_eff_disadvantage := v_has_disadvantage or v_cond_branch is not distinct from 'disadvantage';
+  v_cancelled := v_eff_advantage and v_eff_disadvantage;
+
+  if not v_fixed_applied and v_eff_advantage <> v_eff_disadvantage then
+    v_second_value := floor(random() * 20 + 1)::integer;
+    if v_eff_advantage then
+      v_discarded_value := least(v_value, v_second_value);
+      v_value := greatest(v_value, v_second_value);
+    else
+      v_discarded_value := greatest(v_value, v_second_value);
+      v_value := least(v_value, v_second_value);
+    end if;
+  end if;
+
+  insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot, discarded_value)
+  values (p_round_id, p_player_id, v_layer, v_value, 'in_app', v_modifier, v_discarded_value);
+
+  if not v_fixed_applied and (v_eff_advantage or v_eff_disadvantage or v_condition is not null) then
+    if v_cancelled or v_second_value is null then
+      v_dice := jsonb_build_array(v_first_value);
+    else
+      v_dice := jsonb_build_array(v_first_value, v_second_value);
+    end if;
+
+    update public.spell_casts casts
+       set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+             'roll_transform', jsonb_build_object(
+               'kind', casts.effect_kind,
+               'order', 1,
+               'cancelled', v_cancelled,
+               'dice', v_dice,
+               'players', jsonb_build_array(jsonb_build_object(
+                 'player_id', p_player_id,
+                 'before', v_first_value,
+                 'after', v_value
+               ))
+             ))
+     where casts.round_id = p_round_id
+       and casts.target_player_id = p_player_id
+       and casts.target_pending = false
+       and casts.effect_kind in ('advantage', 'disadvantage')
+       and not (coalesce(casts.effect_params, '{}'::jsonb) ? 'condition');
+
+    if v_condition is not null then
+      update public.spell_casts casts
+         set cast_inputs = coalesce(casts.cast_inputs, '{}'::jsonb) || jsonb_build_object(
+               'roll_transform', jsonb_build_object(
+                 'kind', 'advantage',
+                 'order', 1,
+                 'cancelled', v_cancelled,
+                 'condition', jsonb_build_object(
+                   'first_die', v_first_value,
+                   'branch', v_cond_branch,
+                   'advantage_at_or_above', v_cond_adv_at,
+                   'disadvantage_at_or_below', v_cond_dis_at
+                 ),
+                 'dice', v_dice,
+                 'players', jsonb_build_array(jsonb_build_object(
+                   'player_id', p_player_id,
+                   'before', v_first_value,
+                   'after', v_value
+                 ))
+               ))
+       where casts.round_id = p_round_id
+         and casts.target_player_id = p_player_id
+         and casts.target_pending = false
+         and casts.effect_kind = 'advantage'
+         and casts.effect_params ? 'condition';
+    end if;
+  end if;
+
+  return v_value;
+end;
+$$;
+
+revoke execute on function public.submit_roll_as(uuid, text) from public, anon;
+grant execute on function public.submit_roll_as(uuid, text) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 3. attach_pre_roll_roll_pair_transform_casts -- sibling of
@@ -1597,9 +2095,11 @@ grant execute on function public.cast_spell_card(uuid, text, text[], integer, te
 -- ---------------------------------------------------------------------------
 -- 8. resolve_round(uuid) -- re-emitted from 0095 (sibling #319 body, which
 --    itself re-emitted 0093). Diffs vs 0095:
---      * the eager-roll-kind filter in Phase 0a (copy materialisation), the
---        seize `keepable` test, and the Phase 3 accounting loop all grow
---        `roll_pair_transform`;
+--      * Phase 3's accounting-loop kind filter grows BOTH `fixed_roll` (#317 --
+--        0095 re-emitted resolve_round from 0093 and dropped it) and
+--        `roll_pair_transform` (#318). The Phase 0a (copy materialisation) and
+--        seize `keepable` lists grow only `roll_pair_transform` -- #317 did not
+--        add `fixed_roll` there and this body matches that.
 --      * Phase 3 reads the roll_transform `op` (`pair_op`) and folds it into
 --        the same 7-arg _rr_trace_step `p_extra` #319 uses for `condition` --
 --        a step is either chosen-pair or conditional-advantage, never both --
@@ -2311,7 +2811,11 @@ begin
     ) t;
 
   -- ------------------------------------------------------------------
-  -- Phase 3: roll-input accounting (issue #306/#308/#309).
+  -- Phase 3: roll-input accounting (issue #306/#308/#309/#317/#318/#319).
+  -- issue #317: `fixed_roll` is a pre-roll kind recorded by submit_roll (via
+  -- _rr_apply_fixed_roll) into cast_inputs.roll_transform at order 0; its
+  -- recorded entry (normal or `warded`) flows through the generic branches
+  -- below exactly like the reaction-window transforms.
   -- ------------------------------------------------------------------
   for v_i in 1 .. coalesce(array_length(v_players, 1), 0) loop
     v_pid := v_players[v_i];
@@ -2339,7 +2843,7 @@ begin
         cross join lateral (select casts.cast_inputs -> 'roll_transform' as rt) rt
         cross join lateral jsonb_array_elements(rt.rt -> 'players') as pe(value)
        where casts.round_id = p_round_id
-         and casts.effect_kind in ('advantage', 'disadvantage', 'forced_reroll', 'roll_flip', 'roll_swap', 'roll_pair_transform')
+         and casts.effect_kind in ('advantage', 'disadvantage', 'forced_reroll', 'roll_flip', 'roll_swap', 'fixed_roll', 'roll_pair_transform')
          and casts.cast_inputs ? 'roll_transform'
          and pe.value ->> 'player_id' = v_pid
        order by (rt.rt ->> 'order')::integer, casts.seq
