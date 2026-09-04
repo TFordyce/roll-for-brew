@@ -7,8 +7,7 @@ import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { cardTileView, TIER_BORDER, TIER_LABEL } from "@/lib/spellCollection";
 import { CastForm, DispelForm } from "@/app/rounds/SpellCardForms";
 import { CardInspectModal } from "@/app/_components/CardInspectModal";
-
-const MAX_TILT_DEG = 16;
+import { MAX_TILT_DEG, TiltCardArt } from "@/app/_components/TiltCardArt";
 
 type ArmedAction = { kind: "dispel" | "cast"; roundId: string };
 
@@ -107,10 +106,7 @@ export function HeldCardThumbnail({
 
       {open ? (
         <CardInspectModal onClose={() => setOpen(false)}>
-          <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={view.artPath} alt="" className={`h-full w-full object-cover ${view.artClassName}`} />
-          </div>
+          <TiltCardArt artPath={view.artPath} artClassName={view.artClassName} className="mb-3" />
           <p className="font-display text-sm font-semibold uppercase tracking-wide text-gilt-bright">
             {held.cardName}
           </p>

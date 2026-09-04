@@ -5,6 +5,7 @@ import type { SpellCollectionCard as SpellCollectionCardData } from "@/lib/supab
 import { cardTileView, groupByTier, isDiscovered, TIER_LABEL, TIER_ORDER, tierFractions, type Tier } from "@/lib/spellCollection";
 import { SpellCollectionCard } from "@/app/_components/SpellCollectionCard";
 import { CardInspectModal } from "@/app/_components/CardInspectModal";
+import { TiltCardArt } from "@/app/_components/TiltCardArt";
 import { SpellCardRatingRow } from "@/app/_components/SpellCardRatingRow";
 
 /**
@@ -61,14 +62,11 @@ export function SpellCollectionGrid({
 
       {inspecting && inspectingView ? (
         <CardInspectModal onClose={() => setInspecting(null)}>
-          <div className="mb-3 aspect-[3/4] w-full overflow-hidden rounded-md bg-tavern-plank-dark">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={inspectingView.artPath}
-              alt=""
-              className={`h-full w-full object-cover ${inspectingView.artClassName}`}
-            />
-          </div>
+          <TiltCardArt
+            artPath={inspectingView.artPath}
+            artClassName={inspectingView.artClassName}
+            className="mb-3"
+          />
           <p className="font-display text-sm font-semibold uppercase tracking-wide text-gilt-bright">
             {inspecting.name}
           </p>
