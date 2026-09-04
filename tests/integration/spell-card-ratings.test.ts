@@ -1,6 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  hasAnonTestEnv,
+  signUpSignInIntoNonTestRoom,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // spell_card_ratings table and the rate_spell_card / withdraw_spell_card_rating
@@ -41,8 +46,12 @@ describe.skipIf(!hasAnonTestEnv)("spell card ratings: rate, withdraw, eligibilit
 
   afterEach(() => cleanup.run());
 
+  // rate_spell_card's eligibility check requires the qualifying cast's round
+  // to be in a non-test room; seed into an own room so another file flipping
+  // today's shared room to is_test can't turn every "should succeed" case
+  // into an RFB43.
   function signUp(label: string) {
-    return signUpSignInAndEnterRoom(admin, cleanup, label);
+    return signUpSignInIntoNonTestRoom(admin, cleanup, label);
   }
 
   async function seedTestRoom(): Promise<string> {

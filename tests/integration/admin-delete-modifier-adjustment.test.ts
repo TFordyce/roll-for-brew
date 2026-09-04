@@ -100,6 +100,7 @@ describe.skipIf(!hasAnonTestEnv)(
           signUpSignInAndEnter("del-adj-admin"),
           signUpSignInAndEnter("del-adj-actor"),
         ]);
+        await makeAdmin(adminSub);
 
         const before = await getModifier(roomId, actorSub);
         const adjustmentId = await logAdjustment(actorClient, actorSub, -4, "Did not lose round");

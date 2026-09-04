@@ -1,6 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  hasAnonTestEnv,
+  signUpSignInIntoNonTestRoom,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // stats_brew_rating_{all_time,last_30_days} views added in
@@ -22,8 +27,10 @@ describe.skipIf(!hasAnonTestEnv)("brew rating stats views", () => {
 
   afterEach(() => cleanup.run());
 
+  // stats_brew_rating_* filters `not rooms.is_test`; seed into an own room so
+  // another file flipping today's shared room to is_test can't empty them.
   function signUp(label: string) {
-    return signUpSignInAndEnterRoom(admin, cleanup, label);
+    return signUpSignInIntoNonTestRoom(admin, cleanup, label);
   }
 
   async function seedResolvedRound(options: {

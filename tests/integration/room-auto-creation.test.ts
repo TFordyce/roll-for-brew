@@ -78,24 +78,26 @@ describe.skipIf(!hasAnonTestEnv)("room auto-creation (enter_todays_room RPC)", (
   });
 
   it("does not duplicate the room on repeated logins the same day", async () => {
-    const { client } = await signUpAndSignIn("repeat-entry");
+    const { client, googleSub } = await signUpAndSignIn("repeat-entry");
 
-    const { data: firstRoomId } = await client.rpc("enter_todays_room");
-    const { data: secondRoomId } = await client.rpc("enter_todays_room");
+    const { data: firstRoomId, error: firstError } = await client.rpc("enter_todays_room");
+    const { data: secondRoomId, error: secondError } = await client.rpc("enter_todays_room");
+    expect(firstError).toBeNull();
+    expect(secondError).toBeNull();
 
+    // The RPC is idempotent: the second login returns the room the first
+    // one entered, not a fresh one. (One-room-per-date at the schema level
+    // is covered by "enforces one room per date" below -- asserting a
+    // global count here made the test hostage to whatever else had already
+    // created today's shared room on the stack.)
     expect(secondRoomId).toBe(firstRoomId);
 
-    const { data: room } = await admin
-      .from("rooms")
-      .select("id, date")
-      .eq("id", firstRoomId)
-      .single();
-
+    // And the repeat login left exactly one room_players row for this
+    // player -- no second room quietly joined.
     const { count } = await admin
-      .from("rooms")
-      .select("id", { count: "exact", head: true })
-      .eq("date", room!.date);
-
+      .from("room_players")
+      .select("room_id", { count: "exact", head: true })
+      .eq("player_id", googleSub);
     expect(count).toBe(1);
   });
 
