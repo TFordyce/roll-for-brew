@@ -1,0 +1,32 @@
+{
+  "scenario": "3-fixed-roll-pre-roll-kind",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "fixed",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 1
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 11
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Steady Hand",
+        "active_effect_id": null,
+        "caster_player_id": "P:fixed"
+      },
+      "display_kind": "fixed_roll",
+      "target_player": "P:fixed"
+    }
+  ]
+}

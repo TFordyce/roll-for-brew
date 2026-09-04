@@ -1,0 +1,32 @@
+{
+  "scenario": "wild-4-table-forced-reroll",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "rerolled",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 3
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 17
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Wild Brew Surge",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "forced_reroll",
+      "target_player": "P:rerolled"
+    }
+  ]
+}

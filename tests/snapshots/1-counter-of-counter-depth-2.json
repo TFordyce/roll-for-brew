@@ -1,0 +1,97 @@
+{
+  "scenario": "1-counter-of-counter-depth-2",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "c1",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "dc": 2,
+      "after": {
+        "type": "status",
+        "value": "countered"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 15,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c1"
+      },
+      "display_kind": "contested_negate",
+      "target_player": "P:victim"
+    },
+    {
+      "dc": 2,
+      "after": {
+        "type": "status",
+        "value": "negated target"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 15,
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c2"
+      },
+      "display_kind": "contested_negate",
+      "target_player": null
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "negated"
+      },
+      "index": 2,
+      "before": {
+        "type": "status",
+        "value": "negated"
+      },
+      "negated": true,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c1"
+      },
+      "display_kind": "contested_negate",
+      "target_player": null
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 10
+      },
+      "index": 3,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#3",
+        "card_name": "Lucky Sip",
+        "active_effect_id": null,
+        "caster_player_id": "P:victim"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:victim"
+    }
+  ]
+}

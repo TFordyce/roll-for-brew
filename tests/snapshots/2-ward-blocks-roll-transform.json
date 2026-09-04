@@ -1,0 +1,38 @@
+{
+  "scenario": "2-ward-blocks-roll-transform",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "forcer",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 16
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 16
+      },
+      "target": "P:warded",
+      "outcome": "blocked",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Double Dunk",
+        "active_effect_id": null,
+        "caster_player_id": "P:forcer"
+      },
+      "display_kind": "warded",
+      "ward_cast_id": null,
+      "target_player": "P:warded",
+      "ward_card_name": null,
+      "would_be_after": 16,
+      "blocked_cast_id": "cast#1",
+      "would_be_before": 16
+    }
+  ]
+}

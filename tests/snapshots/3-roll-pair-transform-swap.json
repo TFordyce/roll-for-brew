@@ -1,0 +1,54 @@
+{
+  "scenario": "3-roll-pair-transform-swap",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "b",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "op": "swap",
+      "after": {
+        "type": "roll",
+        "value": 17
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 4
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Brew-tal Swap",
+        "active_effect_id": null,
+        "caster_player_id": "P:a"
+      },
+      "display_kind": "roll_pair_transform",
+      "target_player": "P:a"
+    },
+    {
+      "op": "swap",
+      "after": {
+        "type": "roll",
+        "value": 4
+      },
+      "index": 1,
+      "before": {
+        "type": "roll",
+        "value": 17
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Brew-tal Swap",
+        "active_effect_id": null,
+        "caster_player_id": "P:a"
+      },
+      "display_kind": "roll_pair_transform",
+      "target_player": "P:b"
+    }
+  ]
+}

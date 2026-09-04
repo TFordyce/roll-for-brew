@@ -1,0 +1,32 @@
+{
+  "scenario": "4a-modifier-multiplier-scales-snapshot",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "other",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "modifier",
+        "value": 10
+      },
+      "index": 0,
+      "before": {
+        "type": "modifier",
+        "value": 5
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Double Shot",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "modifier_multiplier",
+      "target_player": "P:caster"
+    }
+  ]
+}

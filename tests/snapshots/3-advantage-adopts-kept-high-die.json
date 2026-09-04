@@ -1,0 +1,32 @@
+{
+  "scenario": "3-advantage-adopts-kept-high-die",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "other",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 19
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 3
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Sugar Rush",
+        "active_effect_id": null,
+        "caster_player_id": "P:advantaged"
+      },
+      "display_kind": "advantage",
+      "target_player": "P:advantaged"
+    }
+  ]
+}

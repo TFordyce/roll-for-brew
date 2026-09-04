@@ -1,0 +1,11 @@
+{
+  "scenario": "05-default-pick-empty-trace",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "low",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": []
+}

@@ -1,0 +1,55 @@
+{
+  "scenario": "1-contested-negate-succeeds",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "victim",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "dc": 2,
+      "after": {
+        "type": "status",
+        "value": "negated target"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 15,
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:counter"
+      },
+      "display_kind": "contested_negate",
+      "target_player": "P:victim"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "negated"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "negated"
+      },
+      "negated": true,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Lucky Sip",
+        "active_effect_id": null,
+        "caster_player_id": "P:victim"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:victim"
+    }
+  ]
+}

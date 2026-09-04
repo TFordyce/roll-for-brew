@@ -1,0 +1,32 @@
+{
+  "scenario": "05-tea-maker-override-highest-modifier-no-gain",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "topmod",
+  "brewerSource": "tea_maker_override:highest_modifier",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": true,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer (no modifier gain)"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Drip Tray",
+        "active_effect_id": null,
+        "caster_player_id": "P:topmod"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:topmod"
+    }
+  ]
+}

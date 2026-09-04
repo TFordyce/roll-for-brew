@@ -1,0 +1,32 @@
+{
+  "scenario": "05-declared-number-tea-maker",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "match13",
+  "brewerSource": "declared_number",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Inscribed Saucer",
+        "active_effect_id": "fx#1",
+        "caster_player_id": "P:declarer"
+      },
+      "display_kind": "declared_number_tea_maker",
+      "target_player": "P:match13"
+    }
+  ]
+}

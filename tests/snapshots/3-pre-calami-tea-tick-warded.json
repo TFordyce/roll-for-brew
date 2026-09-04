@@ -1,0 +1,64 @@
+{
+  "scenario": "3-pre-calami-tea-tick-warded",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "calami-target",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 12
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 12
+      },
+      "target": "P:calami-target",
+      "outcome": "blocked",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Calami-Tea",
+        "active_effect_id": null,
+        "caster_player_id": "P:calami-caster"
+      },
+      "display_kind": "warded",
+      "ward_cast_id": "cast#1",
+      "target_player": "P:calami-target",
+      "ward_card_name": "Cast-Iron Kettle",
+      "would_be_after": "<rng>",
+      "blocked_cast_id": null,
+      "would_be_before": 12
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": null
+      },
+      "index": 1,
+      "before": {
+        "type": "roll",
+        "value": null
+      },
+      "target": "P:calami-target",
+      "outcome": "blocked",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Calami-Tea",
+        "active_effect_id": null,
+        "caster_player_id": "P:calami-caster"
+      },
+      "display_kind": "warded",
+      "ward_cast_id": null,
+      "target_player": "P:calami-target",
+      "ward_card_name": null,
+      "would_be_after": null,
+      "blocked_cast_id": "cast#2",
+      "would_be_before": null
+    }
+  ]
+}

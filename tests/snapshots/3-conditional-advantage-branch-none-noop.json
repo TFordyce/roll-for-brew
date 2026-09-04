@@ -1,0 +1,38 @@
+{
+  "scenario": "3-conditional-advantage-branch-none-noop",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "other",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 9
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 9
+      },
+      "outcome": "no-op",
+      "condition": {
+        "branch": "none",
+        "first_die": 9,
+        "advantage_at_or_above": 15,
+        "disadvantage_at_or_below": 5
+      },
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Gambler's Infusion",
+        "active_effect_id": null,
+        "caster_player_id": "P:gambler"
+      },
+      "display_kind": "conditional_advantage",
+      "target_player": "P:gambler"
+    }
+  ]
+}

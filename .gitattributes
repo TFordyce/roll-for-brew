@@ -1,0 +1,7 @@
+# Trace-snapshot goldens (issue #366): the runner writes and compares them
+# with LF line endings via vitest's toMatchFileSnapshot. Without this, a
+# Windows checkout (core.autocrlf=true) rewrites them to CRLF and every
+# snapshot assertion fails on a fresh clone.
+tests/snapshots/**       text eol=lf
+tests/integration/trace-snapshot.test.ts          text eol=lf
+tests/integration/trace-snapshot-coverage.test.ts text eol=lf
