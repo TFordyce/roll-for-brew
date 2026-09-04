@@ -4,7 +4,7 @@ import {
   createTestAdminClient,
   createTestCleanup,
   hasAnonTestEnv,
-  signUpSignInAndEnterRoom,
+  signUpSignInIntoNonTestRoom,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Seeds resolved
@@ -25,8 +25,12 @@ describe.skipIf(!hasAnonTestEnv)("stats & leaderboard views", () => {
 
   afterEach(() => cleanup.run());
 
+  // Every stats_* view filters `not rooms.is_test`; seed into an own room so
+  // another file flipping today's shared room to is_test can't empty them.
+  // Tests seed and assert against one player's `roomId` consistently, so the
+  // other players' rooms going unused is harmless.
   function signUp(label: string) {
-    return signUpSignInAndEnterRoom(admin, cleanup, label);
+    return signUpSignInIntoNonTestRoom(admin, cleanup, label);
   }
 
   async function seedResolvedRound(options: {

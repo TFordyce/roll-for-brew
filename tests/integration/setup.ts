@@ -122,6 +122,60 @@ export async function signUpSignInAndEnterRoom(
 }
 
 /**
+ * Creates a fresh room with `is_test = false` and returns its id.
+ *
+ * `rooms.date` is nullable (0024, for the dateless Test Room), so this
+ * leaves it null -- the `rooms_date_key` partial unique index is on `date`
+ * `where not is_test`, and NULLs never collide there, so every call yields
+ * an independent room with no date bookkeeping.
+ *
+ * ADR 0002 frames a null `rooms.date` as the Test Room's property and warns
+ * that sentinel dates "read as real data"; a null-dated non-test room is the
+ * mirror-image anomaly. It's tolerated here because it never leaves the test
+ * suite: nothing in the app creates one, and `stats_room_history` (the only
+ * reader that surfaces `date`) just sorts it last.
+ *
+ * `rounds`, `round_participants` and `rooms` are all world-readable to
+ * `authenticated` (RLS `using (true)`), so a signed-in client reads back
+ * rounds seeded here with no room_players membership needed.
+ */
+export async function seedNonTestRoom(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+) {
+  const { data, error } = await admin
+    .from("rooms")
+    .insert({ is_test: false })
+    .select("id")
+    .single();
+  if (error) throw error;
+  const roomId = (data as { id: string }).id;
+  cleanup.trackRoom(roomId);
+  return roomId;
+}
+
+/**
+ * `signUpSignInAndEnterRoom` but with `roomId` pointing at a fresh
+ * `seedNonTestRoom` instead of today's shared room.
+ *
+ * Use this in any file that asserts on the `stats_*` views (they filter
+ * `not rooms.is_test`) or anything else gated on a room's `is_test` flag:
+ * today's shared room is joined by every `signUpSignInAndEnterRoom` call and
+ * never deleted per test, and a handful of tests
+ * (draw-spell-card-as-forced-nat1, ward-phase) flip it to `is_test = true`
+ * without restoring it. Seeding into an own room sidesteps that entirely.
+ */
+export async function signUpSignInIntoNonTestRoom(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+  label: string,
+) {
+  const player = await signUpSignInAndEnterRoom(admin, cleanup, label);
+  const roomId = await seedNonTestRoom(admin, cleanup);
+  return { ...player, roomId };
+}
+
+/**
  * The non-working spell cards still parked at location 'benched' (migration
  * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
  * each card is implemented and un-benched: 0074 benched 39; Yorkshire Terror
