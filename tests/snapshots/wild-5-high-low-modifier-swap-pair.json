@@ -1,0 +1,56 @@
+{
+  "scenario": "wild-5-high-low-modifier-swap-pair",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "highest-mod",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "modifier",
+        "value": -5
+      },
+      "delta": -5,
+      "index": 0,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "rest_of_day": true,
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Wild Brew Surge",
+        "active_effect_id": null,
+        "caster_player_id": "P:highest-mod"
+      },
+      "display_kind": "persistent_modifier_transfer",
+      "target_player": "P:highest-mod"
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 5
+      },
+      "delta": 5,
+      "index": 1,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "rest_of_day": true,
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Wild Brew Surge",
+        "active_effect_id": null,
+        "caster_player_id": "P:highest-mod"
+      },
+      "display_kind": "persistent_modifier_transfer",
+      "target_player": "P:lowest-mod"
+    }
+  ]
+}

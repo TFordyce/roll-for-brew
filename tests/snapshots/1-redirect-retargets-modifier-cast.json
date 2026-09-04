@@ -1,0 +1,52 @@
+{
+  "scenario": "1-redirect-retargets-modifier-cast",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "redirector",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "target",
+        "value": "P:orig-target"
+      },
+      "index": 0,
+      "before": {
+        "type": "target",
+        "value": "P:redirector"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Kettle Storm",
+        "active_effect_id": null,
+        "caster_player_id": "P:redirector"
+      },
+      "display_kind": "redirect",
+      "target_player": "P:orig-target"
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 100
+      },
+      "index": 1,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Mug Shot",
+        "active_effect_id": null,
+        "caster_player_id": "P:orig-target"
+      },
+      "display_kind": "set_modifier",
+      "target_player": "P:orig-target"
+    }
+  ]
+}

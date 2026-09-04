@@ -1,0 +1,11 @@
+{
+  "scenario": "wild-1-room-reset",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "caster",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": []
+}

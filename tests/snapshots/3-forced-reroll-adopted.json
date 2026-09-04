@@ -1,0 +1,32 @@
+{
+  "scenario": "3-forced-reroll-adopted",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "rerolled",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 2
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 18
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Double Dunk",
+        "active_effect_id": null,
+        "caster_player_id": "P:forcer"
+      },
+      "display_kind": "forced_reroll",
+      "target_player": "P:rerolled"
+    }
+  ]
+}

@@ -1,0 +1,92 @@
+{
+  "scenario": "3-roll-flip-then-swap",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "p1",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 19
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 2
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Zariel's Fall",
+        "active_effect_id": null,
+        "caster_player_id": "P:p2"
+      },
+      "display_kind": "roll_flip",
+      "target_player": "P:p1"
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": 2
+      },
+      "index": 1,
+      "before": {
+        "type": "roll",
+        "value": 19
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Dunkin Disaster",
+        "active_effect_id": null,
+        "caster_player_id": "P:p2"
+      },
+      "display_kind": "roll_swap",
+      "target_player": "P:p1"
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": 2
+      },
+      "index": 2,
+      "before": {
+        "type": "roll",
+        "value": 19
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Zariel's Fall",
+        "active_effect_id": null,
+        "caster_player_id": "P:p2"
+      },
+      "display_kind": "roll_flip",
+      "target_player": "P:p2"
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": 19
+      },
+      "index": 3,
+      "before": {
+        "type": "roll",
+        "value": 2
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Dunkin Disaster",
+        "active_effect_id": null,
+        "caster_player_id": "P:p2"
+      },
+      "display_kind": "roll_swap",
+      "target_player": "P:p2"
+    }
+  ]
+}

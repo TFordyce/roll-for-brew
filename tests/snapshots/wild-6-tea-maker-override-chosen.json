@@ -1,0 +1,32 @@
+{
+  "scenario": "wild-6-tea-maker-override-chosen",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "chosen-brewer",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Wild Brew Surge",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:chosen-brewer"
+    }
+  ]
+}

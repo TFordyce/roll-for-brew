@@ -1,0 +1,32 @@
+{
+  "scenario": "4a-flat-modifier-self-buff",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "other",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "modifier",
+        "value": 3
+      },
+      "index": 0,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Lucky Sip",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:caster"
+    }
+  ]
+}

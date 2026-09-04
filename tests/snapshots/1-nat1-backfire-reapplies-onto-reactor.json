@@ -1,0 +1,57 @@
+{
+  "scenario": "1-nat1-backfire-reapplies-onto-reactor",
+  "outcome": "tie",
+  "layer": 0,
+  "brewer": null,
+  "brewerSource": null,
+  "tiedPlayers": [
+    "caster",
+    "reactor"
+  ],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "dc": 10,
+      "after": {
+        "type": "status",
+        "value": "no effect"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 1,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Saving Steep",
+        "active_effect_id": null,
+        "caster_player_id": "P:reactor"
+      },
+      "display_kind": "contested_negate",
+      "target_player": "P:victim-target"
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 10
+      },
+      "index": 1,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Kettle Storm",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:victim-target"
+    }
+  ]
+}
