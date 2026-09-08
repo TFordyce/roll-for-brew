@@ -52,6 +52,21 @@ How it's wired (see `supabase/migrations/0006_stats_leaderboards.sql`):
 - All underlying tables are already readable by any authenticated user, so these views need no security-definer wrapper — just `grant select ... to authenticated`.
 - `src/app/stats/page.tsx` (via `src/lib/supabase/stats.ts`) renders the four leaderboards and the room drill-down, with the all-time/last-30-days toggle and the room picker driven by the `?window=` / `?room=` query params. `src/app/Nav.tsx` adds the Room/Stats top-level tabs to both pages.
 
+## Database: resolver functions are canonical source
+
+The large resolver functions (`resolve_round`, `cast_spell_card`, `get_round_recap`, …) are maintained as **canonical source under [`db/sql/functions/`](db/sql/README.md)**, and their numbered migration is **generated**. Postgres can't patch a function body, so every change is a whole-function `create or replace` re-emit — writing those by hand made a one-line change a 2,000-line migration diff (issue [#350](https://github.com/TFordyce/roll-for-brew/issues/350)).
+
+To change a resolver function:
+
+1. Edit `db/sql/functions/<name>.sql` (body + `revoke`/`grant` + `comment on`, as one unit).
+2. `npm run build:migrations` — writes the change into the next pending `supabase/migrations/<NNNN>_generated_resolver_functions.sql` (creating it if needed) and updates the `db/sql/.emitted/` fingerprint.
+3. `npm run verify:migrations` — recomputes the migration from `db/sql/functions/` without writing and exits non-zero if the committed generated migration or an `.emitted/` fingerprint is out of sync (a hand-edited generated file, or a skipped build). Run this before every resolver PR merges (no CI enforces it).
+4. Commit `db/sql/functions/**`, `db/sql/.emitted/**` and the generated migration together.
+
+**Numbering**: the build claims `(highest existing migration) + 1` at build time. While unmerged the generated migration keeps its number in sync on every build — re-run `build:migrations` after a rebase and it renumbers above whatever landed. Once merged it freezes.
+
+Non-function DDL (tables, columns, constraints, triggers, RLS) stays hand-authored in `supabase/migrations/`. Full detail: [`db/sql/README.md`](db/sql/README.md).
+
 ### Local/project setup
 
 1. Create a Supabase project.
