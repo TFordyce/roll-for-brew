@@ -65,7 +65,7 @@ moving here. The pipeline landed in
 `get_round_recap` (migration `0103`) as the proof; the verbatim cutover of the
 rest —
 [#368](https://github.com/TFordyce/roll-for-brew/issues/368), migration
-`0104` — moved the **resolver pipeline** set:
+`0105` — moved the **resolver pipeline** set:
 
 - the pipeline entrypoints and their orchestrators: `resolve_round`,
   `cast_spell_card`, `cast_reaction_spell_card`, `start_round`, `close_round`,

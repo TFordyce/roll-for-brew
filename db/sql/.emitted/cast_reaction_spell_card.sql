@@ -1,8 +1,11 @@
 -- cast_reaction_spell_card(uuid, text, uuid, integer) -> uuid
 --
 -- Arm a spell into an open reaction window: validation, by-name dispatch,
--- contested-negate backfire draw, Cast-Log write. Verbatim from
--- migration 0096.
+-- contested-negate backfire draw, Cast-Log write, and a reopen-or-close of
+-- the chaining poll. Body verbatim from migration
+-- 0104_reaction_window_close_on_last_reaction_cast (issue #387: the 0096
+-- body with its four inline poll_round bumps folded into
+-- _rr_reopen_or_close_reaction_poll). revoke/grant unchanged since 0096.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -150,9 +153,7 @@ begin
     )
     returning id into v_cast_id;
 
-    update public.spell_reaction_windows
-       set poll_round = poll_round + 1
-     where id = v_window_id;
+    perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
     return v_cast_id;
   end if;
@@ -209,9 +210,7 @@ begin
     )
     returning id into v_cast_id;
 
-    update public.spell_reaction_windows
-       set poll_round = poll_round + 1
-     where id = v_window_id;
+    perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
     return v_cast_id;
   end if;
@@ -259,9 +258,7 @@ begin
       jsonb_build_object('spend_amount', v_spend), v_window_id, 'CASTER', v_cast_id
     );
 
-    update public.spell_reaction_windows
-       set poll_round = poll_round + 1
-     where id = v_window_id;
+    perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
     return v_cast_id;
   end if;
@@ -386,13 +383,10 @@ begin
     end if;
   end loop;
 
-  update public.spell_reaction_windows
-     set poll_round = poll_round + 1
-   where id = v_window_id;
+  perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
   return v_cast_id;
 end;
 $$;
-
 revoke execute on function public.cast_reaction_spell_card(uuid, text, uuid, integer) from public, anon;
 grant execute on function public.cast_reaction_spell_card(uuid, text, uuid, integer) to authenticated;
