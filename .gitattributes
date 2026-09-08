@@ -5,3 +5,10 @@
 tests/snapshots/**       text eol=lf
 tests/integration/trace-snapshot.test.ts          text eol=lf
 tests/integration/trace-snapshot-coverage.test.ts text eol=lf
+
+# Resolver-function canonical source and its generated migrations (issue #350 /
+# #367). The build compares canonical bytes against the .emitted/ fingerprint;
+# a CRLF rewrite on a Windows checkout would make that comparison unstable and
+# leave the generated SQL with CRLF too. Pin them all to LF.
+db/sql/**                                                  text eol=lf
+supabase/migrations/*_generated_resolver_functions.sql     text eol=lf linguist-generated=true -diff

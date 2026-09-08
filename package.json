@@ -15,7 +15,9 @@
     "whitelist:add": "node scripts/add-to-whitelist.mjs",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
-    "supabase:reset": "supabase db reset"
+    "supabase:reset": "supabase db reset",
+    "build:migrations": "node scripts/build-migrations.mjs",
+    "verify:migrations": "node scripts/build-migrations.mjs --check"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
