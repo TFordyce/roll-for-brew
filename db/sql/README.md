@@ -60,7 +60,27 @@ file.
 ## Scope
 
 Only functions that are re-emitted more than once across migrations are worth
-moving here. The verbatim cutover of the full re-emitted set (`resolve_round`,
-`cast_spell_card`, `start_round`, `close_round`, …) is issue
-[#368](https://github.com/TFordyce/roll-for-brew/issues/368); this pipeline
-landed (#367) moving only `get_round_recap` as the proof.
+moving here. The pipeline landed in
+[#367](https://github.com/TFordyce/roll-for-brew/issues/367) moving only
+`get_round_recap` (migration `0103`) as the proof; the verbatim cutover of the
+rest —
+[#368](https://github.com/TFordyce/roll-for-brew/issues/368), migration
+`0104` — moved the **resolver pipeline** set:
+
+- the pipeline entrypoints and their orchestrators: `resolve_round`,
+  `cast_spell_card`, `cast_reaction_spell_card`, `start_round`, `close_round`,
+  `submit_roll`, `submit_roll_as`;
+- the multi-definition `_rr_*` helpers: `_rr_trace_step`,
+  `_rr_cast_log_resolution`, `_rr_active_ward_gate`, `_rr_scrap_round`,
+  `_rr_pick_lowest`, `_rr_apply_fixed_roll`.
+
+Deliberately **not** moved in the cutover, though they are re-emitted more than
+once: the resolver's roll/effect shims and readers
+(`get_round_modifier_effects`, `apply_roll_swap`, `apply_roll_flip`,
+`apply_forced_reroll`, `set_spell_cast_target`,
+`record_active_effect_if_persistent`, `rebuild_active_effects_projection`,
+`get_current_layer_rolls_if_complete`,
+`get_completed_layer_rolls_for_stall_resolution`, …). They are not part of the
+phase orchestration that #350 exists to make reviewable, and a single-rule
+resolution change does not touch them. Each moves here the next time it
+actually changes (the same rule single-definition helpers follow).
