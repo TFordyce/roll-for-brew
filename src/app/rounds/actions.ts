@@ -35,7 +35,7 @@ import {
   resolvePendingSpellDieManual,
   setSpellCastTarget,
 } from "@/lib/supabase/spellCasts";
-import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
+import { castReactionSpellCard, getOpenReactionWindow, passReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
   afterDeferredCastTargetSet,
   afterPendingSpellDieResolved,
@@ -528,6 +528,13 @@ export async function endActiveEffectAction(
  * cards). Broadcasts reaction-window-changed so every other device's ribbon
  * banner (ReactionBanner.tsx) re-fetches the reopened poll immediately,
  * rather than waiting for its own next unrelated refresh.
+ *
+ * Casting a Reaction card burns it back into the deck, so a cast can empty
+ * the round's eligible-holder set — in which case cast_reaction_spell_card
+ * closes the window itself (migration 0104, issue #387) instead of leaving
+ * it open with nobody able to Pass. When that happens, finalize the layer in
+ * the same request, exactly as passReactionWindowAction / resolveCardSwapAction
+ * do when their own action closes the window.
  */
 export async function castReactionSpellCardAction(
   _prevState: SpellCastActionState,
@@ -548,6 +555,14 @@ export async function castReactionSpellCardAction(
     await castReactionSpellCard(supabase, roundId, { targetPlayerId, targetCastId });
   } catch (error) {
     return resolveSpellCastError(error);
+  }
+
+  // If this cast left nobody eligible to react, the RPC already closed the
+  // window (0104) — get_open_reaction_window then returns null. Finalize the
+  // layer now so the round resolves in this request rather than stalling.
+  const stillOpen = await getOpenReactionWindow(supabase, roundId);
+  if (!stillOpen) {
+    await finalizeReactionWindow(supabase, roundId);
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
