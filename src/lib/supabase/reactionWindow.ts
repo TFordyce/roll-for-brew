@@ -166,6 +166,30 @@ export async function passReactionWindow(supabase: SupabaseClient, roundId: stri
 }
 
 /**
+ * Calls count_eligible_reaction_holders (0064): how many of the round's
+ * participants currently hold a usable Reaction card. Zero while a window is
+ * still open means nobody can Pass it — the stranded-window shape issue #387
+ * is about; stallEnforcement.ts uses this to detect and recover it.
+ */
+export async function countEligibleReactionHolders(supabase: SupabaseClient, roundId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("count_eligible_reaction_holders", { p_round_id: roundId });
+  if (error) throw error;
+  return (data as number) ?? 0;
+}
+
+/**
+ * Calls close_reaction_window (0064): marks the window closed. Normally a
+ * side effect of open_reaction_window / pass_reaction_window / resolve_card_swap
+ * / cast_reaction_spell_card (0104) discovering zero eligible holders — called
+ * directly only by stallEnforcement.ts's recovery path for a window some
+ * earlier code left stranded.
+ */
+export async function closeReactionWindow(supabase: SupabaseClient, windowId: string): Promise<void> {
+  const { error } = await supabase.rpc("close_reaction_window", { p_window_id: windowId });
+  if (error) throw error;
+}
+
+/**
  * Calls get_forced_reroll_targets: every player a currently-active
  * forced_reroll reaction (Double Dunk, Milk First?, ...) targets for this
  * round/layer, for layerResolution.ts's finalize step to reroll in place.

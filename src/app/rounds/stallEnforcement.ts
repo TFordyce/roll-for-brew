@@ -12,14 +12,16 @@ import {
   resolveStalledPendingSpellDice,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
-import { applyLayerOutcome } from "@/app/rounds/layerResolution";
+import { applyLayerOutcome, finalizeReactionWindow } from "@/app/rounds/layerResolution";
+import { closeReactionWindow, countEligibleReactionHolders, getOpenReactionWindow } from "@/lib/supabase/reactionWindow";
 
 export type StallOutcome =
   | { action: "none" }
   | { action: "cancelled" }
   | { action: "excluded"; playerIds: string[] }
   | { action: "diceAutoResolved" }
-  | { action: "deferredForcedRerollAbandoned" };
+  | { action: "deferredForcedRerollAbandoned" }
+  | { action: "reactionWindowRecovered" };
 
 /**
  * Lazy check-on-read stall-timeout enforcement (issue #21): called from
@@ -52,6 +54,12 @@ export type StallOutcome =
  *    applyLayerOutcome below is exactly what the ordinary (non-stalled)
  *    reaction-window-closes path already calls too, just via
  *    finalizeReactionWindow instead of directly.
+ *  - status 'closed', layer 0, every expected roller already rolled but the
+ *    layer's reaction window is still status = 'open' with zero eligible
+ *    Reaction-card holders (issue #387) -> close the window and finalize.
+ *    Same 5-minute clock again; recovers a window a pre-0104
+ *    cast_reaction_spell_card stranded (the cast reopened the poll but left
+ *    nobody able to Pass), which migration 0104 prevents going forward.
  * Any exclusion that drops the layer's active (non-excluded) participant
  * count below 2 cancels the round outright instead of resolving it.
  */
@@ -108,6 +116,23 @@ export async function enforceStallTimeout(
         return abandonedRerolls > 0
           ? { action: "deferredForcedRerollAbandoned" }
           : { action: "diceAutoResolved" };
+      }
+
+      // A reaction window left status = 'open' with zero eligible Reaction-
+      // card holders (issue #387): casting the last held Reaction card
+      // reopened the chaining poll (0068) but left nobody able to Pass it, so
+      // close_reaction_window never fired and the round can't finalize.
+      // Migration 0104 stops cast_reaction_spell_card doing this going
+      // forward; this clears any window a pre-0104 cast (or some unforeseen
+      // path) already stranded, once this same 5-minute clock has elapsed.
+      // finalizeReactionWindow applies the window's roll-transform casts
+      // (Zariel's Fall, ...) and resolves the layer — the very same work the
+      // ordinary "every eligible holder passed" path does.
+      const openWindow = await getOpenReactionWindow(supabase, roundId);
+      if (openWindow && (await countEligibleReactionHolders(supabase, roundId)) === 0) {
+        await closeReactionWindow(supabase, openWindow.windowId);
+        await finalizeReactionWindow(supabase, roundId);
+        return { action: "reactionWindowRecovered" };
       }
     }
     return { action: "none" };
