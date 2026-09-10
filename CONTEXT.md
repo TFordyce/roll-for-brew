@@ -137,8 +137,12 @@ The player-clarity surface over the Resolution Trace (#314) — the primary cont
 _Avoid_: round summary, effect breakdown, roll calculation (the per-tile display, which stays).
 
 **Recap phase**:
-The band a Recap step falls in — `Before the roll`, `Reaction window`, or `Outcome` — derived from the source cast's window, not from Layer. Headers follow resolution order and repeat whenever the phase changes, so `Reaction window` can appear twice in one Recap. Distinct from **Layer** (tie-break reroll depth) and from a cast's own pre-roll/reaction timing.
-_Avoid_: phase (bare — always qualify as "Recap phase"), stage, band, layer.
+The band a Recap step falls in — `Before the roll`, `Reaction window`, or `Outcome` — derived from the source cast's window, not from Layer. Headers follow resolution order and repeat whenever the phase changes, so `Reaction window` can appear twice in one Recap. Distinct from **Layer** (tie-break reroll depth), from a cast's own pre-roll/reaction timing, and from the **Resolver pipeline** (the resolver's internal phases).
+_Avoid_: phase (bare — always qualify as "Recap phase", vs "resolver phase"), stage, band, layer.
+
+**Resolver pipeline**:
+The ordered internal phases `resolve_round` runs to produce a layer-0 outcome (ADR 0005, ADR 0006) — Effect Invocation (0a/0b), Cast-Log resolution (1), ward projection (2), roll-input accounting (3, with a `3-pre` tick-synthesis sub-phase), modifier composition (4a/4b/4c), brewer selection (5). Sub-phases accrete under a number as rules land; `resolve_round`'s own `comment on` carries the current authoritative list. An internal authoring structure — the phase headers in the function body — not a surface anything renders. Distinct from **Recap phase**, the player-facing display banding (`Before the roll` / `Reaction window` / `Outcome`): a resolver phase does not map one-to-one to a Recap phase, and the two must never be conflated.
+_Avoid_: phase (bare — qualify as "resolver phase" or "Recap phase"), resolver stage, resolution phase (ambiguous with Tie-break resolution).
 
 **Round replay** / **generation** / **scrapped attempt**:
 Time for Brew (`effect_kind = 'round_replay'`, spec #302 §11, ADR 0005) scraps a just-resolved round and replays it as a fresh round from Layer 0 — not a recompute. `rounds.replay_generation` counts the passes: generation 0 is the original attempt, generation 1 the replay. `_rr_scrap_round` snapshots each scrapped generation's Recap payload (its Resolution Trace, brewer, rolls, tie-break layers) into `rounds.scrapped_generations` before deleting its rows. The **canonical view is generation 1**, headlined normally; each **scrapped attempt** hangs above it in a collapsed disclosure holding that generation's own Round Recap and its own nested reroll rows, kept separate from generation 1's Layers. The scrap is a labelled boundary between two Recaps, not a Trace step.
