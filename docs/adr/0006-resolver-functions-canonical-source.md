@@ -8,18 +8,14 @@ Leaves **ADR 0005** (resolver *semantics* — the deterministic resolver over th
 
 ## Decision
 
-Repeatedly re-emitted resolver functions are maintained as **canonical, reviewable source** under `db/sql/functions/`, and their migrations are **generated output**.
+Repeatedly re-emitted resolver functions are **canonical source** under `db/sql/functions/` — one human-edited file per function. Their migrations are **generated output**: `npm run build:migrations` emits each changed function verbatim into a generated `supabase/migrations/<NNNN>_generated_resolver_functions.sql`, and `npm run verify:migrations` (a non-writing `--check`) gates every resolver PR against drift. Mechanism, workflow, numbering, and layout live in [`db/sql/README.md`](../../db/sql/README.md) — this ADR records only the choices behind it.
 
-- **Canonical source.** One file per function at `db/sql/functions/<name>.sql`, carrying the function body + its `revoke`/`grant`s + its `comment on` as a single unit. Humans edit these.
-- **Generated migrations.** `npm run build:migrations` (`scripts/build-migrations.mjs`, no new dependency) diffs each canonical file against its committed byte fingerprint `db/sql/.emitted/<name>.sql` and writes each changed function **verbatim** — LF, wrapped in `-- BEGIN/END db/sql/functions/<name>.sql` markers — into the next *pending* generated migration `supabase/migrations/<NNNN>_generated_resolver_functions.sql`, creating it if there isn't one, then updates `.emitted/`.
-- **Pending vs frozen** is decided purely by whether that generated file is already on `origin/master` (fallback `master`) — no state file. A pending file keeps being rewritten by each build and **renumbers** above the ceiling on rebase if another migration takes its number; once it merges it freezes like any other migration and the next function change starts a fresh one.
-- **The generated migration is committed** (so `supabase start` / `supabase db reset` work from `supabase/migrations/` alone), carries a `-- GENERATED FROM db/sql/… — DO NOT EDIT` header, and is marked `linguist-generated` + `-diff` so GitHub collapses it. Review reads the `db/sql/**` diff, not the generated migration.
-- **The cutover boundary.** Migrations at and below the cutover ceiling freeze as history; canonical source owns every function definition above it. `get_round_recap` moved first as the proof ([#367](https://github.com/TFordyce/roll-for-brew/issues/367), migration `0103`); the verbatim cutover of the rest of the **Resolver pipeline** set followed ([#368](https://github.com/TFordyce/roll-for-brew/issues/368), migration `0105`).
-- **Non-function DDL stays hand-authored.** Tables, columns, constraints, triggers, RLS policies, and enum changes remain hand-authored migrations in `supabase/migrations/`. `db/sql/` is functions only; a trigger that wraps a function still gets its own hand-authored migration and does not co-locate with the function file.
-- **Scope.** Only functions re-emitted more than once across migrations are worth moving; single-definition helpers move the next time they actually change.
-- **Drift guard, no CI.** `npm run verify:migrations` (= `build-migrations.mjs --check` — recompute *without writing*) is run before every resolver PR merges and exits non-zero with a named reason if the committed generated migration or any `.emitted/` fingerprint is stale (a hand-edited generated file, or a skipped build). The `DO NOT EDIT` header is the human deterrent. `supabase db push` on merge stays manual.
+- **A cutover ceiling.** Migrations at and below it freeze as history; canonical source owns every function definition above it. `get_round_recap` moved as the proof (migration `0103`, [#367](https://github.com/TFordyce/roll-for-brew/issues/367)); the rest of the **Resolver pipeline** set moved verbatim in the cutover (migration `0105`, [#368](https://github.com/TFordyce/roll-for-brew/issues/368)).
+- **Functions only.** Non-function DDL — tables, columns, constraints, triggers, RLS policies, enum changes — stays hand-authored. A trigger that wraps a function does not co-locate with it.
+- **Scope by re-emit count.** Only functions re-emitted more than once across migrations are worth moving; single-definition helpers move the next time they change.
+- **No CI.** `verify:migrations` is a documented pre-merge run and the `-- DO NOT EDIT` header is a deterrent — drift protection is advisory, not enforced. `supabase db push` on merge stays manual.
 
-**Trade-off.** This gives up "the migration file is the source of truth" — a Supabase convention — in exchange for reviewable resolver diffs (a single-rule ordering change is a sub-150-line `db/sql/**` diff instead of a 1,300–2,200-line `create or replace function` re-emit) and a local `verify` step in place of the migration file being authoritative.
+**Trade-off.** Gives up "the migration file is the source of truth" — a Supabase convention — for reviewable resolver diffs (a single-rule ordering change is a sub-150-line `db/sql/**` diff, not a 1,300–2,200-line `create or replace function` re-emit) and a local `verify` step in place of the migration being authoritative.
 
 ## Considered
 
@@ -31,8 +27,7 @@ Repeatedly re-emitted resolver functions are maintained as **canonical, reviewab
 
 ## Consequences
 
-- Resolver PRs gain a fixed extra step: edit `db/sql/functions/**`, `npm run build:migrations`, `npm run verify:migrations`, then commit the `functions/**` + `.emitted/**` + generated migration together.
 - Review discipline shifts: the generated migration is collapsed noise and reviewers read `db/sql/**`. A resolver behaviour change with no `db/sql/**` diff is a red flag.
 - Drift protection is local and advisory (a documented `verify` run plus the header), not enforced. A contributor who edits a generated migration directly and skips `verify` can still merge.
-- Behaviour-preservation of the cutover itself rests on the three legs in map decision 7: the permanent Trace-snapshot harness (S1), an empty `pg_get_functiondef` diff across `db reset` before/after the verbatim cutover (S3), and one live-data replay-equality run (S3).
+- Behaviour-preservation of the cutover rested on three checks: the permanent Trace-snapshot harness, an empty `pg_get_functiondef` diff across `db reset` before/after the verbatim cutover, and one live-data replay-equality run.
 - Pre-merge migration numbering can churn: a pending generated file renumbers on rebase when another migration claims its number. Expected — `build:migrations` handles it.
