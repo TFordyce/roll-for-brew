@@ -60,6 +60,18 @@ _Avoid_: ordering deadline, grace period.
 The live, per-round list of who's ordered what: every participant who has an Order, their drink type, and their current Usual's milk/sugar/decaf — or an explicit "no preference set" marker when they've never set a Usual for that drink. A participant with no Order simply doesn't appear; there's no "no drink" row. Stays accurate after the round resolves, since it's always a live join (ADR 0003), never a snapshot. The `round_menu` DB view itself only joins `round_participants` × `orders` × `usual_drinks`; display names are joined in separately on the client against `round_participants`.
 _Avoid_: drinks list, order summary, roster (that's the round's participant list).
 
+**Participant**:
+A player who has declared in to a specific round (`round_participants`, via Declaring In, Late Declare, or an admin Proxy Roll / Round Backfill). Being in the day's room is not enough — a room member who never declares in is not part of the round.
+_Avoid_: player (too broad — any room member), roller (a Participant on a Brew Debt round doesn't roll).
+
+**Tea Maker**:
+The one Participant a round picks to make the drinks — `rounds.brewer_id` in code. Gains the round's cups made as modifier unless an effect suppresses it.
+_Avoid_: brewer in prose (fine as the code name), loser.
+
+**Brew Debt**:
+The obligation the Brew IOU card leaves on its caster — the **Debtor** — once its target has actually been made Tea Maker by it: the Debtor must be Tea Maker on their next round as a Participant, and on that round nobody rolls. Stays owed across days until paid; a round where the Debtor is immune to being Tea Maker is played normally and leaves it owed.
+_Avoid_: IOU (that's the card), forced brew (that's any tea-maker override).
+
 **Layer**:
 A round's roll attempt number, starting at 0 (`rounds.current_layer`, `rolls.layer`): layer 0 is the original roll, layer 1+ is a Tie-Break Reroll. Advantage/disadvantage spell effects are scoped to layer 0 only.
 _Avoid_: round (a round can span several layers), attempt, phase.
