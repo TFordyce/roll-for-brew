@@ -156,6 +156,14 @@ _Avoid_: effect copy (that's just Saucerer's), spell steal, replay (that's Round
 A resolver-derived outcome on a *seized* cast — its effects retargeted to its own caster, every original target dropped (a multi-target cast collapses to just the caster). Derived inside the same recursive, memoised negate fixpoint as `negated` (#308): countering the Brew-merang undoes the seize; Brew-merangs seize Brew-merangs to any depth. Recorded as `spell_casts.seized_by_cast_id` on the seized cast, written by `resolve_round` only. A `block_copy` ward (Bag for Life) on the seized cast's caster blocks the seize — the Brew-merang is still spent, outcome `blocked`.
 _Avoid_: redirect (that's the reactor's own exposure onto the original caster), steal, negate.
 
+**Draw Redirect** (Marked for Brew, Stale Biscuit):
+A one-shot mark on a target player that diverts one future card draw to the marker (the **beneficiary**). It fires at one of two moments. **Crit time** (Marked for Brew): the target's nat 1/20 Pending Spell Draw is earned by the beneficiary instead, within the target's next 5 rounds as a participant. **Draw time** (Stale Biscuit): the target still draws, but the card lands in the beneficiary's hand. The mark is **spent** when it fires. A round replay does not restore a spent mark, because the redirected draw it paid out survives the scrap too. Oldest mark fires first.
+_Avoid_: steal (that's Heist), curse, seize (that's Brew-merang).
+
+**Heist** (Tea Heist):
+Moving the victim's single held card into the thief's hand. The card is pinned at cast time, but it only moves when the round resolves and the Tea Heist cast was not countered. If the victim has already played that card, the Heist **fizzles**. A round replay scrap sends the card back to the victim, as long as the thief still holds it. The Tea Heist card is spent either way.
+_Avoid_: steal (reserved for modifier steals — Tea Leaf, Spillage), transfer, draw redirect.
+
 **Chosen-pair roll transform** (`effect_kind = 'roll_pair_transform'`):
 The eager-shim primitive (Tier A #2, spec #302 §12, ADR 0005) behind **Brew-tal Swap**, **Stir the Pot**, **Steaming Mug Bond** and **Tea for Two** — it generalises `roll_swap` past the automatic highest↔lowest pick to a caster-named pair, with `effect_params.op` one of `swap` (exchange the pair's rolls), `min` (both take the lower of the two) or `max` (both take the higher). The pair is `cast_inputs.pair` (two player ids); like the other roll-input kinds it runs at reaction-window finalize (`apply_roll_pair_transform`, resolution order 5 — after `roll_swap`, so "flip before swap before chosen-pair"), records per-player before→after into `cast_inputs.roll_transform`, and `resolve_round` Phase 3 adopts it. A roll-domain ward on *either* named player cancels the whole transform (a half-transform cannot conserve values).
 _Avoid_: paired swap, roll link, `roll_swap` (that's the highest↔lowest table-wide one).
