@@ -159,3 +159,11 @@ _Avoid_: redirect (that's the reactor's own exposure onto the original caster), 
 **Chosen-pair roll transform** (`effect_kind = 'roll_pair_transform'`):
 The eager-shim primitive (Tier A #2, spec #302 §12, ADR 0005) behind **Brew-tal Swap**, **Stir the Pot**, **Steaming Mug Bond** and **Tea for Two** — it generalises `roll_swap` past the automatic highest↔lowest pick to a caster-named pair, with `effect_params.op` one of `swap` (exchange the pair's rolls), `min` (both take the lower of the two) or `max` (both take the higher). The pair is `cast_inputs.pair` (two player ids); like the other roll-input kinds it runs at reaction-window finalize (`apply_roll_pair_transform`, resolution order 5 — after `roll_swap`, so "flip before swap before chosen-pair"), records per-player before→after into `cast_inputs.roll_transform`, and `resolve_round` Phase 3 adopts it. A roll-domain ward on *either* named player cancels the whole transform (a half-transform cannot conserve values).
 _Avoid_: paired swap, roll link, `roll_swap` (that's the highest↔lowest table-wide one).
+
+**Compelled Cast** (Brewmageddon):
+A cast a player is obliged to make because Brewmageddon landed in their round (#385). The compelled set is every round participant holding a card when the round closes. A compelled Action holder casts in a **Compelled Cast step** between `close_round` and the first roll, which holds all rolling until every compelled Action cast is in. A compelled Reaction holder cannot pass the Layer-0 Reaction Window. Otherwise it is an ordinary cast: the holder picks the target, it goes on the stack in order, it can be countered, and it stands even if Brewmageddon is later negated.
+_Avoid_: forced cast, auto-cast (the server never casts on the holder's behalf), forced play.
+
+**Forfeit**:
+The end of an unmet Compelled Cast: the held card goes back to the deck with no effect, and a no-effect entry in the Cast Log points at Brewmageddon. It happens when the card has no legal target, when the existing stall clock fires (its own branch, not a new clock), or when the holder is excluded for never rolling.
+_Avoid_: discard, fizzle (that's a cast whose effect finds nothing to act on), abandon.
