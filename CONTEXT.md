@@ -60,6 +60,18 @@ _Avoid_: ordering deadline, grace period.
 The live, per-round list of who's ordered what: every participant who has an Order, their drink type, and their current Usual's milk/sugar/decaf — or an explicit "no preference set" marker when they've never set a Usual for that drink. A participant with no Order simply doesn't appear; there's no "no drink" row. Stays accurate after the round resolves, since it's always a live join (ADR 0003), never a snapshot. The `round_menu` DB view itself only joins `round_participants` × `orders` × `usual_drinks`; display names are joined in separately on the client against `round_participants`.
 _Avoid_: drinks list, order summary, roster (that's the round's participant list).
 
+**Participant**:
+A player who has declared in to a specific round (`round_participants`, via Declaring In, Late Declare, or an admin Proxy Roll / Round Backfill). Being in the day's room is not enough — a room member who never declares in is not part of the round.
+_Avoid_: player (too broad — any room member), roller (a Participant on a Brew Debt round doesn't roll).
+
+**Tea Maker**:
+The one Participant a round picks to make the drinks — `rounds.brewer_id` in code. Gains the round's cups made as modifier unless an effect suppresses it.
+_Avoid_: brewer in prose (fine as the code name), loser.
+
+**Brew Debt**:
+The obligation the Brew IOU card leaves on its caster — the **Debtor** — once its target has actually been made Tea Maker by it: the Debtor must be Tea Maker on their next round as a Participant, and on that round nobody rolls. Stays owed across days until paid; a round where the Debtor is immune to being Tea Maker is played normally and leaves it owed.
+_Avoid_: IOU (that's the card), forced brew (that's any tea-maker override).
+
 **Layer**:
 A round's roll attempt number, starting at 0 (`rounds.current_layer`, `rolls.layer`): layer 0 is the original roll, layer 1+ is a Tie-Break Reroll. Advantage/disadvantage spell effects are scoped to layer 0 only.
 _Avoid_: round (a round can span several layers), attempt, phase.
@@ -160,6 +172,30 @@ _Avoid_: effect copy (that's just Saucerer's), spell steal, replay (that's Round
 A resolver-derived outcome on a *seized* cast — its effects retargeted to its own caster, every original target dropped (a multi-target cast collapses to just the caster). Derived inside the same recursive, memoised negate fixpoint as `negated` (#308): countering the Brew-merang undoes the seize; Brew-merangs seize Brew-merangs to any depth. Recorded as `spell_casts.seized_by_cast_id` on the seized cast, written by `resolve_round` only. A `block_copy` ward (Bag for Life) on the seized cast's caster blocks the seize — the Brew-merang is still spent, outcome `blocked`.
 _Avoid_: redirect (that's the reactor's own exposure onto the original caster), steal, negate.
 
+**Draw Redirect** (Marked for Brew, Stale Biscuit):
+A one-shot mark on a target player that diverts one future card draw to the marker (the **beneficiary**). It fires at one of two moments. **Crit time** (Marked for Brew): the target's nat 1/20 Pending Spell Draw is earned by the beneficiary instead, within the target's next 5 rounds as a participant. **Draw time** (Stale Biscuit): the target still draws, but the card lands in the beneficiary's hand. The mark is **spent** when it fires. A round replay does not restore a spent mark, because the redirected draw it paid out survives the scrap too. Oldest mark fires first.
+_Avoid_: steal (that's Heist), curse, seize (that's Brew-merang).
+
+**Heist** (Tea Heist):
+Moving the victim's single held card into the thief's hand. The card is pinned at cast time, but it only moves when the round resolves and the Tea Heist cast was not countered. If the victim has already played that card, the Heist **fizzles**. A round replay scrap sends the card back to the victim, as long as the thief still holds it. The Tea Heist card is spent either way.
+_Avoid_: steal (reserved for modifier steals — Tea Leaf, Spillage), transfer, draw redirect.
+
 **Chosen-pair roll transform** (`effect_kind = 'roll_pair_transform'`):
 The eager-shim primitive (Tier A #2, spec #302 §12, ADR 0005) behind **Brew-tal Swap**, **Stir the Pot**, **Steaming Mug Bond** and **Tea for Two** — it generalises `roll_swap` past the automatic highest↔lowest pick to a caster-named pair, with `effect_params.op` one of `swap` (exchange the pair's rolls), `min` (both take the lower of the two) or `max` (both take the higher). The pair is `cast_inputs.pair` (two player ids); like the other roll-input kinds it runs at reaction-window finalize (`apply_roll_pair_transform`, resolution order 5 — after `roll_swap`, so "flip before swap before chosen-pair"), records per-player before→after into `cast_inputs.roll_transform`, and `resolve_round` Phase 3 adopts it. A roll-domain ward on *either* named player cancels the whole transform (a half-transform cannot conserve values).
 _Avoid_: paired swap, roll link, `roll_swap` (that's the highest↔lowest table-wide one).
+
+**Courage Token**:
+The d6 that **Liquid Courage** gifts to another player (issue #384): a one-use, player-held right to add 1d6 to their own Layer-0 roll as a Reaction. It lasts for 3 rounds the holder takes part in, counting the gift round if they took part in it, and never outlives the day. It is not a card, so no card-targeting Reaction (Tannin Tantrum, Saving Steep, Mug Mirror, Saucerer's Apprentice, Brew-merang) can target its spend. While unspent it is an ongoing Rare effect, so Greater Detox can end it. A spend in a scrapped replay attempt never happened, so the token comes back.
+_Avoid_: courage die, gifted reaction, token (unqualified).
+
+**Reaction Source**:
+Anything that lets a round's participant react in the reaction window: a held Reaction-timed card, or a live, unspent Courage Token (issue #384). Who can react, and who the window is still waiting on, are both defined over Reaction Sources, not over held cards alone.
+_Avoid_: reaction holder (implies a held card), reaction card (only one kind of source).
+
+**Compelled Cast** (Brewmageddon):
+A cast a player is obliged to make because Brewmageddon landed in their round (#385). The compelled set is every round participant holding a card when the round closes. A compelled Action holder casts in a **Compelled Cast step** between `close_round` and the first roll, which holds all rolling until every compelled Action cast is in. A compelled Reaction holder cannot pass the Layer-0 Reaction Window. Otherwise it is an ordinary cast: the holder picks the target, it goes on the stack in order, it can be countered, and it stands even if Brewmageddon is later negated.
+_Avoid_: forced cast, auto-cast (the server never casts on the holder's behalf), forced play.
+
+**Forfeit**:
+The end of an unmet Compelled Cast: the held card goes back to the deck with no effect, and a no-effect entry in the Cast Log points at Brewmageddon. It happens when the card has no legal target, when the existing stall clock fires (its own branch, not a new clock), or when the holder is excluded for never rolling.
+_Avoid_: discard, fizzle (that's a cast whose effect finds nothing to act on), abandon.
