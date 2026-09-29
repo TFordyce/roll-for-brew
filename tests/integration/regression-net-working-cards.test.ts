@@ -1060,7 +1060,10 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
     // on. Inserted once; the per-attempt round delete below never touches them.
     for (const [pid, cups] of [[caster.googleSub, CASTER_MOD], [other.googleSub, OTHER_MOD]] as const) {
       const { data: seedRound } = await admin.from("rounds")
-        .insert({ room_id: caster.roomId, started_by: pid, status: "resolved", brewer_id: pid, cups_made: cups })
+        .insert({
+          room_id: caster.roomId, started_by: pid, status: "resolved", brewer_id: pid,
+          cups_made: cups, brewer_modifier_gain: cups,
+        })
         .select("id").single();
       cleanup.trackRound(seedRound!.id);
     }
