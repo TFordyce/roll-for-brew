@@ -1,11 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { RoundRevealedPayload } from "@/lib/supabase/realtime";
 
-export type RevealedRoll = {
-  playerId: string;
-  value: number;
-  discardedValue: number | null;
-  enteredByAdmin: boolean;
-};
+export type RevealedRoll = RoundRevealedPayload["rolls"][number];
+
+/** Why a locked read found nothing to do — the closed set finalize_layer's `comment on` documents. */
+export type NoopReason = "round_not_found" | "round_not_closed" | "no_window" | "window_open" | "layer_incomplete";
 
 /**
  * What one round-advancement SQL call did (ADR 0008). `brewer` and `tie` are
@@ -28,7 +27,7 @@ export type LayerOutcome =
       layer: number;
       tiedPlayerIds: string[];
     }
-  | { outcome: "noop"; reason: string };
+  | { outcome: "noop"; reason: NoopReason };
 
 type RawLayerOutcome =
   | {
@@ -40,7 +39,7 @@ type RawLayerOutcome =
       replay_pending: boolean;
     }
   | { outcome: "tie"; layer: number; tied_player_ids: string[] }
-  | { outcome: "noop"; reason: string };
+  | { outcome: "noop"; reason: NoopReason };
 
 function toLayerOutcome(raw: RawLayerOutcome): LayerOutcome {
   switch (raw.outcome) {

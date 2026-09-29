@@ -20,7 +20,7 @@ function fakeDeps(outcome: LayerOutcome): AdvanceRoundDeps {
   };
 }
 
-const brewer: LayerOutcome = {
+const brewer: Extract<LayerOutcome, { outcome: "brewer" }> = {
   outcome: "brewer",
   layer: 0,
   brewerId: "p1",
@@ -53,14 +53,14 @@ describe("advanceRound", () => {
       layer: 0,
       brewerId: "p1",
       cupsMade: 2,
-      rolls: brewer.outcome === "brewer" ? brewer.rolls : [],
+      rolls: brewer.rolls,
     });
     expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
     expect(deps.broadcastLayerTied).not.toHaveBeenCalled();
   });
 
   it("a brewer outcome with a pending Round Replay also broadcasts the replay change", async () => {
-    const deps = fakeDeps({ ...brewer, replayPending: true } as LayerOutcome);
+    const deps = fakeDeps({ ...brewer, replayPending: true });
 
     await advanceRound(supabase, "round-1", "reactionWindowChanged", deps);
 

@@ -384,9 +384,17 @@ describe.skipIf(!hasAnonTestEnv)("round advancement — Layer finalization (issu
 
     expect(outcome).toMatchObject({ outcome: "brewer", brewerId: target.googleSub });
     expect((await roundRow(roundId as string)).brewer_id).toBe(target.googleSub);
-    // Burned with the resolution: the sentinel no longer applies from the next round on.
     const again = await advanceRound(caster.client, roundId as string, "reactionWindowChanged");
     expect(again).toEqual({ outcome: "noop", reason: "round_not_closed" });
+
+    // Burned with that resolution: the same rolls next round fall back to the lowest roll.
+    const nextRoundId = await openAndCloseRound(caster, [target]);
+    await seedRoll(nextRoundId, caster.googleSub, 3);
+    await seedRoll(nextRoundId, target.googleSub, 7);
+    await admin.from("spell_reaction_windows").insert({ round_id: nextRoundId, layer: 0, status: "closed" });
+
+    const next = await advanceRound(caster.client, nextRoundId, "reactionWindowChanged");
+    expect(next).toMatchObject({ outcome: "brewer", brewerId: caster.googleSub });
   });
 
   it("records a pending Round Replay (Time for Brew) through finalize_layer", async () => {
