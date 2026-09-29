@@ -1,5 +1,6 @@
 import type { LayerParticipant, RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
 import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 
 /**
  * One tie-break reroll level under a player's layer-0 row (issue #220). Layers
@@ -18,16 +19,16 @@ export type RerollChainLevel = {
 };
 
 /**
- * Tie-layer nat standing. Pinned to `_rr_pick_lowest`'s 3-argument form, the
- * rule the resolver applies at layer > 0: a 1 is a natural 1 and a 20 a
- * natural 20 whatever the modifier (no Calami-Tea dice-reduced exemption —
- * no spells reach a tie layer). Layer-0 nat standing comes from the
+ * Tie-layer nat standing and badge, via `classifyRollCalculation` — the one TS
+ * nat rule ADR 0007 keeps, pinned to `_rr_pick_lowest`'s 3-argument form (the
+ * rule the resolver applies at layer > 0): a 1 is a natural 1 and a 20 a
+ * natural 20 whatever the modifier, with no Calami-Tea dice-reduced exemption
+ * (no spells reach a tie layer). Layer-0 nat standing comes from the
  * Resolution Summary instead.
  */
-function tieLayerNat(roll: number): "nat1" | "nat20" | null {
-  if (roll === 1) return "nat1";
-  if (roll === 20) return "nat20";
-  return null;
+function tieLayerStanding(roll: number, modifier: number): { nat: "nat1" | "nat20" | null; badgeValue: number } {
+  const calc = classifyRollCalculation(roll, modifier);
+  return calc.kind === "sum" ? { nat: null, badgeValue: calc.total } : { nat: calc.kind, badgeValue: roll };
 }
 
 /**
@@ -53,13 +54,11 @@ export function buildRerollChain(
   for (let layer = 1; inLayer(layer); layer += 1) {
     const own = rollsByLayer.get(layer)?.find((r) => r.playerId === playerId);
     if (!own) break;
-    const nat = tieLayerNat(own.value);
     chain.push({
       layer,
       roll: own.value,
       modifier: own.modifierSnapshot,
-      nat,
-      badgeValue: nat ? own.value : own.value + own.modifierSnapshot,
+      ...tieLayerStanding(own.value, own.modifierSnapshot),
       tied: inLayer(layer + 1),
     });
   }
@@ -624,7 +623,10 @@ export function buildRoundRecap({
   return {
     hasContent: true,
     castStrip,
-    phases: groupByPhase(ordered),
+    // Issue #409: a provisional dry run never names a brewer — its Outcome
+    // steps (declared number, tea-maker override, the brewer-gain ward, a
+    // targeting skip) wait for the real resolution.
+    phases: groupByPhase(data.provisional ? ordered.filter((s) => s.phase !== "Outcome") : ordered),
     showReorderCaption: !live && castStrip.length > 1,
     endedInTieBreak: !live && !data.provisional && data.layerZeroOutcome === "tie",
     rows,

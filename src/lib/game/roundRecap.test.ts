@@ -903,12 +903,22 @@ describe("buildRoundRecap rows", () => {
         casts: [c1],
         summary: [summary("ada", { composed: 3, total: 13 })],
         layers: layer0(lr("ada", 10)),
-        trace: [step({ targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 3 } })],
+        trace: [
+          step({ targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 3 } }),
+          // the dry run's brewer pick — must not be announced while provisional
+          step({
+            displayKind: "tea_maker_override",
+            targetPlayer: "ada",
+            before: { type: "status", value: "pending" },
+            after: { type: "status", value: "brewer" },
+          }),
+        ],
       }),
       displayName,
     });
     const steps = model.phases.flatMap((p) => p.steps);
     expect(steps.map((s) => [s.displayIndex, s.pending, s.beforeAfter?.to])).toEqual([["1", false, "3"]]);
+    expect(model.phases.map((p) => p.label)).not.toContain("Outcome");
     expect(model.castStrip.map((c) => c.state)).toEqual(["applied"]);
     expect(model.endedInTieBreak).toBe(false);
     expect(model.provisional).toBe(true);

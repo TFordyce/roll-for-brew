@@ -52,7 +52,7 @@ export type ScrappedGeneration = {
   summary: ResolutionSummaryEntry[] | null;
   /**
    * The generation's rolls grouped by layer, oldest first — layer 0 plus any
-   * tie-break reroll layers. Same shape as getRoundLayerHistory, so
+   * tie-break reroll layers. Same shape as RoundRecapData.layers, so
    * buildRerollChain consumes it directly.
    */
   layers: CompletedLayer[];

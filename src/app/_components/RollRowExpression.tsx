@@ -19,7 +19,9 @@ import { ModifierJitter } from "@/app/_components/RollCalculation";
  */
 export function RollRowExpression({ row }: { row: RollRow }) {
   const modifierTerms = row.terms.filter((t) => t.delta !== null);
-  const chips = row.terms.filter((t) => t.delta === null);
+  // A nat-1/nat-20 has no sum to hold the modifier terms, so every term —
+  // applied ones included — is shown as a chip under the nat label.
+  const chips = row.nat ? row.terms : row.terms.filter((t) => t.delta === null);
   const jitter = getModifierJitterIntensity(row.composed ?? row.snapshot);
 
   return (
