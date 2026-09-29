@@ -79,9 +79,12 @@ export function buildRerollChain(
  * the reaction window for lowest-gains-highest after composing pre-roll
  * modifiers). Steps are never reordered into fixed phase buckets.
  *
- * Two rendering modes:
+ * Rendering modes:
  *  - resolved: steps come from the Trace, in resolution order, numbered.
- *  - live (round closed, not yet resolved): there is no Trace, so pending
+ *  - provisional (issue #409, the Provisional Recap): the round is live but
+ *    layer 0 is complete, so the Trace is the resolver's dry run — rendered
+ *    exactly like a resolved one ("so far — reactions pending").
+ *  - live (round closed, layer 0 not complete yet): there is no Trace, so pending
  *    steps are synthesised from the cast list in cast order (by seq), indexed
  *    `·`, and shimmer. On resolve they re-sort to resolution order — never
  *    predicted client-side.
@@ -526,7 +529,11 @@ export function buildRoundRecap({
   displayName,
   traceOnly = false,
 }: BuildRoundRecapArgs): RoundRecapModel {
-  const live = !data.resolved;
+  // Issue #409: a provisional recap has a Trace (the resolver's dry run), so
+  // it renders steps like a resolved one — labelled "so far" by the
+  // component, and never announcing a tie (endedInTieBreak stays false: the
+  // round's layerZeroOutcome is null until it really resolves).
+  const live = !data.resolved && !data.provisional;
   const casts = [...data.casts].sort((a, b) => a.seq - b.seq);
 
   // A scrapped replay generation (issue #352) has a Resolution Trace but no
@@ -619,7 +626,7 @@ export function buildRoundRecap({
     castStrip,
     phases: groupByPhase(ordered),
     showReorderCaption: !live && castStrip.length > 1,
-    endedInTieBreak: !live && data.layerZeroOutcome === "tie",
+    endedInTieBreak: !live && !data.provisional && data.layerZeroOutcome === "tie",
     rows,
     provisional: data.provisional,
   };

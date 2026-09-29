@@ -198,7 +198,8 @@ export async function getRoundLayerHistory(supabase: SupabaseClient, roundId: st
 
 /**
  * Calls the advance_round_layer RPC: persists a tie outcome the caller
- * already computed via resolveLayer, moving the round on to a new reroll
+ * already has (resolve_round's tied set, or Round Backfill's resolveLayer
+ * replay), moving the round on to a new reroll
  * layer for just the tied subset. Returns the new layer number.
  */
 export async function advanceRoundLayer(
@@ -240,7 +241,7 @@ export async function getOwnRoll(
 
 /**
  * Calls the resolve_round RPC: applies a single-brewer outcome the caller
- * already computed via resolveLayer (src/lib/game/resolveLayer.ts) —
+ * already has (resolve_round(uuid)'s brewer, or a tie-break layer's pick) —
  * writes rounds.brewer_id/cups_made/status='resolved'/resolved_at and, unless
  * noModifierGain is set (Drip Tray's "they gain no modifier from this
  * tea-making", 0033), increments the brewer's modifier, atomically.

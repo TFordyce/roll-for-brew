@@ -88,12 +88,97 @@ describe.skipIf(!hasAnonTestEnv)("issue #402 — roll rows from the resolver", (
 
   it("#407: a round with no summary (resolved before it existed) renders the degraded row", async () => {
     const { roundId, resolveWith } = await resolvedRows("4a-flat-modifier-self-buff");
+    // settle it as a resolved round, then drop its summary as if it predated them
+    const casterId = Object.keys(ctx.roster).find((id) => label(id) === "caster")!;
+    const { error } = await resolveWith.rpc("resolve_round", {
+      p_round_id: roundId,
+      p_brewer_id: casterId,
+      p_cups_made: 2,
+    });
+    expect(error).toBeNull();
     await admin.from("rounds").update({ resolution_summary: null }).eq("id", roundId);
     const recap = await getRoundRecap(resolveWith, roundId);
     const model = buildRoundRecap({ data: recap!, displayName: label });
     const caster = model.rows.find((r) => label(r.playerId) === "caster")!;
     expect(caster).toMatchObject({ roll: 10, snapshot: 0, total: null, badgeValue: null, degraded: true });
     expect(caster.terms.map((t) => t.cardName)).toEqual(["Lucky Sip"]);
+  });
+
+  it("#409: no Provisional Recap until layer 0 is complete, then a live dry run", async () => {
+    const c = fresh();
+    const p1 = await c.signUp("first");
+    const p2 = await c.signUp("second");
+    const roundId = await c.openAndCloseRound(p1, [p2]);
+    await c.seedRoll(roundId, p1.googleSub, 9);
+
+    const partial = (await getRoundRecap(p1.client, roundId))!;
+    expect(partial.provisional).toBe(false);
+    expect(partial.summary).toBeNull();
+    expect(partial.trace).toEqual([]);
+
+    await c.seedRoll(roundId, p2.googleSub, 14);
+    const live = (await getRoundRecap(p1.client, roundId))!;
+    expect(live.provisional).toBe(true);
+    const model = buildRoundRecap({ data: live, displayName: label });
+    expect(model.provisional).toBe(true);
+    expect(model.rows.map((r) => [label(r.playerId), r.total, r.provisional])).toEqual([
+      ["first", 9, true],
+      ["second", 14, true],
+    ]);
+
+    // a cast lands: the next read reflects it
+    await c.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+      effectKind: "flat_modifier",
+      effectParams: { delta: 3 },
+      targetPlayerId: p1.googleSub,
+    });
+    const afterCast = buildRoundRecap({ data: (await getRoundRecap(p1.client, roundId))!, displayName: label });
+    expect(afterCast.rows.find((r) => label(r.playerId) === "first")!.total).toBe(12);
+    // the Ledger shows the steps so far, from the dry-run Trace
+    expect(afterCast.phases.flatMap((p) => p.steps).map((s) => s.pending)).toEqual([false]);
+
+    // nothing was persisted by any of those reads
+    const { data: round } = await admin
+      .from("rounds")
+      .select("resolution_trace, resolution_summary")
+      .eq("id", roundId)
+      .single();
+    expect(round).toEqual({ resolution_trace: null, resolution_summary: null });
+  });
+
+  it("#409: an unrolled Pending Spell Die holds the Provisional Recap back until its value lands", async () => {
+    const c = fresh();
+    const p1 = await c.signUp("roller");
+    const p2 = await c.signUp("dicer");
+    const roundId = await c.openAndCloseRound(p1, [p2]);
+    await c.seedRoll(roundId, p1.googleSub, 9);
+    await c.seedRoll(roundId, p2.googleSub, 14);
+    const { castId } = await c.seedCast(roundId, p2.googleSub, "Six Sugars", {
+      effectKind: "dice_modifier",
+      effectParams: { dice: "1d6", sign: 1 },
+      targetPlayerId: p2.googleSub,
+    });
+    expect((await getRoundRecap(p1.client, roundId))!.provisional).toBe(false);
+
+    await admin.from("spell_casts").update({ cast_inputs: { dice_roll: 4 } }).eq("id", castId);
+    const live = buildRoundRecap({ data: (await getRoundRecap(p1.client, roundId))!, displayName: label });
+    expect(live.provisional).toBe(true);
+    expect(live.rows.find((r) => label(r.playerId) === "dicer")!.total).toBe(18);
+  });
+
+  it("#409: a spectator in the room (not in the round) reads the same Provisional Recap", async () => {
+    const c = fresh();
+    const p1 = await c.signUp("in-a");
+    const p2 = await c.signUp("in-b");
+    const watcher = await c.signUp("watcher");
+    expect(watcher.roomId).toBe(p1.roomId);
+    const roundId = await c.openAndCloseRound(p1, [p2]);
+    await c.seedRoll(roundId, p1.googleSub, 9);
+    await c.seedRoll(roundId, p2.googleSub, 14);
+
+    const seen = await getRoundRecap(watcher.client, roundId);
+    expect(seen?.provisional).toBe(true);
+    expect(seen?.summary?.map((e) => label(e.playerId)).sort()).toEqual(["in-a", "in-b"]);
   });
 
   it("#406: a spell-made layer-0 tie shows in every tied player's Reroll Chain", async () => {

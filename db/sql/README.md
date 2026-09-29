@@ -74,9 +74,14 @@ rest —
   `_rr_cast_log_resolution`, `_rr_active_ward_gate`, `_rr_scrap_round`,
   `_rr_pick_lowest`, `_rr_apply_fixed_roll`.
 
+Spec [#402](https://github.com/TFordyce/roll-for-brew/issues/402) (ADR 0007)
+split `resolve_round`'s body into `_rr_resolve_eval` (the pipeline) and added
+the non-persisting `_rr_resolve` (a dry run whose writes always roll back),
+which `get_round_recap` calls for the Provisional Recap.
+
 Deliberately **not** moved in the cutover, though they are re-emitted more than
 once: the resolver's roll/effect shims and readers
-(`get_round_modifier_effects`, `apply_roll_swap`, `apply_roll_flip`,
+(`apply_roll_swap`, `apply_roll_flip`,
 `apply_forced_reroll`, `set_spell_cast_target`,
 `record_active_effect_if_persistent`, `rebuild_active_effects_projection`,
 `get_current_layer_rolls_if_complete`,

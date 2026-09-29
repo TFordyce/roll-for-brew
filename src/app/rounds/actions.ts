@@ -255,6 +255,9 @@ export async function resolvePendingSpellDieInAppAction(formData: FormData) {
     return;
   }
   await afterPendingSpellDieResolved(supabase, roundId);
+  // Issue #409: the die's value moves every device's Provisional Recap; it
+  // lives in the Cast Log, so it rides spell-cast-changed.
+  await broadcastSpellCastChanged(supabase, await getRoundRoomId(supabase, roundId), { roundId });
 
   revalidateRoundSurfaces();
 }
@@ -294,6 +297,9 @@ export async function resolvePendingSpellDieManualAction(
     return resolveSpellCastError(error);
   }
   await afterPendingSpellDieResolved(supabase, roundId);
+  // Issue #409: the die's value moves every device's Provisional Recap; it
+  // lives in the Cast Log, so it rides spell-cast-changed.
+  await broadcastSpellCastChanged(supabase, await getRoundRoomId(supabase, roundId), { roundId });
 
   revalidateRoundSurfaces();
   return { status: "idle" };

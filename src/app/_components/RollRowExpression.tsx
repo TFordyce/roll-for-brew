@@ -1,7 +1,7 @@
-import type { CSSProperties, ReactNode } from "react";
 import { getModifierJitterIntensity } from "@/lib/game/rollCalculation";
 import type { RollRow, RollRowTerm } from "@/lib/game/roundRecap";
 import { DieIcon } from "@/app/_components/DieIcon";
+import { ModifierJitter } from "@/app/_components/RollCalculation";
 
 /**
  * A player's layer-0 roll row as the resolver decided it (issue #407, ADR
@@ -39,12 +39,12 @@ export function RollRowExpression({ row }: { row: RollRow }) {
             {row.discardedRoll !== null ? (
               <span className="text-parchment-dim/60 line-through">{row.discardedRoll}</span>
             ) : null}
-            <Jitter intensity={jitter}>
+            <ModifierJitter intensity={jitter}>
               <Term label="mod" value={row.snapshot} />
               {modifierTerms.map((term, i) => (
                 <Term key={i} label={term.cardName ?? term.displayKind} value={term.delta!} />
               ))}
-            </Jitter>
+            </ModifierJitter>
             {row.total !== null ? (
               <>
                 {" = "}
@@ -71,32 +71,6 @@ function Term({ label, value }: { label: string; value: number }) {
     <span className="inline-flex items-baseline gap-0.5">
       {value >= 0 ? "+" : "-"} {Math.abs(value)}
       <span className="text-[9px] uppercase tracking-wide text-parchment-dim/70">[{label}]</span>
-    </span>
-  );
-}
-
-/** Shake amplitude / period bounds for the issue #196 "danger" cue. */
-const JITTER_MIN_AMPLITUDE_PX = 1;
-const JITTER_MAX_AMPLITUDE_PX = 3;
-const JITTER_MAX_PERIOD_SECONDS = 0.5;
-const JITTER_MIN_PERIOD_SECONDS = 0.25;
-
-/** The issue #196 jitter on the modifier terms (keyframes in globals.css). */
-function Jitter({ intensity, children }: { intensity: number; children: ReactNode }) {
-  if (intensity <= 0) return <span className="inline-flex flex-wrap items-baseline gap-1">{children}</span>;
-  const amplitude = JITTER_MIN_AMPLITUDE_PX + intensity * (JITTER_MAX_AMPLITUDE_PX - JITTER_MIN_AMPLITUDE_PX);
-  const period = JITTER_MAX_PERIOD_SECONDS - intensity * (JITTER_MAX_PERIOD_SECONDS - JITTER_MIN_PERIOD_SECONDS);
-  return (
-    <span
-      className="inline-flex flex-wrap items-baseline gap-1"
-      style={
-        {
-          animation: `modifier-jitter ${period}s ease-in-out infinite`,
-          "--jitter-amplitude": `${amplitude}px`,
-        } as CSSProperties
-      }
-    >
-      {children}
     </span>
   );
 }

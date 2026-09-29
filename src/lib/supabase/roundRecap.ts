@@ -232,11 +232,12 @@ function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration
 }
 
 /**
- * Calls the get_round_recap RPC (migration 0086, issue #314): the persisted
- * Resolution Trace plus the round's full cast list with per-cast phase and
- * coarse live state. Everything the Round Recap ("the Ledger") renderer needs
- * in one participant-gated round trip. Returns null on any error so the caller
- * can fall back to the plain reveal — the Recap is additive.
+ * Calls the get_round_recap RPC (migration 0086, issue #314; spec #402): the
+ * Resolution Trace and Summary — stored, or the Provisional Recap's dry run
+ * while the round is live — plus the round's cast list, layer rolls and
+ * tie-break participants. Everything RoundReveal's rows, Ledger and Reroll
+ * Chain need in one room-member-gated round trip. Returns null on any error so
+ * the caller can fall back to the bare revealed dice.
  */
 export async function getRoundRecap(
   supabase: SupabaseClient,
@@ -244,8 +245,8 @@ export async function getRoundRecap(
 ): Promise<RoundRecapData | null> {
   const { data, error } = await supabase.rpc("get_round_recap", { p_round_id: roundId });
   if (error || !data) {
-    // A participant-gate rejection is expected for a round the viewer sat out
-    // (room history shows "no recap available"); anything else is a real fault
+    // A gate rejection (P0001) is expected for a viewer outside the round's
+    // room (room history shows "no recap available"); anything else is a real fault
     // worth a console line before the additive Recap falls back silently.
     if (error && error.code !== "P0001") {
       console.error("getRoundRecap failed", error);

@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  roundModifierEffects,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -16,7 +17,7 @@ import {
 // could be stored), so the target saw nothing on their roll calculation.
 // spell_card_effects now lets a card carry more than one simultaneous
 // effect, each with its own target role — these tests confirm both halves
-// of a compound cast now compose into get_round_modifier_effects.
+// of a compound cast now compose into roundModifierEffects.
 //
 // Both cards' caster-facing half is a dice_modifier (1d4), which since
 // issue #252 (migration 0069) casts with no cast_inputs.dice_roll until the
@@ -91,12 +92,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     });
     expect(resolveError).toBeNull();
 
-    const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: effects, error: effectsError } = await roundModifierEffects(admin, caster.client, roundId);
     expect(effectsError).toBeNull();
 
-    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // Room-wide read (roundModifierEffects): filter to this test's own
     // targets before asserting exact length (issue #147).
     const rows = byTarget(
       effects as {

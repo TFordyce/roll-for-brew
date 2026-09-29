@@ -893,6 +893,27 @@ describe("buildRoundRecap rows", () => {
     expect(model.rows[0]!.terms).toHaveLength(1);
   });
 
+  it("provisional (live dry run): the Ledger shows the Trace's steps so far, numbered, but never a tie", () => {
+    const c1 = cast({ castId: "C1", targetPlayerId: "ada" });
+    const model = buildRoundRecap({
+      data: data({
+        resolved: false,
+        provisional: true,
+        layerZeroOutcome: null,
+        casts: [c1],
+        summary: [summary("ada", { composed: 3, total: 13 })],
+        layers: layer0(lr("ada", 10)),
+        trace: [step({ targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 3 } })],
+      }),
+      displayName,
+    });
+    const steps = model.phases.flatMap((p) => p.steps);
+    expect(steps.map((s) => [s.displayIndex, s.pending, s.beforeAfter?.to])).toEqual([["1", false, "3"]]);
+    expect(model.castStrip.map((c) => c.state)).toEqual(["applied"]);
+    expect(model.endedInTieBreak).toBe(false);
+    expect(model.provisional).toBe(true);
+  });
+
   it("zero-cast round still gets rows", () => {
     const model = buildRoundRecap({
       data: data({ summary: [summary("ada")], layers: layer0(lr("ada", 10)) }),

@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  roundModifierEffects,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -147,9 +148,7 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
     });
     expect(targetError).toBeNull();
 
-    const { data: effects } = await casterClient.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: effects } = await roundModifierEffects(admin, casterClient, roundId);
     expect(byTarget(effects as { target_player_id: string }[], lateSub)).toEqual([
       {
         target_player_id: lateSub,

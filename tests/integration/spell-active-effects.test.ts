@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  roundModifierEffects,
   seedActiveEffect,
   signUpSignInAndEnterRoom,
 } from "./setup";
@@ -98,12 +99,9 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     expect(castError).toBeNull();
     expect(castId).toBeTruthy();
 
-    const { data: round1Effects, error: round1EffectsError } = await caster.client.rpc(
-      "get_round_modifier_effects",
-      { p_round_id: round1Id },
-    );
+    const { data: round1Effects, error: round1EffectsError } = await roundModifierEffects(admin, caster.client, round1Id);
     expect(round1EffectsError).toBeNull();
-    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // Room-wide read (roundModifierEffects): filter to this test's own
     // target before asserting exact contents (issue #147).
     expect(byTarget(round1Effects as { target_player_id: string }[], target.googleSub)).toEqual([
       {
@@ -135,7 +133,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     // #310: rounds_remaining is an immutable duration snapshot — resolving a
     // round no longer decrements it. The row is still present and still
     // composes (asserted for round 2 below); expiry is derived, proven by
-    // its absence from get_round_modifier_effects in round 3.
+    // its absence from roundModifierEffects in round 3.
     const { data: activeAfterRound1 } = await admin
       .from("spell_active_effects")
       .select("rounds_remaining")
@@ -148,9 +146,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     cleanup.trackRound(round2Id as string);
     await target.client.rpc("declare_in", { p_round_id: round2Id });
 
-    const { data: round2Effects } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: round2Id,
-    });
+    const { data: round2Effects } = await roundModifierEffects(admin, caster.client, round2Id);
     expect(byTarget(round2Effects as { target_player_id: string }[], target.googleSub)).toEqual([
       {
         target_player_id: target.googleSub,
@@ -185,9 +181,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     cleanup.trackRound(round3Id as string);
     await target.client.rpc("declare_in", { p_round_id: round3Id });
 
-    const { data: round3Effects } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: round3Id,
-    });
+    const { data: round3Effects } = await roundModifierEffects(admin, caster.client, round3Id);
     expect(byTarget(round3Effects as { target_player_id: string }[], target.googleSub)).toEqual([]);
   });
 
@@ -432,9 +426,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     expect(castError).toBeNull();
 
     // Present while the source cast stands.
-    const { data: before } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: before } = await roundModifierEffects(admin, caster.client, roundId);
     expect(byTarget(before as { target_player_id: string }[], target.googleSub)).toHaveLength(1);
 
     // Negate the source cast — the projection re-derives without it.
@@ -444,9 +436,7 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       .eq("id", castId);
     expect(negErr).toBeNull();
 
-    const { data: after } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: after } = await roundModifierEffects(admin, caster.client, roundId);
     expect(byTarget(after as { target_player_id: string }[], target.googleSub)).toEqual([]);
   });
 

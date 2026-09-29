@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  roundModifierEffects,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -14,7 +15,7 @@ import {
 // (supabase/migrations/0021_spell_reaction_window.sql, issue #68): Six
 // Sugars (dice_modifier, SELF) and Mug Shot (set_modifier, OPPONENT), both
 // proving that a numeric-kind Reaction cast composes into
-// get_round_modifier_effects the same way a pre-roll Action cast already
+// roundModifierEffects the same way a pre-roll Action cast already
 // does (the modifier bucket doesn't distinguish how a cast was made).
 //
 // Six Sugars' dice_modifier casts with no cast_inputs.dice_roll until the
@@ -91,11 +92,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     expect(diceRoll).toBeGreaterThanOrEqual(1);
     expect(diceRoll).toBeLessThanOrEqual(6);
 
-    const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: effects, error: effectsError } = await roundModifierEffects(admin, caster.client, roundId);
     expect(effectsError).toBeNull();
-    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // Room-wide read (roundModifierEffects): filter to this test's own
     // target before asserting exact contents (issue #147).
     const casterEffects = byTarget(
       effects as { target_player_id: string; resolved_value: number }[],
@@ -142,11 +141,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     expect(castError).toBeNull();
     expect(castId).toBeTruthy();
 
-    const { data: effects, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: effects, error: effectsError } = await roundModifierEffects(admin, caster.client, roundId);
     expect(effectsError).toBeNull();
-    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // Room-wide read (roundModifierEffects): filter to this test's own
     // target before asserting exact contents (issue #147).
     expect(byTarget(effects as { target_player_id: string }[], target.googleSub)).toEqual([
       {
