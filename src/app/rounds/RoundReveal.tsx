@@ -8,11 +8,9 @@ import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { buildRollCalculation } from "@/lib/game/rollCalculationEffects";
 import { firstNameOrFallback } from "@/lib/game/displayName";
-import { buildRerollChain } from "@/lib/game/rerollChain";
 import { getRoundModifierEffectDetails, type ModifierEffectDetail } from "@/lib/supabase/spellCasts";
-import { getRoundLayerHistory, type CompletedLayer } from "@/lib/supabase/rolls";
 import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
-import { buildRoundRecap } from "@/lib/game/roundRecap";
+import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
@@ -66,9 +64,9 @@ export type RoundRevealParticipant = {
  *
  * Each row also carries any reroll history the player went through (issue
  * #220): once a layer-0 tie sends a player through one or more reroll
- * layers, buildRerollChain (src/lib/game/rerollChain.ts) walks
- * getRoundLayerHistory's full per-layer record into an ordered list of
- * dependent rows nested under that player's primary row — one per reroll
+ * layers, buildRerollChain (src/lib/game/roundRecap.ts, issue #406) walks
+ * get_round_recap's per-layer rolls and layer participants into an ordered
+ * list of dependent rows nested under that player's primary row — one per reroll
  * level, indented further for a chained tie, each rendered with the same
  * rich RollCalculation treatment as layer 0 (never a discarded die or
  * effect badge, since #219 fixed spell effects/reactions out of tie-break
@@ -121,12 +119,6 @@ export function RoundReveal({
   // specific reveal event). Best-effort: RollCalculation just renders
   // without badges if this fetch fails.
   const [effectDetails, setEffectDetails] = useState<ModifierEffectDetail[]>([]);
-  // The round's full reroll-layer history (issue #220), fetched alongside
-  // effectDetails once rolls are known — feeds buildRerollChain's nested
-  // dependent rows below. Best-effort like effectDetails: a fetch failure
-  // just leaves every row without its reroll history rather than breaking
-  // the reveal.
-  const [history, setHistory] = useState<CompletedLayer[]>([]);
   // The Round Recap "Ledger" data (issue #314): the Resolution Trace + this
   // round's cast list. Fetched client-side (no realtime broadcast carries it)
   // and refetched on every reveal/resolve so it flips from the live pending
@@ -134,7 +126,7 @@ export function RoundReveal({
   // failed fetch just falls back to the plain reveal below.
   const [recap, setRecap] = useState<RoundRecapData | null>(null);
   // Bumped by every layer-rolls-revealed broadcast (any layer, not just 0)
-  // and by round-revealed, to retrigger the history fetch below — issue
+  // and by round-revealed, to retrigger the recap fetch below — issue
   // #220 piece 4's "the dependent row needs to populate live ... once a
   // layer's rolls are broadcast" requirement. Plain state instead of
   // folding into the `rolls` dependency below, since `rolls` itself now
@@ -159,7 +151,6 @@ export function RoundReveal({
     setBrewerId(null);
     setShowKettleModal(false);
     setEffectDetails([]);
-    setHistory([]);
     setRecap(null);
     setHistoryRefreshToken(0);
     clearResultsTimeout();
@@ -182,25 +173,6 @@ export function RoundReveal({
       cancelled = true;
     };
   }, [rolls, roundId]);
-
-  useEffect(() => {
-    if (rolls === null) return;
-    let cancelled = false;
-    const supabase = createClient();
-    getRoundLayerHistory(supabase, roundId)
-      .then((layers) => {
-        if (!cancelled) setHistory(layers);
-      })
-      .catch(() => {
-        // Best-effort — rows just render with no nested reroll history.
-      });
-    return () => {
-      cancelled = true;
-    };
-    // historyRefreshToken is a deliberate extra trigger (see its own
-    // comment above) — every reroll layer's own completion needs to
-    // refetch this even though `rolls` (layer 0 only, below) doesn't change.
-  }, [rolls, roundId, historyRefreshToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -365,7 +337,11 @@ export function RoundReveal({
             // (issue #153).
             const calc = value === null ? null : classifyRollCalculation(value, built.composedModifier);
             const badgeValue = calc === null ? null : calc.kind === "sum" ? calc.total : value;
-            const rerollChain = buildRerollChain(p.playerId, history);
+            // Issue #406: tie membership from the next layer's participants,
+            // never re-judged here.
+            const rerollChain = recap
+              ? buildRerollChain(p.playerId, recap.layers, recap.layerParticipants)
+              : [];
 
             return (
               <li key={p.playerId} className="py-2">

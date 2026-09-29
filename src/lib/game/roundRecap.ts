@@ -1,6 +1,70 @@
-import type { RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
-import type { ResolutionTraceStep } from "@/lib/supabase/rolls";
-import { buildRerollChain, type RerollChainLevel } from "@/lib/game/rerollChain";
+import type { LayerParticipant, RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
+import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
+
+/**
+ * One tie-break reroll level under a player's layer-0 row (issue #220). Layers
+ * > 0 carry no spell logic and no Resolution Summary (ADR 0007), so the level
+ * is the bare roll + roll-time modifier and its nat standing.
+ */
+export type RerollChainLevel = {
+  layer: number;
+  roll: number;
+  modifier: number;
+  nat: "nat1" | "nat20" | null;
+  /** What the badge shows: roll + modifier, or the bare roll for a nat-1/nat-20. */
+  badgeValue: number;
+  /** true when this player went on into layer + 1 — this level tied again. */
+  tied: boolean;
+};
+
+/**
+ * Tie-layer nat standing. Pinned to `_rr_pick_lowest`'s 3-argument form, the
+ * rule the resolver applies at layer > 0: a 1 is a natural 1 and a 20 a
+ * natural 20 whatever the modifier (no Calami-Tea dice-reduced exemption —
+ * no spells reach a tie layer). Layer-0 nat standing comes from the
+ * Resolution Summary instead.
+ */
+function tieLayerNat(roll: number): "nat1" | "nat20" | null {
+  if (roll === 1) return "nat1";
+  if (roll === 20) return "nat20";
+  return null;
+}
+
+/**
+ * Issue #406: one player's Reroll Chain — every tie-break layer they rolled in,
+ * in order. Tie membership is read, never re-judged: a player tied at layer N
+ * exactly when they are in layer N+1's participant set (for a scrapped
+ * generation, its own snapshotted set). So a layer-0 tie made or broken by
+ * spell modifiers is drawn exactly as the resolver decided it.
+ *
+ * `layers` holds only fully-rolled layers; the walk stops at the first layer
+ * the player is in but that has not finished rolling.
+ */
+export function buildRerollChain(
+  playerId: string,
+  layers: CompletedLayer[],
+  layerParticipants: LayerParticipant[],
+): RerollChainLevel[] {
+  const rollsByLayer = new Map(layers.map((l) => [l.layer, l.rolls]));
+  const inLayer = (layer: number) =>
+    layerParticipants.some((lp) => lp.layer === layer && lp.playerId === playerId);
+
+  const chain: RerollChainLevel[] = [];
+  for (let layer = 1; inLayer(layer); layer += 1) {
+    const own = rollsByLayer.get(layer)?.find((r) => r.playerId === playerId);
+    if (!own) break;
+    const nat = tieLayerNat(own.value);
+    chain.push({
+      layer,
+      roll: own.value,
+      modifier: own.modifierSnapshot,
+      nat,
+      badgeValue: nat ? own.value : own.value + own.modifierSnapshot,
+      tied: inLayer(layer + 1),
+    });
+  }
+  return chain;
+}
 
 /**
  * The Round Recap ("the Ledger", issue #314) — a pure transform from a round's
@@ -440,6 +504,8 @@ export function buildScrappedGenerationRecap(
       trace: gen.trace,
       casts: [],
       scrappedGenerations: [],
+      layers: gen.layers,
+      layerParticipants: gen.layerParticipants,
     },
     displayName,
     traceOnly: true,
@@ -469,7 +535,7 @@ export function buildScrappedGenerationRecap(
       discardedValue: roll.discardedValue,
       enteredByAdmin: roll.enteredByAdmin,
       isBrewer: gen.brewerId === playerId,
-      rerollChain: buildRerollChain(playerId, gen.layers),
+      rerollChain: buildRerollChain(playerId, gen.layers, gen.layerParticipants),
     };
   });
 

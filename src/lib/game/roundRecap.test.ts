@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildRoundRecap, buildScrappedGenerationRecap } from "./roundRecap";
+import { buildRerollChain, buildRoundRecap, buildScrappedGenerationRecap } from "./roundRecap";
 import type { RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
 import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
 
@@ -62,7 +62,16 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
 }
 
 function data(over: Partial<RoundRecapData> = {}): RoundRecapData {
-  return { resolved: true, layerZeroOutcome: "brewer", trace: [], casts: [], scrappedGenerations: [], ...over };
+  return {
+    resolved: true,
+    layerZeroOutcome: "brewer",
+    trace: [],
+    casts: [],
+    scrappedGenerations: [],
+    layers: [],
+    layerParticipants: [],
+    ...over,
+  };
 }
 
 beforeEach(() => {
@@ -628,5 +637,85 @@ describe("buildScrappedGenerationRecap", () => {
     );
     expect(model.firstAttemptRolls.map((r) => r.playerId)).toEqual(["ada", "ben", "cass"]);
     expect(model.firstAttemptRolls[2]!.enteredByAdmin).toBe(true);
+  });
+});
+
+// --- Reroll Chain (issue #406) ------------------------------------------
+
+function lr(playerId: string, value: number, modifierSnapshot = 0) {
+  return { playerId, value, modifierSnapshot, discardedValue: null, enteredByAdmin: false };
+}
+const parts = (layer: number, ...ids: string[]) => ids.map((playerId) => ({ layer, playerId }));
+
+describe("buildRerollChain", () => {
+  it("resolved outright at layer 0: nobody is in layer 1, so no chain", () => {
+    const layers: CompletedLayer[] = [{ layer: 0, rolls: [lr("ada", 15), lr("ben", 8)] }];
+    expect(buildRerollChain("ben", layers, [])).toEqual([]);
+  });
+
+  it("plain tie: every layer-1 participant gets one resolved level", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 15), lr("ben", 7, 3), lr("cass", 4, 6)] },
+      { layer: 1, rolls: [lr("ben", 9, 3), lr("cass", 12, 6)] },
+    ];
+    const lp = parts(1, "ben", "cass");
+    expect(buildRerollChain("ben", layers, lp)).toEqual([
+      { layer: 1, roll: 9, modifier: 3, nat: null, badgeValue: 12, tied: false },
+    ]);
+    expect(buildRerollChain("cass", layers, lp)).toEqual([
+      { layer: 1, roll: 12, modifier: 6, nat: null, badgeValue: 18, tied: false },
+    ]);
+    expect(buildRerollChain("ada", layers, lp)).toEqual([]);
+  });
+
+  it("spell-created tie: roll-time sums differ, but next-layer membership says they tied", () => {
+    // ada 10+0 vs ben 12+0 never tie on roll-time modifiers; a spell made the
+    // composed totals equal, and the resolver sent both to layer 1.
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 10), lr("ben", 12), lr("cass", 18)] },
+      { layer: 1, rolls: [lr("ada", 5), lr("ben", 14)] },
+    ];
+    const lp = parts(1, "ada", "ben");
+    expect(buildRerollChain("ada", layers, lp).map((l) => l.layer)).toEqual([1]);
+    expect(buildRerollChain("ben", layers, lp).map((l) => l.layer)).toEqual([1]);
+    expect(buildRerollChain("cass", layers, lp)).toEqual([]);
+  });
+
+  it("multi-layer tie: tied at N exactly when in layer N+1", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 15), lr("ben", 7), lr("cass", 7)] },
+      { layer: 1, rolls: [lr("ben", 5), lr("cass", 5)] },
+      { layer: 2, rolls: [lr("ben", 9), lr("cass", 3)] },
+    ];
+    const lp = [...parts(1, "ben", "cass"), ...parts(2, "ben", "cass")];
+    expect(buildRerollChain("ben", layers, lp).map((l) => [l.layer, l.tied])).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+  });
+
+  it("a next layer that has not finished rolling is not shown yet, but the tie is", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 15), lr("ben", 7), lr("cass", 7)] },
+      { layer: 1, rolls: [lr("ben", 5), lr("cass", 5)] },
+    ];
+    const lp = [...parts(1, "ben", "cass"), ...parts(2, "ben", "cass")];
+    expect(buildRerollChain("ben", layers, lp)).toEqual([
+      { layer: 1, roll: 5, modifier: 0, nat: null, badgeValue: 5, tied: true },
+    ]);
+  });
+
+  // ADR 0007: tie-break layers have no spell logic and no summary, so their
+  // nat standing stays a TS rule — pinned here to _rr_pick_lowest's 3-argument
+  // form (no dice-reduced exemption at layer > 0): a 1 is a natural 1 and a 20
+  // a natural 20 regardless of modifier, and the badge shows the bare roll.
+  it("tie-layer nat-1 / nat-20 follow the resolver's 3-argument lowest-pick rule", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 7, 2), lr("ben", 7, 2)] },
+      { layer: 1, rolls: [lr("ada", 1, 9), lr("ben", 20, -4)] },
+    ];
+    const lp = parts(1, "ada", "ben");
+    expect(buildRerollChain("ada", layers, lp)[0]).toMatchObject({ nat: "nat1", badgeValue: 1 });
+    expect(buildRerollChain("ben", layers, lp)[0]).toMatchObject({ nat: "nat20", badgeValue: 20 });
   });
 });

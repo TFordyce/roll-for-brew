@@ -116,6 +116,29 @@ export const CORPUS: Scenario[] = [
     },
   },
   {
+    // Issue #406: roll-time totals (10 vs 12) don't tie; the composed ones do.
+    // The Reroll Chain must read this tie from layer 1's participants, since
+    // re-judging it on roll-time modifiers would miss it.
+    name: "4a-spell-modifier-creates-layer0-tie",
+    phases: ["4a", "5"],
+    note: "A flat +2 lifts the lowest roller onto the next roller's total: layer 0 ties on composed modifiers, not roll-time ones.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("lifted");
+      const p2 = await ctx.signUp("level");
+      const p3 = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      await ctx.seedRoll(roundId, p3.googleSub, 18);
+      await ctx.seedCast(roundId, p3.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 2 },
+        targetPlayerId: p1.googleSub,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
     name: "4a-set-modifier-overrides-sibling-flat",
     phases: ["4a", "5"],
     note: "set_modifier is absolute — it ignores a sibling flat effect; two sets resolve to the last by seq.",

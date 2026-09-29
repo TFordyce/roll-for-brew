@@ -27,6 +27,8 @@ declare
   v_trace jsonb;
   v_casts jsonb;
   v_scrapped jsonb;
+  v_layers jsonb;
+  v_layer_participants jsonb;
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -77,6 +79,36 @@ begin
     join public.spell_cards sc on sc.id = sdi.card_id
    where c.round_id = p_round_id;
 
+  -- Issue #406: the round's revealed rolls, every layer, flat (the client
+  -- groups them) -- only layers whose rolls are all in, the same withholding
+  -- rule get_round_layer_history applies, so a layer never leaks mid-roll.
+  select coalesce(jsonb_agg(
+           jsonb_build_object(
+             'player_id', r.player_id, 'layer', r.layer, 'value', r.value,
+             'modifier_snapshot', r.modifier_snapshot,
+             'discarded_value', r.discarded_value,
+             'entered_by_admin', r.entered_by_admin)
+           order by r.layer, r.player_id
+         ), '[]'::jsonb)
+    into v_layers
+    from public.rolls r
+   where r.round_id = p_round_id
+     and (
+       select count(*) from public.rolls r2
+        where r2.round_id = p_round_id and r2.layer = r.layer
+     ) >= public.count_expected_layer_rollers(p_round_id, r.layer);
+
+  -- Issue #406: who took part in each tie-break layer. A player tied at layer
+  -- N exactly when they are in layer N+1's set -- the Reroll Chain reads tie
+  -- membership from here instead of re-judging the tie.
+  select coalesce(jsonb_agg(
+           jsonb_build_object('layer', rlp.layer, 'player_id', rlp.player_id)
+           order by rlp.layer, rlp.player_id
+         ), '[]'::jsonb)
+    into v_layer_participants
+    from public.round_layer_participants rlp
+   where rlp.round_id = p_round_id;
+
   return jsonb_build_object(
     'resolved', v_status = 'resolved',
     -- "tie" once the round has any reroll-layer roll: layer 0 tied and the
@@ -96,7 +128,9 @@ begin
     -- generation, oldest first (generation 0 is the original attempt). [] for
     -- a round that was never replayed. The client renders each as a collapsed
     -- generation-0 Round Recap disclosure under generation 1's headline.
-    'scrapped_generations', v_scrapped
+    'scrapped_generations', v_scrapped,
+    'layers', v_layers,
+    'layer_participants', v_layer_participants
   );
 end;
 $$;
@@ -114,4 +148,7 @@ comment on function public.get_round_recap(uuid) is
   'round; casts carries phase and coarse live state for the cast strip, with '
   'resolved per-cast state derived client-side from the Trace; '
   'scrapped_generations is rounds.scrapped_generations verbatim ([] when the '
-  'round was never replayed), each entry a generation-0 Recap payload.';
+  'round was never replayed), each entry a generation-0 Recap payload. '
+  'Issue #406: layers is every fully-rolled layer''s rolls (flat, the same '
+  'withholding rule as get_round_layer_history) and layer_participants is '
+  'round_layer_participants -- tie membership for the Reroll Chain.';

@@ -57,8 +57,11 @@ export type ScrappedGeneration = {
    * ordering source for the layer-0 roll list, independent of generation 1's
    * roster.
    */
-  layerParticipants: { layer: number; playerId: string }[];
+  layerParticipants: LayerParticipant[];
 };
+
+/** One row of round_layer_participants: `playerId` rolled in tie-break `layer`. */
+export type LayerParticipant = { layer: number; playerId: string };
 
 export type RoundRecapData = {
   resolved: boolean;
@@ -75,6 +78,13 @@ export type RoundRecapData = {
    * (generation 0 = the original attempt). Empty for a round never replayed.
    */
   scrappedGenerations: ScrappedGeneration[];
+  /**
+   * Issue #406: every fully-rolled layer's rolls, layer 0 first — the rows'
+   * layer-0 rolls and the Reroll Chain's tie-break levels.
+   */
+  layers: CompletedLayer[];
+  /** Issue #406: tie-break layer membership — the Reroll Chain's tie source. */
+  layerParticipants: LayerParticipant[];
 };
 
 type RawRecapCast = {
@@ -117,14 +127,16 @@ type RawRoundRecap = {
   trace: unknown;
   casts: RawRecapCast[] | null;
   scrapped_generations: RawScrappedGeneration[] | null;
+  layers: RawScrappedGenerationRoll[] | null;
+  layer_participants: { layer: number; player_id: string }[] | null;
 };
 
 /**
- * Group a scrapped generation's flat roll snapshot into ordered per-layer
- * buckets — the same shape getRoundLayerHistory returns, so buildRerollChain
- * can walk a scrapped generation's tie-break layers unchanged.
+ * Group a flat roll list — the round's own `layers`, or a scrapped
+ * generation's roll snapshot — into ordered per-layer buckets, the shape
+ * buildRerollChain walks.
  */
-function groupScrappedRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] {
+function groupRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] {
   const byLayer = new Map<number, LayerRoll[]>();
   for (const row of rows) {
     const bucket = byLayer.get(row.layer) ?? [];
@@ -140,6 +152,12 @@ function groupScrappedRollsByLayer(rows: RawScrappedGenerationRoll[]): Completed
   return [...byLayer.entries()].sort(([a], [b]) => a - b).map(([layer, rolls]) => ({ layer, rolls }));
 }
 
+function parseLayerParticipants(
+  raw: { layer: number; player_id: string }[] | null,
+): LayerParticipant[] {
+  return (raw ?? []).map((lp) => ({ layer: lp.layer, playerId: lp.player_id }));
+}
+
 function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration {
   return {
     generation: raw.generation,
@@ -148,11 +166,8 @@ function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration
     brewerModifierGain: raw.brewer_modifier_gain ?? null,
     resolvedAt: raw.resolved_at ?? null,
     trace: parseResolutionTrace(raw.resolution_trace),
-    layers: groupScrappedRollsByLayer(raw.rolls ?? []),
-    layerParticipants: (raw.layer_participants ?? []).map((lp) => ({
-      layer: lp.layer,
-      playerId: lp.player_id,
-    })),
+    layers: groupRollsByLayer(raw.rolls ?? []),
+    layerParticipants: parseLayerParticipants(raw.layer_participants),
   };
 }
 
@@ -184,6 +199,8 @@ export async function getRoundRecap(
     layerZeroOutcome: raw.layer_zero_outcome ?? null,
     trace: parseResolutionTrace(raw.trace),
     scrappedGenerations: (raw.scrapped_generations ?? []).map(parseScrappedGeneration),
+    layers: groupRollsByLayer(raw.layers ?? []),
+    layerParticipants: parseLayerParticipants(raw.layer_participants),
     casts: (raw.casts ?? []).map((c) => ({
       castId: c.cast_id,
       seq: c.seq,
