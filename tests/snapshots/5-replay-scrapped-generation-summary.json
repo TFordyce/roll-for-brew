@@ -1,0 +1,78 @@
+{
+  "scenario": "5-replay-scrapped-generation-summary",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "plain",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "modifier",
+        "value": 6
+      },
+      "index": 0,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Lucky Sip",
+        "active_effect_id": null,
+        "caster_player_id": "P:plain"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:buffed"
+    }
+  ],
+  "players": [
+    {
+      "player": "buffed",
+      "nat": null,
+      "roll": 9,
+      "total": 15,
+      "composed": 6,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "plain",
+      "nat": null,
+      "roll": 11,
+      "total": 11,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ],
+  "scrappedGenerations": [
+    {
+      "generation": 0,
+      "brewer": "buffed",
+      "players": [
+        {
+          "player": "buffed",
+          "nat": null,
+          "roll": 5,
+          "total": 8,
+          "composed": 3,
+          "snapshot": 0,
+          "dice_reduced": false
+        },
+        {
+          "player": "plain",
+          "nat": null,
+          "roll": 12,
+          "total": 12,
+          "composed": 0,
+          "snapshot": 0,
+          "dice_reduced": false
+        }
+      ]
+    }
+  ]
+}

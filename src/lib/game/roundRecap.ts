@@ -632,10 +632,11 @@ export function buildRoundRecap({
  */
 export type ScrappedGenerationRollRow = {
   playerId: string;
-  value: number;
-  modifierSnapshot: number;
-  discardedValue: number | null;
-  enteredByAdmin: boolean;
+  /**
+   * Issue #408: the row model from this generation's own Resolution Summary
+   * and Trace (degraded when it has no summary) — never generation 1's.
+   */
+  row: RollRow;
   isBrewer: boolean;
   rerollChain: RerollChainLevel[];
 };
@@ -677,7 +678,7 @@ export function buildScrappedGenerationRecap(
       trace: gen.trace,
       casts: [],
       scrappedGenerations: [],
-      summary: null,
+      summary: gen.summary,
       provisional: false,
       layers: gen.layers,
       layerParticipants: gen.layerParticipants,
@@ -701,17 +702,18 @@ export function buildScrappedGenerationRecap(
       .map((r) => r.playerId)
       .filter((id) => !roster.includes(id) && !gen0Order.includes(id)),
   ];
-  const firstAttemptRolls: ScrappedGenerationRollRow[] = orderedPlayerIds.map((playerId) => {
-    const roll = rollByPlayer.get(playerId)!;
-    return {
-      playerId,
-      value: roll.value,
-      modifierSnapshot: roll.modifierSnapshot,
-      discardedValue: roll.discardedValue,
-      enteredByAdmin: roll.enteredByAdmin,
-      isBrewer: gen.brewerId === playerId,
-      rerollChain: buildRerollChain(playerId, gen.layers, gen.layerParticipants),
-    };
+  const rowByPlayer = new Map(recap.rows.map((r) => [r.playerId, r]));
+  const firstAttemptRolls: ScrappedGenerationRollRow[] = orderedPlayerIds.flatMap((playerId) => {
+    const row = rowByPlayer.get(playerId);
+    if (!row) return [];
+    return [
+      {
+        playerId,
+        row,
+        isBrewer: gen.brewerId === playerId,
+        rerollChain: buildRerollChain(playerId, gen.layers, gen.layerParticipants),
+      },
+    ];
   });
 
   return {

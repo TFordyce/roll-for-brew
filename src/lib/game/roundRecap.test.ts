@@ -527,6 +527,7 @@ function scrappedGen(over: Partial<ScrappedGeneration> = {}): ScrappedGeneration
     brewerModifierGain: 3,
     resolvedAt: "2026-09-02T10:00:00Z",
     trace: [],
+    summary: null,
     layers: [layer({ layer: 0 })],
     layerParticipants: [
       { layer: 0, playerId: "ada" },
@@ -643,7 +644,35 @@ describe("buildScrappedGenerationRecap", () => {
       ["ada", "ben"], // cass late-declared in gen 0 only
     );
     expect(model.firstAttemptRolls.map((r) => r.playerId)).toEqual(["ada", "ben", "cass"]);
-    expect(model.firstAttemptRolls[2]!.enteredByAdmin).toBe(true);
+    expect(model.firstAttemptRolls[2]!.row.enteredByAdmin).toBe(true);
+  });
+
+  it("#408: rows show the generation's own Resolution Summary and Trace terms", () => {
+    const model = buildScrappedGenerationRecap(
+      scrappedGen({
+        summary: [
+          { playerId: "ada", roll: 10, snapshot: 2, composed: 7, total: 17, nat: null, diceReduced: false },
+          { playerId: "ben", roll: 12, snapshot: 0, composed: 0, total: 12, nat: null, diceReduced: false },
+        ],
+        trace: [
+          step({ targetPlayer: "ada", before: { type: "modifier", value: 2 }, after: { type: "modifier", value: 7 } }),
+        ],
+      }),
+      displayName,
+      ["ada", "ben"],
+    );
+    const [ada, ben] = model.firstAttemptRolls;
+    expect(ada!.row).toMatchObject({ total: 17, composed: 7, badgeValue: 17, degraded: false });
+    expect(ada!.row.terms.map((t) => [t.cardName, t.delta])).toEqual([["Lucky Sip", 5]]);
+    expect(ben!.row).toMatchObject({ total: 12, degraded: false });
+  });
+
+  it("#408: a generation scrapped before summaries existed renders degraded rows", () => {
+    const model = buildScrappedGenerationRecap(scrappedGen({ summary: null }), displayName, ["ada", "ben"]);
+    expect(model.firstAttemptRolls.map((r) => [r.playerId, r.row.roll, r.row.total, r.row.degraded])).toEqual([
+      ["ada", 10, null, true],
+      ["ben", 12, null, true],
+    ]);
   });
 });
 

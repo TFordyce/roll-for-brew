@@ -776,6 +776,59 @@ export const CORPUS: Scenario[] = [
   },
 
   // =========================================================================
+  // Round replay (Time for Brew) — issue #408
+  // =========================================================================
+  {
+    // Generation 0 resolves with a +3 on `buffed`, is scrapped by a confirmed
+    // Time for Brew, and generation 1 rolls fresh with a +6. The golden's
+    // scrappedGenerations block pins generation 0's OWN summary (the +3), so
+    // its disclosure rows can never show generation 1's numbers.
+    name: "5-replay-scrapped-generation-summary",
+    phases: ["4a", "5"],
+    note: "A replayed round: the scrapped generation carries its own Resolution Summary, distinct from generation 1's.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("buffed");
+      const p2 = await ctx.signUp("plain");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      await ctx.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 3 },
+        targetPlayerId: p1.googleSub,
+      });
+      await ctx.seedCast(roundId, p1.googleSub, "Time for Brew", {
+        effectKind: "round_replay",
+        effectParams: {},
+        targetPlayerId: null,
+      });
+      const { error: e0 } = await p1.client.rpc("resolve_round", { p_round_id: roundId });
+      if (e0) throw e0;
+      const { error: e1 } = await p1.client.rpc("resolve_round", {
+        p_round_id: roundId,
+        p_brewer_id: p1.googleSub,
+        p_cups_made: 2,
+      });
+      if (e1) throw e1;
+      const { error: e2 } = await p1.client.rpc("record_pending_round_replay", { p_round_id: roundId });
+      if (e2) throw e2;
+      const { error: e3 } = await p1.client.rpc("confirm_round_replay", { p_round_id: roundId });
+      if (e3) throw e3;
+
+      // generation 1
+      await ctx.seedRoll(roundId, p1.googleSub, 9);
+      await ctx.seedRoll(roundId, p2.googleSub, 11);
+      await ctx.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 6 },
+        targetPlayerId: p1.googleSub,
+        extra: { generation: 1 },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+
+  // =========================================================================
   // WILD — Wild Brew Surge, all six d6 branches. The parent wild_dispatch row
   // carries cast_inputs.branch = N; each branch's post-dispatch child cast is
   // seeded in its simplest deterministic form so resolve_round processes it

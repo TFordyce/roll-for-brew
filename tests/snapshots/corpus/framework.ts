@@ -261,12 +261,32 @@ export function snapshotDocument(name: string, out: ResolveOutcome, roster: Rost
     // Issue #407: the layer-0 Resolution Summary, one entry per roller, keyed
     // and ordered by roster label. dice_reduced only matters on a Calami-Tea
     // round, but is committed everywhere so a change to it always diffs.
-    players: out.players
-      ? out.players
-          .map(({ player_id, ...rest }) => ({ player: roster[player_id] ?? "<unknown>", ...rest }))
-          .sort((a, b) => a.player.localeCompare(b.player))
-      : null,
+    players: normaliseSummary(out.players, roster),
   };
+}
+
+/** A Resolution Summary keyed and ordered by roster label (null stays null). */
+export function normaliseSummary(players: SummaryEntry[] | null | undefined, roster: Roster) {
+  if (!players) return null;
+  return players
+    .map(({ player_id, ...rest }) => ({ player: roster[player_id] ?? "<unknown>", ...rest }))
+    .sort((a, b) => a.player.localeCompare(b.player));
+}
+
+/**
+ * Issue #408: each scrapped replay generation's own snapshotted summary, for a
+ * replayed round's golden. Only the summary and brewer — the generation's
+ * Trace was already pinned by its own resolve.
+ */
+export function normaliseScrappedGenerations(
+  scrapped: { generation: number; brewer_id: string | null; players?: SummaryEntry[] | null }[],
+  roster: Roster,
+) {
+  return scrapped.map((g) => ({
+    generation: g.generation,
+    brewer: g.brewer_id ? roster[g.brewer_id] ?? "<unknown>" : null,
+    players: normaliseSummary(g.players, roster),
+  }));
 }
 
 /**

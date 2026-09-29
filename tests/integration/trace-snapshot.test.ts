@@ -18,6 +18,7 @@ import { CORPUS } from "../snapshots/corpus";
 import {
   composedFoldViolations,
   makeContext,
+  normaliseScrappedGenerations,
   phasesWitnessedBy,
   snapshotDocument,
   normaliseTrace,
@@ -129,7 +130,11 @@ describe.skipIf(!hasAnonTestEnv)("issue #366 — resolve_round Trace-snapshot co
     // up to its total.
     expect(composedFoldViolations(out), "composed modifier moved without a Trace step").toEqual([]);
 
-    const doc = snapshotDocument(scenario.name, out, ctx.roster);
+    const doc: Record<string, unknown> = snapshotDocument(scenario.name, out, ctx.roster);
+    // Issue #408: a replayed round also pins each scrapped generation's own
+    // summary (absent for every never-replayed scenario).
+    const scrapped = afterResolve.round.scrapped_generations as Parameters<typeof normaliseScrappedGenerations>[0];
+    if (scrapped?.length) doc.scrappedGenerations = normaliseScrappedGenerations(scrapped, ctx.roster);
     await expect(JSON.stringify(doc, null, 2) + "\n").toMatchFileSnapshot(
       `../snapshots/${scenario.name}.json`,
     );

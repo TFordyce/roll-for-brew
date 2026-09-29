@@ -46,6 +46,11 @@ export type ScrappedGeneration = {
   resolvedAt: string | null;
   trace: ResolutionTraceStep[];
   /**
+   * Issue #408: the generation's own layer-0 Resolution Summary, snapshotted at
+   * scrap time. null for a generation scrapped before summaries existed.
+   */
+  summary: ResolutionSummaryEntry[] | null;
+  /**
    * The generation's rolls grouped by layer, oldest first — layer 0 plus any
    * tie-break reroll layers. Same shape as getRoundLayerHistory, so
    * buildRerollChain consumes it directly.
@@ -144,6 +149,7 @@ type RawScrappedGeneration = {
   brewer_modifier_gain: number | null;
   resolved_at: string | null;
   resolution_trace: unknown;
+  players?: RawSummaryEntry[] | null;
   rolls: RawScrappedGenerationRoll[] | null;
   layer_participants: { layer: number; player_id: string }[] | null;
 };
@@ -219,6 +225,7 @@ function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration
     brewerModifierGain: raw.brewer_modifier_gain ?? null,
     resolvedAt: raw.resolved_at ?? null,
     trace: parseResolutionTrace(raw.resolution_trace),
+    summary: parseResolutionSummary(raw.players),
     layers: groupRollsByLayer(raw.rolls ?? []),
     layerParticipants: parseLayerParticipants(raw.layer_participants),
   };
