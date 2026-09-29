@@ -10,7 +10,8 @@ import {
   withdrawDeclaration,
 } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
-import { finalizeReactionWindow, resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { advanceRound } from "@/app/rounds/advanceRound";
 import { confirmRoundReplay, declineRoundReplay } from "@/lib/supabase/roundReplay";
 import {
   broadcastOrderChanged,
@@ -35,7 +36,7 @@ import {
   resolvePendingSpellDieManual,
   setSpellCastTarget,
 } from "@/lib/supabase/spellCasts";
-import { castReactionSpellCard, getOpenReactionWindow, passReactionWindow } from "@/lib/supabase/reactionWindow";
+import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
   afterDeferredCastTargetSet,
   afterPendingSpellDieResolved,
@@ -312,12 +313,12 @@ export async function resolvePendingSpellDieManualAction(
  * If this decision drops the resolving player out of Reaction-card
  * eligibility and they were the round's currently-open reaction window's
  * last eligible holder, resolve_card_swap (0064, issue #251) closes that
- * window and hands back its round id — finalizing the layer in the same
- * request the way passReactionWindowAction's own "if closed, finalize" does
- * below, so the round doesn't get stuck waiting on a player who no longer
- * has anything to react with. Unlike that action, there's nothing to
- * broadcast on the non-closing path here — a swap that doesn't change
- * eligibility never touches the window at all.
+ * window and hands back its round id. That id only picks the round to raise
+ * reactionWindowChanged for (ADR 0008) — finalize_layer's locked read decides
+ * whether it finalizes — so the round doesn't get stuck waiting on a player
+ * who no longer has anything to react with. Unlike passReactionWindowAction,
+ * there's nothing to broadcast on the non-closing path here — a swap that
+ * doesn't change eligibility never touches the window at all.
  */
 export async function resolveCardSwapAction(formData: FormData) {
   const keepNew = formData.get("keepNew") === "true";
@@ -328,7 +329,7 @@ export async function resolveCardSwapAction(formData: FormData) {
   const closedRoundId = await resolveCardSwap(supabase, keepNew, roomId);
 
   if (closedRoundId) {
-    await finalizeReactionWindow(supabase, closedRoundId);
+    await advanceRound(supabase, closedRoundId, "reactionWindowChanged");
     if (roomId) {
       await broadcastReactionWindowChanged(supabase, roomId, { roundId: closedRoundId });
     }
@@ -538,9 +539,9 @@ export async function endActiveEffectAction(
  * Casting a Reaction card burns it back into the deck, so a cast can empty
  * the round's eligible-holder set — in which case cast_reaction_spell_card
  * closes the window itself (migration 0104, issue #387) instead of leaving
- * it open with nobody able to Pass. When that happens, finalize the layer in
- * the same request, exactly as passReactionWindowAction / resolveCardSwapAction
- * do when their own action closes the window.
+ * it open with nobody able to Pass. Either way this raises
+ * reactionWindowChanged (ADR 0008): finalize_layer resolves the round in this
+ * request when the window closed, and is a noop while it's still open.
  */
 export async function castReactionSpellCardAction(
   _prevState: SpellCastActionState,
@@ -563,13 +564,7 @@ export async function castReactionSpellCardAction(
     return resolveSpellCastError(error);
   }
 
-  // If this cast left nobody eligible to react, the RPC already closed the
-  // window (0104) — get_open_reaction_window then returns null. Finalize the
-  // layer now so the round resolves in this request rather than stalling.
-  const stillOpen = await getOpenReactionWindow(supabase, roundId);
-  if (!stillOpen) {
-    await finalizeReactionWindow(supabase, roundId);
-  }
+  await advanceRound(supabase, roundId, "reactionWindowChanged");
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });
@@ -579,12 +574,12 @@ export async function castReactionSpellCardAction(
 }
 
 /**
- * Passes on the round's currently-open reaction window (issue #68). If this
- * pass closes the window (every currently-eligible Reaction-card holder has
- * now passed in the same poll round), finalizes the layer — applying any
- * active forced-reroll-in-place effects and running the resolution engine —
- * in the same request, then broadcasts the change either way so every
- * device's ribbon banner and dice-reveal screen update in lockstep.
+ * Passes on the round's currently-open reaction window (issue #68), then
+ * raises reactionWindowChanged (ADR 0008): if this pass closed the window
+ * (every currently-eligible Reaction-card holder has now passed in the same
+ * poll round), finalize_layer runs Layer finalization in the same request.
+ * Broadcasts the change either way so every device's ribbon banner and
+ * dice-reveal screen update in lockstep.
  */
 export async function passReactionWindowAction(formData: FormData) {
   const roundId = formData.get("roundId");
@@ -594,18 +589,15 @@ export async function passReactionWindowAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  let closed: boolean;
   try {
-    closed = await passReactionWindow(supabase, roundId);
+    await passReactionWindow(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
     revalidateRoundSurfaces();
     return;
   }
 
-  if (closed) {
-    await finalizeReactionWindow(supabase, roundId);
-  }
+  await advanceRound(supabase, roundId, "reactionWindowChanged");
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastReactionWindowChanged(supabase, roomId, { roundId });

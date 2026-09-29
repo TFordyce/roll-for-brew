@@ -45,7 +45,15 @@ begin
          coalesce(r.scrapped_generations, '[]'::jsonb)
     into v_status, v_room_id, v_layer, v_trace, v_summary, v_scrapped
     from public.rounds r
-   where r.id = p_round_id;
+   where r.id = p_round_id
+     -- Issue #414: the dry run below writes (then rolls back) the same Cast
+     -- Log rows Layer finalization writes. finalize_layer / resolve_round
+     -- hold the round row lock FOR UPDATE before their writes; taking it FOR
+     -- SHARE here, before ours, orders the two instead of letting them
+     -- deadlock on those rows, and means the status read above is still
+     -- true when the dry run starts. Concurrent Recap reads don't block each
+     -- other.
+     for share;
 
   if v_status is null then
     raise exception 'get_round_recap: round not found';
