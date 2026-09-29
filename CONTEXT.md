@@ -136,6 +136,14 @@ _Avoid_: roll calculation (that's the current per-player display), effect breakd
 The player-clarity surface over the Resolution Trace (#314) — the primary content of `RoundReveal` whenever a round has ≥ 1 cast. A tap-to-filter **cast strip** (one chip per cast, state `armed → on-stack → resolved{applied/negated/redirected/blocked/backfired/no-op}`) above a flat, **Recap-phase**-grouped list of step rows in resolution order. A round with no casts shows no Recap at all. Rendered from one pure function; room history re-renders past rounds with the same one.
 _Avoid_: round summary, effect breakdown, roll calculation (the per-tile display, which stays).
 
+**Resolution Summary**:
+The per-player final values the resolver settled on for a round's Layer 0 — each participant's final roll, roll-time modifier, composed modifier, total, and nat-1/nat-20 standing — recorded beside the Resolution Trace, never re-derived by the app. It is what a player's roll row and badge show; the Trace steps targeting that player are the terms that explain it.
+_Avoid_: roll calculation (that's the per-tile display that renders it), final scores, outcome (that's brewer vs tie).
+
+**Provisional Recap**:
+The Round Recap and Resolution Summary as they would stand if the round resolved right now — a non-persisting run of the same resolver, shown while Layer 0's rolls are in but the round is still live (typically during the reaction window). Reactions and roll transforms still to come can change it; it becomes the real Recap only when the round resolves.
+_Avoid_: preview (bare), projected outcome, draft recap.
+
 **Recap phase**:
 The band a Recap step falls in — `Before the roll`, `Reaction window`, or `Outcome` — derived from the source cast's window, not from Layer. Headers follow resolution order and repeat whenever the phase changes, so `Reaction window` can appear twice in one Recap. Distinct from **Layer** (tie-break reroll depth), from a cast's own pre-roll/reaction timing, and from the **Resolver pipeline** (the resolver's internal phases).
 _Avoid_: phase (bare — always qualify as "Recap phase", vs "resolver phase"), stage, band, layer.
