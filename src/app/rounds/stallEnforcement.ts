@@ -12,7 +12,8 @@ import {
   resolveStalledPendingSpellDice,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
-import { applyLayerOutcome, finalizeReactionWindow } from "@/app/rounds/layerResolution";
+import { applyLayerOutcome } from "@/app/rounds/layerResolution";
+import { advanceRound } from "@/app/rounds/advanceRound";
 import { closeReactionWindow, countEligibleReactionHolders, getOpenReactionWindow } from "@/lib/supabase/reactionWindow";
 
 export type StallOutcome =
@@ -125,13 +126,15 @@ export async function enforceStallTimeout(
       // Migration 0104 stops cast_reaction_spell_card doing this going
       // forward; this clears any window a pre-0104 cast (or some unforeseen
       // path) already stranded, once this same 5-minute clock has elapsed.
-      // finalizeReactionWindow applies the window's roll-transform casts
-      // (Zariel's Fall, ...) and resolves the layer — the very same work the
-      // ordinary "every eligible holder passed" path does.
+      // Closing it raises reactionWindowChanged, the same event the ordinary
+      // "every eligible holder passed" path raises: finalize_layer applies
+      // the window's roll-transform casts (Zariel's Fall, ...) and resolves
+      // the layer. It has no caller-identity gate, so this is safe on a
+      // spectator's render too.
       const openWindow = await getOpenReactionWindow(supabase, roundId);
       if (openWindow && (await countEligibleReactionHolders(supabase, roundId)) === 0) {
         await closeReactionWindow(supabase, openWindow.windowId);
-        await finalizeReactionWindow(supabase, roundId);
+        await advanceRound(supabase, roundId, "reactionWindowChanged");
         return { action: "reactionWindowRecovered" };
       }
     }

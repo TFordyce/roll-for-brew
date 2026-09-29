@@ -156,8 +156,9 @@ export async function castReactionSpellCard(
 /**
  * Calls pass_reaction_window: records the caller's pass for the window's
  * current poll round. Returns true if that closed the window (every
- * currently-eligible holder has now passed this poll round) — the caller
- * (passReactionWindowAction) then finalizes the layer.
+ * currently-eligible holder has now passed this poll round).
+ * passReactionWindowAction doesn't branch on it: it raises
+ * reactionWindowChanged either way and finalize_layer's locked read decides.
  */
 export async function passReactionWindow(supabase: SupabaseClient, roundId: string): Promise<boolean> {
   const { data, error } = await supabase.rpc("pass_reaction_window", { p_round_id: roundId });

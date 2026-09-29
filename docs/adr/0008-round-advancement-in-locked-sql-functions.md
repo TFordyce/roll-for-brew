@@ -17,7 +17,7 @@ Advancement now has one entry point on each side:
     2. Do nothing while a window is open or the Layer is incomplete.
     3. Run the eager roll-input shim (forced reroll, flip, swap, chosen-pair; ADR 0005).
     4. Call `resolve_round`, which is unchanged and still pure.
-    5. Commit the outcome: burn the declared number, then either write the resolution and record any pending round replay, or advance to the Tie-Break Reroll Layer.
+    5. Commit the outcome: burn the declared number, then either write the resolution and record any pending round replay, or advance to the Tie-Break Reroll Layer. (Built in #414: the burn needs no write of its own. Since #310 the declared-number sentinel is a duration-1 projection row that ages out once the round resolves, so committing the resolution in this transaction is the burn.)
 
   Both functions return an outcome (`brewer` / `tie` / `windowOpened` / `noop` with a reason). Neither raises because the caller lost a race or isn't a roller: whether a round can advance does not depend on who asks.
 - **One TS module, `advanceRound(supabase, roundId, event)`, routes events.** Its events are `layerRolled`, `pendingDieResolved`, `deferredTargetSet`, `reactionWindowChanged` and `stallCleared`. The event only names what triggered the call and decides which SQL function may run: `reactionWindowChanged` may only finalize, and every other event goes through `advance_layer`. The event carries no claims about state; the locked read in SQL decides whether anything happens. The module sends every broadcast that advancing caused (layer rolls revealed, round revealed, layer tied, round replay changed). The caller still broadcasts its own write and revalidates.
