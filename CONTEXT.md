@@ -80,6 +80,10 @@ _Avoid_: round (a round can span several layers), attempt, phase.
 A reroll forced when two or more players tie at the current Layer; it always draws a single unmodified d20 — spells and reactions are exempt at any layer above 0.
 _Avoid_: tie-break (ambiguous between the event and the whole resolution phase), reroll (too generic — doesn't imply the spell/reaction exemption).
 
+**Layer finalization**:
+The moment a Layer's outcome becomes final: its rolls are locked in, the roll-input transforms (forced reroll, flip, swap, chosen-pair) are applied, the resolver runs, and the result — a brewer, or a Tie-Break Reroll into the next Layer — is committed and revealed. Layer 0 finalizes only once its reaction window has closed and nothing is still pending (no unresolved Pending Spell Die, no unnamed Deferred Forced-Reroll Target); a Layer above 0 has no reaction window and finalizes as soon as every expected roller has rolled. Happens exactly once per Layer, and never while that Layer's reaction window is open — resolving a pending die only unblocks it.
+_Avoid_: reaction-window finalize (Layers above 0 finalize with no window), resolve (that's the resolver's pure evaluation, which can also run without finalizing — e.g. a Provisional Recap).
+
 **Reroll Chain**:
 A player's ordered sequence of rolls across a round's Layers, from the original layer-0 roll through every Tie-Break Reroll that followed it. Rendered in `RoundReveal` as a nested, indented row per layer.
 _Avoid_: reroll history, layer history (that's the raw `get_round_layer_history` data this is built from).
@@ -189,7 +193,7 @@ Moving the victim's single held card into the thief's hand. The card is pinned a
 _Avoid_: steal (reserved for modifier steals — Tea Leaf, Spillage), transfer, draw redirect.
 
 **Chosen-pair roll transform** (`effect_kind = 'roll_pair_transform'`):
-The eager-shim primitive (Tier A #2, spec #302 §12, ADR 0005) behind **Brew-tal Swap**, **Stir the Pot**, **Steaming Mug Bond** and **Tea for Two** — it generalises `roll_swap` past the automatic highest↔lowest pick to a caster-named pair, with `effect_params.op` one of `swap` (exchange the pair's rolls), `min` (both take the lower of the two) or `max` (both take the higher). The pair is `cast_inputs.pair` (two player ids); like the other roll-input kinds it runs at reaction-window finalize (`apply_roll_pair_transform`, resolution order 5 — after `roll_swap`, so "flip before swap before chosen-pair"), records per-player before→after into `cast_inputs.roll_transform`, and `resolve_round` Phase 3 adopts it. A roll-domain ward on *either* named player cancels the whole transform (a half-transform cannot conserve values).
+The eager-shim primitive (Tier A #2, spec #302 §12, ADR 0005) behind **Brew-tal Swap**, **Stir the Pot**, **Steaming Mug Bond** and **Tea for Two** — it generalises `roll_swap` past the automatic highest↔lowest pick to a caster-named pair, with `effect_params.op` one of `swap` (exchange the pair's rolls), `min` (both take the lower of the two) or `max` (both take the higher). The pair is `cast_inputs.pair` (two player ids); like the other roll-input kinds it runs at Layer finalization (`apply_roll_pair_transform`, resolution order 5 — after `roll_swap`, so "flip before swap before chosen-pair"), records per-player before→after into `cast_inputs.roll_transform`, and `resolve_round` Phase 3 adopts it. A roll-domain ward on *either* named player cancels the whole transform (a half-transform cannot conserve values).
 _Avoid_: paired swap, roll link, `roll_swap` (that's the highest↔lowest table-wide one).
 
 **Courage Token**:
