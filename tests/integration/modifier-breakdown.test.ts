@@ -25,7 +25,10 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
   // needs a resolved round's cups_made to exist and be summable, not the
   // resolution engine itself (covered by roll-and-resolve.test.ts). Tracked
   // individually (rather than via trackRoom) since it's created against
-  // today's shared room, which other tests/real usage also share.
+  // today's shared room, which other tests/real usage also share. An
+  // unsuppressed round's applied gain equals its cups -- the breakdown sums
+  // brewer_modifier_gain since #395 (suppressed gain:
+  // suppressed-gain-base-modifier.test.ts).
   async function insertResolvedRound(roomId: string, brewerId: string, cupsMade: number) {
     const { data, error } = await admin
       .from("rounds")
@@ -35,6 +38,7 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
         status: "resolved",
         brewer_id: brewerId,
         cups_made: cupsMade,
+        brewer_modifier_gain: cupsMade,
       })
       .select("id")
       .single();
@@ -53,7 +57,7 @@ describe.skipIf(!hasAnonTestEnv)("get_modifier_breakdown", () => {
     expect(data).toEqual([{ cups_made: 0, adjustments: 0, spell_effects: 0 }]);
   });
 
-  it("sums resolved-round cups_made as brewer, in that room", async () => {
+  it("sums resolved-round applied gain as brewer, in that room", async () => {
     const player = await signUp("modbreak-cups");
 
     await insertResolvedRound(player.roomId, player.googleSub, 2);
