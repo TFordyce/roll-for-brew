@@ -5,7 +5,7 @@ export type RollCalculationResult =
 
 /**
  * Classifies a revealed roll for display purposes (issue #99): a plain roll
- * combines with its modifier into the total resolveLayer actually compares,
+ * combines with its modifier into the total the resolver actually compares,
  * but nat-1/nat-20 rolls (issue #5) short-circuit that comparison — nat-1
  * brews outright regardless of modifier, and nat-20 is exempted from the
  * layer entirely unless every entry rolled one. Showing "1 + 2 = 3" or

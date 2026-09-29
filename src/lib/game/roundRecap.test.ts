@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildRoundRecap, buildScrappedGenerationRecap } from "./roundRecap";
-import type { RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
+import { buildRerollChain, buildRoundRecap, buildScrappedGenerationRecap } from "./roundRecap";
+import type {
+  ResolutionSummaryEntry,
+  RoundRecapCast,
+  RoundRecapData,
+  ScrappedGeneration,
+} from "@/lib/supabase/roundRecap";
 import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
 
 // --- fixture helpers ---------------------------------------------------
@@ -62,7 +67,18 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
 }
 
 function data(over: Partial<RoundRecapData> = {}): RoundRecapData {
-  return { resolved: true, layerZeroOutcome: "brewer", trace: [], casts: [], scrappedGenerations: [], ...over };
+  return {
+    resolved: true,
+    layerZeroOutcome: "brewer",
+    trace: [],
+    casts: [],
+    scrappedGenerations: [],
+    layers: [],
+    layerParticipants: [],
+    summary: null,
+    provisional: false,
+    ...over,
+  };
 }
 
 beforeEach(() => {
@@ -511,6 +527,7 @@ function scrappedGen(over: Partial<ScrappedGeneration> = {}): ScrappedGeneration
     brewerModifierGain: 3,
     resolvedAt: "2026-09-02T10:00:00Z",
     trace: [],
+    summary: null,
     layers: [layer({ layer: 0 })],
     layerParticipants: [
       { layer: 0, playerId: "ada" },
@@ -627,6 +644,376 @@ describe("buildScrappedGenerationRecap", () => {
       ["ada", "ben"], // cass late-declared in gen 0 only
     );
     expect(model.firstAttemptRolls.map((r) => r.playerId)).toEqual(["ada", "ben", "cass"]);
-    expect(model.firstAttemptRolls[2]!.enteredByAdmin).toBe(true);
+    expect(model.firstAttemptRolls[2]!.row.enteredByAdmin).toBe(true);
+  });
+
+  it("#408: rows show the generation's own Resolution Summary and Trace terms", () => {
+    const model = buildScrappedGenerationRecap(
+      scrappedGen({
+        summary: [
+          { playerId: "ada", roll: 10, snapshot: 2, composed: 7, total: 17, nat: null, diceReduced: false },
+          { playerId: "ben", roll: 12, snapshot: 0, composed: 0, total: 12, nat: null, diceReduced: false },
+        ],
+        trace: [
+          step({ targetPlayer: "ada", before: { type: "modifier", value: 2 }, after: { type: "modifier", value: 7 } }),
+        ],
+      }),
+      displayName,
+      ["ada", "ben"],
+    );
+    const [ada, ben] = model.firstAttemptRolls;
+    expect(ada!.row).toMatchObject({ total: 17, composed: 7, badgeValue: 17, degraded: false });
+    expect(ada!.row.terms.map((t) => [t.cardName, t.delta])).toEqual([["Lucky Sip", 5]]);
+    expect(ben!.row).toMatchObject({ total: 12, degraded: false });
+  });
+
+  it("#408: a generation scrapped before summaries existed renders degraded rows", () => {
+    const model = buildScrappedGenerationRecap(scrappedGen({ summary: null }), displayName, ["ada", "ben"]);
+    expect(model.firstAttemptRolls.map((r) => [r.playerId, r.row.roll, r.row.total, r.row.degraded])).toEqual([
+      ["ada", 10, null, true],
+      ["ben", 12, null, true],
+    ]);
+  });
+});
+
+// --- Per-player roll rows (issue #407) ----------------------------------
+
+function summary(playerId: string, over: Partial<ResolutionSummaryEntry> = {}): ResolutionSummaryEntry {
+  const roll = over.roll ?? 10;
+  const composed = over.composed ?? 0;
+  return {
+    playerId,
+    roll,
+    snapshot: 0,
+    composed,
+    total: roll + composed,
+    nat: null,
+    diceReduced: false,
+    ...over,
+  };
+}
+
+const layer0 = (...rolls: ReturnType<typeof lr>[]): CompletedLayer[] => [{ layer: 0, rolls }];
+
+describe("buildRoundRecap rows", () => {
+  it("total, composed and nat come from the Resolution Summary, not recomputed", () => {
+    const model = buildRoundRecap({
+      data: data({
+        // A summary that disagrees with roll + snapshot on purpose: the row
+        // must show the resolver's numbers.
+        summary: [summary("ada", { roll: 7, snapshot: 1, composed: 4, total: 11 }), summary("ben", { roll: 1, nat: "nat1", total: 3, composed: 2 })],
+        layers: layer0(lr("ada", 7, 1), lr("ben", 1, 2)),
+      }),
+      displayName,
+    });
+    expect(model.rows.find((r) => r.playerId === "ada")).toMatchObject({
+      roll: 7,
+      snapshot: 1,
+      composed: 4,
+      total: 11,
+      nat: null,
+      badgeValue: 11,
+      degraded: false,
+    });
+    expect(model.rows.find((r) => r.playerId === "ben")).toMatchObject({ nat: "nat1", badgeValue: 1 });
+  });
+
+  it("a Calami-Tea-floored 1 is not a nat 1 — the summary says so and the row follows", () => {
+    const model = buildRoundRecap({
+      data: data({
+        summary: [summary("ada", { roll: 1, total: 1, diceReduced: true, nat: null })],
+        layers: layer0(lr("ada", 2)),
+      }),
+      displayName,
+    });
+    expect(model.rows[0]).toMatchObject({ roll: 1, nat: null, badgeValue: 1, diceReduced: true });
+  });
+
+  it("terms are the Trace steps targeting the player, with card, caster and before→after", () => {
+    const model = buildRoundRecap({
+      data: data({
+        summary: [summary("ada", { composed: 3, total: 13 }), summary("ben")],
+        layers: layer0(lr("ada", 10), lr("ben", 10)),
+        trace: [
+          step({ targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 3 } }),
+          step({
+            displayKind: "roll_flip",
+            sourceCast: { castId: "C9", activeEffectId: null, cardName: "Topsy Turvy", casterPlayerId: "ben" },
+            targetPlayer: "ben",
+            before: { type: "roll", value: 10 },
+            after: { type: "roll", value: 11 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const ada = model.rows.find((r) => r.playerId === "ada")!;
+    expect(ada.terms).toEqual([
+      {
+        displayKind: "flat_modifier",
+        domain: "modifier",
+        cardName: "Lucky Sip",
+        casterName: "Cass",
+        from: 0,
+        to: 3,
+        delta: 3,
+        struck: null,
+        restOfDay: false,
+        pending: false,
+      },
+    ]);
+    const ben = model.rows.find((r) => r.playerId === "ben")!;
+    expect(ben.terms).toMatchObject([{ domain: "roll", cardName: "Topsy Turvy", from: 10, to: 11, delta: null }]);
+  });
+
+  it("warded, negated and redirected-away steps are struck terms", () => {
+    const model = buildRoundRecap({
+      data: data({
+        summary: [summary("ada"), summary("ben")],
+        layers: layer0(lr("ada", 10), lr("ben", 10)),
+        trace: [
+          // a redirect moved a cast aimed at ada onto ben
+          step({
+            displayKind: "redirect",
+            sourceCast: { castId: "C7", activeEffectId: null, cardName: "Mug Swap", casterPlayerId: "ada" },
+            targetPlayer: "ben",
+            before: { type: "target", value: "ada" },
+            after: { type: "target", value: "ben" },
+          }),
+          // a negated victim step on ada
+          step({
+            displayKind: "flat_modifier",
+            sourceCast: { castId: null, activeEffectId: null, cardName: "Bad Brew", casterPlayerId: "cass" },
+            targetPlayer: "ada",
+            before: { type: "status", value: "negated" },
+            after: { type: "status", value: "negated" },
+            negated: true,
+          }),
+          // a ward blocked a flat modifier on ben
+          step({
+            displayKind: "warded",
+            targetPlayer: "ben",
+            before: { type: "modifier", value: 0 },
+            after: { type: "modifier", value: -2 },
+            outcome: "blocked",
+            ward: { wardCastId: "W1", wardCardName: "Bag for Life" },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const ada = model.rows.find((r) => r.playerId === "ada")!;
+    expect(ada.terms.map((t) => [t.cardName, t.struck])).toEqual([
+      ["Mug Swap", "redirected"],
+      ["Bad Brew", "negated"],
+    ]);
+    const ben = model.rows.find((r) => r.playerId === "ben")!;
+    // the redirect step itself lands on ben as a status step, not a term; the
+    // redirected effect's own modifier step would be ben's applied term.
+    expect(ben.terms.map((t) => [t.cardName, t.struck, t.delta])).toEqual([["Lucky Sip", "warded", null]]);
+  });
+
+  it("a countered redirect (target unchanged) strikes nothing", () => {
+    const model = buildRoundRecap({
+      data: data({
+        summary: [summary("ada")],
+        layers: layer0(lr("ada", 10)),
+        trace: [
+          step({
+            displayKind: "redirect",
+            targetPlayer: "ben",
+            before: { type: "target", value: "ada" },
+            after: { type: "target", value: "ada" },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    expect(model.rows[0]!.terms).toEqual([]);
+  });
+
+  it("rest-of-day and pending-die steps are terms that don't count toward the total", () => {
+    const model = buildRoundRecap({
+      data: data({
+        summary: [summary("ada")],
+        layers: layer0(lr("ada", 10)),
+        trace: [
+          step({
+            displayKind: "persistent_modifier_transfer",
+            targetPlayer: "ada",
+            before: { type: "modifier", value: 4 },
+            after: { type: "modifier", value: 3 },
+            restOfDay: true,
+          }),
+          step({
+            displayKind: "dice_tick",
+            targetPlayer: "ada",
+            before: { type: "roll", value: 10 },
+            after: { type: "roll", value: 10 },
+            diceTick: null,
+          }),
+        ],
+      }),
+      displayName,
+    });
+    expect(model.rows[0]!.terms.map((t) => [t.displayKind, t.restOfDay, t.pending, t.delta])).toEqual([
+      ["persistent_modifier_transfer", true, false, null],
+      ["dice_tick", false, true, null],
+    ]);
+  });
+
+  it("the provisional flag passes through to every row", () => {
+    const model = buildRoundRecap({
+      data: data({ resolved: false, provisional: true, summary: [summary("ada")], layers: layer0(lr("ada", 10)) }),
+      displayName,
+    });
+    expect(model.provisional).toBe(true);
+    expect(model.rows[0]!.provisional).toBe(true);
+  });
+
+  it("no summary (a round resolved before it existed): degraded row — roll, snapshot, terms, no total", () => {
+    const model = buildRoundRecap({
+      data: data({
+        summary: null,
+        layers: layer0(lr("ada", 1, 2)),
+        trace: [step({ targetPlayer: "ada", before: { type: "modifier", value: 2 }, after: { type: "modifier", value: 5 } })],
+      }),
+      displayName,
+    });
+    expect(model.rows[0]).toMatchObject({
+      playerId: "ada",
+      roll: 1,
+      snapshot: 2,
+      composed: null,
+      total: null,
+      nat: null,
+      badgeValue: null,
+      degraded: true,
+    });
+    expect(model.rows[0]!.terms).toHaveLength(1);
+  });
+
+  it("provisional (live dry run): the Ledger shows the Trace's steps so far, numbered, but never a tie", () => {
+    const c1 = cast({ castId: "C1", targetPlayerId: "ada" });
+    const model = buildRoundRecap({
+      data: data({
+        resolved: false,
+        provisional: true,
+        layerZeroOutcome: null,
+        casts: [c1],
+        summary: [summary("ada", { composed: 3, total: 13 })],
+        layers: layer0(lr("ada", 10)),
+        trace: [
+          step({ targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 3 } }),
+          // the dry run's brewer pick — must not be announced while provisional
+          step({
+            displayKind: "tea_maker_override",
+            targetPlayer: "ada",
+            before: { type: "status", value: "pending" },
+            after: { type: "status", value: "brewer" },
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const steps = model.phases.flatMap((p) => p.steps);
+    expect(steps.map((s) => [s.displayIndex, s.pending, s.beforeAfter?.to])).toEqual([["1", false, "3"]]);
+    expect(model.phases.map((p) => p.label)).not.toContain("Outcome");
+    expect(model.castStrip.map((c) => c.state)).toEqual(["applied"]);
+    expect(model.endedInTieBreak).toBe(false);
+    expect(model.provisional).toBe(true);
+  });
+
+  it("zero-cast round still gets rows", () => {
+    const model = buildRoundRecap({
+      data: data({ summary: [summary("ada")], layers: layer0(lr("ada", 10)) }),
+      displayName,
+    });
+    expect(model.hasContent).toBe(false);
+    expect(model.rows).toHaveLength(1);
+  });
+
+  it("no layer-0 rolls and no summary yet: no rows", () => {
+    expect(buildRoundRecap({ data: data({ resolved: false }), displayName }).rows).toEqual([]);
+  });
+});
+
+// --- Reroll Chain (issue #406) ------------------------------------------
+
+function lr(playerId: string, value: number, modifierSnapshot = 0) {
+  return { playerId, value, modifierSnapshot, discardedValue: null, enteredByAdmin: false };
+}
+const parts = (layer: number, ...ids: string[]) => ids.map((playerId) => ({ layer, playerId }));
+
+describe("buildRerollChain", () => {
+  it("resolved outright at layer 0: nobody is in layer 1, so no chain", () => {
+    const layers: CompletedLayer[] = [{ layer: 0, rolls: [lr("ada", 15), lr("ben", 8)] }];
+    expect(buildRerollChain("ben", layers, [])).toEqual([]);
+  });
+
+  it("plain tie: every layer-1 participant gets one resolved level", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 15), lr("ben", 7, 3), lr("cass", 4, 6)] },
+      { layer: 1, rolls: [lr("ben", 9, 3), lr("cass", 12, 6)] },
+    ];
+    const lp = parts(1, "ben", "cass");
+    expect(buildRerollChain("ben", layers, lp)).toEqual([
+      { layer: 1, roll: 9, modifier: 3, nat: null, badgeValue: 12, tied: false },
+    ]);
+    expect(buildRerollChain("cass", layers, lp)).toEqual([
+      { layer: 1, roll: 12, modifier: 6, nat: null, badgeValue: 18, tied: false },
+    ]);
+    expect(buildRerollChain("ada", layers, lp)).toEqual([]);
+  });
+
+  it("spell-created tie: roll-time sums differ, but next-layer membership says they tied", () => {
+    // ada 10+0 vs ben 12+0 never tie on roll-time modifiers; a spell made the
+    // composed totals equal, and the resolver sent both to layer 1.
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 10), lr("ben", 12), lr("cass", 18)] },
+      { layer: 1, rolls: [lr("ada", 5), lr("ben", 14)] },
+    ];
+    const lp = parts(1, "ada", "ben");
+    expect(buildRerollChain("ada", layers, lp).map((l) => l.layer)).toEqual([1]);
+    expect(buildRerollChain("ben", layers, lp).map((l) => l.layer)).toEqual([1]);
+    expect(buildRerollChain("cass", layers, lp)).toEqual([]);
+  });
+
+  it("multi-layer tie: tied at N exactly when in layer N+1", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 15), lr("ben", 7), lr("cass", 7)] },
+      { layer: 1, rolls: [lr("ben", 5), lr("cass", 5)] },
+      { layer: 2, rolls: [lr("ben", 9), lr("cass", 3)] },
+    ];
+    const lp = [...parts(1, "ben", "cass"), ...parts(2, "ben", "cass")];
+    expect(buildRerollChain("ben", layers, lp).map((l) => [l.layer, l.tied])).toEqual([
+      [1, true],
+      [2, false],
+    ]);
+  });
+
+  it("a next layer that has not finished rolling is not shown yet, but the tie is", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 15), lr("ben", 7), lr("cass", 7)] },
+      { layer: 1, rolls: [lr("ben", 5), lr("cass", 5)] },
+    ];
+    const lp = [...parts(1, "ben", "cass"), ...parts(2, "ben", "cass")];
+    expect(buildRerollChain("ben", layers, lp)).toEqual([
+      { layer: 1, roll: 5, modifier: 0, nat: null, badgeValue: 5, tied: true },
+    ]);
+  });
+
+  // ADR 0007: tie-break layers have no spell logic and no summary, so their
+  // nat standing stays a TS rule — pinned here to _rr_pick_lowest's 3-argument
+  // form (no dice-reduced exemption at layer > 0): a 1 is a natural 1 and a 20
+  // a natural 20 regardless of modifier, and the badge shows the bare roll.
+  it("tie-layer nat-1 / nat-20 follow the resolver's 3-argument lowest-pick rule", () => {
+    const layers: CompletedLayer[] = [
+      { layer: 0, rolls: [lr("ada", 7, 2), lr("ben", 7, 2)] },
+      { layer: 1, rolls: [lr("ada", 1, 9), lr("ben", 20, -4)] },
+    ];
+    const lp = parts(1, "ada", "ben");
+    expect(buildRerollChain("ada", layers, lp)[0]).toMatchObject({ nat: "nat1", badgeValue: 1 });
+    expect(buildRerollChain("ben", layers, lp)[0]).toMatchObject({ nat: "nat20", badgeValue: 20 });
   });
 });

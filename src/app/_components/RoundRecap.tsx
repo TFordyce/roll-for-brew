@@ -140,6 +140,11 @@ export function RoundRecap({
     <section className="mb-4 rounded-md border-2 border-gilt-dark bg-tavern-panel-dark p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="font-display text-xs uppercase tracking-widest text-gilt-bright">Round Recap</h3>
+        {model.provisional ? (
+          // Issue #409: the Provisional Recap — the resolver's dry run over
+          // the casts so far; reactions can still change it.
+          <span className="font-body text-[11px] italic text-parchment-dim">so far — reactions pending</span>
+        ) : null}
       </div>
 
       <CastStrip chips={model.castStrip} activeCast={activeCast} onToggle={toggle} />

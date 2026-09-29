@@ -5,16 +5,12 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
-import { classifyRollCalculation } from "@/lib/game/rollCalculation";
-import { buildRollCalculation } from "@/lib/game/rollCalculationEffects";
 import { firstNameOrFallback } from "@/lib/game/displayName";
-import { buildRerollChain } from "@/lib/game/rerollChain";
-import { getRoundModifierEffectDetails, type ModifierEffectDetail } from "@/lib/supabase/spellCasts";
-import { getRoundLayerHistory, type CompletedLayer } from "@/lib/supabase/rolls";
 import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
-import { buildRoundRecap } from "@/lib/game/roundRecap";
+import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { CardFrame } from "@/app/_components/CardFrame";
-import { RollCalculation } from "@/app/_components/RollCalculation";
+import { RollRowExpression } from "@/app/_components/RollRowExpression";
+import { DieIcon } from "@/app/_components/DieIcon";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 import { RoundRecap, scrollToRecapPlayer } from "@/app/_components/RoundRecap";
 import { RerollChainRows } from "@/app/_components/RerollChainRows";
@@ -66,9 +62,9 @@ export type RoundRevealParticipant = {
  *
  * Each row also carries any reroll history the player went through (issue
  * #220): once a layer-0 tie sends a player through one or more reroll
- * layers, buildRerollChain (src/lib/game/rerollChain.ts) walks
- * getRoundLayerHistory's full per-layer record into an ordered list of
- * dependent rows nested under that player's primary row — one per reroll
+ * layers, buildRerollChain (src/lib/game/roundRecap.ts, issue #406) walks
+ * get_round_recap's per-layer rolls and layer participants into an ordered
+ * list of dependent rows nested under that player's primary row — one per reroll
  * level, indented further for a chained tie, each rendered with the same
  * rich RollCalculation treatment as layer 0 (never a discarded die or
  * effect badge, since #219 fixed spell effects/reactions out of tie-break
@@ -115,31 +111,18 @@ export function RoundReveal({
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
   const [showKettleModal, setShowKettleModal] = useState(false);
-  // Per-effect detail rows (issue #167) for this round's spell-effect
-  // badges — fetched client-side once rolls are known, since neither
-  // realtime broadcast carries them (they're keyed off the round, not a
-  // specific reveal event). Best-effort: RollCalculation just renders
-  // without badges if this fetch fails.
-  const [effectDetails, setEffectDetails] = useState<ModifierEffectDetail[]>([]);
-  // The round's full reroll-layer history (issue #220), fetched alongside
-  // effectDetails once rolls are known — feeds buildRerollChain's nested
-  // dependent rows below. Best-effort like effectDetails: a fetch failure
-  // just leaves every row without its reroll history rather than breaking
-  // the reveal.
-  const [history, setHistory] = useState<CompletedLayer[]>([]);
-  // The Round Recap "Ledger" data (issue #314): the Resolution Trace + this
-  // round's cast list. Fetched client-side (no realtime broadcast carries it)
-  // and refetched on every reveal/resolve so it flips from the live pending
-  // ledger to the resolved one. Best-effort: the Recap is additive, so a
-  // failed fetch just falls back to the plain reveal below.
+  // Everything the rows, the Ledger and the Reroll Chain render (spec #402,
+  // ADR 0007): one get_round_recap read — the Resolution Trace and Summary
+  // (the Provisional Recap's dry run while the round is live), the cast list,
+  // and the layer rolls + tie-break participants. Fetched client-side (no
+  // realtime broadcast carries it). Best-effort: a failed fetch leaves the
+  // rows showing just the revealed dice.
   const [recap, setRecap] = useState<RoundRecapData | null>(null);
-  // Bumped by every layer-rolls-revealed broadcast (any layer, not just 0)
-  // and by round-revealed, to retrigger the history fetch below — issue
-  // #220 piece 4's "the dependent row needs to populate live ... once a
-  // layer's rolls are broadcast" requirement. Plain state instead of
-  // folding into the `rolls` dependency below, since `rolls` itself now
-  // only tracks layer 0's own reveal (see the two handlers further down).
-  const [historyRefreshToken, setHistoryRefreshToken] = useState(0);
+  // Bumped by every broadcast that can change what the resolver would say —
+  // any layer's reveal, round-revealed, a cast, a pass / reaction-window
+  // change, a Pending Spell Die's value (issue #409) — to refetch the recap.
+  const [recapRefreshToken, setRecapRefreshToken] = useState(0);
+  const bumpRecap = () => setRecapRefreshToken((t) => t + 1);
   const resultsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function clearResultsTimeout() {
@@ -158,49 +141,12 @@ export function RoundReveal({
     setRolls(null);
     setBrewerId(null);
     setShowKettleModal(false);
-    setEffectDetails([]);
-    setHistory([]);
     setRecap(null);
-    setHistoryRefreshToken(0);
+    setRecapRefreshToken(0);
     clearResultsTimeout();
     return clearResultsTimeout;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId, roundId]);
-
-  useEffect(() => {
-    if (rolls === null) return;
-    let cancelled = false;
-    const supabase = createClient();
-    getRoundModifierEffectDetails(supabase, roundId)
-      .then((details) => {
-        if (!cancelled) setEffectDetails(details);
-      })
-      .catch(() => {
-        // Best-effort — badges just stay empty, the roll+total math still renders.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [rolls, roundId]);
-
-  useEffect(() => {
-    if (rolls === null) return;
-    let cancelled = false;
-    const supabase = createClient();
-    getRoundLayerHistory(supabase, roundId)
-      .then((layers) => {
-        if (!cancelled) setHistory(layers);
-      })
-      .catch(() => {
-        // Best-effort — rows just render with no nested reroll history.
-      });
-    return () => {
-      cancelled = true;
-    };
-    // historyRefreshToken is a deliberate extra trigger (see its own
-    // comment above) — every reroll layer's own completion needs to
-    // refetch this even though `rolls` (layer 0 only, below) doesn't change.
-  }, [rolls, roundId, historyRefreshToken]);
 
   useEffect(() => {
     let cancelled = false;
@@ -215,28 +161,27 @@ export function RoundReveal({
     return () => {
       cancelled = true;
     };
-    // historyRefreshToken bumps on every layer reveal and on round-revealed,
-    // which is exactly when the Trace (and so the Recap) changes.
-  }, [roundId, historyRefreshToken]);
+    // recapRefreshToken bumps on every broadcast that can move the Trace.
+  }, [roundId, recapRefreshToken]);
 
   useRoomChannel(roomId, roundId, {
     // Scoped to layer 0 — this drives the *primary* row's own die (every
-    // other layer's reveal only ever feeds the nested reroll rows via
-    // historyRefreshToken below, never this state, or a mid-tie reroll's
+    // other layer's reveal only ever feeds the nested reroll rows via the
+    // recap refetch below, never this state, or a mid-tie reroll's
     // reveal would incorrectly overwrite the primary row's already-known
     // layer-0 value).
     "layer-rolls-revealed": (payload) => {
       if (payload.layer === 0) setRolls(payload.rolls);
-      setHistoryRefreshToken((t) => t + 1);
+      bumpRecap();
     },
     "round-revealed": (payload: RoundRevealedPayload) => {
       // Same layer-0 scoping as above: a round that went through one or
       // more ties can be decided by a reroll layer, and payload.rolls is
       // whichever layer that was (issue #220 piece 4) — never assume it's
-      // layer 0's. The nested rows pick the final layer up via
-      // historyRefreshToken instead, same as any other layer completion.
+      // layer 0's. The nested rows pick the final layer up via the recap
+      // refetch instead, same as any other layer completion.
       if (payload.layer === 0) setRolls(payload.rolls);
-      setHistoryRefreshToken((t) => t + 1);
+      bumpRecap();
       setBrewerId(payload.brewerId);
       if (payload.brewerId === selfPlayerId) {
         setShowKettleModal(true);
@@ -264,9 +209,14 @@ export function RoundReveal({
     // window's first appearance — once the banner is mounted it owns every
     // subsequent refresh for this same event via its own listener, so this
     // becomes a no-op rather than double-refreshing alongside it.
+    // Issue #409: a reaction cast or a pass also moves the Provisional Recap.
     "reaction-window-changed": () => {
+      bumpRecap();
       if (!hasOpenReactionWindow) router.refresh();
     },
+    // Issue #409: a pre-roll cast / target, or a Pending Spell Die's value,
+    // changes what the resolver would say — refresh the Provisional Recap.
+    "spell-cast-changed": () => bumpRecap(),
     // Issue #315 (Round Replay): a surviving Time for Brew turns this
     // just-announced round into a pending scrap/keep decision. This component
     // is what's mounted at announce time — refresh so the server re-render
@@ -287,8 +237,6 @@ export function RoundReveal({
   // discardedValueByPlayerId above.
   const enteredByAdminByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.enteredByAdmin]) ?? []);
   const brewer = participants.find((p) => p.playerId === brewerId);
-  const displayNameByPlayerId = new Map(participants.map((p) => [p.playerId, p.displayName ?? p.email]));
-  const casterName = (playerId: string) => displayNameByPlayerId.get(playerId) ?? playerId;
   const firstNameByPlayerId = new Map(
     participants.map((p) => [p.playerId, firstNameOrFallback(p.displayName, p.email)]),
   );
@@ -305,6 +253,9 @@ export function RoundReveal({
       })
     : null;
   const hasRecap = recapModel?.hasContent ?? false;
+  // Issue #409: the Provisional Recap — totals and steps so far, never a
+  // brewer or a tie until the round really resolves.
+  const provisional = recapModel?.provisional ?? false;
 
   // Issue #352: a replayed round. The canonical view below is generation 1;
   // generation 0's own Recap (its Trace, brewer, first-attempt rolls, and any
@@ -341,6 +292,9 @@ export function RoundReveal({
       {hasRecap && recapModel ? <RoundRecap model={recapModel} /> : null}
 
       <CardFrame title="Rolling">
+        {provisional ? (
+          <p className="mb-2 font-body text-[11px] italic text-parchment-dim">so far — reactions pending</p>
+        ) : null}
         <ul className="divide-y divide-gilt-dark/40">
           {participants.map((p) => {
             const revealedValue = revealedValueByPlayerId.get(p.playerId);
@@ -351,21 +305,20 @@ export function RoundReveal({
             // withheld until the real broadcast corrects it moments later.
             const discardedValue = discardedValueByPlayerId.get(p.playerId) ?? null;
             const enteredByAdmin = enteredByAdminByPlayerId.get(p.playerId) ?? false;
-            const isBrewer = brewerId === p.playerId;
-            const effectsForPlayer = effectDetails.filter((d) => d.targetPlayerId === p.playerId);
-            // p.modifier is the player's persistent room modifier, not the
-            // round's true modifier — spell effects (issue #165's widened
-            // query) can still change it, so it has to be recomposed here
-            // (issue #166's classifyEffectImpact feeds the same recompose).
-            const built = buildRollCalculation(p.modifier, effectsForPlayer, casterName);
-            // The badge must show the same value the inline RollCalculation
-            // expression shows and resolveLayer actually compares — roll +
-            // modifier for an ordinary roll, but the bare roll for nat-1/
-            // nat-20, which resolve by their own rule regardless of modifier
-            // (issue #153).
-            const calc = value === null ? null : classifyRollCalculation(value, built.composedModifier);
-            const badgeValue = calc === null ? null : calc.kind === "sum" ? calc.total : value;
-            const rerollChain = buildRerollChain(p.playerId, history);
+            // Issue #409: never highlight a brewer from a provisional view.
+            const isBrewer = brewerId === p.playerId && !provisional;
+            // Issue #406: tie membership from the next layer's participants,
+            // never re-judged here.
+            const rerollChain = recap
+              ? buildRerollChain(p.playerId, recap.layers, recap.layerParticipants)
+              : [];
+            // Issue #407 / #409: the row is the resolver's own output — the
+            // Resolution Summary + Trace terms, or the Provisional Recap's dry
+            // run while the round is live (degraded, no total, for a round
+            // resolved before summaries existed). Until layer 0 is complete
+            // there is no row yet: just the revealed die.
+            const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
+            const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
 
             return (
               <li key={p.playerId} className="py-2">
@@ -389,28 +342,27 @@ export function RoundReveal({
                         Proxy
                       </span>
                     ) : null}
-                    {value !== null ? (
-                      <RollCalculation
-                        roll={value}
-                        modifier={built.composedModifier}
-                        rich
-                        discardedRoll={discardedValue}
-                        diceTerms={built.diceTerms}
-                        effects={built.effects}
-                        modifierTerms={built.modifierTerms}
-                      />
+                    {resolverRow ? (
+                      <RollRowExpression row={resolverRow} />
+                    ) : value !== null ? (
+                      <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
+                        <DieIcon shape="d20" value={value} className="h-5 w-5" />
+                        {discardedValue !== null ? (
+                          <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
+                        ) : null}
+                      </span>
                     ) : null}
                   </div>
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-md border-2 font-display text-sm ${
-                      value === null
+                      value === null && !resolverRow
                         ? "animate-spin border-gilt-dark text-parchment-dim"
                         : isBrewer
                           ? "border-gilt-bright bg-ember text-parchment shadow-[0_0_10px_theme(colors.gilt.DEFAULT)]"
                           : "border-gilt bg-tavern-panel-dark text-parchment"
                     }`}
                   >
-                    {badgeValue ?? "?"}
+                    {shownBadge}
                   </span>
                 </div>
 

@@ -57,6 +57,18 @@ export type ResolveOutcome = {
   cups_made: number;
   no_modifier_gain: boolean;
   trace: TraceStep[];
+  /** The layer-0 Resolution Summary (issue #407, ADR 0007); null at layer > 0. */
+  players: SummaryEntry[] | null;
+};
+
+export type SummaryEntry = {
+  player_id: string;
+  roll: number;
+  snapshot: number;
+  composed: number;
+  total: number;
+  nat: "nat1" | "nat20" | null;
+  dice_reduced: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -246,7 +258,66 @@ export function snapshotDocument(name: string, out: ResolveOutcome, roster: Rost
     cupsMade: out.cups_made,
     noModifierGain: out.no_modifier_gain,
     trace: normaliseTrace(out.trace, roster),
+    // Issue #407: the layer-0 Resolution Summary, one entry per roller, keyed
+    // and ordered by roster label. dice_reduced only matters on a Calami-Tea
+    // round, but is committed everywhere so a change to it always diffs.
+    players: normaliseSummary(out.players, roster),
   };
+}
+
+/** A Resolution Summary keyed and ordered by roster label (null stays null). */
+export function normaliseSummary(players: SummaryEntry[] | null | undefined, roster: Roster) {
+  if (!players) return null;
+  return players
+    .map(({ player_id, ...rest }) => ({ player: roster[player_id] ?? "<unknown>", ...rest }))
+    .sort((a, b) => a.player.localeCompare(b.player));
+}
+
+/**
+ * Issue #408: each scrapped replay generation's own snapshotted summary, for a
+ * replayed round's golden. Only the summary and brewer — the generation's
+ * Trace was already pinned by its own resolve.
+ */
+export function normaliseScrappedGenerations(
+  scrapped: { generation: number; brewer_id: string | null; players?: SummaryEntry[] | null }[],
+  roster: Roster,
+) {
+  return scrapped.map((g) => ({
+    generation: g.generation,
+    brewer: g.brewer_id ? roster[g.brewer_id] ?? "<unknown>" : null,
+    players: normaliseSummary(g.players, roster),
+  }));
+}
+
+/**
+ * Issue #407 runner invariant (ADR 0007): every change to a player's composed
+ * modifier emits a Trace step. Folding the player's roll-time `snapshot`
+ * through their applied `modifier` steps, in order, must chain step to step
+ * (each `before` is the running value) and land on the summary's `composed`.
+ * Blocked (warded) steps moved nothing, and rest-of-day steps (Phase 4b) track
+ * the room modifier, not this round's composed one — both are skipped.
+ * Returns a list of violations, empty when the invariant holds.
+ */
+export function composedFoldViolations(out: ResolveOutcome): string[] {
+  const violations: string[] = [];
+  for (const entry of out.players ?? []) {
+    let running = Number(entry.snapshot);
+    for (const step of out.trace) {
+      if (step.target_player !== entry.player_id) continue;
+      if (step.before?.type !== "modifier") continue;
+      if (step.outcome === "blocked" || step.rest_of_day === true || step.negated === true) continue;
+      if (Number(step.before.value) !== running) {
+        violations.push(
+          `${entry.player_id}: step ${step.index} (${step.display_kind}) starts at ${step.before.value}, fold is at ${running}`,
+        );
+      }
+      running = Number(step.after.value);
+    }
+    if (running !== Number(entry.composed)) {
+      violations.push(`${entry.player_id}: fold ends at ${running}, summary composed is ${entry.composed}`);
+    }
+  }
+  return violations;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +385,13 @@ export type Scenario = {
    * first-resolve Trace. Document the reason inline.
    */
   nonIdempotent?: boolean;
+  /**
+   * Set (with the reason) when the non-persisting dry run (`_rr_resolve`,
+   * ADR 0007) is knowingly different from the real resolve — a live
+   * Calami-Tea tick, whose die the dry run never rolls. The runner then skips
+   * its dry-run = real comparison; the write-free check still runs.
+   */
+  dryRunDiffers?: string;
   /** One-line note shown in the golden and the coverage report. */
   note: string;
   seed: (ctx: ScenarioContext) => Promise<SeedResult>;

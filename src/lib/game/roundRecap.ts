@@ -1,6 +1,69 @@
-import type { RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
-import type { ResolutionTraceStep } from "@/lib/supabase/rolls";
-import { buildRerollChain, type RerollChainLevel } from "@/lib/game/rerollChain";
+import type { LayerParticipant, RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
+import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { classifyRollCalculation } from "@/lib/game/rollCalculation";
+
+/**
+ * One tie-break reroll level under a player's layer-0 row (issue #220). Layers
+ * > 0 carry no spell logic and no Resolution Summary (ADR 0007), so the level
+ * is the bare roll + roll-time modifier and its nat standing.
+ */
+export type RerollChainLevel = {
+  layer: number;
+  roll: number;
+  modifier: number;
+  nat: "nat1" | "nat20" | null;
+  /** What the badge shows: roll + modifier, or the bare roll for a nat-1/nat-20. */
+  badgeValue: number;
+  /** true when this player went on into layer + 1 — this level tied again. */
+  tied: boolean;
+};
+
+/**
+ * Tie-layer nat standing and badge, via `classifyRollCalculation` — the one TS
+ * nat rule ADR 0007 keeps, pinned to `_rr_pick_lowest`'s 3-argument form (the
+ * rule the resolver applies at layer > 0): a 1 is a natural 1 and a 20 a
+ * natural 20 whatever the modifier, with no Calami-Tea dice-reduced exemption
+ * (no spells reach a tie layer). Layer-0 nat standing comes from the
+ * Resolution Summary instead.
+ */
+function tieLayerStanding(roll: number, modifier: number): { nat: "nat1" | "nat20" | null; badgeValue: number } {
+  const calc = classifyRollCalculation(roll, modifier);
+  return calc.kind === "sum" ? { nat: null, badgeValue: calc.total } : { nat: calc.kind, badgeValue: roll };
+}
+
+/**
+ * Issue #406: one player's Reroll Chain — every tie-break layer they rolled in,
+ * in order. Tie membership is read, never re-judged: a player tied at layer N
+ * exactly when they are in layer N+1's participant set (for a scrapped
+ * generation, its own snapshotted set). So a layer-0 tie made or broken by
+ * spell modifiers is drawn exactly as the resolver decided it.
+ *
+ * `layers` holds only fully-rolled layers; the walk stops at the first layer
+ * the player is in but that has not finished rolling.
+ */
+export function buildRerollChain(
+  playerId: string,
+  layers: CompletedLayer[],
+  layerParticipants: LayerParticipant[],
+): RerollChainLevel[] {
+  const rollsByLayer = new Map(layers.map((l) => [l.layer, l.rolls]));
+  const inLayer = (layer: number) =>
+    layerParticipants.some((lp) => lp.layer === layer && lp.playerId === playerId);
+
+  const chain: RerollChainLevel[] = [];
+  for (let layer = 1; inLayer(layer); layer += 1) {
+    const own = rollsByLayer.get(layer)?.find((r) => r.playerId === playerId);
+    if (!own) break;
+    chain.push({
+      layer,
+      roll: own.value,
+      modifier: own.modifierSnapshot,
+      ...tieLayerStanding(own.value, own.modifierSnapshot),
+      tied: inLayer(layer + 1),
+    });
+  }
+  return chain;
+}
 
 /**
  * The Round Recap ("the Ledger", issue #314) — a pure transform from a round's
@@ -15,9 +78,12 @@ import { buildRerollChain, type RerollChainLevel } from "@/lib/game/rerollChain"
  * the reaction window for lowest-gains-highest after composing pre-roll
  * modifiers). Steps are never reordered into fixed phase buckets.
  *
- * Two rendering modes:
+ * Rendering modes:
  *  - resolved: steps come from the Trace, in resolution order, numbered.
- *  - live (round closed, not yet resolved): there is no Trace, so pending
+ *  - provisional (issue #409, the Provisional Recap): the round is live but
+ *    layer 0 is complete, so the Trace is the resolver's dry run — rendered
+ *    exactly like a resolved one ("so far — reactions pending").
+ *  - live (round closed, layer 0 not complete yet): there is no Trace, so pending
  *    steps are synthesised from the cast list in cast order (by seq), indexed
  *    `·`, and shimmer. On resolve they re-sort to resolution order — never
  *    predicted client-side.
@@ -83,6 +149,60 @@ export type RoundRecapModel = {
   showReorderCaption: boolean;
   /** Layer 0 tied — the recap ends here and the tie-break rolls decide it. */
   endedInTieBreak: boolean;
+  /**
+   * Issue #407: one row per layer-0 roller, from the Resolution Summary and
+   * the Trace. Present even for a zero-cast round (hasContent false).
+   */
+  rows: RollRow[];
+  /** Issue #409: the whole model is a live dry run ("so far — reactions pending"). */
+  provisional: boolean;
+};
+
+/**
+ * One term on a player's roll row (issue #407): a Trace step that targets
+ * them in the roll or modifier domain, or an effect that did not land on
+ * them (struck).
+ */
+export type RollRowTerm = {
+  displayKind: string;
+  domain: "roll" | "modifier" | "status";
+  cardName: string | null;
+  casterName: string | null;
+  from: number | null;
+  to: number | null;
+  /**
+   * The step's own contribution to the composed modifier (to − from). Only
+   * for an applied, this-round modifier step, so the row's terms plus its
+   * snapshot add up to `composed`; null for everything else.
+   */
+  delta: number | null;
+  /** Why this effect did not apply to this player, or null if it did. */
+  struck: "warded" | "negated" | "redirected" | null;
+  /** A rest-of-day transfer: moves the room modifier, not this round's total. */
+  restOfDay: boolean;
+  /** A Calami-Tea tick whose die is not rolled yet (Provisional Recap). */
+  pending: boolean;
+};
+
+/** One player's layer-0 roll row (issue #407): rendered as-is, no arithmetic. */
+export type RollRow = {
+  playerId: string;
+  /** Final roll from the summary; the revealed layer-0 roll when degraded. */
+  roll: number;
+  discardedRoll: number | null;
+  enteredByAdmin: boolean;
+  snapshot: number;
+  /** null ⇒ degraded (no summary). */
+  composed: number | null;
+  total: number | null;
+  nat: "nat1" | "nat20" | null;
+  diceReduced: boolean;
+  /** The badge: total, or the bare roll for a nat-1/nat-20; null when degraded. */
+  badgeValue: number | null;
+  terms: RollRowTerm[];
+  provisional: boolean;
+  /** A round resolved before Resolution Summaries existed (ADR 0007). */
+  degraded: boolean;
 };
 
 export type BuildRoundRecapArgs = {
@@ -111,6 +231,120 @@ const OUTCOME_KINDS = new Set([
   // target-selection step, alongside the brewer-selection kinds.
   "targeting_skip",
 ]);
+
+function numeric(value: number | string | null): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+/**
+ * The terms on one player's row: every Trace step targeting them in the roll
+ * or modifier domain (plus negated victim steps), in resolution order, and a
+ * struck term for any cast a redirect moved off them.
+ */
+function termsFor(
+  playerId: string,
+  trace: ResolutionTraceStep[],
+  displayName: (playerId: string) => string,
+): RollRowTerm[] {
+  const terms: RollRowTerm[] = [];
+  for (const step of trace) {
+    const cardName = step.sourceCast.cardName;
+    const casterName = step.sourceCast.casterPlayerId ? displayName(step.sourceCast.casterPlayerId) : null;
+
+    // A redirect step targets the NEW target; the player it was moved off
+    // gets a struck term. A countered redirect (target unchanged) moved nothing.
+    if (step.displayKind === "redirect") {
+      if (step.before.value === playerId && step.after.value !== playerId) {
+        terms.push({
+          displayKind: step.displayKind,
+          domain: "status",
+          cardName,
+          casterName,
+          from: null,
+          to: null,
+          delta: null,
+          struck: "redirected",
+          restOfDay: false,
+          pending: false,
+        });
+      }
+      continue;
+    }
+
+    if (step.targetPlayer !== playerId) continue;
+    const domain = step.before.type === "roll" || step.before.type === "modifier" ? step.before.type : "status";
+    if (domain === "status" && !step.negated) continue;
+
+    const struck: RollRowTerm["struck"] = step.negated
+      ? "negated"
+      : step.displayKind === "warded" || step.outcome === "blocked"
+        ? "warded"
+        : null;
+    const from = numeric(step.before.value);
+    const to = numeric(step.after.value);
+    terms.push({
+      displayKind: step.displayKind,
+      domain,
+      cardName,
+      casterName,
+      from,
+      to,
+      delta:
+        domain === "modifier" && !struck && !step.restOfDay && from !== null && to !== null ? to - from : null,
+      struck,
+      restOfDay: step.restOfDay,
+      pending: step.displayKind === "dice_tick" && step.diceTick === null,
+    });
+  }
+  return terms;
+}
+
+/**
+ * Issue #407: the per-player layer-0 rows. Numbers come from the Resolution
+ * Summary; the revealed layer-0 rolls supply the discarded die / proxy flag,
+ * and stand in (degraded, no total) for a round with no summary.
+ */
+function buildRows(data: RoundRecapData, displayName: (playerId: string) => string): RollRow[] {
+  const layerZero = data.layers.find((l) => l.layer === 0)?.rolls ?? [];
+  const rollByPlayer = new Map(layerZero.map((r) => [r.playerId, r]));
+
+  if (data.summary) {
+    return data.summary.map((entry) => {
+      const revealed = rollByPlayer.get(entry.playerId);
+      return {
+        playerId: entry.playerId,
+        roll: entry.roll,
+        discardedRoll: revealed?.discardedValue ?? null,
+        enteredByAdmin: revealed?.enteredByAdmin ?? false,
+        snapshot: entry.snapshot,
+        composed: entry.composed,
+        total: entry.total,
+        nat: entry.nat,
+        diceReduced: entry.diceReduced,
+        badgeValue: entry.nat ? entry.roll : entry.total,
+        terms: termsFor(entry.playerId, data.trace, displayName),
+        provisional: data.provisional,
+        degraded: false,
+      };
+    });
+  }
+
+  return layerZero.map((r) => ({
+    playerId: r.playerId,
+    roll: r.value,
+    discardedRoll: r.discardedValue,
+    enteredByAdmin: r.enteredByAdmin,
+    snapshot: r.modifierSnapshot,
+    composed: null,
+    total: null,
+    nat: null,
+    diceReduced: false,
+    badgeValue: null,
+    terms: termsFor(r.playerId, data.trace, displayName),
+    provisional: data.provisional,
+    degraded: true,
+  }));
+}
 
 function humanKind(kind: string): string {
   return kind.replace(/_/g, " ");
@@ -294,7 +528,11 @@ export function buildRoundRecap({
   displayName,
   traceOnly = false,
 }: BuildRoundRecapArgs): RoundRecapModel {
-  const live = !data.resolved;
+  // Issue #409: a provisional recap has a Trace (the resolver's dry run), so
+  // it renders steps like a resolved one — labelled "so far" by the
+  // component, and never announcing a tie (endedInTieBreak stays false: the
+  // round's layerZeroOutcome is null until it really resolves).
+  const live = !data.resolved && !data.provisional;
   const casts = [...data.casts].sort((a, b) => a.seq - b.seq);
 
   // A scrapped replay generation (issue #352) has a Resolution Trace but no
@@ -302,6 +540,7 @@ export function buildRoundRecap({
   // own source card + caster, so the step rows still render; only the
   // tap-to-filter cast strip is absent.
   const traceDriven = traceOnly && !live && casts.length === 0 && data.trace.length > 0;
+  const rows = buildRows(data, displayName);
 
   if (casts.length === 0 && !traceDriven) {
     return {
@@ -310,6 +549,8 @@ export function buildRoundRecap({
       phases: [],
       showReorderCaption: false,
       endedInTieBreak: false,
+      rows,
+      provisional: data.provisional,
     };
   }
 
@@ -382,9 +623,14 @@ export function buildRoundRecap({
   return {
     hasContent: true,
     castStrip,
-    phases: groupByPhase(ordered),
+    // Issue #409: a provisional dry run never names a brewer — its Outcome
+    // steps (declared number, tea-maker override, the brewer-gain ward, a
+    // targeting skip) wait for the real resolution.
+    phases: groupByPhase(data.provisional ? ordered.filter((s) => s.phase !== "Outcome") : ordered),
     showReorderCaption: !live && castStrip.length > 1,
-    endedInTieBreak: !live && data.layerZeroOutcome === "tie",
+    endedInTieBreak: !live && !data.provisional && data.layerZeroOutcome === "tie",
+    rows,
+    provisional: data.provisional,
   };
 }
 
@@ -395,10 +641,11 @@ export function buildRoundRecap({
  */
 export type ScrappedGenerationRollRow = {
   playerId: string;
-  value: number;
-  modifierSnapshot: number;
-  discardedValue: number | null;
-  enteredByAdmin: boolean;
+  /**
+   * Issue #408: the row model from this generation's own Resolution Summary
+   * and Trace (degraded when it has no summary) — never generation 1's.
+   */
+  row: RollRow;
   isBrewer: boolean;
   rerollChain: RerollChainLevel[];
 };
@@ -440,6 +687,10 @@ export function buildScrappedGenerationRecap(
       trace: gen.trace,
       casts: [],
       scrappedGenerations: [],
+      summary: gen.summary,
+      provisional: false,
+      layers: gen.layers,
+      layerParticipants: gen.layerParticipants,
     },
     displayName,
     traceOnly: true,
@@ -460,17 +711,18 @@ export function buildScrappedGenerationRecap(
       .map((r) => r.playerId)
       .filter((id) => !roster.includes(id) && !gen0Order.includes(id)),
   ];
-  const firstAttemptRolls: ScrappedGenerationRollRow[] = orderedPlayerIds.map((playerId) => {
-    const roll = rollByPlayer.get(playerId)!;
-    return {
-      playerId,
-      value: roll.value,
-      modifierSnapshot: roll.modifierSnapshot,
-      discardedValue: roll.discardedValue,
-      enteredByAdmin: roll.enteredByAdmin,
-      isBrewer: gen.brewerId === playerId,
-      rerollChain: buildRerollChain(playerId, gen.layers),
-    };
+  const rowByPlayer = new Map(recap.rows.map((r) => [r.playerId, r]));
+  const firstAttemptRolls: ScrappedGenerationRollRow[] = orderedPlayerIds.flatMap((playerId) => {
+    const row = rowByPlayer.get(playerId);
+    if (!row) return [];
+    return [
+      {
+        playerId,
+        row,
+        isBrewer: gen.brewerId === playerId,
+        rerollChain: buildRerollChain(playerId, gen.layers, gen.layerParticipants),
+      },
+    ];
   });
 
   return {

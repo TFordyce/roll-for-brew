@@ -70,5 +70,34 @@
       "display_kind": "flat_modifier",
       "target_player": "P:src-caster"
     }
+  ],
+  "players": [
+    {
+      "player": "apprentice",
+      "nat": null,
+      "roll": 10,
+      "total": 16,
+      "composed": 6,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "resolver",
+      "nat": null,
+      "roll": 10,
+      "total": 10,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "src-caster",
+      "nat": null,
+      "roll": 10,
+      "total": 16,
+      "composed": 6,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
   ]
 }

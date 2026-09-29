@@ -1,9 +1,8 @@
 "use client";
 
-import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { buildScrappedGenerationRecap } from "@/lib/game/roundRecap";
 import type { ScrappedGeneration } from "@/lib/supabase/roundRecap";
-import { RollCalculation } from "@/app/_components/RollCalculation";
+import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { RoundRecap } from "@/app/_components/RoundRecap";
 import { RerollChainRows } from "@/app/_components/RerollChainRows";
 import { ProxyBadge } from "@/app/_components/ProxyBadge";
@@ -59,21 +58,15 @@ export function ScrappedGenerationDisclosure({
                   </p>
                   <ul className="divide-y divide-gilt-dark/30">
                     {model.firstAttemptRolls.map((row) => {
-                      const calc = classifyRollCalculation(row.value, row.modifierSnapshot);
-                      const badgeValue = calc.kind === "sum" ? calc.total : row.value;
-
+                      // Issue #408: that generation's own Resolution Summary
+                      // and Trace terms (degraded — no total — without one).
                       return (
                         <li key={row.playerId} className="py-1.5">
                           <div className="flex items-center justify-between gap-3">
                             <div className="flex min-w-0 flex-1 flex-col gap-y-0.5 sm:flex-row sm:items-center sm:gap-x-2">
                               <span className="font-body text-sm text-parchment">{displayName(row.playerId)}</span>
-                              {row.enteredByAdmin ? <ProxyBadge /> : null}
-                              <RollCalculation
-                                roll={row.value}
-                                modifier={row.modifierSnapshot}
-                                rich
-                                discardedRoll={row.discardedValue}
-                              />
+                              {row.row.enteredByAdmin ? <ProxyBadge /> : null}
+                              <RollRowExpression row={row.row} />
                             </div>
                             <span
                               className={`flex h-8 w-8 items-center justify-center rounded-md border-2 font-display text-sm ${
@@ -82,7 +75,7 @@ export function ScrappedGenerationDisclosure({
                                   : "border-gilt bg-tavern-panel-dark text-parchment"
                               }`}
                             >
-                              {badgeValue}
+                              {row.row.badgeValue ?? "—"}
                             </span>
                           </div>
                           <RerollChainRows chain={row.rerollChain} />

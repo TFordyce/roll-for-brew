@@ -46,8 +46,13 @@ export type ScrappedGeneration = {
   resolvedAt: string | null;
   trace: ResolutionTraceStep[];
   /**
+   * Issue #408: the generation's own layer-0 Resolution Summary, snapshotted at
+   * scrap time. null for a generation scrapped before summaries existed.
+   */
+  summary: ResolutionSummaryEntry[] | null;
+  /**
    * The generation's rolls grouped by layer, oldest first — layer 0 plus any
-   * tie-break reroll layers. Same shape as getRoundLayerHistory, so
+   * tie-break reroll layers. Same shape as RoundRecapData.layers, so
    * buildRerollChain consumes it directly.
    */
   layers: CompletedLayer[];
@@ -57,7 +62,29 @@ export type ScrappedGeneration = {
    * ordering source for the layer-0 roll list, independent of generation 1's
    * roster.
    */
-  layerParticipants: { layer: number; playerId: string }[];
+  layerParticipants: LayerParticipant[];
+};
+
+/** One row of round_layer_participants: `playerId` rolled in tie-break `layer`. */
+export type LayerParticipant = { layer: number; playerId: string };
+
+/**
+ * One layer-0 roller's entry in the Resolution Summary (issue #407, ADR 0007):
+ * the resolver's own final values. The roll row renders these as-is.
+ */
+export type ResolutionSummaryEntry = {
+  playerId: string;
+  /** Final roll, after every roll-input transform. */
+  roll: number;
+  /** Roll-time modifier (rolls.modifier_snapshot). */
+  snapshot: number;
+  /** Final composed modifier. */
+  composed: number;
+  total: number;
+  /** As _rr_pick_lowest judged it — a Calami-Tea-floored 1 is not a nat 1. */
+  nat: "nat1" | "nat20" | null;
+  /** A Calami-Tea tick floored this roll. */
+  diceReduced: boolean;
 };
 
 export type RoundRecapData = {
@@ -69,12 +96,27 @@ export type RoundRecapData = {
    */
   layerZeroOutcome: "brewer" | "tie" | null;
   trace: ResolutionTraceStep[];
+  /**
+   * Issue #407: the layer-0 Resolution Summary. null before the round
+   * resolves, or for a round resolved before summaries existed (the row then
+   * renders degraded: roll, snapshot and terms, no total).
+   */
+  summary: ResolutionSummaryEntry[] | null;
+  /** Issue #409: the trace and summary are a live dry run, not the resolution. */
+  provisional: boolean;
   casts: RoundRecapCast[];
   /**
    * Issue #352: every scrapped replay generation of this round, oldest first
    * (generation 0 = the original attempt). Empty for a round never replayed.
    */
   scrappedGenerations: ScrappedGeneration[];
+  /**
+   * Issue #406: every fully-rolled layer's rolls, layer 0 first — the rows'
+   * layer-0 rolls and the Reroll Chain's tie-break levels.
+   */
+  layers: CompletedLayer[];
+  /** Issue #406: tie-break layer membership — the Reroll Chain's tie source. */
+  layerParticipants: LayerParticipant[];
 };
 
 type RawRecapCast = {
@@ -107,24 +149,39 @@ type RawScrappedGeneration = {
   brewer_modifier_gain: number | null;
   resolved_at: string | null;
   resolution_trace: unknown;
+  players?: RawSummaryEntry[] | null;
   rolls: RawScrappedGenerationRoll[] | null;
   layer_participants: { layer: number; player_id: string }[] | null;
+};
+
+type RawSummaryEntry = {
+  player_id: string;
+  roll: number;
+  snapshot: number;
+  composed: number;
+  total: number;
+  nat: "nat1" | "nat20" | null;
+  dice_reduced: boolean | null;
 };
 
 type RawRoundRecap = {
   resolved: boolean;
   layer_zero_outcome: "brewer" | "tie" | null;
   trace: unknown;
+  players: RawSummaryEntry[] | null;
+  provisional: boolean | null;
   casts: RawRecapCast[] | null;
   scrapped_generations: RawScrappedGeneration[] | null;
+  layers: RawScrappedGenerationRoll[] | null;
+  layer_participants: { layer: number; player_id: string }[] | null;
 };
 
 /**
- * Group a scrapped generation's flat roll snapshot into ordered per-layer
- * buckets — the same shape getRoundLayerHistory returns, so buildRerollChain
- * can walk a scrapped generation's tie-break layers unchanged.
+ * Group a flat roll list — the round's own `layers`, or a scrapped
+ * generation's roll snapshot — into ordered per-layer buckets, the shape
+ * buildRerollChain walks.
  */
-function groupScrappedRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] {
+function groupRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] {
   const byLayer = new Map<number, LayerRoll[]>();
   for (const row of rows) {
     const bucket = byLayer.get(row.layer) ?? [];
@@ -140,6 +197,26 @@ function groupScrappedRollsByLayer(rows: RawScrappedGenerationRoll[]): Completed
   return [...byLayer.entries()].sort(([a], [b]) => a - b).map(([layer, rolls]) => ({ layer, rolls }));
 }
 
+/** Parses a raw Resolution Summary (null stays null — a pre-summary round). */
+export function parseResolutionSummary(raw: RawSummaryEntry[] | null | undefined): ResolutionSummaryEntry[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.map((p) => ({
+    playerId: p.player_id,
+    roll: Number(p.roll),
+    snapshot: Number(p.snapshot),
+    composed: Number(p.composed),
+    total: Number(p.total),
+    nat: p.nat ?? null,
+    diceReduced: p.dice_reduced ?? false,
+  }));
+}
+
+function parseLayerParticipants(
+  raw: { layer: number; player_id: string }[] | null,
+): LayerParticipant[] {
+  return (raw ?? []).map((lp) => ({ layer: lp.layer, playerId: lp.player_id }));
+}
+
 function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration {
   return {
     generation: raw.generation,
@@ -148,20 +225,19 @@ function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration
     brewerModifierGain: raw.brewer_modifier_gain ?? null,
     resolvedAt: raw.resolved_at ?? null,
     trace: parseResolutionTrace(raw.resolution_trace),
-    layers: groupScrappedRollsByLayer(raw.rolls ?? []),
-    layerParticipants: (raw.layer_participants ?? []).map((lp) => ({
-      layer: lp.layer,
-      playerId: lp.player_id,
-    })),
+    summary: parseResolutionSummary(raw.players),
+    layers: groupRollsByLayer(raw.rolls ?? []),
+    layerParticipants: parseLayerParticipants(raw.layer_participants),
   };
 }
 
 /**
- * Calls the get_round_recap RPC (migration 0086, issue #314): the persisted
- * Resolution Trace plus the round's full cast list with per-cast phase and
- * coarse live state. Everything the Round Recap ("the Ledger") renderer needs
- * in one participant-gated round trip. Returns null on any error so the caller
- * can fall back to the plain reveal — the Recap is additive.
+ * Calls the get_round_recap RPC (migration 0086, issue #314; spec #402): the
+ * Resolution Trace and Summary — stored, or the Provisional Recap's dry run
+ * while the round is live — plus the round's cast list, layer rolls and
+ * tie-break participants. Everything RoundReveal's rows, Ledger and Reroll
+ * Chain need in one room-member-gated round trip. Returns null on any error so
+ * the caller can fall back to the bare revealed dice.
  */
 export async function getRoundRecap(
   supabase: SupabaseClient,
@@ -169,8 +245,8 @@ export async function getRoundRecap(
 ): Promise<RoundRecapData | null> {
   const { data, error } = await supabase.rpc("get_round_recap", { p_round_id: roundId });
   if (error || !data) {
-    // A participant-gate rejection is expected for a round the viewer sat out
-    // (room history shows "no recap available"); anything else is a real fault
+    // A gate rejection (P0001) is expected for a viewer outside the round's
+    // room (room history shows "no recap available"); anything else is a real fault
     // worth a console line before the additive Recap falls back silently.
     if (error && error.code !== "P0001") {
       console.error("getRoundRecap failed", error);
@@ -183,7 +259,11 @@ export async function getRoundRecap(
     resolved: raw.resolved,
     layerZeroOutcome: raw.layer_zero_outcome ?? null,
     trace: parseResolutionTrace(raw.trace),
+    summary: parseResolutionSummary(raw.players),
+    provisional: raw.provisional ?? false,
     scrappedGenerations: (raw.scrapped_generations ?? []).map(parseScrappedGeneration),
+    layers: groupRollsByLayer(raw.layers ?? []),
+    layerParticipants: parseLayerParticipants(raw.layer_participants),
     casts: (raw.casts ?? []).map((c) => ({
       castId: c.cast_id,
       seq: c.seq,

@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  roundModifierEffects,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -152,7 +153,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     expect((myCards as { card_name: string }[])[0]!.card_name).toBe("Lucky Sip");
   });
 
-  it("casting a self-targeted flat-modifier card composes into get_round_modifier_effects and discards the card", async () => {
+  it("casting a self-targeted flat-modifier card composes into roundModifierEffects and discards the card", async () => {
     const { client, googleSub } = await signUpSignInAndEnter("cast-self-flat");
     const instanceId = await forceHold(admin, googleSub, "Lucky Sip");
 
@@ -166,11 +167,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     expect(error).toBeNull();
     expect(castId).toBeTruthy();
 
-    const { data: effects, error: effectsError } = await client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: effects, error: effectsError } = await roundModifierEffects(admin, client, roundId);
     expect(effectsError).toBeNull();
-    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    // Room-wide read (roundModifierEffects): filter to this test's own
     // target before asserting exact contents (issue #147).
     expect(byTarget(effects as { target_player_id: string }[], googleSub)).toEqual([
       {
@@ -223,10 +222,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     });
     expect(targetError).toBeNull();
 
-    const { data: effects } = await casterClient.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
-    // Room-wide RPC (get_round_modifier_effects): filter to this test's own
+    const { data: effects } = await roundModifierEffects(admin, casterClient, roundId);
+    // Room-wide read (roundModifierEffects): filter to this test's own
     // target before asserting exact contents (issue #147).
     expect(byTarget(effects as { target_player_id: string }[], targetSub)).toEqual([
       {

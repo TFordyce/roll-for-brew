@@ -24,15 +24,16 @@ declare
   v_gain integer;
   v_resolved_at timestamptz;
   v_trace jsonb;
+  v_summary jsonb;
   v_snapshot jsonb;
   v_affected text[];
   v_roll_warded text[];
   v_pid text;
 begin
   select room_id, status, replay_generation, brewer_id, cups_made,
-         brewer_modifier_gain, resolved_at, resolution_trace
+         brewer_modifier_gain, resolved_at, resolution_trace, resolution_summary
     into v_room_id, v_status, v_gen, v_brewer_id, v_cups_made,
-         v_gain, v_resolved_at, v_trace
+         v_gain, v_resolved_at, v_trace, v_summary
     from public.rounds
    where id = p_round_id
    for update;
@@ -52,6 +53,10 @@ begin
     'brewer_modifier_gain', v_gain,
     'resolved_at', v_resolved_at,
     'resolution_trace', coalesce(v_trace, '[]'::jsonb),
+    -- issue #408: the generation's own layer-0 Resolution Summary (ADR 0007),
+    -- so its disclosure rows show that attempt's totals. null when the
+    -- generation was resolved before summaries existed.
+    'players', v_summary,
     'rolls', coalesce((
       select jsonb_agg(jsonb_build_object(
                'player_id', r.player_id, 'layer', r.layer, 'value', r.value,
@@ -177,6 +182,7 @@ begin
          brewer_modifier_gain = 0,
          resolved_at = null,
          resolution_trace = null,
+         resolution_summary = null,
          replay_generation = replay_generation + 1,
          replay_frozen_rollers = v_roll_warded,
          closed_at = now()
@@ -192,7 +198,8 @@ revoke execute on function public._rr_scrap_round(uuid) from public, anon, authe
 
 comment on function public._rr_scrap_round(uuid) is
   'Issue #315: atomic scrap of a resolved round for replay -- snapshots the '
-  'generation into rounds.scrapped_generations, deletes its rolls / spell_casts '
+  'generation into rounds.scrapped_generations (issue #408: including its '
+  'Resolution Summary as players), deletes its rolls / spell_casts '
   '(cascading promoted active effects) / reaction windows / layer participants / '
   'Brew Ratings, backs the round out to a freshly-closed generation-1 round, '
   'bumps replay_generation, and recomputes room_players.modifier for the brewer '

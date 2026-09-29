@@ -28,3 +28,10 @@ accepted — 2026-09-29. Decided in an `/improve-codebase-architecture` review (
 
 - The Trace-snapshot harness guards the summary as well as the Trace. Goldens include each player's summary, and the runner asserts two invariants: the summary equals the snapshot folded with the Trace's `modifier` steps, and the provisional run equals the final run when no reactions are pending.
 - `_rr_resolve` must stay free of writes. A write added there would run on every viewer's page render.
+
+## Amendment — 2026-09-29, implementing #404
+
+The body of `resolve_round` turned out not to be write-free: it maintains Cast-Log caches that its own later phases read back (materialised Saucerer's Apprentice copies, Calami-Tea and Bitter Leech tick rows, negated / redirected / seize flags) and the `room_players.modifier` cache. Rewriting it to thread in-memory overlays through every phase was judged too risky. Instead:
+
+- The pipeline body lives in an internal `_rr_resolve_eval(uuid, p_dry_run)`. `resolve_round` locks the round, calls it and persists. `_rr_resolve` calls it inside a PL/pgSQL exception block that always rolls back, so it **leaves no writes** (only sequence advances escape). "Write-free" above means exactly that. Nothing that escapes a rollback may be added to either function.
+- A dry run does not roll the Calami-Tea tick die: its `dice_tick` step carries `rolled: null` and moves nothing, so the Provisional Recap shows the tick as pending and the final Recap shows the real die. The "provisional = final" invariant exempts scenarios with a live tick.

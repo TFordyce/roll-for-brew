@@ -116,6 +116,29 @@ export const CORPUS: Scenario[] = [
     },
   },
   {
+    // Issue #406: roll-time totals (10 vs 12) don't tie; the composed ones do.
+    // The Reroll Chain must read this tie from layer 1's participants, since
+    // re-judging it on roll-time modifiers would miss it.
+    name: "4a-spell-modifier-creates-layer0-tie",
+    phases: ["4a", "5"],
+    note: "A flat +2 lifts the lowest roller onto the next roller's total: layer 0 ties on composed modifiers, not roll-time ones.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("lifted");
+      const p2 = await ctx.signUp("level");
+      const p3 = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      await ctx.seedRoll(roundId, p3.googleSub, 18);
+      await ctx.seedCast(roundId, p3.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 2 },
+        targetPlayerId: p1.googleSub,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
     name: "4a-set-modifier-overrides-sibling-flat",
     phases: ["4a", "5"],
     note: "set_modifier is absolute — it ignores a sibling flat effect; two sets resolve to the last by seq.",
@@ -720,6 +743,86 @@ export const CORPUS: Scenario[] = [
         cardName: "Cast-Iron Kettle",
         effectKind: "ward",
         effectParams: { polarity: ["negative"], domain: ["roll"] },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+
+  {
+    // Issue #407: a roll of 2 minus any 1d4 floors at 1 — deterministic
+    // despite the resolve-time die. The floored 1 is not a natural 1
+    // (dice_reduced), so it doesn't auto-brew: the 2 - 2 = 0 roller does.
+    name: "3-calami-tea-floored-natural-1",
+    phases: ["3", "5"],
+    dryRunDiffers: "the dry run never rolls the Calami-Tea tick die, so the 2 stays a 2",
+    note: "A Calami-Tea tick drags a 2 down to the floor of 1; the summary marks it dice_reduced with no nat-1 standing, and the lowest total brews.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("floored");
+      const p2 = await ctx.signUp("low-total");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 2);
+      await ctx.seedRoll(roundId, p2.googleSub, 2, -2);
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p2.googleSub,
+        cardName: "Calami-Tea",
+        effectKind: "per_round_dice_tick",
+        effectParams: { die: 4, sign: -1 },
+        roundsRemaining: 3,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+
+  // =========================================================================
+  // Round replay (Time for Brew) — issue #408
+  // =========================================================================
+  {
+    // Generation 0 resolves with a +3 on `buffed`, is scrapped by a confirmed
+    // Time for Brew, and generation 1 rolls fresh with a +6. The golden's
+    // scrappedGenerations block pins generation 0's OWN summary (the +3), so
+    // its disclosure rows can never show generation 1's numbers.
+    name: "5-replay-scrapped-generation-summary",
+    phases: ["4a", "5"],
+    note: "A replayed round: the scrapped generation carries its own Resolution Summary, distinct from generation 1's.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("buffed");
+      const p2 = await ctx.signUp("plain");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      await ctx.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 3 },
+        targetPlayerId: p1.googleSub,
+      });
+      await ctx.seedCast(roundId, p1.googleSub, "Time for Brew", {
+        effectKind: "round_replay",
+        effectParams: {},
+        targetPlayerId: null,
+      });
+      const { error: e0 } = await p1.client.rpc("resolve_round", { p_round_id: roundId });
+      if (e0) throw e0;
+      const { error: e1 } = await p1.client.rpc("resolve_round", {
+        p_round_id: roundId,
+        p_brewer_id: p1.googleSub,
+        p_cups_made: 2,
+      });
+      if (e1) throw e1;
+      const { error: e2 } = await p1.client.rpc("record_pending_round_replay", { p_round_id: roundId });
+      if (e2) throw e2;
+      const { error: e3 } = await p1.client.rpc("confirm_round_replay", { p_round_id: roundId });
+      if (e3) throw e3;
+
+      // generation 1
+      await ctx.seedRoll(roundId, p1.googleSub, 9);
+      await ctx.seedRoll(roundId, p2.googleSub, 11);
+      await ctx.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 6 },
+        targetPlayerId: p1.googleSub,
+        extra: { generation: 1 },
       });
       return { roundId, resolveWith: p1.client };
     },

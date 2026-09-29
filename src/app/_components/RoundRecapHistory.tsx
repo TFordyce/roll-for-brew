@@ -13,7 +13,8 @@ import { ScrappedGenerationDisclosure } from "@/app/_components/ScrappedGenerati
  * Room history (issue #314): every resolved round of the current room as a
  * collapsed one-line summary that expands to its full ledger inline, drawn by
  * the same RoundRecap renderer. The Trace is fetched lazily on first expand
- * (participant-gated — rounds the viewer sat out show "no recap available").
+ * (readable by any room member since #409, so a round the viewer sat out shows
+ * its ledger too; "no recap available" is left for a round outside the room).
  */
 
 export type RoundRecapHistoryEntry = {

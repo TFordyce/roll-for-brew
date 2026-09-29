@@ -6,6 +6,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  roundModifierEffects,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -47,8 +48,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     expect(castId).toBeTruthy();
 
     // Before close_round, the roster isn't final yet — the effect is
-    // deferred (a placeholder row, not yet visible to get_round_modifier_effects).
-    const { data: beforeCloseAll } = await caster.client.rpc("get_round_modifier_effects", { p_round_id: roundId });
+    // deferred (a placeholder row, not yet visible to roundModifierEffects).
+    const { data: beforeCloseAll } = await roundModifierEffects(admin, caster.client, roundId);
     const beforeClose = byTarget(
       beforeCloseAll as { target_player_id: string }[],
       caster.googleSub,
@@ -59,9 +60,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     const { error: closeError } = await caster.client.rpc("close_round", { p_round_id: roundId });
     expect(closeError).toBeNull();
 
-    const { data: effectsAll, error: effectsError } = await caster.client.rpc("get_round_modifier_effects", {
-      p_round_id: roundId,
-    });
+    const { data: effectsAll, error: effectsError } = await roundModifierEffects(admin, caster.client, roundId);
     expect(effectsError).toBeNull();
 
     const rows = byTarget(
@@ -91,7 +90,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
     await caster.client.rpc("close_round", { p_round_id: roundId });
 
-    const { data: effects } = await caster.client.rpc("get_round_modifier_effects", { p_round_id: roundId });
+    const { data: effects } = await roundModifierEffects(admin, caster.client, roundId);
     const rows = byTarget(
       effects as {
         target_player_id: string;

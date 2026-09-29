@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ModifierEffect } from "@/lib/game/modifierBucket";
 
 export type PendingCast = {
   castId: string;
@@ -14,29 +13,6 @@ export type ActiveEffectBadge = {
   tier: "common" | "rare" | "epic";
   polarity: "positive" | "negative" | null;
   roundsRemaining: number;
-};
-
-/**
- * One row of get_round_modifier_effects' raw output (0050): every resolved
- * effect touching a round's rolls, labelled with the card and caster that
- * produced it. Wider than ModifierEffect — includes advantage/disadvantage,
- * which don't compose into a modifier value (they shape roll generation in
- * submit_roll instead) but still need a card/caster label for the UI
- * (issue #164's discarded-roll display).
- */
-export type ModifierEffectDetail = {
-  targetPlayerId: string;
-  effectKind:
-    | "flat_modifier"
-    | "dice_modifier"
-    | "modifier_multiplier"
-    | "set_modifier"
-    | "advantage"
-    | "disadvantage";
-  effectParams: { delta?: number; multiplier?: number; value?: number; dice?: string };
-  resolvedValue: number | null;
-  cardName: string;
-  casterPlayerId: string;
 };
 
 export type DispellableEffect = {
@@ -111,89 +87,6 @@ export async function setSpellCastTarget(
     p_target_player_id: targetPlayerId,
   });
   if (error) throw error;
-}
-
-type RawModifierEffectRow = {
-  target_player_id: string;
-  effect_kind:
-    | "flat_modifier"
-    | "dice_modifier"
-    | "modifier_multiplier"
-    | "set_modifier"
-    | "advantage"
-    | "disadvantage";
-  effect_params: { delta?: number; multiplier?: number; value?: number; dice?: string };
-  resolved_value: number | null;
-  card_name: string;
-  caster_player_id: string;
-};
-
-/**
- * Calls the get_round_modifier_effects RPC (0050 widened it to also return
- * card_name/caster_player_id, and to include advantage/disadvantage rows —
- * see getRoundModifierEffectDetails below for the version that surfaces
- * those). Shared by both this function and getRoundModifierEffectDetails so
- * the RPC is only called through one place.
- */
-async function fetchRoundModifierEffectRows(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<RawModifierEffectRow[]> {
-  const { data, error } = await supabase.rpc("get_round_modifier_effects", { p_round_id: roundId });
-  if (error) throw error;
-  return (data ?? []) as RawModifierEffectRow[];
-}
-
-/**
- * Every resolved (non-pending) modifier-bucket effect active on this round,
- * grouped by target player — the input to composeModifier
- * (src/lib/game/modifierBucket.ts) for shaping each LayerEntry.modifier
- * before resolveLayer runs. Excludes advantage/disadvantage, which shape
- * roll generation (submit_roll) instead of composing into a modifier value
- * — toModifierEffect below drops them via its default case, so this stays
- * unaffected by 0050 widening the underlying RPC to include them.
- */
-export async function getRoundModifierEffects(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<Map<string, ModifierEffect[]>> {
-  const rows = await fetchRoundModifierEffectRows(supabase, roundId);
-
-  const byPlayer = new Map<string, ModifierEffect[]>();
-
-  for (const row of rows) {
-    const effect = toModifierEffect(row);
-    if (!effect) continue;
-
-    const existing = byPlayer.get(row.target_player_id) ?? [];
-    existing.push(effect);
-    byPlayer.set(row.target_player_id, existing);
-  }
-
-  return byPlayer;
-}
-
-/**
- * Calls the get_round_modifier_effects RPC (0050, issue #165): every
- * resolved effect touching this round's rolls, with the card and caster
- * that produced it — including advantage/disadvantage, which
- * getRoundModifierEffects above excludes. Feeds the RollCalculation UI
- * rework (issue #167) that labels each effect by its source card.
- */
-export async function getRoundModifierEffectDetails(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<ModifierEffectDetail[]> {
-  const rows = await fetchRoundModifierEffectRows(supabase, roundId);
-
-  return rows.map((row) => ({
-    targetPlayerId: row.target_player_id,
-    effectKind: row.effect_kind,
-    effectParams: row.effect_params,
-    resolvedValue: row.resolved_value,
-    cardName: row.card_name,
-    casterPlayerId: row.caster_player_id,
-  }));
 }
 
 /**
@@ -365,19 +258,4 @@ export async function hasLayerZeroReactionWindow(
   });
   if (error) throw error;
   return data as boolean;
-}
-
-function toModifierEffect(row: RawModifierEffectRow): ModifierEffect | null {
-  switch (row.effect_kind) {
-    case "flat_modifier":
-      return { kind: "flat", delta: row.effect_params.delta ?? 0 };
-    case "dice_modifier":
-      return { kind: "flat", delta: row.resolved_value ?? 0 };
-    case "modifier_multiplier":
-      return { kind: "multiplier", multiplier: row.effect_params.multiplier ?? 1 };
-    case "set_modifier":
-      return { kind: "set", value: row.effect_params.value ?? 0 };
-    default:
-      return null;
-  }
 }

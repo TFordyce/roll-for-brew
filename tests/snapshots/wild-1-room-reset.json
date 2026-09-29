@@ -7,5 +7,25 @@
   "tiedPlayers": [],
   "cupsMade": 2,
   "noModifierGain": false,
-  "trace": []
+  "trace": [],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 6,
+      "total": 6,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "other",
+      "nat": null,
+      "roll": 14,
+      "total": 14,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
 }

@@ -380,8 +380,117 @@ export async function seedActiveEffect(
   return { effectId: effect.id as string, castId: cast.id as string, roundId };
 }
 
+export type RoundModifierEffectRow = {
+  target_player_id: string;
+  effect_kind: string;
+  effect_params: Record<string, unknown>;
+  resolved_value: number | null;
+  card_name: string;
+  caster_player_id: string;
+};
+
+const ROUND_CAST_EFFECT_KINDS = [
+  "flat_modifier",
+  "dice_modifier",
+  "modifier_multiplier",
+  "set_modifier",
+  "advantage",
+  "disadvantage",
+];
+const CARRIED_EFFECT_KINDS = ["flat_modifier", "dice_modifier", "modifier_multiplier", "set_modifier"];
+
 /**
- * Narrows a room-scoped RPC result (get_round_modifier_effects,
+ * Test-only observation seam: the modifier-bucket effects a round's Cast Log
+ * and active effects carry, in the row shape the retired
+ * get_round_modifier_effects RPC returned. That RPC fed the TS badge
+ * recomposition #402 deleted (ADR 0007); the production app now reads the
+ * resolver's Resolution Summary instead, but these tests still want to see
+ * "this cast landed as this effect on this player" before any roll exists.
+ *
+ * Same rows as the RPC: live (not negated, target set) casts of the modifier
+ * / advantage kinds from non-persistent cards, plus the live carried-forward
+ * modifier effects (via `client`, which `_rr_active_effects_as_of` is granted
+ * to), ordered by cast / creation time.
+ */
+export async function roundModifierEffects(
+  admin: SupabaseClient,
+  client: SupabaseClient,
+  roundId: string,
+): Promise<{ data: RoundModifierEffectRow[] | null; error: Error | null }> {
+  const { data: round, error: rErr } = await admin.from("rounds").select("room_id").eq("id", roundId).single();
+  if (rErr) return { data: null, error: rErr };
+
+  const { data: casts, error: cErr } = await admin
+    .from("spell_casts")
+    .select(
+      "target_player_id, effect_kind, effect_params, cast_inputs, caster_id, cast_at, spell_deck_instances!inner(spell_cards!inner(name, duration_rounds))",
+    )
+    .eq("round_id", roundId)
+    .eq("target_pending", false)
+    .eq("negated", false)
+    .in("effect_kind", ROUND_CAST_EFFECT_KINDS);
+  if (cErr) return { data: null, error: cErr };
+
+  const { data: carried, error: aErr } = await admin.rpc("_rr_active_effects_as_of", {
+    p_room_id: round!.room_id,
+    p_as_of_round_id: roundId,
+  });
+  if (aErr) return { data: null, error: aErr };
+  const carriedRows = ((carried ?? []) as {
+    target_player_id: string;
+    effect_kind: string;
+    effect_params: Record<string, unknown>;
+    caster_id: string;
+    card_id: string;
+    created_at: string;
+  }[]).filter((e) => CARRIED_EFFECT_KINDS.includes(e.effect_kind));
+  const cardIds = [...new Set(carriedRows.map((e) => e.card_id))];
+  const { data: cards, error: kErr } = cardIds.length
+    ? await admin.from("spell_cards").select("id, name").in("id", cardIds)
+    : { data: [], error: null };
+  if (kErr) return { data: null, error: kErr };
+  const cardName = new Map((cards ?? []).map((c) => [c.id as string, c.name as string]));
+
+  type Card = { name: string; duration_rounds: number | null };
+  const rows: (RoundModifierEffectRow & { ts: string })[] = [
+    ...(casts ?? [])
+      .filter((c) => {
+        const card = (c.spell_deck_instances as unknown as { spell_cards: Card }).spell_cards;
+        return card.duration_rounds === null;
+      })
+      .map((c) => {
+        const card = (c.spell_deck_instances as unknown as { spell_cards: Card }).spell_cards;
+        const inputs = (c.cast_inputs ?? {}) as { dice_roll?: number };
+        const params = (c.effect_params ?? {}) as { sign?: number };
+        return {
+          target_player_id: c.target_player_id as string,
+          effect_kind: c.effect_kind as string,
+          effect_params: c.effect_params as Record<string, unknown>,
+          resolved_value:
+            c.effect_kind === "dice_modifier" && inputs.dice_roll != null
+              ? Number(inputs.dice_roll) * (params.sign ?? 1)
+              : null,
+          card_name: card.name,
+          caster_player_id: c.caster_id as string,
+          ts: c.cast_at as string,
+        };
+      }),
+    ...carriedRows.map((e) => ({
+      target_player_id: e.target_player_id,
+      effect_kind: e.effect_kind,
+      effect_params: e.effect_params,
+      resolved_value: null,
+      card_name: cardName.get(e.card_id) ?? "",
+      caster_player_id: e.caster_id,
+      ts: e.created_at,
+    })),
+  ];
+  rows.sort((a, b) => (a.ts < b.ts ? -1 : a.ts > b.ts ? 1 : 0));
+  return { data: rows.map(({ ts: _ts, ...row }) => row), error: null };
+}
+
+/**
+ * Narrows a room-scoped result (roundModifierEffects,
  * get_room_active_effects, get_dispellable_active_effects — all shaped with
  * a target_player_id column) down to the row(s) for one or more player ids.
  *

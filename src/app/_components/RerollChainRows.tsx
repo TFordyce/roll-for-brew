@@ -1,5 +1,4 @@
-import { classifyRollCalculation } from "@/lib/game/rollCalculation";
-import type { RerollChainLevel } from "@/lib/game/rerollChain";
+import type { RerollChainLevel } from "@/lib/game/roundRecap";
 import { RollCalculation } from "@/app/_components/RollCalculation";
 
 // Progressively deeper left margins for each nested reroll level, so a chained
@@ -20,16 +19,14 @@ function rerollIndentClass(chainIndex: number): string {
  *
  * A reroll layer never carries a discarded die or effect badge (issue #219
  * exempted tie-break rerolls from advantage/disadvantage and from spells), so
- * the total is always a plain roll+modifier sum, or the bare roll for a
- * nat-1/nat-20 — the same rule classifyRollCalculation applies to layer 0.
+ * each level is a plain roll + modifier. The chain (tie membership, nat
+ * standing, badge value) is built by the Round Recap module (issue #406); this
+ * only lays it out.
  */
 export function RerollChainRows({ chain }: { chain: RerollChainLevel[] }) {
   return (
     <>
       {chain.map((level, i) => {
-        const levelCalc = classifyRollCalculation(level.roll, level.modifier);
-        const levelBadgeValue = levelCalc.kind === "sum" ? levelCalc.total : level.roll;
-
         return (
           <div
             key={level.layer}
@@ -46,7 +43,7 @@ export function RerollChainRows({ chain }: { chain: RerollChainLevel[] }) {
             <div className="flex items-center gap-2">
               <RollCalculation roll={level.roll} modifier={level.modifier} rich discardedRoll={null} />
               <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-md border-2 border-gilt bg-tavern-panel-dark font-display text-xs text-parchment">
-                {levelBadgeValue}
+                {level.badgeValue}
               </span>
             </div>
           </div>
