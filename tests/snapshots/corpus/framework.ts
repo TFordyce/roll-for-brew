@@ -57,6 +57,18 @@ export type ResolveOutcome = {
   cups_made: number;
   no_modifier_gain: boolean;
   trace: TraceStep[];
+  /** The layer-0 Resolution Summary (issue #407, ADR 0007); null at layer > 0. */
+  players: SummaryEntry[] | null;
+};
+
+export type SummaryEntry = {
+  player_id: string;
+  roll: number;
+  snapshot: number;
+  composed: number;
+  total: number;
+  nat: "nat1" | "nat20" | null;
+  dice_reduced: boolean;
 };
 
 // ---------------------------------------------------------------------------
@@ -314,6 +326,13 @@ export type Scenario = {
    * first-resolve Trace. Document the reason inline.
    */
   nonIdempotent?: boolean;
+  /**
+   * Set (with the reason) when the non-persisting dry run (`_rr_resolve`,
+   * ADR 0007) is knowingly different from the real resolve — a live
+   * Calami-Tea tick, whose die the dry run never rolls. The runner then skips
+   * its dry-run = real comparison; the write-free check still runs.
+   */
+  dryRunDiffers?: string;
   /** One-line note shown in the golden and the coverage report. */
   note: string;
   seed: (ctx: ScenarioContext) => Promise<SeedResult>;

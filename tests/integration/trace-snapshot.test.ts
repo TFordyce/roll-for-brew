@@ -23,6 +23,30 @@ import {
   type ResolveOutcome,
 } from "../snapshots/corpus/framework";
 
+/**
+ * Everything a resolve can write for one round: the round row itself, its Cast
+ * Log (including rows the resolver synthesises and the flags it caches), and
+ * the room's modifier cache. Compared before/after `_rr_resolve` to prove the
+ * dry run leaves no writes.
+ */
+async function readRoundState(admin: SupabaseClient, roundId: string) {
+  const { data: round, error: rErr } = await admin.from("rounds").select("*").eq("id", roundId).single();
+  if (rErr) throw rErr;
+  const { data: casts, error: cErr } = await admin
+    .from("spell_casts")
+    .select("*")
+    .eq("round_id", roundId)
+    .order("id");
+  if (cErr) throw cErr;
+  const { data: roomPlayers, error: pErr } = await admin
+    .from("room_players")
+    .select("player_id, modifier")
+    .eq("room_id", round!.room_id)
+    .order("player_id");
+  if (pErr) throw pErr;
+  return { round, casts, roomPlayers };
+}
+
 // Phase headers that emit no distinctive Trace step of their own, so a
 // scenario declaring them cannot be cross-checked against its live trace.
 const STRUCTURALLY_INVISIBLE = new Set(["0a", "4a"]);
@@ -45,9 +69,33 @@ describe.skipIf(!hasAnonTestEnv)("issue #366 — resolve_round Trace-snapshot co
 
     const { roundId, resolveWith } = await scenario.seed(ctx);
 
+    // Issue #404 (ADR 0007): the non-persisting evaluation leaves the round
+    // exactly as it found it — before the real resolve (nothing persisted yet)
+    // and after it (the stored Trace and caches survive a later dry run).
+    const beforeDry = await readRoundState(admin, roundId);
+    const { data: dryData, error: dryError } = await admin.rpc("_rr_resolve", { p_round_id: roundId });
+    expect(dryError, `_rr_resolve errored: ${dryError?.message}`).toBeNull();
+    expect(await readRoundState(admin, roundId), "_rr_resolve wrote round state").toEqual(beforeDry);
+    const dry = dryData as ResolveOutcome;
+
     const { data, error } = await resolveWith.rpc("resolve_round", { p_round_id: roundId });
     expect(error, `resolve_round errored: ${error?.message}`).toBeNull();
     const out = data as ResolveOutcome;
+
+    const afterResolve = await readRoundState(admin, roundId);
+    const { error: dryAgainError } = await admin.rpc("_rr_resolve", { p_round_id: roundId });
+    expect(dryAgainError).toBeNull();
+    expect(await readRoundState(admin, roundId), "_rr_resolve wrote over a resolved round").toEqual(
+      afterResolve,
+    );
+
+    // With nothing pending, the dry run IS the resolution: same outcome, same
+    // normalised Trace.
+    if (!scenario.dryRunDiffers) {
+      expect(snapshotDocument(scenario.name, dry, ctx.roster), "dry run disagrees with resolve_round").toEqual(
+        snapshotDocument(scenario.name, out, ctx.roster),
+      );
+    }
 
     // The golden must be reproducible: a second resolve over identical inputs
     // must yield the same *normalised* Trace (raw UUIDs of any rows the first
