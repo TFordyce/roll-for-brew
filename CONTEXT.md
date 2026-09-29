@@ -187,3 +187,11 @@ _Avoid_: courage die, gifted reaction, token (unqualified).
 **Reaction Source**:
 Anything that lets a round's participant react in the reaction window: a held Reaction-timed card, or a live, unspent Courage Token (issue #384). Who can react, and who the window is still waiting on, are both defined over Reaction Sources, not over held cards alone.
 _Avoid_: reaction holder (implies a held card), reaction card (only one kind of source).
+
+**Compelled Cast** (Brewmageddon):
+A cast a player is obliged to make because Brewmageddon landed in their round (#385). The compelled set is every round participant holding a card when the round closes. A compelled Action holder casts in a **Compelled Cast step** between `close_round` and the first roll, which holds all rolling until every compelled Action cast is in. A compelled Reaction holder cannot pass the Layer-0 Reaction Window. Otherwise it is an ordinary cast: the holder picks the target, it goes on the stack in order, it can be countered, and it stands even if Brewmageddon is later negated.
+_Avoid_: forced cast, auto-cast (the server never casts on the holder's behalf), forced play.
+
+**Forfeit**:
+The end of an unmet Compelled Cast: the held card goes back to the deck with no effect, and a no-effect entry in the Cast Log points at Brewmageddon. It happens when the card has no legal target, when the existing stall clock fires (its own branch, not a new clock), or when the holder is excluded for never rolling.
+_Avoid_: discard, fizzle (that's a cast whose effect finds nothing to act on), abandon.
