@@ -28,5 +28,25 @@
       "display_kind": "forced_reroll",
       "target_player": "P:rerolled"
     }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 8,
+      "total": 8,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "rerolled",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
   ]
 }

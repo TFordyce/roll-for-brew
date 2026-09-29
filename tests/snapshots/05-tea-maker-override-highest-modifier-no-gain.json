@@ -28,5 +28,25 @@
       "display_kind": "tea_maker_override",
       "target_player": "P:topmod"
     }
+  ],
+  "players": [
+    {
+      "player": "other",
+      "nat": null,
+      "roll": 5,
+      "total": 7,
+      "composed": 2,
+      "snapshot": 2,
+      "dice_reduced": false
+    },
+    {
+      "player": "topmod",
+      "nat": null,
+      "roll": 5,
+      "total": 13,
+      "composed": 8,
+      "snapshot": 8,
+      "dice_reduced": false
+    }
   ]
 }

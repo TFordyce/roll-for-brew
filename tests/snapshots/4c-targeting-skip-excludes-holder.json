@@ -48,5 +48,34 @@
       "display_kind": "lowest_gains_highest_modifier",
       "target_player": "P:caster"
     }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 4,
+      "total": 10,
+      "composed": 6,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "highroll",
+      "nat": null,
+      "roll": 18,
+      "total": 24,
+      "composed": 6,
+      "snapshot": 6,
+      "dice_reduced": false
+    },
+    {
+      "player": "skip-holder",
+      "nat": null,
+      "roll": 2,
+      "total": 2,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
   ]
 }

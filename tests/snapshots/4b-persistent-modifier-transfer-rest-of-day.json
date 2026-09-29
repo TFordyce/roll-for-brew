@@ -30,5 +30,25 @@
       "display_kind": "persistent_modifier_transfer",
       "target_player": "P:beneficiary"
     }
+  ],
+  "players": [
+    {
+      "player": "beneficiary",
+      "nat": null,
+      "roll": 9,
+      "total": 9,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "other",
+      "nat": null,
+      "roll": 10,
+      "total": 10,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
   ]
 }

@@ -63,6 +63,25 @@ export type ScrappedGeneration = {
 /** One row of round_layer_participants: `playerId` rolled in tie-break `layer`. */
 export type LayerParticipant = { layer: number; playerId: string };
 
+/**
+ * One layer-0 roller's entry in the Resolution Summary (issue #407, ADR 0007):
+ * the resolver's own final values. The roll row renders these as-is.
+ */
+export type ResolutionSummaryEntry = {
+  playerId: string;
+  /** Final roll, after every roll-input transform. */
+  roll: number;
+  /** Roll-time modifier (rolls.modifier_snapshot). */
+  snapshot: number;
+  /** Final composed modifier. */
+  composed: number;
+  total: number;
+  /** As _rr_pick_lowest judged it — a Calami-Tea-floored 1 is not a nat 1. */
+  nat: "nat1" | "nat20" | null;
+  /** A Calami-Tea tick floored this roll. */
+  diceReduced: boolean;
+};
+
 export type RoundRecapData = {
   resolved: boolean;
   /**
@@ -72,6 +91,14 @@ export type RoundRecapData = {
    */
   layerZeroOutcome: "brewer" | "tie" | null;
   trace: ResolutionTraceStep[];
+  /**
+   * Issue #407: the layer-0 Resolution Summary. null before the round
+   * resolves, or for a round resolved before summaries existed (the row then
+   * renders degraded: roll, snapshot and terms, no total).
+   */
+  summary: ResolutionSummaryEntry[] | null;
+  /** Issue #409: the trace and summary are a live dry run, not the resolution. */
+  provisional: boolean;
   casts: RoundRecapCast[];
   /**
    * Issue #352: every scrapped replay generation of this round, oldest first
@@ -121,10 +148,22 @@ type RawScrappedGeneration = {
   layer_participants: { layer: number; player_id: string }[] | null;
 };
 
+type RawSummaryEntry = {
+  player_id: string;
+  roll: number;
+  snapshot: number;
+  composed: number;
+  total: number;
+  nat: "nat1" | "nat20" | null;
+  dice_reduced: boolean | null;
+};
+
 type RawRoundRecap = {
   resolved: boolean;
   layer_zero_outcome: "brewer" | "tie" | null;
   trace: unknown;
+  players: RawSummaryEntry[] | null;
+  provisional: boolean | null;
   casts: RawRecapCast[] | null;
   scrapped_generations: RawScrappedGeneration[] | null;
   layers: RawScrappedGenerationRoll[] | null;
@@ -150,6 +189,20 @@ function groupRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] 
     byLayer.set(row.layer, bucket);
   }
   return [...byLayer.entries()].sort(([a], [b]) => a - b).map(([layer, rolls]) => ({ layer, rolls }));
+}
+
+/** Parses a raw Resolution Summary (null stays null — a pre-summary round). */
+export function parseResolutionSummary(raw: RawSummaryEntry[] | null | undefined): ResolutionSummaryEntry[] | null {
+  if (!Array.isArray(raw)) return null;
+  return raw.map((p) => ({
+    playerId: p.player_id,
+    roll: Number(p.roll),
+    snapshot: Number(p.snapshot),
+    composed: Number(p.composed),
+    total: Number(p.total),
+    nat: p.nat ?? null,
+    diceReduced: p.dice_reduced ?? false,
+  }));
 }
 
 function parseLayerParticipants(
@@ -198,6 +251,8 @@ export async function getRoundRecap(
     resolved: raw.resolved,
     layerZeroOutcome: raw.layer_zero_outcome ?? null,
     trace: parseResolutionTrace(raw.trace),
+    summary: parseResolutionSummary(raw.players),
+    provisional: raw.provisional ?? false,
     scrappedGenerations: (raw.scrapped_generations ?? []).map(parseScrappedGeneration),
     layers: groupRollsByLayer(raw.layers ?? []),
     layerParticipants: parseLayerParticipants(raw.layer_participants),

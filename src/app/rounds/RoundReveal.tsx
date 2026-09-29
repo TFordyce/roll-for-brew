@@ -13,6 +13,7 @@ import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollCalculation } from "@/app/_components/RollCalculation";
+import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 import { RoundRecap, scrollToRecapPlayer } from "@/app/_components/RoundRecap";
 import { RerollChainRows } from "@/app/_components/RerollChainRows";
@@ -342,6 +343,15 @@ export function RoundReveal({
             const rerollChain = recap
               ? buildRerollChain(p.playerId, recap.layers, recap.layerParticipants)
               : [];
+            // Issue #407: once the resolver has decided the round, the row is
+            // its Resolution Summary + Trace terms (degraded — no total — for a
+            // round resolved before summaries existed). Until then the live
+            // TS composition above still serves the reaction window.
+            const resolverRow =
+              recap && (recap.resolved || recap.summary !== null)
+                ? recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null
+                : null;
+            const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : (badgeValue ?? "?");
 
             return (
               <li key={p.playerId} className="py-2">
@@ -365,7 +375,9 @@ export function RoundReveal({
                         Proxy
                       </span>
                     ) : null}
-                    {value !== null ? (
+                    {resolverRow ? (
+                      <RollRowExpression row={resolverRow} />
+                    ) : value !== null ? (
                       <RollCalculation
                         roll={value}
                         modifier={built.composedModifier}
@@ -379,14 +391,14 @@ export function RoundReveal({
                   </div>
                   <span
                     className={`flex h-9 w-9 items-center justify-center rounded-md border-2 font-display text-sm ${
-                      value === null
+                      value === null && !resolverRow
                         ? "animate-spin border-gilt-dark text-parchment-dim"
                         : isBrewer
                           ? "border-gilt-bright bg-ember text-parchment shadow-[0_0_10px_theme(colors.gilt.DEFAULT)]"
                           : "border-gilt bg-tavern-panel-dark text-parchment"
                     }`}
                   >
-                    {badgeValue ?? "?"}
+                    {shownBadge}
                   </span>
                 </div>
 

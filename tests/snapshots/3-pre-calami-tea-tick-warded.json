@@ -60,5 +60,25 @@
       "blocked_cast_id": "cast#2",
       "would_be_before": null
     }
+  ],
+  "players": [
+    {
+      "player": "calami-caster",
+      "nat": null,
+      "roll": 13,
+      "total": 13,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "calami-target",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
   ]
 }

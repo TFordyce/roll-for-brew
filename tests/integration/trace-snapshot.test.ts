@@ -16,6 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTestAdminClient, createTestCleanup, hasAnonTestEnv } from "./setup";
 import { CORPUS } from "../snapshots/corpus";
 import {
+  composedFoldViolations,
   makeContext,
   phasesWitnessedBy,
   snapshotDocument,
@@ -83,6 +84,8 @@ describe.skipIf(!hasAnonTestEnv)("issue #366 — resolve_round Trace-snapshot co
     const out = data as ResolveOutcome;
 
     const afterResolve = await readRoundState(admin, roundId);
+    // Issue #407: the summary is persisted beside the Trace.
+    expect(afterResolve.round.resolution_summary).toEqual(out.players);
     const { error: dryAgainError } = await admin.rpc("_rr_resolve", { p_round_id: roundId });
     expect(dryAgainError).toBeNull();
     expect(await readRoundState(admin, roundId), "_rr_resolve wrote over a resolved round").toEqual(
@@ -120,6 +123,11 @@ describe.skipIf(!hasAnonTestEnv)("issue #366 — resolve_round Trace-snapshot co
       declaredButUnseen,
       `${scenario.name} declares phases its trace does not witness: ${declaredButUnseen.join(", ")}`,
     ).toEqual([]);
+
+    // Issue #407: the summary's composed modifier is exactly the snapshot
+    // folded through the Trace's modifier steps — so a row's terms always add
+    // up to its total.
+    expect(composedFoldViolations(out), "composed modifier moved without a Trace step").toEqual([]);
 
     const doc = snapshotDocument(scenario.name, out, ctx.roster);
     await expect(JSON.stringify(doc, null, 2) + "\n").toMatchFileSnapshot(

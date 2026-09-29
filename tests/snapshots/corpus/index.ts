@@ -748,6 +748,33 @@ export const CORPUS: Scenario[] = [
     },
   },
 
+  {
+    // Issue #407: a roll of 2 minus any 1d4 floors at 1 — deterministic
+    // despite the resolve-time die. The floored 1 is not a natural 1
+    // (dice_reduced), so it doesn't auto-brew: the 2 - 2 = 0 roller does.
+    name: "3-calami-tea-floored-natural-1",
+    phases: ["3", "5"],
+    dryRunDiffers: "the dry run never rolls the Calami-Tea tick die, so the 2 stays a 2",
+    note: "A Calami-Tea tick drags a 2 down to the floor of 1; the summary marks it dice_reduced with no nat-1 standing, and the lowest total brews.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("floored");
+      const p2 = await ctx.signUp("low-total");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 2);
+      await ctx.seedRoll(roundId, p2.googleSub, 2, -2);
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p2.googleSub,
+        cardName: "Calami-Tea",
+        effectKind: "per_round_dice_tick",
+        effectParams: { die: 4, sign: -1 },
+        roundsRemaining: 3,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+
   // =========================================================================
   // WILD — Wild Brew Surge, all six d6 branches. The parent wild_dispatch row
   // carries cast_inputs.branch = N; each branch's post-dispatch child cast is

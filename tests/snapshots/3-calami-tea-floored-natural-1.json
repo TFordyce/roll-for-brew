@@ -1,51 +1,54 @@
 {
-  "scenario": "3-forced-reroll-adopted",
+  "scenario": "3-calami-tea-floored-natural-1",
   "outcome": "brewer",
   "layer": 0,
-  "brewer": "rerolled",
+  "brewer": "low-total",
   "brewerSource": "default",
   "tiedPlayers": [],
   "cupsMade": 2,
   "noModifierGain": false,
   "trace": [
     {
+      "die": 4,
+      "sign": -1,
       "after": {
         "type": "roll",
-        "value": 2
+        "value": 1
       },
       "index": 0,
       "before": {
         "type": "roll",
-        "value": 18
+        "value": 2
       },
+      "rolled": "<rng>",
       "outcome": "applied",
       "source_cast": {
         "cast_id": "cast#1",
-        "card_name": "Double Dunk",
+        "card_name": "Calami-Tea",
         "active_effect_id": null,
-        "caster_player_id": "P:forcer"
+        "caster_player_id": "P:low-total"
       },
-      "display_kind": "forced_reroll",
-      "target_player": "P:rerolled"
+      "display_kind": "dice_tick",
+      "target_player": "P:floored"
     }
   ],
   "players": [
     {
-      "player": "forcer",
+      "player": "floored",
       "nat": null,
-      "roll": 9,
-      "total": 9,
+      "roll": 1,
+      "total": 1,
       "composed": 0,
       "snapshot": 0,
-      "dice_reduced": false
+      "dice_reduced": true
     },
     {
-      "player": "rerolled",
+      "player": "low-total",
       "nat": null,
       "roll": 2,
-      "total": 2,
-      "composed": 0,
-      "snapshot": 0,
+      "total": 0,
+      "composed": -2,
+      "snapshot": -2,
       "dice_reduced": false
     }
   ]

@@ -28,5 +28,25 @@
       "display_kind": "modifier_multiplier",
       "target_player": "P:caster"
     }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 6,
+      "total": 16,
+      "composed": 10,
+      "snapshot": 5,
+      "dice_reduced": false
+    },
+    {
+      "player": "other",
+      "nat": null,
+      "roll": 13,
+      "total": 13,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
   ]
 }

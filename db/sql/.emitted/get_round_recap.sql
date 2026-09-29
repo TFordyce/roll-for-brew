@@ -25,6 +25,7 @@ declare
   v_player_id text;
   v_status text;
   v_trace jsonb;
+  v_summary jsonb;
   v_casts jsonb;
   v_scrapped jsonb;
   v_layers jsonb;
@@ -41,8 +42,9 @@ begin
 
   select r.status,
          coalesce(r.resolution_trace, '[]'::jsonb),
+         r.resolution_summary,
          coalesce(r.scrapped_generations, '[]'::jsonb)
-    into v_status, v_trace, v_scrapped
+    into v_status, v_trace, v_summary, v_scrapped
     from public.rounds r
    where r.id = p_round_id;
 
@@ -123,6 +125,11 @@ begin
       else 'brewer'
     end,
     'trace', v_trace,
+    -- Issue #407: the layer-0 Resolution Summary resolve_round stored beside
+    -- the Trace. null for a round resolved before it existed (the row renders
+    -- degraded) or not yet resolved.
+    'players', v_summary,
+    'provisional', false,
     'casts', v_casts,
     -- Issue #352: the retained Recap payload of every scrapped replay
     -- generation, oldest first (generation 0 is the original attempt). [] for
@@ -149,6 +156,8 @@ comment on function public.get_round_recap(uuid) is
   'resolved per-cast state derived client-side from the Trace; '
   'scrapped_generations is rounds.scrapped_generations verbatim ([] when the '
   'round was never replayed), each entry a generation-0 Recap payload. '
+  'Issue #407: players is rounds.resolution_summary (null before resolution '
+  'or for a pre-summary round); provisional is false. '
   'Issue #406: layers is every fully-rolled layer''s rolls (flat, the same '
   'withholding rule as get_round_layer_history) and layer_participants is '
   'round_layer_participants -- tie membership for the Reroll Chain.';
