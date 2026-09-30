@@ -1,0 +1,63 @@
+{
+  "scenario": "05-brewer-immunity-lowest-roller",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "next-low",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "immune"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "The Last Cuppa",
+        "active_effect_id": "fx#1",
+        "caster_player_id": "P:immune-low"
+      },
+      "display_kind": "brewer_immunity",
+      "immunity_tier": "lowest_roller",
+      "target_player": "P:immune-low",
+      "skipped_card_name": null
+    }
+  ],
+  "players": [
+    {
+      "player": "high",
+      "nat": null,
+      "roll": 16,
+      "total": 16,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "immune-low",
+      "nat": null,
+      "roll": 2,
+      "total": 2,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "next-low",
+      "nat": null,
+      "roll": 8,
+      "total": 8,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}
