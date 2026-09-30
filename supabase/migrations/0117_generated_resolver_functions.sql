@@ -143,15 +143,16 @@ revoke execute on function public._land_drawn_instance(text, uuid, text) from pu
 --   * it has not been dispelled at or before the as-of round: no non-negated
 --     'dispel' cast whose effect_params.ended_effect_id names this row sits
 --     in a round started on/before the as-of round;
---   * it has not been consumed (issue #435, spec #401 F6): its source cast
+--   * it has not been spent (issue #435, spec #401 F6): its source cast
 --     records neither cast_inputs.consumed_by_round nor
 --     cast_inputs.consumed_by_draw. A one-shot effect (a Draw Redirect mark)
 --     writes one of these when it fires. Unlike a dispel this is not bounded
---     by the as-of round -- a fired mark is spent for good, and a Round
---     replay scrap does not restore it (#383 Q2), because the card it moved
---     survives the scrap.
+--     by the as-of round -- a fired mark is spent for good, even to an as-of
+--     read of an earlier round, and a Round replay scrap does not restore it
+--     (#383 Q2), because the card it moved survives the scrap.
 --
--- Verbatim from migration 0084 apart from the consumed condition.
+-- Body from migration 0084 plus the spent condition; grants merge 0084
+-- (authenticated) and 0108 (service_role, the integration suite's seam).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -205,7 +206,7 @@ comment on function public._rr_active_effects_as_of(uuid, uuid) is
   'Issue #310: the spell_active_effects rows live as of a given round -- '
   'source cast not negated, duration not exhausted (resolved-round count '
   'since the source round), not dispelled at/before the round, and (#435) '
-  'not consumed (source cast_inputs.consumed_by_round / consumed_by_draw). '
+  'not spent (source cast_inputs.consumed_by_round / consumed_by_draw). '
   'The shared row source for every reader that treats spell_active_effects '
   'as current game state (the ward gate/map, dispel/room badge readers, '
   'resolve_round''s phases).';

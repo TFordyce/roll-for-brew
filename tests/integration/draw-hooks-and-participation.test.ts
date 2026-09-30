@@ -136,7 +136,7 @@ describe.skipIf(!hasAnonTestEnv)("draw hooks and participated rounds (#435)", ()
     });
   });
 
-  describe("active-effect liveness: not consumed", () => {
+  describe("active-effect liveness: not spent", () => {
     async function liveEffectIds(roomId: string, asOfRoundId: string): Promise<string[]> {
       const { data, error } = await admin.rpc("_rr_active_effects_as_of", {
         p_room_id: roomId,
@@ -191,6 +191,7 @@ describe.skipIf(!hasAnonTestEnv)("draw hooks and participated rounds (#435)", ()
       expect(await liveEffectIds(roomId, roundId)).toContain(effectId);
     });
   });
+
   describe("draw_spell_card_as with the crit's round (puppet crit entry point)", () => {
     it("draws for the rolled-for player and rejects a round from another room", async () => {
       const { client: adminClient, googleSub: adminId } = await signUpSignInAndEnterRoom(
