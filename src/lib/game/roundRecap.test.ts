@@ -6,7 +6,7 @@ import type {
   RoundRecapData,
   ScrappedGeneration,
 } from "@/lib/supabase/roundRecap";
-import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { parseResolutionTrace, type CompletedLayer, type ForfeitReason, type ResolutionTraceStep } from "@/lib/supabase/rolls";
 
 // --- fixture helpers ---------------------------------------------------
 
@@ -33,6 +33,7 @@ function cast(overrides: Partial<RoundRecapCast> = {}): RoundRecapCast {
     phase: "preroll",
     negated: false,
     redirectedToCastId: null,
+    compelledByCastId: null,
     onStack: true,
     ...overrides,
   };
@@ -62,6 +63,8 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     pairOp: null,
     condition: null,
     diceTick: null,
+    compel: null,
+    heistReason: null,
     ...overrides,
   };
 }
@@ -367,6 +370,76 @@ describe("buildRoundRecap", () => {
     expect(s.displayKind).toBe("targeting_skip");
     expect(s.sentence).toBe("Cloud of Cream — Ada is skipped for highest/lowest-modifier targeting");
     expect(model.phases.find((p) => p.label === "Outcome")?.steps.some((x) => x.displayKind === "targeting_skip")).toBe(true);
+  });
+
+  describe("Tea Heist (issue #438)", () => {
+    function heist(after: string, over: Partial<ResolutionTraceStep> = {}) {
+      return buildRoundRecap({
+        data: data({
+          casts: [cast({ castId: "C1", cardName: "Tea Heist", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "card_heist" })],
+          trace: [
+            step({
+              displayKind: "card_heist",
+              sourceCast: { castId: "C1", activeEffectId: null, cardName: "Tea Heist", casterPlayerId: "ada" },
+              targetPlayer: "ben",
+              before: { type: "status", value: "held" },
+              after: { type: "status", value: after },
+              outcome: after === "moved" ? "applied" : "no-op",
+              ...over,
+            }),
+          ],
+        }),
+        displayName,
+      });
+    }
+    const only = (model: ReturnType<typeof buildRoundRecap>) => model.phases.flatMap((p) => p.steps)[0]!;
+
+    it("moved: the thief steals the victim's card, in the Outcome group", () => {
+      const model = heist("moved");
+      const s = only(model);
+      expect(s.sentence).toBe("Ada played Tea Heist — Ada steals Ben's card");
+      expect(s.statusLabel).toBe("moved");
+      expect(s.statusKind).toBe("applied");
+      expect(s.beforeAfter).toBeNull();
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("fizzled: the victim played the card first", () => {
+      const s = only(heist("fizzled", { heistReason: "victim_played_first" }));
+      expect(s.sentence).toBe("Ada played Tea Heist on Ben — fizzled: Ben played the card first");
+      expect(s.statusLabel).toBe("fizzled");
+      expect(s.statusKind).toBe("no-op");
+    });
+
+    it("fizzled: the thief's hand is full", () => {
+      expect(only(heist("fizzled", { heistReason: "thief_hand_full" })).sentence).toBe(
+        "Ada played Tea Heist on Ben — fizzled: Ada's hand is full",
+      );
+    });
+
+    it("countered: nothing moves", () => {
+      const s = only(heist("countered"));
+      expect(s.sentence).toBe("Ada played Tea Heist on Ben — countered, the card stays with Ben");
+      expect(s.statusLabel).toBe("countered");
+      expect(s.statusKind).toBe("negated");
+    });
+
+    it("reads heist_reason off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "card_heist",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "Tea Heist", caster_player_id: "ada" },
+          target_player: "ben",
+          before: { type: "status", value: "held" },
+          after: { type: "status", value: "fizzled" },
+          outcome: "no-op",
+          heist_reason: "victim_played_first",
+        },
+      ]);
+      expect(parsed!.heistReason).toBe("victim_played_first");
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.heistReason).toBeNull();
+    });
   });
 
   it("per-round dice tick (Calami-Tea): sentence names the rolled die, not the before→after delta", () => {
@@ -852,6 +925,7 @@ describe("buildRoundRecap rows", () => {
             before: { type: "roll", value: 10 },
             after: { type: "roll", value: 10 },
             diceTick: null,
+            compel: null,
           }),
         ],
       }),
@@ -1069,5 +1143,145 @@ describe("buildRoundRecap: the reaction window's not-heard-from line (issue #411
       sentence: "Not heard from Dev: timed out after 5 minutes",
       statusLabel: "timed out",
     });
+  });
+});
+
+describe("buildRoundRecap: Brewmageddon (issue #440)", () => {
+  const BM = "BM";
+  const bmCast = () =>
+    cast({ castId: BM, cardName: "Brewmageddon", casterPlayerId: "ada", targetPlayerId: null, effectKind: "compel_cast" });
+  const compelStep = (compelledPlayerIds: string[]) =>
+    step({
+      displayKind: "compel_cast",
+      sourceCast: { castId: BM, activeEffectId: null, cardName: "Brewmageddon", casterPlayerId: "ada" },
+      targetPlayer: null,
+      before: { type: "status", value: "cast" },
+      after: { type: "status", value: "compelled" },
+      outcome: compelledPlayerIds.length > 0 ? "applied" : "no-op",
+      compel: { compelledPlayerIds, compelledByCastId: null, reason: null },
+    });
+  const forfeitStep = (castId: string, player: string, cardName: string, reason: ForfeitReason) =>
+    step({
+      displayKind: "forfeit",
+      sourceCast: { castId, activeEffectId: null, cardName, casterPlayerId: player },
+      targetPlayer: player,
+      before: { type: "status", value: "held" },
+      after: { type: "status", value: "forfeited" },
+      outcome: "no-op",
+      compel: { compelledPlayerIds: [], compelledByCastId: BM, reason },
+    });
+
+  it("the Brewmageddon step names who it compelled", () => {
+    const model = buildRoundRecap({
+      data: data({ casts: [bmCast()], trace: [compelStep(["ben", "cass"])] }),
+      displayName,
+    });
+    const s = model.phases[0]!.steps[0]!;
+    expect(s.sentence).toBe("Ada played Brewmageddon — Ben and Cass must play their card");
+    expect(s.statusLabel).toBe("applied");
+  });
+
+  it("with nobody holding a card the Brewmageddon step is a no-op", () => {
+    const model = buildRoundRecap({ data: data({ casts: [bmCast()], trace: [compelStep([])] }), displayName });
+    const s = model.phases[0]!.steps[0]!;
+    expect(s.sentence).toBe("Ada played Brewmageddon — nobody held a card");
+    expect(s.statusLabel).toBe("no effect");
+  });
+
+  it.each<[ForfeitReason, string]>([
+    ["no_legal_target", "it had no legal target"],
+    ["stall", "they never played it"],
+    ["excluded", "they never rolled"],
+    ["vote", "they were skipped by vote"],
+    ["timeout", "they timed out"],
+  ])("a Forfeit (%s) names the card, the reason, and Brewmageddon", (reason, why) => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [
+          bmCast(),
+          cast({ castId: "F1", cardName: "Stir the Pot", casterPlayerId: "ben", effectKind: "forfeit", compelledByCastId: BM }),
+        ],
+        trace: [compelStep(["ben"]), forfeitStep("F1", "ben", "Stir the Pot", reason)],
+      }),
+      displayName,
+    });
+    const s = model.phases[0]!.steps[1]!;
+    expect(s.sentence).toBe(`Ben's Stir the Pot is forfeited to Brewmageddon — ${why}`);
+    expect(s.statusLabel).toBe("forfeited");
+    expect(s.statusKind).toBe("no-op");
+  });
+
+  it("a compelled cast's step and chip link back to Brewmageddon; other chips don't", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [
+          bmCast(),
+          cast({
+            castId: "S1",
+            cardName: "Sugar Rush",
+            casterPlayerId: "ben",
+            targetPlayerId: "ben",
+            effectKind: "advantage",
+            compelledByCastId: BM,
+          }),
+          cast({ castId: "F1", cardName: "Greater Detox", casterPlayerId: "cass", effectKind: "forfeit", compelledByCastId: BM }),
+        ],
+        trace: [
+          compelStep(["ben", "cass"]),
+          forfeitStep("F1", "cass", "Greater Detox", "no_legal_target"),
+          step({
+            displayKind: "advantage",
+            sourceCast: { castId: "S1", activeEffectId: null, cardName: "Sugar Rush", casterPlayerId: "ben" },
+            targetPlayer: "ben",
+            before: { type: "roll", value: 6 },
+            after: { type: "roll", value: 14 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+
+    const chips = new Map(model.castStrip.map((c) => [c.castId, c]));
+    expect(chips.get(BM)!.compelledBy).toBeUndefined();
+    expect(chips.get("S1")!.compelledBy).toBe("Brewmageddon");
+    expect(chips.get("F1")!.compelledBy).toBe("Brewmageddon");
+    expect(chips.get("F1")!.state).toBe("no-op");
+
+    const adv = model.phases.flatMap((p) => p.steps).find((s) => s.castId === "S1")!;
+    expect(adv.sentence).toBe("Ben played Sugar Rush — Ben rolls with advantage (compelled by Brewmageddon)");
+  });
+
+  it("live round: a Forfeit and a compelled cast read as such before the Trace exists", () => {
+    const model = buildRoundRecap({
+      data: data({
+        resolved: false,
+        casts: [
+          bmCast(),
+          cast({
+            castId: "S1",
+            cardName: "Sugar Rush",
+            casterPlayerId: "ben",
+            targetPlayerId: "ben",
+            effectKind: "advantage",
+            compelledByCastId: BM,
+          }),
+          cast({
+            castId: "F1",
+            cardName: "Greater Detox",
+            casterPlayerId: "cass",
+            targetPlayerId: "cass",
+            effectKind: "forfeit",
+            compelledByCastId: BM,
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const sentences = model.phases.flatMap((p) => p.steps).map((s) => s.sentence);
+    expect(sentences).toEqual([
+      "Ada played Brewmageddon",
+      "Ben played Sugar Rush on Ben (compelled by Brewmageddon)",
+      "Cass forfeited Greater Detox to Brewmageddon",
+    ]);
   });
 });

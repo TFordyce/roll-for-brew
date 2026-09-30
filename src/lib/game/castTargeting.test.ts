@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   AT_CAST_TARGET_CARDS,
   TWO_OTHER_PLAYER_CARDS,
+  atCastTargetOptions,
   castTargetMode,
+  compelledCastTargetMode,
 } from "./castTargeting";
 
 type Held = Parameters<typeof castTargetMode>[0];
@@ -54,10 +56,58 @@ describe("castTargetMode", () => {
     expect(castTargetMode(card({ target: "WILD" }))).toBe("none");
   });
 
+  it("routes Tea Heist to the at-cast single-target select (issue #438)", () => {
+    expect(castTargetMode(card({ cardName: "Tea Heist", target: "OPPONENT" }))).toBe("at-cast-target");
+  });
+
   it("exposes the two name sets it keys off (mirroring cast_spell_card's by-name branches)", () => {
     expect(AT_CAST_TARGET_CARDS.has("Chai-nge of Heart")).toBe(true);
     expect(TWO_OTHER_PLAYER_CARDS.has("Stir the Pot")).toBe(true);
     // Stir the Pot is handled by its own picker, not the single-target select.
     expect(AT_CAST_TARGET_CARDS.has("Stir the Pot")).toBe(false);
+  });
+});
+
+describe("compelledCastTargetMode (issue #440)", () => {
+  it("names a deferred OPPONENT / PLAYER target now, from the right pool", () => {
+    expect(compelledCastTargetMode(card({ cardName: "Six Sugars", target: "OPPONENT" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: false,
+    });
+    expect(compelledCastTargetMode(card({ cardName: "Fortune's Flavour", target: "PLAYER" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: true,
+    });
+  });
+
+  it("asks a WILD card for its possible tea-maker now, from every participant", () => {
+    expect(compelledCastTargetMode(card({ cardName: "Wild Brew Surge", target: "WILD" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: true,
+    });
+  });
+
+  it("leaves every other card's control as it is", () => {
+    expect(compelledCastTargetMode(card({ cardName: "Tea for Two", target: "PLAYER" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: false,
+    });
+    expect(compelledCastTargetMode(card({ cardName: "Stir the Pot", target: "OPPONENT" })).mode).toBe(
+      "two-other-players",
+    );
+    expect(compelledCastTargetMode(card({ cardName: "Sugar Rush", target: "SELF" })).mode).toBe("none");
+  });
+});
+
+describe("atCastTargetOptions", () => {
+  const others = [{ playerId: "ada" }, { playerId: "ben" }, { playerId: "cass" }];
+
+  it("lists every other participant for an ordinary at-cast card", () => {
+    expect(atCastTargetOptions("Bes-Tea", others, ["ben"])).toEqual(others);
+  });
+
+  it("lists only card-holders for Tea Heist (issue #438)", () => {
+    expect(atCastTargetOptions("Tea Heist", others, ["ben", "cass"])).toEqual([{ playerId: "ben" }, { playerId: "cass" }]);
+    expect(atCastTargetOptions("Tea Heist", others, [])).toEqual([]);
   });
 });

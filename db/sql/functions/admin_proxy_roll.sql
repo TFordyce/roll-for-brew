@@ -3,12 +3,13 @@
 -- Proxy Roll (issue #273, migration 0071): an admin enters the number a
 -- player present at the table read out, folding them into a live round.
 -- Round-status eligibility mirrors declare_in_late's window: 'open', or
--- 'closed' with no rolls yet; RFB32 for the stale-round race.
+-- 'closed' with no rolls yet; RFB32 for the stale-round race. RFB54 while the
+-- Compelled Cast step (#440) holds rolling.
 --
 -- Issue #435 (spec #401 F6): its nat 1 / nat 20 pending-draw insert is a crit
 -- entry point, so the row goes to _apply_crit_redirect's recipient; a NULL
 -- recipient (a fizzled redirect) records nothing. A no-op redirect today.
--- Verbatim from migration 0071 otherwise.
+-- Otherwise unchanged from migration 0071 (plus #440's RFB54 hold).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -57,6 +58,13 @@ begin
   ) then
     raise exception 'admin_proxy_roll: round is no longer open for a proxy roll'
       using errcode = 'RFB32';
+  end if;
+
+  -- Nobody rolls during the Compelled Cast step (Brewmageddon, #440), a
+  -- Proxy Roll included.
+  if v_status = 'closed' and public._compelled_cast_step_open(p_round_id) then
+    raise exception 'admin_proxy_roll: rolling is held until every compelled cast is in'
+      using errcode = 'RFB54';
   end if;
 
   -- Implicitly creates the target's today's-room membership — no prior

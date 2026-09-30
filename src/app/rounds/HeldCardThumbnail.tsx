@@ -36,6 +36,7 @@ export function HeldCardThumbnail({
   roundId,
   roundIsOpen,
   participants,
+  heistTargetIds,
   selfPlayerId,
 }: {
   heldCards: HeldSpellCard[];
@@ -43,6 +44,8 @@ export function HeldCardThumbnail({
   roundId: string | null;
   roundIsOpen: boolean;
   participants: RoundParticipant[];
+  /** Issue #438: other participants holding a card — Tea Heist's picker roster. */
+  heistTargetIds: string[];
   selfPlayerId: string;
 }) {
   const held = heldCards.find((c) => c.location === "held");
@@ -133,6 +136,7 @@ export function HeldCardThumbnail({
                     roundId={armedAction.roundId}
                     held={held}
                     participants={participants}
+                    heistTargetIds={heistTargetIds}
                     selfPlayerId={selfPlayerId}
                   />
                 )}

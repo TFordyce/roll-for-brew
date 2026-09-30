@@ -12,7 +12,8 @@ import type { HeldSpellCard } from "@/lib/supabase/spellCards";
  *
  * These two sets mirror the by-name branches in `cast_spell_card`
  * (supabase/migrations/0096_chosen_pair_roll_transform.sql for the #318 cards,
- * plus #342/#343's Bes-Tea / Tea Leaf / Spillage / Chai-nge of Heart). Keep
+ * plus #342/#343's Bes-Tea / Tea Leaf / Spillage / Chai-nge of Heart and
+ * #438's Tea Heist). Keep
  * them in sync when another by-name OPPONENT/PLAYER special-case is added.
  */
 
@@ -27,7 +28,29 @@ export const AT_CAST_TARGET_CARDS: ReadonlySet<string> = new Set([
   "Spillage",
   // #342 — durable persistent-modifier transfer
   "Chai-nge of Heart",
+  // #438 — the cast pins the victim's held card
+  "Tea Heist",
 ]);
+
+/**
+ * At-cast cards whose target must be holding a card (`cast_spell_card` raises
+ * RFB53 otherwise). Their picker lists only the players `get_heist_targets`
+ * returns.
+ */
+const CARD_HOLDER_TARGET_CARDS: ReadonlySet<string> = new Set(["Tea Heist"]);
+
+/**
+ * The at-cast single-target picker's options: every other participant, or —
+ * for Tea Heist — only those holding a card (`cardHolderIds`).
+ */
+export function atCastTargetOptions<P extends { playerId: string }>(
+  cardName: string,
+  otherParticipants: P[],
+  cardHolderIds: readonly string[],
+): P[] {
+  if (!CARD_HOLDER_TARGET_CARDS.has(cardName)) return otherParticipants;
+  return otherParticipants.filter((p) => cardHolderIds.includes(p.playerId));
+}
 
 /**
  * By-name cards that need exactly two *other* players (never the caster)
@@ -64,4 +87,23 @@ export function castTargetMode(held: HeldForTargeting): CastTargetMode {
   if (held.target === "CHOSEN_PLAYERS") return "chosen-players";
   if (held.effectKind === "declared_number_tea_maker") return "declared-number";
   return "none";
+}
+
+/**
+ * The target control for a Compelled Cast (issue #440): the same as
+ * `castTargetMode`, except that nothing defers — every participant is known
+ * in the Compelled Cast step, and `cast_spell_card` refuses a compelled cast
+ * with no target (RFB55). A deferred OPPONENT / PLAYER card and a WILD card
+ * (naming its possible tea-maker) get the single-target select instead.
+ * `includeSelf` says whether the caster may pick themselves.
+ */
+export function compelledCastTargetMode(held: HeldForTargeting): {
+  mode: CastTargetMode;
+  includeSelf: boolean;
+} {
+  const mode = castTargetMode(held);
+  if (mode === "deferred-target" || held.target === "WILD") {
+    return { mode: "at-cast-target", includeSelf: held.target !== "OPPONENT" };
+  }
+  return { mode, includeSelf: false };
 }

@@ -117,6 +117,9 @@ begin
              'phase', case when c.reaction_window_id is not null then 'reaction' else 'preroll' end,
              'negated', coalesce(c.negated, false),
              'redirected_to_cast_id', c.redirected_to_cast_id,
+             -- Issue #440: a compelled cast or a Forfeit points back at the
+             -- Brewmageddon cast that compelled it.
+             'compelled_by_cast_id', c.cast_inputs ->> 'compelled_by',
              -- Coarse live state for the cast strip. Once the round leaves
              -- 'open' every armed pre-roll cast is committed (on the stack);
              -- a reaction cast is on the stack the moment it exists. The
@@ -219,7 +222,7 @@ comment on function public.get_round_recap(uuid) is
   'Issue #314 (Round Recap / the Ledger) + #352: room-member-gated read '
   'returning { resolved, layer_zero_outcome, trace, casts:[{ cast_id, seq, '
   'card_name, caster_player_id, target_player_id, target_pending, effect_kind, '
-  'phase, negated, redirected_to_cast_id, on_stack }], scrapped_generations } '
+  'phase, negated, redirected_to_cast_id, compelled_by_cast_id, on_stack }], scrapped_generations } '
   'for one round. trace is the persisted rounds.resolution_trace ([] until '
   'resolved); layer_zero_outcome is ''tie'' when tie-break layers decided the '
   'round; casts carries phase and coarse live state for the cast strip, with '

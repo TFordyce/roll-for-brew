@@ -4,13 +4,15 @@ import { getRoundById } from "@/lib/supabase/rounds";
 import {
   cancelRound,
   excludeRoundParticipant,
+  forfeitStalledCompelledCasts,
+  getCompelledCastStep,
   getCurrentLayerRollerIds,
   getExpectedLayerRollerIds,
   getLayerEnteredAt,
   resolveStalledPendingForcedRerollCasts,
   resolveStalledPendingSpellDice,
 } from "@/lib/supabase/stall";
-import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
+import { broadcastRoundCancelled, broadcastSpellCastChanged } from "@/lib/supabase/realtime";
 import { advanceRound } from "@/app/rounds/advanceRound";
 import {
   closeReactionWindow,
@@ -24,6 +26,7 @@ export type StallOutcome =
   | { action: "none" }
   | { action: "cancelled" }
   | { action: "excluded"; playerIds: string[] }
+  | { action: "compelledCastsForfeited"; playerIds: string[] }
   | { action: "diceAutoResolved" }
   | { action: "deferredForcedRerollAbandoned" }
   | { action: "reactionWindowRecovered" }
@@ -46,6 +49,11 @@ export type StallOutcome =
  *
  * Stall points, by round phase:
  *  - status 'open': the starter never closed declarations -> cancel.
+ *  - status 'closed', layer 0, in Brewmageddon's Compelled Cast step (issue
+ *    #440): a compelled holder never made their Action cast -> forfeit it,
+ *    which ends the step and opens rolling. Nobody has rolled yet, so the
+ *    exclude-a-non-roller branch below must not fire here. Counted from
+ *    closed_at; the roll clock after the step counts from the step's end.
  *  - status 'closed', layer 0: a declared player never rolled -> exclude
  *    them; the remaining participants' Layer is then complete.
  *  - status 'closed', layer > 0: a tied player never submitted their
@@ -97,7 +105,24 @@ export async function enforceStallTimeout(
   }
 
   const layer = round.currentLayer;
-  const layerStartedAt = layer === 0 ? round.closedAt : await getLayerEnteredAt(supabase, roundId, layer);
+  let layerStartedAt: string | null;
+  if (layer === 0) {
+    // Brewmageddon's Compelled Cast step (issue #440) holds all rolling, so it
+    // gets its own branch of this same clock: forfeit whoever still owes a
+    // compelled Action cast, then raise stallCleared like any other clearing.
+    const step = await getCompelledCastStep(supabase, roundId);
+    if (step.waitingOn.length > 0) {
+      if (!round.closedAt || !hasStalled(round.closedAt, nowDate)) return { action: "none" };
+      const playerIds = await forfeitStalledCompelledCasts(supabase, roundId);
+      await broadcastSpellCastChanged(supabase, round.roomId, { roundId });
+      await advanceRound(supabase, roundId, "stallCleared");
+      return { action: "compelledCastsForfeited", playerIds };
+    }
+    // Rolling opened when the step ended, so that is when the roll clock starts.
+    layerStartedAt = step.endedAt ?? round.closedAt;
+  } else {
+    layerStartedAt = await getLayerEnteredAt(supabase, roundId, layer);
+  }
   if (!layerStartedAt || !hasStalled(layerStartedAt, nowDate)) return { action: "none" };
 
   const expectedPlayerIds = await getExpectedLayerRollerIds(supabase, roundId, layer);
