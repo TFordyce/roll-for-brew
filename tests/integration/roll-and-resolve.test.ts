@@ -34,8 +34,6 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  type LayerZeroRow = LayerRollRow;
-
   /**
    * Deterministically decides who *should* win a two-player layer-0 (lowest
    * roll+modifier), and flags whether a nat-1 or an exact tie landed by
@@ -44,8 +42,8 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
    * precedence there is covered by resolveLayer's unit tests, not
    * re-asserted here).
    */
-  function pickTwoPlayerBrewer(rows: LayerZeroRow[]): { brewerId: string; isSpecialCase: boolean } {
-    const [a, b] = rows as [LayerZeroRow, LayerZeroRow];
+  function pickTwoPlayerBrewer(rows: LayerRollRow[]): { brewerId: string; isSpecialCase: boolean } {
+    const [a, b] = rows as [LayerRollRow, LayerRollRow];
     const aTotal = a.value + a.modifier_snapshot;
     const bTotal = b.value + b.modifier_snapshot;
     const isSpecialCase = a.value === 1 || b.value === 1 || aTotal === bTotal;

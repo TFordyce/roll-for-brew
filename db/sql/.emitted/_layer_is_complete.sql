@@ -12,7 +12,7 @@
 -- variants it replaced were dropped in issue #417.
 --
 -- Internal: called by advance_layer and finalize_layer, which run with
--- definer rights.
+-- definer rights. Players can't call it; the service role can (tests).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the

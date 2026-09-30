@@ -694,7 +694,7 @@ begin
       -- real source_cast_id (spell_active_effects.source_cast_id is NOT NULL).
       -- rounds_remaining => 1: the declared number applies to its own cast
       -- round only, then _rr_active_effects_as_of derives it expired -- no
-      -- physical DELETE (resolve_declared_number_tea_maker, #310).
+      -- physical DELETE (#310).
       insert into public.spell_active_effects (
         room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining
       )
