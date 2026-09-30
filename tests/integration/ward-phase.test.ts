@@ -6,6 +6,7 @@ import {
   forceHold,
   hasAnonTestEnv,
   seedActiveEffect,
+  seedDedicatedRoom,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -152,7 +153,7 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
     starter: Awaited<ReturnType<typeof signUp>>,
     others: Awaited<ReturnType<typeof signUp>>[],
   ) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await starter.client.rpc("start_round", { p_room_id: starter.roomId });
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
@@ -723,10 +724,13 @@ describe.skipIf(!hasAnonTestEnv)("ward phase (#309): polarity x domain immunity 
 
   it("submit_roll_as blocks a static advantage the same way for the admin-puppet path", async () => {
     const admin1 = await signUp("wp-sra-adv-1");
-    // Make admin1 an admin and put the round in the Test Room.
-    await admin.from("players").update({ is_admin: true }).eq("id", admin1.googleSub);
-    await admin.from("rooms").update({ is_test: true }).eq("id", admin1.roomId);
     const p2 = await signUp("wp-sra-adv-2");
+    // Make admin1 an admin and put the round in a Test Room of its own —
+    // flipping today's shared room to is_test forks it for later files (#422).
+    await admin.from("players").update({ is_admin: true }).eq("id", admin1.googleSub);
+    admin1.roomId = p2.roomId = await seedDedicatedRoom(admin, cleanup, [admin1.googleSub, p2.googleSub], {
+      isTest: true,
+    });
     const roundId = await openAndCloseRound(admin1, [p2]);
     const advCastId = await seedCast(roundId, p2.googleSub, "Sugar Rush", {
       effectKind: "advantage",

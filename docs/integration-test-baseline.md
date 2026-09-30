@@ -58,10 +58,8 @@ is the mirror-image anomaly; it's tolerated only because it never leaves the
 test suite (nothing in the app makes one, and `stats_room_history` — the only
 reader that surfaces `date` — just sorts it last).
 
-The two offending files were left as-is — the leak is theirs, but nothing
-outside the three fixed files currently depends on today's room's `is_test`.
-If a fourth file ever does, it should use `seedDedicatedRoom` too (or those two
-tests should stop mutating the shared room).
+The two offending files were left as-is at the time. *Superseded by #422 (below):
+they now use a dedicated Test Room, and nothing mutates today's room.*
 
 ## Genuine product defects found and fixed
 
@@ -98,6 +96,80 @@ re-`grant`, mirroring `0063`).
   idempotent un-bench).
 
 No test is `it.skip`/`describe.skip`-ped for a #338 reason.
+
+## #422 — six full-suite reds after the round-advancement chain (2026-09-30)
+
+Four failures were seen in full-suite runs on the #417 branch and two more on the
+#411 branch. Every one reproduced on a fresh `db reset` stack at master `866d377`,
+or was driven red on purpose. **None was a product regression.** `submit_order`
+(0062) and `withdraw_brew_rating` (0058) are unchanged since they shipped, and
+#414–#416 didn't touch them.
+
+Isolated on a fresh stack, all five files passed: brew-ratings 12/12,
+usual-order-menu 18/18, ward-phase 21/21, ward-transfer 7/7, regression-net
+30/30. The first fresh full-suite run gave `4 failed | 516 passed (520)`.
+
+| Test | Evidence | Class |
+|---|---|---|
+| brew-ratings › rejects withdraw once the rating window has closed (RFB27) | `expected null to be truthy`, the *submit* is rejected before the withdraw | today's-room pollution |
+| usual-order-menu › submit_order › stays open through a round's own resolution | `expected { code: 'RFB30', … } to be null` | today's-room pollution |
+| ward-transfer › Bitter Leech tick on a warded victim | teardown: `… violates foreign key constraint "spell_casts_target_player_id_fkey"` | teardown race (flake, 1 in 6 even run alone) |
+| trace-snapshot › 3-pre-calami-tea-tick-warded | same teardown error (#411 saw the `rounds_started_by_fkey` variant) | same teardown race |
+| regression-net › Wild Brew Surge (both tests) | `expected -7 to be -5` / `expected +0 to be 1` | today's-room pollution (leaked players) |
+| ward-phase › submit_roll_as blocks a static advantage … admin-puppet path | not reproduced: green alone, in the full suite and 3× on a polluted stack; no error text was captured | not reproduced; its pollution source is removed |
+
+### 1. Window tests vs. rounds resolved in today's room
+
+The Order Window (RFB30) and Rating Window (RFB27) both close on **any newer
+resolved round in the same room**. Both tests seed rounds backdated an hour into
+today's shared room. Any round that another file resolved there in the last hour
+closes the window early. **Fix:** both files use `signUpSignInIntoNonTestRoom`,
+brew-ratings for the whole file and usual-order-menu for its `submit_order`
+block.
+
+### 2. Silent round-delete race in `createTestCleanup`
+
+`spell_casts.source_cast_id` (0085) has no `ON DELETE` clause, and it points
+across rounds. A later round's Bitter Leech / Calami-Tea tick rows reference the
+cast in the earlier round. Cleanup deleted the tracked rounds concurrently and
+ignored their errors. So when the earlier round's delete ran first, it was
+rejected with `spell_casts_source_cast_id_fkey` (confirmed with a tagged log).
+Its casts survived, and they then blocked the player delete. **Fix:**
+`deleteRounds` retries failed round deletes until a pass makes no progress, and
+throws on a real leak instead of swallowing it. The Leech test went from 1 red
+in 6 to 10/10 green, and Calami-Tea 5/5.
+
+Each leaked player also stays in today's room, which feeds #3. The same FK
+also affects the product's `admin_delete_round`, filed separately as #441.
+
+### 3. Wild Brew Surge picks a random stranger from today's room
+
+Branches 3 and 5 pick the swap partner from **every** `room_players` row
+(`order by random()`). Today's room collects every player a teardown ever
+leaked. With 8 strangers planted there, the tests went red 4 out of 4, with
+exactly the reported deltas. **Fix:** a new `seedDedicatedRoom(admin, cleanup,
+playerIds)` makes a null-dated room with exactly those `room_players`, and the
+WBS tests call `start_round({ p_room_id })` on it. Green 4/4 on the same
+polluted stack.
+
+### 4. `is_test` flips fork today's room
+
+`ward-phase` and `draw-spell-card-as-forced-nat1` flipped today's shared room to
+`is_test = true`, as recorded under #338 above. That does more than empty the
+stats views. The `rooms_date_key` index only covers `not is_test` rooms, so the
+next `enter_todays_room` inserts a **second** today-dated room. Both it and
+`start_round()` then `select id … where date = today` with no `not is_test`
+filter and no `STRICT`, and each takes whichever row comes back first. Nothing
+outside the tests ever sets `is_test` on a dated room, so the product is not
+affected. **Fix:** both tests now use `seedDedicatedRoom(…, { isTest: true })`.
+No test in the suite mutates today's room any more. Ward-phase's
+`openAndCloseRound` also passes `p_room_id` explicitly.
+
+### Rule of thumb going forward
+
+If a test's assertion depends on *who else* is in the room, or on *what else
+resolved* there, it belongs in `seedDedicatedRoom` / `seedNonTestRoom`, not in
+today's shared room.
 
 ## Telling regression from noise later
 

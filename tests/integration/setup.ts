@@ -161,9 +161,9 @@ export async function seedNonTestRoom(
  * Use this in any file that asserts on the `stats_*` views (they filter
  * `not rooms.is_test`) or anything else gated on a room's `is_test` flag:
  * today's shared room is joined by every `signUpSignInAndEnterRoom` call and
- * never deleted per test, and a handful of tests
- * (draw-spell-card-as-forced-nat1, ward-phase) flip it to `is_test = true`
- * without restoring it. Seeding into an own room sidesteps that entirely.
+ * never deleted per test, and it collects every round another file resolved
+ * there today (which closes the Order and Rating windows) and every player a
+ * teardown leaked. Seeding into an own room sidesteps all of that.
  */
 export async function signUpSignInIntoNonTestRoom(
   admin: SupabaseClient,
@@ -173,6 +173,40 @@ export async function signUpSignInIntoNonTestRoom(
   const player = await signUpSignInAndEnterRoom(admin, cleanup, label);
   const roomId = await seedNonTestRoom(admin, cleanup);
   return { ...player, roomId };
+}
+
+/**
+ * A fresh null-dated room whose room_players are exactly `playerIds`
+ * (modifier 0), for tests that start real rounds and need to know who else is
+ * in the room — pass the id to `start_round({ p_room_id })`. Today's shared
+ * room collects every player a teardown ever leaked, so a room-wide pick
+ * (Wild Brew Surge's random swap partner, say) can land on a stranger there
+ * (issue #422).
+ *
+ * `isTest: true` gives an admin-puppet Test Room (submit_roll_as,
+ * draw_spell_card_as) without flipping today's shared room: once that one is
+ * `is_test`, enter_todays_room makes a second today-dated room and it and
+ * start_round() then pick between them arbitrarily.
+ */
+export async function seedDedicatedRoom(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+  playerIds: string[],
+  opts: { isTest?: boolean } = {},
+) {
+  const { data, error: roomError } = await admin
+    .from("rooms")
+    .insert({ is_test: opts.isTest ?? false })
+    .select("id")
+    .single();
+  if (roomError) throw roomError;
+  const roomId = (data as { id: string }).id;
+  cleanup.trackRoom(roomId);
+  const { error } = await admin
+    .from("room_players")
+    .insert(playerIds.map((player_id) => ({ room_id: roomId, player_id })));
+  if (error) throw error;
+  return roomId;
 }
 
 /**
@@ -639,6 +673,37 @@ export function createTestCleanup(admin: SupabaseClient) {
     if (error) throw error;
   }
 
+  /**
+   * Deletes the tracked rounds concurrently, retrying any that fail until a
+   * pass makes no progress. spell_casts.source_cast_id (0085) has no ON DELETE
+   * clause and can point across rounds — a later round's Bitter Leech /
+   * Calami-Tea tick rows reference the earlier round's cast — so the earlier
+   * round's delete is rejected whenever it races ahead of the later one. That
+   * used to fail silently, leaving the round's casts to block the player
+   * delete below with a spell_casts_*_player_id_fkey error (issue #422).
+   * The references always point backwards, so each pass frees at least one
+   * round; a pass with no progress is a real leak and throws.
+   */
+  async function deleteRounds(ids: string[]) {
+    let pending = ids;
+    while (pending.length > 0) {
+      const results = await Promise.all(
+        pending.map(async (roundId) => {
+          const { error } = await admin.from("rounds").delete().eq("id", roundId);
+          return { roundId, error };
+        }),
+      );
+      const failed = results.filter((r) => r.error);
+      if (failed.length === pending.length) {
+        throw new Error(
+          `cleanup: could not delete rounds ${failed.map((f) => f.roundId).join(", ")}: ` +
+            failed[0]!.error!.message,
+        );
+      }
+      pending = failed.map((f) => f.roundId);
+    }
+  }
+
   async function deletePlayer(playerId: string) {
     const { error } = await admin.from("players").delete().eq("id", playerId);
     if (error) throw error;
@@ -683,11 +748,7 @@ export function createTestCleanup(admin: SupabaseClient) {
       // within a layer are independent, so they're deleted concurrently
       // (issue #332). The per-entity await chains below preserve the
       // child-before-parent order that matters.
-      await Promise.all(
-        roundIds.splice(0).map((roundId) =>
-          admin.from("rounds").delete().eq("id", roundId),
-        ),
-      );
+      await deleteRounds(roundIds.splice(0));
       await Promise.all(
         roomIds.splice(0).map(async (roomId) => {
           await admin.from("room_players").delete().eq("room_id", roomId);
