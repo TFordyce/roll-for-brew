@@ -1,0 +1,52 @@
+{
+  "scenario": "05-tea-maker-override-prev-round-highest",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "prevwinner",
+  "brewerSource": "tea_maker_override:prev_round_highest",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": true,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer (no modifier gain)"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Last Drip",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:prevwinner"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 5,
+      "total": 5,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "prevwinner",
+      "nat": null,
+      "roll": 16,
+      "total": 16,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

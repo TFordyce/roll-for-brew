@@ -65,6 +65,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     diceTick: null,
     compel: null,
     heistReason: null,
+    overrideReason: null,
     ...overrides,
   };
 }
@@ -439,6 +440,71 @@ describe("buildRoundRecap", () => {
       ]);
       expect(parsed!.heistReason).toBe("victim_played_first");
       expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.heistReason).toBeNull();
+    });
+  });
+
+  describe("Last Drip (issue #426)", () => {
+    function lastDrip(over: Partial<ResolutionTraceStep>, recap: Partial<RoundRecapData> = {}) {
+      return buildRoundRecap({
+        data: data({
+          casts: [cast({ castId: "C1", cardName: "Last Drip", casterPlayerId: "ada", targetPlayerId: null, effectKind: "tea_maker_override" })],
+          trace: [
+            step({
+              displayKind: "tea_maker_override",
+              sourceCast: { castId: "C1", activeEffectId: null, cardName: "Last Drip", casterPlayerId: "ada" },
+              targetPlayer: "ben",
+              before: { type: "status", value: "pending" },
+              after: { type: "status", value: "brewer (no modifier gain)" },
+              ...over,
+            }),
+          ],
+          ...recap,
+        }),
+        displayName,
+      });
+    }
+    const only = (model: ReturnType<typeof buildRoundRecap>) => model.phases.flatMap((p) => p.steps)[0]!;
+    const inert = { after: { type: "status", value: "no effect" }, outcome: "no-op" } as const;
+
+    it("the previous winner brews with no modifier gain", () => {
+      expect(only(lastDrip({})).sentence).toBe("Ada played Last Drip — Ben brews (no modifier gain)");
+    });
+
+    it("inert with no previous round: a no-effect step saying why", () => {
+      const s = only(lastDrip({ ...inert, targetPlayer: null, overrideReason: "no_previous_round" }));
+      expect(s.sentence).toBe("Ada played Last Drip — no effect: there's no previous round");
+      expect(s.statusLabel).toBe("no effect");
+      expect(s.statusKind).toBe("no-op");
+    });
+
+    it("inert when the previous winner isn't taking part", () => {
+      expect(only(lastDrip({ ...inert, overrideReason: "target_absent" })).sentence).toBe(
+        "Ada played Last Drip — no effect: Ben isn't in this round",
+      );
+    });
+
+    it("provisional: neither the brewer nor the inert step is shown", () => {
+      for (const over of [{}, { ...inert, overrideReason: "target_absent" as const }]) {
+        const model = lastDrip(over, { resolved: false, provisional: true, layerZeroOutcome: null });
+        expect(model.phases.map((p) => p.label)).not.toContain("Outcome");
+      }
+    });
+
+    it("reads override_reason off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "tea_maker_override",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "Last Drip", caster_player_id: "ada" },
+          target_player: null,
+          before: { type: "status", value: "pending" },
+          after: { type: "status", value: "no effect" },
+          outcome: "no-op",
+          override_reason: "no_previous_round",
+        },
+      ]);
+      expect(parsed!.overrideReason).toBe("no_previous_round");
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.overrideReason).toBeNull();
     });
   });
 

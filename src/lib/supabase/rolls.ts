@@ -210,6 +210,11 @@ export type ResolutionTraceStep = {
    * on every other step.
    */
   heistReason: HeistFizzleReason | null;
+  /**
+   * Issue #426: why a `tea_maker_override` step did nothing (outcome `no-op`),
+   * e.g. an inert Last Drip. null on every other step.
+   */
+  overrideReason: OverrideNoopReason | null;
 };
 
 /**
@@ -220,6 +225,9 @@ export type ForfeitReason = "no_legal_target" | "stall" | "excluded" | "vote" | 
 
 /** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
 export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
+
+/** Issue #426: why an inert Last Drip (`prev_round_highest`) did nothing. */
+export type OverrideNoopReason = "no_previous_round" | "target_absent";
 
 type RawTraceStep = {
   index: number;
@@ -265,6 +273,8 @@ type RawTraceStep = {
   reason?: ForfeitReason | null;
   // Issue #438: a fizzled Tea Heist step's reason. Absent on every other step.
   heist_reason?: HeistFizzleReason | null;
+  // Issue #426: a no-op tea_maker_override step's reason. Absent on every other step.
+  override_reason?: OverrideNoopReason | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -312,6 +322,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
           }
         : null,
     heistReason: raw.heist_reason ?? null,
+    overrideReason: raw.override_reason ?? null,
   };
 }
 

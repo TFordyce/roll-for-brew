@@ -24,6 +24,8 @@ import {
   createTestCleanup,
   forceHold,
   seedActiveEffect as seedActiveEffectRaw,
+  seedDedicatedRoom,
+  seedPastRound,
   signUpSignInAndEnterRoom,
 } from "../../integration/setup";
 
@@ -359,7 +361,12 @@ export type ScenarioContext = {
     row: SeedCastRow,
   ) => Promise<{ castId: string; cardInstanceId: string }>;
   openWindow: (roundId: string) => Promise<string>;
-  openAndCloseRound: (starter: Player, others: Player[]) => Promise<string>;
+  /** Opens and closes a round in `roomId` (default: today's room). */
+  openAndCloseRound: (starter: Player, others: Player[], roomId?: string) => Promise<string>;
+  /** A fresh room of its own holding these players (issue #426). */
+  seedDedicatedRoom: (players: Player[]) => Promise<string>;
+  /** A past round in `roomId` with these layer-0 rolls (issue #426). */
+  seedPastRound: (roomId: string, rolls: { playerId: string; value: number; modifierSnapshot?: number }[]) => Promise<string>;
   setRoomModifier: (roomId: string, playerId: string, modifier: number) => Promise<void>;
   seedActiveEffect: (opts: Parameters<typeof seedActiveEffectRaw>[2]) => ReturnType<typeof seedActiveEffectRaw>;
   /** Puts a catalog card in a player's hand (`held`); returns its instance id. */
@@ -483,8 +490,11 @@ export function makeContext(
       return data!.id as string;
     },
 
-    async openAndCloseRound(starter, others) {
-      const { data: roundId, error } = await starter.client.rpc("start_round");
+    async openAndCloseRound(starter, others, roomId) {
+      const { data: roundId, error } = await starter.client.rpc(
+        "start_round",
+        roomId ? { p_room_id: roomId } : undefined,
+      );
       if (error) throw error;
       cleanup.trackRound(roundId as string);
       for (const o of others) {
@@ -494,6 +504,14 @@ export function makeContext(
       const { error: cErr } = await starter.client.rpc("close_round", { p_round_id: roundId });
       if (cErr) throw cErr;
       return roundId as string;
+    },
+
+    seedDedicatedRoom(players) {
+      return seedDedicatedRoom(admin, cleanup, players.map((p) => p.googleSub));
+    },
+
+    seedPastRound(roomId, rolls) {
+      return seedPastRound(admin, cleanup, roomId, rolls);
     },
 
     async setRoomModifier(roomId, playerId, modifier) {
