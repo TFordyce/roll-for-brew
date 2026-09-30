@@ -39,7 +39,6 @@ as $$
 declare
   v_status text;
   v_layer integer;
-  v_window_status text;
   v_window_closed boolean;
   v_layer_rolls jsonb;
   v_finalization jsonb;
@@ -61,36 +60,26 @@ begin
     return jsonb_build_object('outcome', 'noop', 'reason', 'layer_incomplete');
   end if;
 
-  if v_layer = 0 then
-    select w.status into v_window_status
-      from public.spell_reaction_windows w
-     where w.round_id = p_round_id and w.layer = 0
-     order by w.opened_at desc
-     limit 1;
-
-    if v_window_status = 'open' then
+  if v_layer = 0 and exists (
+    select 1 from public.spell_reaction_windows
+     where round_id = p_round_id and layer = 0
+  ) then
+    if exists (
+      select 1 from public.spell_reaction_windows
+       where round_id = p_round_id and layer = 0 and status = 'open'
+    ) then
       return jsonb_build_object('outcome', 'noop', 'reason', 'window_open');
     end if;
 
-    if v_window_status is not null then
-      -- A closed window: the rolls were revealed when it opened.
-      return public.finalize_layer(p_round_id);
-    end if;
+    -- A closed window: the rolls were revealed when it opened.
+    return public.finalize_layer(p_round_id);
   end if;
 
   -- First to find this Layer complete: capture its raw rolls for the reveal
   -- before any roll transform rewrites them.
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'player_id', r.player_id,
-           'value', r.value,
-           'discarded_value', r.discarded_value,
-           'entered_by_admin', r.entered_by_admin)
-           order by r.player_id), '[]'::jsonb)
-    into v_layer_rolls
-    from public.rolls r
-   where r.round_id = p_round_id and r.layer = v_layer;
-
-  v_layer_rolls := jsonb_build_object('layer', v_layer, 'rolls', v_layer_rolls);
+  v_layer_rolls := jsonb_build_object(
+    'layer', v_layer,
+    'rolls', public._layer_rolls_json(p_round_id, v_layer));
 
   if v_layer > 0 then
     return public.finalize_layer(p_round_id)
