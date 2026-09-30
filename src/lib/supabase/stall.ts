@@ -156,8 +156,8 @@ export async function resolveStalledPendingSpellDice(supabase: SupabaseClient, r
  * #325): force-negates every pre-roll forced_reroll cast (Yorkshire Terror,
  * WILD/TABLE fan-out) still awaiting its deferred target once
  * enforceStallTimeout's own hasStalled check has fired — the terminal no-op
- * for a target the caster never named, so the layer-0 hold
- * (get_current_layer_rolls_if_complete's new gate) releases. Returns how
+ * for a target the caster never named, so the Layer 0 completeness hold
+ * releases. Returns how
  * many casts it negated, so the caller only raises
  * advanceRound(stallCleared) when there was something to recover. Sibling
  * of resolveStalledPendingSpellDice above.

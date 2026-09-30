@@ -28,7 +28,7 @@ import {
  *   non-roller, auto-resolved a Pending Spell Die, abandoned a Deferred
  *   Forced-Reroll Target, or closed a stranded window).
  *
- * Every event but the first routes through advance_layer.
+ * Every event except `reactionWindowChanged` routes through advance_layer.
  */
 export type AdvanceRoundEvent =
   | "reactionWindowChanged"
