@@ -195,6 +195,16 @@ export type ResolutionTraceStep = {
    * value actually rolled against the roll this round. null on every other step.
    */
   diceTick: { die: number | null; rolled: number } | null;
+  /**
+   * Issue #440: Brewmageddon detail. On a `compel_cast` step, who it compelled;
+   * on a `forfeit` step, the Brewmageddon cast it answers and why the card was
+   * forfeited. null on every other step.
+   */
+  compel: {
+    compelledPlayerIds: string[];
+    compelledByCastId: string | null;
+    reason: string | null;
+  } | null;
 };
 
 type RawTraceStep = {
@@ -234,6 +244,11 @@ type RawTraceStep = {
   // value rolled against the roll this round. Absent on every other step.
   die?: number | null;
   rolled?: number | null;
+  // Issue #440: a compel_cast step's compelled set; a forfeit step's
+  // Brewmageddon pointer and reason. Absent on every other step.
+  compelled_player_ids?: string[];
+  compelled_by?: string | null;
+  reason?: string | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -272,6 +287,14 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
       : null,
     diceTick:
       raw.rolled != null ? { die: raw.die ?? null, rolled: raw.rolled } : null,
+    compel:
+      raw.display_kind === "compel_cast" || raw.display_kind === "forfeit"
+        ? {
+            compelledPlayerIds: raw.compelled_player_ids ?? [],
+            compelledByCastId: raw.compelled_by ?? null,
+            reason: raw.reason ?? null,
+          }
+        : null,
   };
 }
 

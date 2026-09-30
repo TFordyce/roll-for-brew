@@ -52,10 +52,15 @@ function CastStrip({
             className={`rounded-full border px-2 py-0.5 font-body text-[11px] transition-opacity ${
               STATE_STYLES[chip.state]
             } ${dimmed ? "opacity-35" : "opacity-100"}`}
-            title={`${chip.casterName} · ${chip.state.replace("-", " ")}`}
+            title={`${chip.casterName} · ${chip.state.replace("-", " ")}${
+              chip.compelledBy ? ` · compelled by ${chip.compelledBy}` : ""
+            }`}
           >
             <span className="text-parchment">{chip.cardName}</span>
             <span className="ml-1 uppercase tracking-wide">{chip.state.replace("-", " ")}</span>
+            {chip.compelledBy ? (
+              <span className="ml-1 normal-case text-parchment-dim">← {chip.compelledBy}</span>
+            ) : null}
           </button>
         );
       })}

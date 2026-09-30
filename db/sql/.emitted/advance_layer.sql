@@ -7,7 +7,10 @@
 -- complete (_layer_is_complete: every expected roller has rolled, and at
 -- Layer 0 no Pending Spell Die or Deferred Forced-Reroll Target hold). Then:
 --   * Layer 0 with no reaction window yet: opens it (open_reaction_window,
---     which attaches the pre-roll forced_reroll and chosen-pair casts). If
+--     which attaches the pre-roll forced_reroll and chosen-pair casts),
+--     first forfeiting any compelled Reaction card with no legal target
+--     (issue #440: a Reaction card's target is checked when the window
+--     opens). If
 --     nobody is eligible to react the window closes on the spot and Layer
 --     finalization (finalize_layer) runs in this same call.
 --   * Layer 0 with a window: an open window is a noop -- the window finishes
@@ -85,6 +88,8 @@ begin
     return public.finalize_layer(p_round_id)
       || jsonb_build_object('layer_rolls', v_layer_rolls);
   end if;
+
+  perform public._forfeit_untargetable_compelled_reactions(p_round_id);
 
   select o.is_closed into v_window_closed
     from public.open_reaction_window(p_round_id, 0) o;

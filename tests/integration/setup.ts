@@ -224,9 +224,9 @@ export async function seedDedicatedRoom(
  * Pot, Steaming Mug Bond, Tea for Two (#318, migration 0096) — Gambler's
  * Infusion (conditional advantage, #319, migration 0095) — the two
  * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
- * Prophe-Tea (persistent advantage, #320, migration 0097) — and Cloud of
- * Cream (targeting skip, #321, migration 0099) — are now live, so 15 remain
- * here. A test that force-holds one of these must return it to the bench,
+ * Prophe-Tea (persistent advantage, #320, migration 0097) — Cloud of
+ * Cream (targeting skip, #321, migration 0099) — and Brewmageddon (Compelled
+ * Cast, #440, migration 0117) — are now live, so 14 remain here. A test that force-holds one of these must return it to the bench,
  * not the deck, on cleanup — releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
@@ -238,7 +238,6 @@ export const BENCHED_SPELL_CARDS = [
   "Loaf of Lipton", "Brew IOU", "Tea Heist",
   "Stale Biscuit", "Liquid Courage",
   "The Last Cuppa", "Earl of Earl Grey",
-  "Brewmageddon",
   // Dead effect kind (1)
   "Kettle Crash",
 ] as const;

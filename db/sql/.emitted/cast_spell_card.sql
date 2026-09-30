@@ -2,7 +2,11 @@
 --
 -- Arm a spell during the pre-roll (declare-in) window: validation,
 -- by-name dispatch, WILD special-casing, Cast-Log write. Verbatim from
--- migration 0096.
+-- migration 0096, plus issue #440's Compelled Cast: a player who owes
+-- Brewmageddon a compelled Action cast may cast while the round is `closed`
+-- (the Compelled Cast step), must name any target now (no deferred target),
+-- and every return runs _rr_finish_compelled_cast, which fans out the cast's
+-- TABLE placeholders and tags it compelled_by.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -63,6 +67,8 @@ declare
   v_gen_tier text;
   v_gen_target_stamp text;
   v_gen_in_deck integer;
+  -- issue #440: a compelled cast made in the Compelled Cast step
+  v_compelled boolean := false;
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -72,7 +78,11 @@ begin
     raise exception 'cast_spell_card: round not found';
   end if;
 
-  if v_status <> 'open' then
+  if v_status = 'closed' then
+    v_compelled := public._owes_compelled_action_cast(p_round_id, v_player_id);
+  end if;
+
+  if v_status <> 'open' and not v_compelled then
     raise exception 'cast_spell_card: round is not open for pre-roll casting'
       using errcode = 'RFB03';
   end if;
@@ -214,6 +224,28 @@ begin
     raise exception 'cast_spell_card: % -targeted cards cannot be cast pre-roll yet', v_target_stamp;
   end if;
 
+  -- issue #440: every participant is already known in the Compelled Cast
+  -- step, so a compelled cast names its target now -- no deferred target,
+  -- and a WILD card names its possible tea-maker before its d6 is rolled.
+  if v_compelled then
+    if v_target_pending then
+      raise exception 'cast_spell_card: a compelled cast must name its target now'
+        using errcode = 'RFB53';
+    end if;
+    if v_target_stamp = 'WILD' then
+      if p_target_player_id is null then
+        raise exception 'cast_spell_card: a compelled cast must name its target now'
+          using errcode = 'RFB53';
+      end if;
+      if not exists (
+        select 1 from public.round_participants
+         where round_id = p_round_id and player_id = p_target_player_id
+      ) then
+        raise exception 'cast_spell_card: target is not a participant in this round';
+      end if;
+    end if;
+  end if;
+
   update public.spell_deck_instances
      set location = 'in_deck', held_by_player = null
    where id = v_instance_id;
@@ -290,7 +322,7 @@ begin
       returning id into v_cast_id;
     end if;
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   -- issue #343: round-scoped modifier snapshot cards. Fully special-cased
@@ -437,7 +469,7 @@ begin
       );
     end if;
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   -- issue #342: two durable persistent-modifier cards whose emission the
@@ -520,7 +552,7 @@ begin
       v_cast_id, v_ward_blocked
     );
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
 
   elsif v_card_name = 'Bitter Leech' then
     if v_final_target is null then
@@ -552,7 +584,7 @@ begin
       v_cast_id
     );
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   -- WILD is fully special-cased: the six branches are mutually exclusive
@@ -656,7 +688,7 @@ begin
       values (p_round_id, v_player_id, v_instance_id, null,
               'wild_dispatch', '{"branch": 6}'::jsonb, jsonb_build_object('branch', v_branch));
 
-      return v_cast_id;
+      return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
     end if;
 
     insert into public.spell_casts (
@@ -667,7 +699,7 @@ begin
             'wild_dispatch', v_effect_params, jsonb_build_object('branch', v_branch))
     returning id into v_cast_id;
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   for v_effect in
@@ -836,7 +868,7 @@ begin
        and caster_id = v_player_id;
   end if;
 
-  return v_cast_id;
+  return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
 end;
 $$;
 

@@ -33,6 +33,7 @@ function cast(overrides: Partial<RoundRecapCast> = {}): RoundRecapCast {
     phase: "preroll",
     negated: false,
     redirectedToCastId: null,
+    compelledByCastId: null,
     onStack: true,
     ...overrides,
   };
@@ -62,6 +63,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     pairOp: null,
     condition: null,
     diceTick: null,
+    compel: null,
     ...overrides,
   };
 }
@@ -852,6 +854,7 @@ describe("buildRoundRecap rows", () => {
             before: { type: "roll", value: 10 },
             after: { type: "roll", value: 10 },
             diceTick: null,
+            compel: null,
           }),
         ],
       }),
@@ -1069,5 +1072,145 @@ describe("buildRoundRecap: the reaction window's not-heard-from line (issue #411
       sentence: "Not heard from Dev: timed out after 5 minutes",
       statusLabel: "timed out",
     });
+  });
+});
+
+describe("buildRoundRecap: Brewmageddon (issue #440)", () => {
+  const BM = "BM";
+  const bmCast = () =>
+    cast({ castId: BM, cardName: "Brewmageddon", casterPlayerId: "ada", targetPlayerId: null, effectKind: "compel_cast" });
+  const compelStep = (compelledPlayerIds: string[]) =>
+    step({
+      displayKind: "compel_cast",
+      sourceCast: { castId: BM, activeEffectId: null, cardName: "Brewmageddon", casterPlayerId: "ada" },
+      targetPlayer: null,
+      before: { type: "status", value: "cast" },
+      after: { type: "status", value: "compelled" },
+      outcome: compelledPlayerIds.length > 0 ? "applied" : "no-op",
+      compel: { compelledPlayerIds, compelledByCastId: null, reason: null },
+    });
+  const forfeitStep = (castId: string, player: string, cardName: string, reason: string) =>
+    step({
+      displayKind: "forfeit",
+      sourceCast: { castId, activeEffectId: null, cardName, casterPlayerId: player },
+      targetPlayer: player,
+      before: { type: "status", value: "held" },
+      after: { type: "status", value: "forfeited" },
+      outcome: "no-op",
+      compel: { compelledPlayerIds: [], compelledByCastId: BM, reason },
+    });
+
+  it("the Brewmageddon step names who it compelled", () => {
+    const model = buildRoundRecap({
+      data: data({ casts: [bmCast()], trace: [compelStep(["ben", "cass"])] }),
+      displayName,
+    });
+    const s = model.phases[0]!.steps[0]!;
+    expect(s.sentence).toBe("Ada played Brewmageddon — Ben and Cass must play their card");
+    expect(s.statusLabel).toBe("applied");
+  });
+
+  it("with nobody holding a card the Brewmageddon step is a no-op", () => {
+    const model = buildRoundRecap({ data: data({ casts: [bmCast()], trace: [compelStep([])] }), displayName });
+    const s = model.phases[0]!.steps[0]!;
+    expect(s.sentence).toBe("Ada played Brewmageddon — nobody held a card");
+    expect(s.statusLabel).toBe("no effect");
+  });
+
+  it.each([
+    ["no_legal_target", "it had no legal target"],
+    ["stall", "they never played it"],
+    ["excluded", "they never rolled"],
+    ["vote", "they were skipped by vote"],
+    ["timeout", "they timed out"],
+  ])("a Forfeit (%s) names the card, the reason, and Brewmageddon", (reason, why) => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [
+          bmCast(),
+          cast({ castId: "F1", cardName: "Stir the Pot", casterPlayerId: "ben", effectKind: "forfeit", compelledByCastId: BM }),
+        ],
+        trace: [compelStep(["ben"]), forfeitStep("F1", "ben", "Stir the Pot", reason)],
+      }),
+      displayName,
+    });
+    const s = model.phases[0]!.steps[1]!;
+    expect(s.sentence).toBe(`Ben's Stir the Pot is forfeited to Brewmageddon — ${why}`);
+    expect(s.statusLabel).toBe("forfeited");
+    expect(s.statusKind).toBe("no-op");
+  });
+
+  it("a compelled cast's step and chip link back to Brewmageddon; other chips don't", () => {
+    const model = buildRoundRecap({
+      data: data({
+        casts: [
+          bmCast(),
+          cast({
+            castId: "S1",
+            cardName: "Sugar Rush",
+            casterPlayerId: "ben",
+            targetPlayerId: "ben",
+            effectKind: "advantage",
+            compelledByCastId: BM,
+          }),
+          cast({ castId: "F1", cardName: "Greater Detox", casterPlayerId: "cass", effectKind: "forfeit", compelledByCastId: BM }),
+        ],
+        trace: [
+          compelStep(["ben", "cass"]),
+          forfeitStep("F1", "cass", "Greater Detox", "no_legal_target"),
+          step({
+            displayKind: "advantage",
+            sourceCast: { castId: "S1", activeEffectId: null, cardName: "Sugar Rush", casterPlayerId: "ben" },
+            targetPlayer: "ben",
+            before: { type: "roll", value: 6 },
+            after: { type: "roll", value: 14 },
+          }),
+        ],
+      }),
+      displayName,
+    });
+
+    const chips = new Map(model.castStrip.map((c) => [c.castId, c]));
+    expect(chips.get(BM)!.compelledBy).toBeUndefined();
+    expect(chips.get("S1")!.compelledBy).toBe("Brewmageddon");
+    expect(chips.get("F1")!.compelledBy).toBe("Brewmageddon");
+    expect(chips.get("F1")!.state).toBe("no-op");
+
+    const adv = model.phases.flatMap((p) => p.steps).find((s) => s.castId === "S1")!;
+    expect(adv.sentence).toBe("Ben played Sugar Rush — Ben rolls with advantage (compelled by Brewmageddon)");
+  });
+
+  it("live round: a Forfeit and a compelled cast read as such before the Trace exists", () => {
+    const model = buildRoundRecap({
+      data: data({
+        resolved: false,
+        casts: [
+          bmCast(),
+          cast({
+            castId: "S1",
+            cardName: "Sugar Rush",
+            casterPlayerId: "ben",
+            targetPlayerId: "ben",
+            effectKind: "advantage",
+            compelledByCastId: BM,
+          }),
+          cast({
+            castId: "F1",
+            cardName: "Greater Detox",
+            casterPlayerId: "cass",
+            targetPlayerId: "cass",
+            effectKind: "forfeit",
+            compelledByCastId: BM,
+          }),
+        ],
+      }),
+      displayName,
+    });
+    const sentences = model.phases.flatMap((p) => p.steps).map((s) => s.sentence);
+    expect(sentences).toEqual([
+      "Ada played Brewmageddon",
+      "Ben played Sugar Rush on Ben (compelled by Brewmageddon)",
+      "Cass forfeited Greater Detox to Brewmageddon",
+    ]);
   });
 });
