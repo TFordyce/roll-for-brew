@@ -210,7 +210,21 @@ export type ResolutionTraceStep = {
    * on every other step.
    */
   heistReason: HeistFizzleReason | null;
+  /**
+   * Issue #427: a `tea_maker_override` step whose condition failed (PG
+   * Tipped, mode `conditional_chosen`) — the condition and the two rolls it
+   * compared. null on every other step, including a fired override.
+   */
+  overrideCondition: {
+    reason: "condition_not_met";
+    condition: OverrideCondition;
+    targetRoll: number | null;
+    casterRoll: number | null;
+  } | null;
 };
+
+/** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
+export type OverrideCondition = "target_below_caster";
 
 /**
  * Issue #440: why a compelled card was forfeited (the `forfeit` row's
@@ -265,6 +279,12 @@ type RawTraceStep = {
   reason?: ForfeitReason | null;
   // Issue #438: a fizzled Tea Heist step's reason. Absent on every other step.
   heist_reason?: HeistFizzleReason | null;
+  // Issue #427: a failed conditional tea_maker_override (PG Tipped). Absent on
+  // every other step.
+  override_reason?: "condition_not_met" | null;
+  override_condition?: OverrideCondition | null;
+  target_roll?: number | null;
+  caster_roll?: number | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -312,6 +332,15 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
           }
         : null,
     heistReason: raw.heist_reason ?? null,
+    overrideCondition:
+      raw.override_reason === "condition_not_met" && raw.override_condition
+        ? {
+            reason: raw.override_reason,
+            condition: raw.override_condition,
+            targetRoll: raw.target_roll ?? null,
+            casterRoll: raw.caster_roll ?? null,
+          }
+        : null,
   };
 }
 

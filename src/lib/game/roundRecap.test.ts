@@ -65,6 +65,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     diceTick: null,
     compel: null,
     heistReason: null,
+    overrideCondition: null,
     ...overrides,
   };
 }
@@ -439,6 +440,83 @@ describe("buildRoundRecap", () => {
       ]);
       expect(parsed!.heistReason).toBe("victim_played_first");
       expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.heistReason).toBeNull();
+    });
+  });
+
+  describe("PG Tipped (issue #427)", () => {
+    function pgTipped(after: string, over: Partial<ResolutionTraceStep> = {}) {
+      return buildRoundRecap({
+        data: data({
+          casts: [cast({ castId: "C1", cardName: "PG Tipped", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "tea_maker_override" })],
+          trace: [
+            step({
+              displayKind: "tea_maker_override",
+              sourceCast: { castId: "C1", activeEffectId: null, cardName: "PG Tipped", casterPlayerId: "ada" },
+              targetPlayer: "ben",
+              before: { type: "status", value: "pending" },
+              after: { type: "status", value: after },
+              ...over,
+            }),
+          ],
+        }),
+        displayName,
+      });
+    }
+    const only = (model: ReturnType<typeof buildRoundRecap>) => model.phases.flatMap((p) => p.steps)[0]!;
+
+    it("condition met: the target brews with no modifier gain", () => {
+      const s = only(pgTipped("brewer (no modifier gain)"));
+      expect(s.sentence).toBe("Ada played PG Tipped — Ben brews (no modifier gain)");
+      expect(s.statusKind).toBe("applied");
+    });
+
+    it("condition not met: a no-op Outcome step naming both rolls", () => {
+      const model = pgTipped("condition not met", {
+        outcome: "no-op",
+        overrideCondition: { reason: "condition_not_met", condition: "target_below_caster", targetRoll: 12, casterRoll: 9 },
+      });
+      const s = only(model);
+      expect(s.sentence).toBe(
+        "Ada played PG Tipped on Ben — condition not met: Ben rolled 12, not lower than Ada's 9; the normal pick stands",
+      );
+      expect(s.statusLabel).toBe("condition not met");
+      expect(s.statusKind).toBe("no-op");
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("condition not met without a recorded roll: no numbers in the sentence", () => {
+      const s = only(
+        pgTipped("condition not met", {
+          outcome: "no-op",
+          overrideCondition: { reason: "condition_not_met", condition: "target_below_caster", targetRoll: null, casterRoll: 9 },
+        }),
+      );
+      expect(s.sentence).toBe("Ada played PG Tipped on Ben — condition not met; the normal pick stands");
+    });
+
+    it("reads the override condition off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "tea_maker_override",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "PG Tipped", caster_player_id: "ada" },
+          target_player: "ben",
+          before: { type: "status", value: "pending" },
+          after: { type: "status", value: "condition not met" },
+          outcome: "no-op",
+          override_reason: "condition_not_met",
+          override_condition: "target_below_caster",
+          target_roll: 12,
+          caster_roll: 9,
+        },
+      ]);
+      expect(parsed!.overrideCondition).toEqual({
+        reason: "condition_not_met",
+        condition: "target_below_caster",
+        targetRoll: 12,
+        casterRoll: 9,
+      });
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.overrideCondition).toBeNull();
     });
   });
 

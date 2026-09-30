@@ -116,6 +116,11 @@ declare
   v_lghm_high_pid text;
   v_lghm_plain_high_pid text;
   v_tmo_plain_high text;
+  -- issue #427: the tier-2 override contest winner, and a conditional
+  -- override's compared rolls.
+  v_override_found boolean := false;
+  v_cond_target_roll integer;
+  v_cond_caster_roll integer;
 
   v_override record;
   v_declared record;
@@ -2013,35 +2018,83 @@ begin
   end loop;
 
   if v_brewer_id is null then
-    -- issue #425: an explicit `modifier_gain` number wins; the legacy
-    -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
-    select casts.effect_params->>'mode' as mode,
-           coalesce(
-             (casts.effect_params->>'modifier_gain')::integer,
-             case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
-                  then 0 end
-           ) as modifier_gain,
-           casts.target_player_id as chosen_player_id,
-           casts.target_pending as target_pending,
-           casts.id as cast_id,
-           casts.caster_id as caster_id,
-           sc.name as card_name
-      into v_override
-      from public.spell_casts casts
-      join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
-      join public.spell_cards sc on sc.id = sdi.card_id
-     where casts.round_id = p_round_id
-       and casts.effect_kind = 'tea_maker_override'
-       and casts.negated = false
-       -- issue #425: prev_round_highest (Last Drip) and conditional_chosen
-       -- (PG Tipped) are in the closed mode set but have no behaviour until
-       -- their card slices land; until then they never enter the contest.
-       and casts.effect_params->>'mode' not in ('prev_round_highest', 'conditional_chosen')
-     order by casts.cast_at desc, casts.seq desc
-     limit 1;
+    -- Tier 2: last cast wins. Walk the overrides newest first; the first one
+    -- that enters the contest is it. issue #427: a conditional_chosen (PG
+    -- Tipped) whose condition fails never enters -- it emits a no-op step and
+    -- the walk moves on to the next-newest override, so it can't beat an
+    -- earlier one. A still-pending target enters (and stops the walk) as
+    -- before: the override can't resolve yet, so no override applies.
+    for v_override in
+      -- issue #425: an explicit `modifier_gain` number wins; the legacy
+      -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
+      select casts.effect_params->>'mode' as mode,
+             casts.effect_params->>'condition' as condition,
+             coalesce(
+               (casts.effect_params->>'modifier_gain')::integer,
+               case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
+                    then 0 end
+             ) as modifier_gain,
+             casts.target_player_id as chosen_player_id,
+             casts.target_pending as target_pending,
+             casts.id as cast_id,
+             casts.caster_id as caster_id,
+             sc.name as card_name
+        from public.spell_casts casts
+        join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
+        join public.spell_cards sc on sc.id = sdi.card_id
+       where casts.round_id = p_round_id
+         and casts.effect_kind = 'tea_maker_override'
+         and casts.negated = false
+         -- issue #425: prev_round_highest (Last Drip) is in the closed mode
+         -- set but has no behaviour until its card slice lands; until then it
+         -- never enters the contest.
+         and casts.effect_params->>'mode' <> 'prev_round_highest'
+       order by casts.cast_at desc, casts.seq desc
+    loop
+      if v_override.mode = 'conditional_chosen'
+         and not coalesce(v_override.target_pending, false) then
+        if v_override.condition is distinct from 'target_below_caster' then
+          raise exception 'resolve_round: unsupported conditional_chosen condition %', v_override.condition;
+        end if;
 
-    if v_override.mode is not null and not coalesce(v_override.target_pending, false) then
-      if v_override.mode = 'chosen' then
+        -- The rolls after the roll-input shim (Phase 3). A player with no
+        -- layer-0 roll has nothing to compare, so the condition fails.
+        v_cond_target_roll := v_rolls[array_position(v_players, v_override.chosen_player_id)];
+        v_cond_caster_roll := v_rolls[array_position(v_players, v_override.caster_id)];
+
+        if not coalesce(v_cond_target_roll < v_cond_caster_roll, false) then
+          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+            v_step_index,
+            'tea_maker_override',
+            jsonb_build_object(
+              'cast_id', to_jsonb(v_override.cast_id),
+              'active_effect_id', null,
+              'card_name', to_jsonb(v_override.card_name),
+              'caster_player_id', to_jsonb(v_override.caster_id)
+            ),
+            v_override.chosen_player_id,
+            jsonb_build_object('type', 'status', 'value', 'pending'),
+            jsonb_build_object('type', 'status', 'value', 'condition not met'),
+            jsonb_build_object(
+              'outcome', 'no-op',
+              'override_reason', 'condition_not_met',
+              'override_condition', v_override.condition,
+              'target_roll', v_cond_target_roll,
+              'caster_roll', v_cond_caster_roll
+            )
+          ));
+          v_step_index := v_step_index + 1;
+          continue;
+        end if;
+      end if;
+
+      v_override_found := true;
+      exit;
+    end loop;
+
+    if v_override_found and not coalesce(v_override.target_pending, false) then
+      -- issue #427: a conditional_chosen that got here met its condition.
+      if v_override.mode in ('chosen', 'conditional_chosen') then
         v_brewer_id := v_override.chosen_player_id;
       elsif v_override.mode = 'highest_roll' then
         select v_players[i] into v_brewer_id
@@ -2087,7 +2140,7 @@ begin
         end if;
       else
         -- issue #425: unreachable -- the mode set is closed (CHECK on
-        -- spell_casts and spell_card_effects) and the reserved modes are
+        -- spell_casts and spell_card_effects) and the reserved mode is
         -- filtered out above. A guard, not a code path.
         raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
       end if;
