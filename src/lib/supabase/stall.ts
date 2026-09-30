@@ -100,9 +100,9 @@ export async function getCurrentLayerRollerIds(
  * shape as getCurrentLayerRollsIfComplete, but callable by any authenticated
  * user, not just an expected roller of the current layer — see the RPC's
  * own comment (supabase/migrations/0009_stall_timeout.sql) for why that's
- * safe here specifically. Used only by stall-timeout enforcement, right
- * after it's excluded the layer's stalled non-rollers and the layer is
- * therefore now complete.
+ * safe here specifically. No longer called since stall raises
+ * advanceRound(stallCleared) instead (issue #416); #417 drops it along
+ * with its RPC.
  */
 export async function getCompletedLayerRollsForStallResolution(
   supabase: SupabaseClient,
@@ -142,8 +142,8 @@ export async function getCompletedLayerRollsForStallResolution(
  * round (Cold Tea/Slipped Spoon's pre-roll casts — a Reaction-timed one
  * like Six Sugars is already covered by the reaction window's own recovery)
  * once enforceStallTimeout's own hasStalled check has already fired.
- * Returns how many casts it resolved, so the caller only bothers re-running
- * layer resolution when there was actually something to recover.
+ * Returns how many casts it resolved, so the caller only raises
+ * advanceRound(stallCleared) when there was actually something to recover.
  */
 export async function resolveStalledPendingSpellDice(supabase: SupabaseClient, roundId: string): Promise<number> {
   const { data, error } = await supabase.rpc("resolve_stalled_pending_spell_dice", { p_round_id: roundId });
@@ -156,11 +156,11 @@ export async function resolveStalledPendingSpellDice(supabase: SupabaseClient, r
  * #325): force-negates every pre-roll forced_reroll cast (Yorkshire Terror,
  * WILD/TABLE fan-out) still awaiting its deferred target once
  * enforceStallTimeout's own hasStalled check has fired — the terminal no-op
- * for a target the caster never named, so the layer-0 hold
- * (get_current_layer_rolls_if_complete's new gate) releases. Returns how
- * many casts it negated, so the caller only re-runs layer resolution when
- * there was something to recover. Sibling of resolveStalledPendingSpellDice
- * above.
+ * for a target the caster never named, so the Layer 0 completeness hold
+ * releases. Returns how
+ * many casts it negated, so the caller only raises
+ * advanceRound(stallCleared) when there was something to recover. Sibling
+ * of resolveStalledPendingSpellDice above.
  */
 export async function resolveStalledPendingForcedRerollCasts(
   supabase: SupabaseClient,

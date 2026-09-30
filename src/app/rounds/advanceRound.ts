@@ -18,17 +18,24 @@ import {
  * trigger only — never a claim about state — and decides which database entry
  * point may run; the locked read in SQL decides whether anything happens.
  *
- * - `reactionWindowChanged`: a pass, a Reaction cast, a card swap, or stall
- *   closing a stranded window. It may only finalize, never open a window.
+ * - `reactionWindowChanged`: a pass, a Reaction cast, or a card swap. It may
+ *   only finalize, never open a window.
  * - `layerRolled`: a roll landed — the player's own, a manual entry, a Proxy
  *   Roll, or a Test Room roll-as.
  * - `pendingDieResolved`: a Pending Spell Die was given its value.
  * - `deferredTargetSet`: a deferred spell-cast target was named.
+ * - `stallCleared`: stall enforcement cleared a blockage (excluded a
+ *   non-roller, auto-resolved a Pending Spell Die, abandoned a Deferred
+ *   Forced-Reroll Target, or closed a stranded window).
  *
- * The last three route through advance_layer. Spec #412 adds `stallCleared`
- * (#416), which does too.
+ * Every event except `reactionWindowChanged` routes through advance_layer.
  */
-export type AdvanceRoundEvent = "reactionWindowChanged" | "layerRolled" | "pendingDieResolved" | "deferredTargetSet";
+export type AdvanceRoundEvent =
+  | "reactionWindowChanged"
+  | "layerRolled"
+  | "pendingDieResolved"
+  | "deferredTargetSet"
+  | "stallCleared";
 
 /** The module's one injectable seam: its database entry points plus the broadcasts advancing can cause. */
 export type AdvanceRoundDeps = {
@@ -96,6 +103,7 @@ function runEntryPoint(
     case "layerRolled":
     case "pendingDieResolved":
     case "deferredTargetSet":
+    case "stallCleared":
       return deps.advanceLayer(supabase, roundId);
   }
 }

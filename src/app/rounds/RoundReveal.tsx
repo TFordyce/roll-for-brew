@@ -76,10 +76,10 @@ export type RoundRevealParticipant = {
  * page.tsx keeps this component mounted for the round's entire closed
  * phase now, tie phase included (issue #220 piece 4) — not just after the
  * final layer resolves, as before. That matters beyond showing the nested
- * rows live: resolve_round already flips the round to 'resolved' by the
- * time round-revealed broadcasts (see layerResolution.ts's
- * applyLayerOutcome), so a round that ever tied would previously vanish
- * from the next server fetch before this component — the only thing that
+ * rows live: finalize_layer has already committed the round as 'resolved' by
+ * the time round-revealed broadcasts (see advanceRound.ts), so a round
+ * that ever tied would previously vanish from the next server fetch
+ * before this component — the only thing that
  * actually holds rolls/brewerId/showKettleModal in local state and
  * deliberately avoids refreshing on round-revealed — ever got a chance to
  * mount and catch that broadcast at all.

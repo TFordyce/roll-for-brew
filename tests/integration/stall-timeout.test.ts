@@ -156,7 +156,7 @@ describe.skipIf(!hasAnonTestEnv)("stall-timeout enforcement", () => {
       .single();
     expect(layerParticipant?.excluded_at).not.toBeNull();
 
-    // b is the sole remaining reroller, so resolveLayer treats them as the
+    // b is the sole remaining reroller, so resolve_round treats them as the
     // outright brewer for layer 1 — cups_made still the full 3.
     const { data: round } = await admin
       .from("rounds")

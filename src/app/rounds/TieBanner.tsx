@@ -29,9 +29,9 @@ export type TiedParticipant = {
  * Why this used to refresh the whole page on round-revealed, and no longer
  * does: previously TieBanner was the *only* thing mounted during a tie, so a
  * blind `router.refresh()` on round-revealed was the only way to move on —
- * but resolve_round has already flipped the round to 'resolved' by the time
- * that broadcast fires (see layerResolution.ts's applyLayerOutcome), so the
- * very next server fetch finds no active round at all and the whole section
+ * but finalize_layer has already committed the round as 'resolved' by the time
+ * that broadcast fires (see advanceRound.ts), so the very next server
+ * fetch finds no active round at all and the whole section
  * — RoundReveal included — would vanish before anyone saw the roll values,
  * brewer, or kettle modal RoundReveal exists to show. Piece 4 fixes that by
  * leaving the reveal to RoundReveal (now always mounted, listening for the

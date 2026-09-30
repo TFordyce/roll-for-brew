@@ -688,4 +688,88 @@ describe.skipIf(!hasAnonTestEnv)("round advancement (spec #412)", () => {
     expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "open" }]);
     expect((await roundRow(roundId)).status).toBe("closed");
   });
+
+  // Stall only clears blockages, then raises stallCleared (issue #416): a
+  // stall-cleared Layer gets the same reaction window and finalization as any
+  // other round, never a direct resolve.
+
+  it("a stall-resolved Pending Spell Die at Layer 0 opens the reaction window instead of resolving directly", async () => {
+    const [caster, target] = await Promise.all([signUp("adv-stall-pd-caster"), signUp("adv-stall-pd-target")]);
+    await forceHold(admin, caster.googleSub, "Cold Tea"); // Action, OPPONENT, pending 1d4 for the caster
+    await forceHold(admin, target.googleSub, "Mug Shot"); // Reaction: keeps the window open
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    const { error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: target.googleSub,
+    });
+    expect(castError).toBeNull();
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await seedRoll(roundId as string, caster.googleSub, 4);
+    await seedRoll(roundId as string, target.googleSub, 15);
+
+    const outcome = await enforceStallTimeout(target.client, roundId as string, future);
+
+    expect(outcome).toEqual({ action: "diceAutoResolved" });
+    expect(await windowsOf(roundId as string)).toEqual([{ layer: 0, status: "open" }]);
+    expect((await roundRow(roundId as string)).status).toBe("closed");
+  });
+
+  it("a stall-abandoned Deferred Forced-Reroll Target at Layer 0 opens the reaction window instead of resolving directly", async () => {
+    const [caster, target] = await Promise.all([signUp("adv-stall-dt-caster"), signUp("adv-stall-dt-target")]);
+    await forceHold(admin, target.googleSub, "Mug Shot");
+    const { roundId, castId } = await deferredYorkshireTerror(caster, target);
+
+    const outcome = await enforceStallTimeout(target.client, roundId, future);
+
+    expect(outcome).toEqual({ action: "deferredForcedRerollAbandoned" });
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "open" }]);
+    expect((await roundRow(roundId)).status).toBe("closed");
+    const { data: castRow } = await admin.from("spell_casts").select("negated").eq("id", castId).single();
+    expect(castRow).toMatchObject({ negated: true });
+  });
+
+  it("stall exclusion at Layer 0 leads into the reaction window", async () => {
+    const [starter, other, staller] = await Promise.all([
+      signUp("adv-stall-ex0-starter"),
+      signUp("adv-stall-ex0-other"),
+      signUp("adv-stall-ex0-staller"),
+    ]);
+    await forceHold(admin, other.googleSub, "Mug Shot");
+    const roundId = await openAndCloseRound(starter, [other, staller]);
+    await seedRoll(roundId, starter.googleSub, 4);
+    await seedRoll(roundId, other.googleSub, 15);
+
+    const outcome = await enforceStallTimeout(starter.client, roundId, future);
+
+    expect(outcome).toEqual({ action: "excluded", playerIds: [staller.googleSub] });
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "open" }]);
+    expect((await roundRow(roundId)).status).toBe("closed");
+  });
+
+  it("stall exclusion at a Tie-Break Reroll Layer finalizes it with no window", async () => {
+    const [starter, other, third] = await Promise.all([
+      signUp("adv-stall-ex1-starter"),
+      signUp("adv-stall-ex1-other"),
+      signUp("adv-stall-ex1-third"),
+    ]);
+    const roundId = await openAndCloseRound(starter, [other, third]);
+    await seedRoll(roundId, starter.googleSub, 8);
+    await seedRoll(roundId, other.googleSub, 8);
+    await seedRoll(roundId, third.googleSub, 17);
+    expect(await advanceRound(starter.client, roundId, "layerRolled")).toMatchObject({
+      finalization: { outcome: "tie", layer: 1 },
+    });
+
+    // Only the starter rerolls; the other tied player stalls out of Layer 1.
+    await seedRoll(roundId, starter.googleSub, 12, 1);
+
+    const outcome = await enforceStallTimeout(third.client, roundId, future);
+
+    expect(outcome).toEqual({ action: "excluded", playerIds: [other.googleSub] });
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "closed" }]);
+    const round = await roundRow(roundId);
+    expect(round).toMatchObject({ status: "resolved", brewer_id: starter.googleSub, current_layer: 1, cups_made: 3 });
+  });
 });

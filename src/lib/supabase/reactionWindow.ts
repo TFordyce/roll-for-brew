@@ -304,9 +304,9 @@ export type TeaMakerOverride = {
 
 /**
  * Calls get_tea_maker_override (0033): the round's active tea_maker_override
- * cast (Drip Tray/Topsy-Tea/Wild Brew Surge branch 6), if any — consulted by
- * applyLayerOutcome before calling resolveLayer, since these cards decide the
- * brewer by a rule other than "lowest roll+modifier wins".
+ * cast (Drip Tray/Topsy-Tea/Wild Brew Surge branch 6), if any. These cards
+ * decide the brewer by a rule other than "lowest roll+modifier wins";
+ * resolve_round applies that rule itself in SQL.
  */
 export async function getTeaMakerOverride(supabase: SupabaseClient, roundId: string): Promise<TeaMakerOverride | null> {
   const { data, error } = await supabase.rpc("get_tea_maker_override", { p_round_id: roundId });

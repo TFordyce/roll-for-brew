@@ -4,7 +4,6 @@ import { getRoundById } from "@/lib/supabase/rounds";
 import {
   cancelRound,
   excludeRoundParticipant,
-  getCompletedLayerRollsForStallResolution,
   getCurrentLayerRollerIds,
   getExpectedLayerRollerIds,
   getLayerEnteredAt,
@@ -12,7 +11,6 @@ import {
   resolveStalledPendingSpellDice,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
-import { applyLayerOutcome } from "@/app/rounds/layerResolution";
 import { advanceRound } from "@/app/rounds/advanceRound";
 import { closeReactionWindow, countEligibleReactionHolders, getOpenReactionWindow } from "@/lib/supabase/reactionWindow";
 
@@ -32,37 +30,41 @@ export type StallOutcome =
  * injectable so tests can simulate ~5 minutes elapsing without sleeping it
  * out for real.
  *
- * Four stall points, one per round phase:
+ * Stall only clears blockages (ADR 0008, issue #416): it cancels, excludes,
+ * auto-resolves or abandons, then raises advanceRound(stallCleared) like any
+ * other caller — so a stall-cleared Layer 0 gets its reaction window and roll
+ * transforms exactly as an ordinary round would, and nothing here runs a
+ * resolution step directly. Advancement never checks who the caller is, so
+ * this is safe on a spectator's render.
+ *
+ * Stall points, by round phase:
  *  - status 'open': the starter never closed declarations -> cancel.
  *  - status 'closed', layer 0: a declared player never rolled -> exclude
- *    them and let the remaining participants' resolution proceed.
+ *    them; the remaining participants' Layer is then complete.
  *  - status 'closed', layer > 0: a tied player never submitted their
- *    reroll -> exclude them from that layer and let the remaining tied
- *    players' resolution proceed.
+ *    reroll -> exclude them from that layer; the remaining tied players'
+ *    Layer is then complete.
  *  - status 'closed', layer 0, every expected roller already rolled but a
  *    Pending Spell Die (issue #252, e.g. Cold Tea/Slipped Spoon's caster)
  *    is still unresolved, or a pre-roll forced_reroll cast (issue #325,
  *    Yorkshire Terror) is still awaiting its deferred target -> auto-resolve
- *    / force-negate it and let resolution proceed. Not a fourth independent
- *    clock — it's this same 5-minute-since-closed timer catching stall
- *    shapes the "did they roll" check above can't see (the caster already
- *    rolled; they just never gave their die a value, or never named their
- *    reroll's target). In practice the pending-die case is the recovery path
- *    for a *pre-roll* pending die (Cold Tea/Slipped Spoon) — a Reaction-
- *    timed one (Six Sugars) is usually already resolved by the time its
- *    still-open reaction window would otherwise leave this same query
- *    blocked, but resolving it here too if it somehow isn't is harmless:
- *    applyLayerOutcome below resolves the Layer directly; the ordinary
- *    (non-stalled) path reaches the same resolution through Layer
- *    finalization (finalize_layer), which #416 moves stall onto too.
+ *    / force-negate it. Not an independent clock — it's this same
+ *    5-minute-since-closed timer catching stall shapes the "did they roll"
+ *    check above can't see (the caster already rolled; they just never gave
+ *    their die a value, or never named their reroll's target). In practice
+ *    the pending-die case is the recovery path for a *pre-roll* pending die
+ *    (Cold Tea/Slipped Spoon) — a Reaction-timed one (Six Sugars) is usually
+ *    already resolved by the time its still-open reaction window would
+ *    otherwise leave this same query blocked, but resolving it here too if
+ *    it somehow isn't is harmless: advance_layer leaves an open window open.
  *  - status 'closed', layer 0, every expected roller already rolled but the
  *    layer's reaction window is still status = 'open' with zero eligible
- *    Reaction-card holders (issue #387) -> close the window and finalize.
- *    Same 5-minute clock again; recovers a window a pre-0104
- *    cast_reaction_spell_card stranded (the cast reopened the poll but left
- *    nobody able to Pass), which migration 0104 prevents going forward.
+ *    Reaction-card holders (issue #387) -> close the window. Same 5-minute
+ *    clock again; recovers a window a pre-0104 cast_reaction_spell_card
+ *    stranded (the cast reopened the poll but left nobody able to Pass),
+ *    which migration 0104 prevents going forward.
  * Any exclusion that drops the layer's active (non-excluded) participant
- * count below 2 cancels the round outright instead of resolving it.
+ * count below 2 cancels the round outright instead; a cancel raises no event.
  */
 export async function enforceStallTimeout(
   supabase: SupabaseClient,
@@ -93,24 +95,21 @@ export async function enforceStallTimeout(
   const stalledPlayerIds = [...expectedPlayerIds].filter((playerId) => !rolledPlayerIds.has(playerId));
 
   if (stalledPlayerIds.length === 0) {
-    // Every expected roller has rolled, yet get_current_layer_rolls_if_complete
-    // (migration 0069) still won't treat layer 0 as complete when a Pending
-    // Spell Die is outstanding — the exclude-a-non-roller logic below has
-    // nothing to do here, so this is the recovery path for that shape
-    // instead (see this function's own doc comment above).
+    // Every expected roller has rolled, yet the Layer can still be held
+    // incomplete by a Pending Spell Die or a Deferred Forced-Reroll Target —
+    // the exclude-a-non-roller logic below has nothing to do here, so this is
+    // the recovery path for those shapes instead (see the doc comment above).
     if (layer === 0) {
       // Two shapes the "did they roll" check above can't see, both cleared
       // by this same 5-minute timer: a Pending Spell Die never given a value
       // (issue #252), and a pre-roll forced_reroll cast whose caster never
-      // named its deferred target (issue #325). Recover whichever is
-      // outstanding, then let resolution proceed.
+      // named its deferred target (issue #325). Clear whichever is
+      // outstanding; advance_layer then opens the reaction window (or
+      // finalizes, if nobody can react) as it would for any complete Layer.
       const resolvedDice = await resolveStalledPendingSpellDice(supabase, roundId);
       const abandonedRerolls = await resolveStalledPendingForcedRerollCasts(supabase, roundId);
       if (resolvedDice > 0 || abandonedRerolls > 0) {
-        const completedLayer = await getCompletedLayerRollsForStallResolution(supabase, roundId);
-        if (completedLayer) {
-          await applyLayerOutcome(supabase, roundId, completedLayer);
-        }
+        await advanceRound(supabase, roundId, "stallCleared");
         // Both shapes can be outstanding on one round; the outcome is a
         // single label for page.tsx's "did anything happen" check, so report
         // the rarer forced_reroll recovery when it fired.
@@ -126,15 +125,13 @@ export async function enforceStallTimeout(
       // Migration 0104 stops cast_reaction_spell_card doing this going
       // forward; this clears any window a pre-0104 cast (or some unforeseen
       // path) already stranded, once this same 5-minute clock has elapsed.
-      // Closing it raises reactionWindowChanged, the same event the ordinary
-      // "every eligible holder passed" path raises: finalize_layer applies
-      // the window's roll-transform casts (Zariel's Fall, ...) and resolves
-      // the layer. It has no caller-identity gate, so this is safe on a
-      // spectator's render too.
+      // With the window closed, advance_layer performs Layer finalization:
+      // the window's roll-transform casts (Zariel's Fall, ...) apply and the
+      // Layer resolves.
       const openWindow = await getOpenReactionWindow(supabase, roundId);
       if (openWindow && (await countEligibleReactionHolders(supabase, roundId)) === 0) {
         await closeReactionWindow(supabase, openWindow.windowId);
-        await advanceRound(supabase, roundId, "reactionWindowChanged");
+        await advanceRound(supabase, roundId, "stallCleared");
         return { action: "reactionWindowRecovered" };
       }
     }
@@ -148,7 +145,7 @@ export async function enforceStallTimeout(
   // Layer 0 needs at least 2 active participants to resolve a round at all
   // (mirrors close_round's own >=2 gate). A reroll layer (layer > 0) is
   // already a tied subset of those same participants, so shrinking it to a
-  // single remaining roller isn't a failure to resolve — resolveLayer
+  // single remaining roller isn't a failure to resolve — resolve_round
   // treats that lone roller as the outright winner of the tie, same as if
   // everyone else had simply lost the reroll outright.
   const remainingActiveCount = expectedPlayerIds.size - stalledPlayerIds.length;
@@ -158,9 +155,8 @@ export async function enforceStallTimeout(
     return { action: "cancelled" };
   }
 
-  const completedLayer = await getCompletedLayerRollsForStallResolution(supabase, roundId);
-  if (completedLayer) {
-    await applyLayerOutcome(supabase, roundId, completedLayer);
-  }
+  // The Layer is now complete: at Layer 0 this opens the reaction window, at
+  // a Tie-Break Reroll Layer it finalizes.
+  await advanceRound(supabase, roundId, "stallCleared");
   return { action: "excluded", playerIds: stalledPlayerIds };
 }

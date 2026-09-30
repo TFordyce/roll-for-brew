@@ -387,7 +387,7 @@ describe.skipIf(!hasAnonTestEnv)("resolve_round(uuid): modifier composition, bre
     expect(out.brewer_source).toBe("declared_number");
 
     // resolve_round is a pure read — burning the one-shot is the
-    // orchestrator's job (applyLayerOutcome), so the effect is still here
+    // job of Layer finalization (finalize_layer), so the effect is still here
     // and a second call is identical.
     const { data: after } = await admin
       .from("spell_active_effects")
