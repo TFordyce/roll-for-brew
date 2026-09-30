@@ -513,6 +513,42 @@ export function byTarget<T extends { target_player_id: string }>(
 }
 
 /**
+ * Test-only observation seam: whether a round's Layer is complete, from the
+ * same `_layer_is_complete` rules round advancement uses (every expected
+ * roller has rolled and, at Layer 0, no Pending Spell Die or Deferred
+ * Forced-Reroll Target hold). Internal to advancement, so read as the
+ * service role.
+ */
+export async function isLayerComplete(admin: SupabaseClient, roundId: string, layer: number): Promise<boolean> {
+  const { data, error } = await admin.rpc("_layer_is_complete", { p_round_id: roundId, p_layer: layer });
+  if (error) throw error;
+  return data as boolean;
+}
+
+export type LayerRollRow = {
+  player_id: string;
+  value: number;
+  modifier_snapshot: number;
+  discarded_value: number | null;
+  entered_by_admin: boolean;
+};
+
+/**
+ * Test-only observation seam: a Layer's rolls read directly as the service
+ * role (rolls stay hidden from players until reveal), ordered by player.
+ */
+export async function getLayerRolls(admin: SupabaseClient, roundId: string, layer: number): Promise<LayerRollRow[]> {
+  const { data, error } = await admin
+    .from("rolls")
+    .select("player_id, value, modifier_snapshot, discarded_value, entered_by_admin")
+    .eq("round_id", roundId)
+    .eq("layer", layer)
+    .order("player_id");
+  if (error) throw error;
+  return (data ?? []) as LayerRollRow[];
+}
+
+/**
  * Tracks entities created during a test so they can be torn down in one
  * afterEach, instead of every test file hand-rolling the same arrays.
  */

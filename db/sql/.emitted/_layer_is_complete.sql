@@ -8,11 +8,11 @@
 --     issue #252);
 --   * a Deferred Forced-Reroll Target (a pre-roll forced_reroll cast still
 --     awaiting its target, issue #325).
--- Same rules as get_current_layer_rolls_if_complete (0098), which keeps its
--- identity gate until round advancement finishes moving over (spec #412).
+-- The single Layer-completeness read: the identity-gated and stall-resolution
+-- variants it replaced were dropped in issue #417.
 --
 -- Internal: called by advance_layer and finalize_layer, which run with
--- definer rights.
+-- definer rights. Players can't call it; the service role can (tests).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -55,6 +55,8 @@ end;
 $$;
 
 revoke execute on function public._layer_is_complete(uuid, integer) from public, anon, authenticated;
+-- The integration suites read completeness directly with the service role.
+grant execute on function public._layer_is_complete(uuid, integer) to service_role;
 
 comment on function public._layer_is_complete(uuid, integer) is
   'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding and no Deferred Forced-Reroll Target hold is in place. Internal to round advancement.';

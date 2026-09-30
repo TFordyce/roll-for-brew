@@ -260,7 +260,7 @@ describe.skipIf(!hasAnonTestEnv)("discarded advantage/disadvantage roll (issue #
     }
   });
 
-  it("surfaces discarded_value through get_current_layer_rolls_if_complete (issue #167, migration 0051)", async () => {
+  it("surfaces discarded_value through advance_layer's layer_rolls (issue #167; the reveal payload since #415)", async () => {
     const [caster, other] = await Promise.all([
       signUp("discard-rpc-caster"),
       signUp("discard-rpc-other"),
@@ -284,12 +284,16 @@ describe.skipIf(!hasAnonTestEnv)("discarded advantage/disadvantage roll (issue #
     const { error: otherRollError } = await other.client.rpc("submit_roll", { p_round_id: roundId });
     expect(otherRollError).toBeNull();
 
-    const { data: rows, error: rowsError } = await caster.client.rpc("get_current_layer_rolls_if_complete", {
+    // The call that first finds the Layer complete carries its raw rolls for
+    // the "layer rolls revealed" broadcast.
+    const { data: outcome, error: advanceError } = await caster.client.rpc("advance_layer", {
       p_round_id: roundId,
     });
-    expect(rowsError).toBeNull();
+    expect(advanceError).toBeNull();
 
-    const typedRows = rows as { player_id: string; value: number; discarded_value: number | null }[];
+    const typedRows = (outcome as {
+      layer_rolls: { rolls: { player_id: string; value: number; discarded_value: number | null }[] };
+    }).layer_rolls.rolls;
     const casterRow = typedRows.find((r) => r.player_id === caster.googleSub);
     const otherRow = typedRows.find((r) => r.player_id === other.googleSub);
 

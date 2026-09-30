@@ -1280,7 +1280,7 @@ begin
       -- #312: dice_modifier's flat contribution is the recorded dice_roll
       -- (raw, unsigned) * sign. An unrolled Pending Spell Die (no dice_roll
       -- key) contributes 0 -- resolve_round never runs with one outstanding
-      -- (get_current_layer_rolls_if_complete gates on it, migration 0079).
+      -- (the _layer_is_complete hold keeps Layer finalization from running).
       v_el := v_el || jsonb_build_object('flat',
         case
           when v_row.cast_inputs ? 'dice_roll'

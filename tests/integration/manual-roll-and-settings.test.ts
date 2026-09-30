@@ -1,6 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  hasAnonTestEnv,
+  isLayerComplete,
+  signUpSignInAndEnterRoom,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // player_settings table and the submit_manual_roll RPC (supabase/migrations/
@@ -236,12 +242,7 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
     const { error: inAppError } = await other.client.rpc("submit_roll", { p_round_id: roundId });
     expect(inAppError).toBeNull();
 
-    const { data: complete, error: completeError } = await starter.client.rpc(
-      "get_current_layer_rolls_if_complete",
-      { p_round_id: roundId },
-    );
-    expect(completeError).toBeNull();
-    expect(complete).toHaveLength(2);
+    expect(await isLayerComplete(admin, roundId, 0)).toBe(true);
 
     const { data: rows, error: rowsError } = await admin
       .from("rolls")

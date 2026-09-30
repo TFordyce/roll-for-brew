@@ -1,6 +1,13 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  getLayerRolls,
+  hasAnonTestEnv,
+  signUpSignInAndEnterRoom,
+  type LayerRollRow,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the admin
 // round deletion tool (0055, issue #189) — admin_delete_round — through real
@@ -124,11 +131,7 @@ describe.skipIf(!hasAnonTestEnv)("admin_delete_round: hard-deletes an invalid ro
       await starter.client.rpc("submit_roll", { p_round_id: roundId });
       await other.client.rpc("submit_roll", { p_round_id: roundId });
 
-      const { data: complete } = await starter.client.rpc("get_current_layer_rolls_if_complete", {
-        p_round_id: roundId,
-      });
-      type LayerZeroRow = { player_id: string; value: number; modifier_snapshot: number };
-      const [a, b] = complete as [LayerZeroRow, LayerZeroRow];
+      const [a, b] = (await getLayerRolls(admin, roundId, 0)) as [LayerRollRow, LayerRollRow];
       const aTotal = a.value + a.modifier_snapshot;
       const bTotal = b.value + b.modifier_snapshot;
       // Same tie/nat-1 special-case skip as roll-and-resolve.test.ts — this

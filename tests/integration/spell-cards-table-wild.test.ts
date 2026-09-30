@@ -322,7 +322,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     });
   });
 
-  it("Inscribed Saucer (declared_number_tea_maker) names the first matching roller as a pure, repeatable read (#310)", async () => {
+  it("Inscribed Saucer (declared_number_tea_maker) records its number as a duration-1 sentinel (#310)", async () => {
     const [caster, target] = await Promise.all([signUp("saucer-caster"), signUp("saucer-target")]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
@@ -336,31 +336,11 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     });
     expect(castError).toBeNull();
 
-    await caster.client.rpc("close_round", { p_round_id: roundId });
-
-    await admin.from("rolls").insert([
-      { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 3, input_mode: "manual", modifier_snapshot: 0 },
-      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 7, input_mode: "manual", modifier_snapshot: 0 },
-    ]);
-
-    const { data: matched, error: matchError } = await caster.client.rpc("resolve_declared_number_tea_maker", {
-      p_round_id: roundId,
-      p_layer: 0,
-    });
-    expect(matchError).toBeNull();
-    expect(matched).toBe(target.googleSub);
-
-    // #310: it no longer physically consumes the sentinel — it's a pure,
-    // idempotent read, so a repeat call in the same round returns the same
-    // player. "One shot" is now enforced by the sentinel being a duration-1
-    // projection row that ages out once this round resolves (covered by the
-    // resolve-round / spell-active-effects expiry tests).
-    const { data: secondMatch } = await caster.client.rpc("resolve_declared_number_tea_maker", {
-      p_round_id: roundId,
-      p_layer: 0,
-    });
-    expect(secondMatch).toBe(target.googleSub);
-
+    // "One shot" is enforced by the sentinel being a duration-1 projection
+    // row that ages out once this round resolves — resolve_round names the
+    // matching roller as brewer, and Layer finalization's commit is what
+    // burns it (covered by the resolve-round, round-advancement and Trace
+    // snapshot declared-number cases).
     const { data: sentinelRow } = await admin
       .from("spell_active_effects")
       .select("effect_kind, rounds_remaining")
