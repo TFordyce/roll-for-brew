@@ -11,7 +11,8 @@
 -- Same rules as get_current_layer_rolls_if_complete (0098), which keeps its
 -- identity gate until round advancement finishes moving over (spec #412).
 --
--- Internal: called by finalize_layer, which runs with definer rights.
+-- Internal: called by advance_layer and finalize_layer, which run with
+-- definer rights.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the

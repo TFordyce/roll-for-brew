@@ -10,7 +10,6 @@ import {
   withdrawDeclaration,
 } from "@/lib/supabase/rounds";
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
-import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
 import { advanceRound } from "@/app/rounds/advanceRound";
 import { confirmRoundReplay, declineRoundReplay } from "@/lib/supabase/roundReplay";
 import {
@@ -38,8 +37,6 @@ import {
 } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
-  afterDeferredCastTargetSet,
-  afterPendingSpellDieResolved,
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
   resolveSpellCastError,
@@ -194,7 +191,7 @@ export async function submitRollAction(formData: FormData) {
     return;
   }
   await maybeRecordPendingSpellDraw(supabase, value, roundId);
-  await resolveCompletedLayerIfAny(supabase, roundId);
+  await advanceRound(supabase, roundId, "layerRolled");
 
   revalidateRoundSurfaces();
 }
@@ -225,7 +222,7 @@ export async function submitManualRollAction(formData: FormData) {
     return;
   }
   await maybeRecordPendingSpellDraw(supabase, value, roundId);
-  await resolveCompletedLayerIfAny(supabase, roundId);
+  await advanceRound(supabase, roundId, "layerRolled");
 
   revalidateRoundSurfaces();
 }
@@ -233,9 +230,9 @@ export async function submitManualRollAction(formData: FormData) {
 /**
  * Resolves a Pending Spell Die (issue #252) with the app's own
  * server-generated roll — the dice_modifier counterpart to submitRollAction.
- * afterPendingSpellDieResolved re-enters layer resolution afterward, since
- * get_current_layer_rolls_if_complete's gate (0069) may have been blocking
- * on exactly this cast the whole time it sat pending.
+ * Raises pendingDieResolved afterward, since the die may have been holding
+ * the Layer incomplete the whole time it sat pending. Mid-window that only
+ * unblocks Layer finalization; the window still finishes normally.
  */
 export async function resolvePendingSpellDieInAppAction(formData: FormData) {
   const roundId = formData.get("roundId");
@@ -255,7 +252,7 @@ export async function resolvePendingSpellDieInAppAction(formData: FormData) {
     revalidateRoundSurfaces();
     return;
   }
-  await afterPendingSpellDieResolved(supabase, roundId);
+  await advanceRound(supabase, roundId, "pendingDieResolved");
   // Issue #409: the die's value moves every device's Provisional Recap; it
   // lives in the Cast Log, so it rides spell-cast-changed.
   await broadcastSpellCastChanged(supabase, await getRoundRoomId(supabase, roundId), { roundId });
@@ -297,7 +294,7 @@ export async function resolvePendingSpellDieManualAction(
   } catch (error) {
     return resolveSpellCastError(error);
   }
-  await afterPendingSpellDieResolved(supabase, roundId);
+  await advanceRound(supabase, roundId, "pendingDieResolved");
   // Issue #409: the die's value moves every device's Provisional Recap; it
   // lives in the Cast Log, so it rides spell-cast-changed.
   await broadcastSpellCastChanged(supabase, await getRoundRoomId(supabase, roundId), { roundId });
@@ -477,14 +474,14 @@ export async function setSpellCastTargetAction(
   const supabase = await createClient();
   try {
     await setSpellCastTarget(supabase, castId, targetPlayerId);
-    // Issue #325: a pre-roll forced_reroll cast (Yorkshire Terror) may have
-    // been holding layer 0 open until this target landed — drive resolution
-    // from wherever it stalled. A no-op for every other deferred target, and
-    // when rolling isn't finished yet.
-    await afterDeferredCastTargetSet(supabase, roundId);
   } catch (error) {
     return resolveSpellCastError(error);
   }
+  // Issue #325: a pre-roll forced_reroll cast (Yorkshire Terror) may have been
+  // holding layer 0 incomplete until this target landed, so its reaction
+  // window opens now. A noop for any other deferred target, when a window
+  // already exists, and when rolling isn't finished yet.
+  await advanceRound(supabase, roundId, "deferredTargetSet");
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastSpellCastChanged(supabase, roomId, { roundId });

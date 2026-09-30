@@ -240,22 +240,3 @@ export async function resolvePendingSpellDieManual(
   });
   if (error) throw error;
 }
-
-/**
- * Calls round_layer_zero_reaction_window_exists (0069): whether resolving
- * this round's last pending spell die should re-enter the flow via
- * finalizeReactionWindow (a layer-0 window already exists, open or closed-
- * but-blocked) or resolveCompletedLayerIfAny (no window yet — a pre-roll
- * cast like Cold Tea, where opening one is still this round's next step).
- * See afterPendingSpellDieResolved (src/app/rounds/actions.ts).
- */
-export async function hasLayerZeroReactionWindow(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc("round_layer_zero_reaction_window_exists", {
-    p_round_id: roundId,
-  });
-  if (error) throw error;
-  return data as boolean;
-}

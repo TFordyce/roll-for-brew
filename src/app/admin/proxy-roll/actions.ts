@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import { adminProxyRoll } from "@/lib/supabase/rolls";
-import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { advanceRound } from "@/app/rounds/advanceRound";
 import { isStaleRoundError } from "@/app/rounds/roundActionHelpers";
 
 export type AdminProxyRollState = { status: "idle" } | { status: "error"; message: string };
@@ -58,7 +58,7 @@ export async function adminProxyRollAction(
     };
   }
 
-  await resolveCompletedLayerIfAny(supabase, roundId);
+  await advanceRound(supabase, roundId, "layerRolled");
 
   revalidatePath("/admin/proxy-roll");
   revalidatePath("/");

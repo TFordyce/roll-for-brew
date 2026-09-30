@@ -1,0 +1,196 @@
+-- GENERATED FROM db/sql/functions/ -- DO NOT EDIT
+--
+-- Written by `npm run build:migrations` from the canonical resolver-function
+-- sources under db/sql/functions/. To change any function below, edit its
+-- db/sql/functions/<name>.sql and re-run the build. See db/sql/README.md.
+--
+-- Functions in this migration:
+--   _layer_is_complete
+--   advance_layer
+
+-- BEGIN db/sql/functions/_layer_is_complete.sql
+-- _layer_is_complete(p_round_id uuid, p_layer integer) -> boolean
+--
+-- The Layer-completeness rules (ADR 0008, issue #414) with no caller-identity
+-- gate: whether a round can advance does not depend on who asks. A Layer is
+-- complete once every expected roller has rolled and, at Layer 0, neither hold
+-- is in place:
+--   * a Pending Spell Die (a dice_modifier cast with no rolled value yet,
+--     issue #252);
+--   * a Deferred Forced-Reroll Target (a pre-roll forced_reroll cast still
+--     awaiting its target, issue #325).
+-- Same rules as get_current_layer_rolls_if_complete (0098), which keeps its
+-- identity gate until round advancement finishes moving over (spec #412).
+--
+-- Internal: called by advance_layer and finalize_layer, which run with
+-- definer rights.
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
+create or replace function public._layer_is_complete(p_round_id uuid, p_layer integer)
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = public
+as $$
+begin
+  if (select count(*) from public.rolls where round_id = p_round_id and layer = p_layer)
+     < public.count_expected_layer_rollers(p_round_id, p_layer) then
+    return false;
+  end if;
+
+  if p_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id and effect_kind = 'dice_modifier'
+       and not coalesce(cast_inputs ? 'dice_roll', false)
+  ) then
+    return false;
+  end if;
+
+  if p_layer = 0 and exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id
+       and effect_kind = 'forced_reroll'
+       and target_pending = true
+       and negated = false
+       and reaction_window_id is null
+  ) then
+    return false;
+  end if;
+
+  return true;
+end;
+$$;
+
+revoke execute on function public._layer_is_complete(uuid, integer) from public, anon, authenticated;
+
+comment on function public._layer_is_complete(uuid, integer) is
+  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding and no Deferred Forced-Reroll Target hold is in place. Internal to round advancement.';
+-- END db/sql/functions/_layer_is_complete.sql
+
+-- BEGIN db/sql/functions/advance_layer.sql
+-- advance_layer(p_round_id uuid) -> jsonb
+--
+-- Layer completion (ADR 0008, issue #415): what happens once the current
+-- Layer's rolls are all in. Takes the round row lock first -- the same lock
+-- finalize_layer and resolve_round take, so the nested calls below reuse it --
+-- then does nothing unless the round is `closed` and its current Layer is
+-- complete (_layer_is_complete: every expected roller has rolled, and at
+-- Layer 0 no Pending Spell Die or Deferred Forced-Reroll Target hold). Then:
+--   * Layer 0 with no reaction window yet: opens it (open_reaction_window,
+--     which attaches the pre-roll forced_reroll and chosen-pair casts). If
+--     nobody is eligible to react the window closes on the spot and Layer
+--     finalization (finalize_layer) runs in this same call.
+--   * Layer 0 with a window: an open window is a noop -- the window finishes
+--     normally, so a Pending Spell Die resolved mid-window only unblocks
+--     finalization -- and a closed one performs Layer finalization.
+--   * A Tie-Break Reroll Layer (> 0): performs Layer finalization. No window
+--     is ever opened above Layer 0.
+--
+-- Never opens a second window, and never raises for who the caller is or for
+-- losing a race: a second caller blocks on the lock, then finds the window
+-- already there (or the round moved on) and returns noop.
+--
+-- The call that first finds the Layer complete -- the one that opens Layer
+-- 0's window, or that finalizes a Tie-Break Reroll Layer -- also returns the
+-- Layer's raw (pre-transform) rolls as `layer_rolls`, for the "layer rolls
+-- revealed" broadcast. Called by the round-advancement module
+-- (src/app/rounds/advanceRound.ts).
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
+create or replace function public.advance_layer(p_round_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_status text;
+  v_layer integer;
+  v_window_status text;
+  v_window_closed boolean;
+  v_layer_rolls jsonb;
+  v_finalization jsonb;
+begin
+  select status, current_layer into v_status, v_layer
+    from public.rounds
+   where id = p_round_id
+     for update;
+
+  if v_status is null then
+    return jsonb_build_object('outcome', 'noop', 'reason', 'round_not_found');
+  end if;
+
+  if v_status <> 'closed' then
+    return jsonb_build_object('outcome', 'noop', 'reason', 'round_not_closed');
+  end if;
+
+  if not public._layer_is_complete(p_round_id, v_layer) then
+    return jsonb_build_object('outcome', 'noop', 'reason', 'layer_incomplete');
+  end if;
+
+  if v_layer = 0 then
+    select w.status into v_window_status
+      from public.spell_reaction_windows w
+     where w.round_id = p_round_id and w.layer = 0
+     order by w.opened_at desc
+     limit 1;
+
+    if v_window_status = 'open' then
+      return jsonb_build_object('outcome', 'noop', 'reason', 'window_open');
+    end if;
+
+    if v_window_status is not null then
+      -- A closed window: the rolls were revealed when it opened.
+      return public.finalize_layer(p_round_id);
+    end if;
+  end if;
+
+  -- First to find this Layer complete: capture its raw rolls for the reveal
+  -- before any roll transform rewrites them.
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'player_id', r.player_id,
+           'value', r.value,
+           'discarded_value', r.discarded_value,
+           'entered_by_admin', r.entered_by_admin)
+           order by r.player_id), '[]'::jsonb)
+    into v_layer_rolls
+    from public.rolls r
+   where r.round_id = p_round_id and r.layer = v_layer;
+
+  v_layer_rolls := jsonb_build_object('layer', v_layer, 'rolls', v_layer_rolls);
+
+  if v_layer > 0 then
+    return public.finalize_layer(p_round_id)
+      || jsonb_build_object('layer_rolls', v_layer_rolls);
+  end if;
+
+  select o.is_closed into v_window_closed
+    from public.open_reaction_window(p_round_id, 0) o;
+
+  if v_window_closed then
+    v_finalization := public.finalize_layer(p_round_id);
+  end if;
+
+  return jsonb_build_object(
+    'outcome', 'windowOpened',
+    'layer', 0,
+    'window_closed', v_window_closed,
+    'finalization', v_finalization,
+    'layer_rolls', v_layer_rolls);
+end;
+$$;
+
+revoke execute on function public.advance_layer(uuid) from public, anon;
+grant execute on function public.advance_layer(uuid) to authenticated;
+
+comment on function public.advance_layer(uuid) is
+  'Layer completion (ADR 0008, issue #415). Locks the round, then returns { outcome: "noop", reason } unless the round is closed and its current Layer is complete -- reasons: round_not_found, round_not_closed, layer_incomplete, window_open. At Layer 0 with no reaction window it opens one and returns { outcome: "windowOpened", layer: 0, window_closed, finalization, layer_rolls }, where finalization is finalize_layer''s outcome when nobody was eligible to react (the window closed on the spot) and null otherwise. At Layer 0 with a closed window, or at a Tie-Break Reroll Layer, it returns finalize_layer''s outcome ({ outcome: "brewer", ... } or { outcome: "tie", ... }). layer_rolls -- { layer, rolls: [{ player_id, value, discarded_value, entered_by_admin }] }, the raw pre-transform rolls -- is present only on the call that first finds the Layer complete. Never opens a second window; never raises for caller identity or a lost race.';
+-- END db/sql/functions/advance_layer.sql
+

@@ -6,7 +6,7 @@ import { setActingAs, endTestSession } from "@/lib/supabase/actingAs";
 import { submitManualRollAs, submitRollAs } from "@/lib/supabase/rolls";
 import { getRoundRoomId } from "@/lib/supabase/rounds";
 import { isStaleRoundError, maybeDrawSpellCardAs, revalidateRoundSurfaces } from "@/app/rounds/roundActionHelpers";
-import { resolveCompletedLayerIfAny } from "@/app/rounds/layerResolution";
+import { advanceRound } from "@/app/rounds/advanceRound";
 
 /**
  * Switches which seeded Test Player (or the admin's own real identity) the
@@ -68,7 +68,7 @@ export async function submitRollAsAction(formData: FormData): Promise<void> {
     return;
   }
   await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), playerId, forcedCardId);
-  await resolveCompletedLayerIfAny(supabase, roundId);
+  await advanceRound(supabase, roundId, "layerRolled");
 
   revalidateRoundSurfaces();
 }
@@ -104,7 +104,7 @@ export async function submitManualRollAsAction(formData: FormData): Promise<void
     return;
   }
   await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), playerId, forcedCardId);
-  await resolveCompletedLayerIfAny(supabase, roundId);
+  await advanceRound(supabase, roundId, "layerRolled");
 
   revalidateRoundSurfaces();
 }
