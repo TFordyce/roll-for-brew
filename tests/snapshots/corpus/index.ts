@@ -17,7 +17,7 @@ import type { Scenario } from "./framework";
 // tier-derived contested_negate DC: common 2 / rare 5 / epic 10 (migration
 // 0080 _rr_tier_default_dc). Lucky Sip is common, so dc_d20 >= 2 succeeds.
 const GAMBLER_CONDITION = { condition: { advantage_at_or_above: 15, disadvantage_at_or_below: 5 } };
-// Issue #427: PG Tipped's catalog effect_params (migration 0124).
+// Issue #427: PG Tipped's catalog effect_params (migration 0126).
 const PG_TIPPED = { mode: "conditional_chosen", condition: "target_below_caster", modifier_gain: 0 };
 
 export const CORPUS: Scenario[] = [
@@ -68,6 +68,55 @@ export const CORPUS: Scenario[] = [
       await ctx.seedCast(roundId, p1.googleSub, "Drip Tray", {
         effectKind: "tea_maker_override",
         effectParams: { mode: "highest_modifier", no_modifier_gain: true },
+        targetPlayerId: null,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-tea-maker-override-prev-round-highest",
+    phases: ["5"],
+    note: "Last Drip (#426): tea_maker_override mode=prev_round_highest names the previous resolved round's top roller, with no modifier gain.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("prevwinner");
+      // Last Drip reads the room's previous resolved round: a room of its own.
+      const roomId = await ctx.seedDedicatedRoom([p1, p2]);
+      await ctx.seedPastRound(roomId, [
+        { playerId: p1.googleSub, value: 4 },
+        { playerId: p2.googleSub, value: 18 },
+      ]);
+      const roundId = await ctx.openAndCloseRound(p1, [p2], roomId);
+      await ctx.seedRoll(roundId, p1.googleSub, 5);
+      await ctx.seedRoll(roundId, p2.googleSub, 16);
+      await ctx.seedCast(roundId, p1.googleSub, "Last Drip", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "prev_round_highest", modifier_gain: 0 },
+        targetPlayerId: null,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-tea-maker-override-prev-round-highest-inert",
+    phases: ["5"],
+    note: "Last Drip (#426): the previous winner isn't in this round, so a no-op step with override_reason target_absent, and the default pick stands.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("low");
+      const absent = await ctx.signUp("absent");
+      // absent: in the room and the previous round, not this one.
+      const roomId = await ctx.seedDedicatedRoom([p1, p2, absent]);
+      await ctx.seedPastRound(roomId, [
+        { playerId: p1.googleSub, value: 4 },
+        { playerId: absent.googleSub, value: 19 },
+      ]);
+      const roundId = await ctx.openAndCloseRound(p1, [p2], roomId);
+      await ctx.seedRoll(roundId, p1.googleSub, 12);
+      await ctx.seedRoll(roundId, p2.googleSub, 3);
+      await ctx.seedCast(roundId, p1.googleSub, "Last Drip", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "prev_round_highest", modifier_gain: 0 },
         targetPlayerId: null,
       });
       return { roundId, resolveWith: p1.client };

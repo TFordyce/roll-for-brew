@@ -210,6 +210,54 @@ export async function seedDedicatedRoom(
 }
 
 /**
+ * Seeds a past round in `roomId` directly (admin bypasses RLS): its
+ * participants and layer-0 rolls, with `status` (default 'resolved') and a
+ * `started_at` in the past so it sorts before any round opened afterwards.
+ * For cards that read an earlier round, e.g. Last Drip (issue #426).
+ */
+export async function seedPastRound(
+  admin: SupabaseClient,
+  cleanup: ReturnType<typeof createTestCleanup>,
+  roomId: string,
+  rolls: { playerId: string; value: number; modifierSnapshot?: number }[],
+  opts: { status?: "resolved" | "cancelled"; minutesAgo?: number } = {},
+) {
+  const startedAt = new Date(Date.now() - (opts.minutesAgo ?? 60) * 60_000);
+  const status = opts.status ?? "resolved";
+  const { data, error } = await admin
+    .from("rounds")
+    .insert({
+      room_id: roomId,
+      started_by: rolls[0]!.playerId,
+      status,
+      started_at: startedAt.toISOString(),
+      resolved_at: status === "resolved" ? startedAt.toISOString() : null,
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+  const roundId = (data as { id: string }).id;
+  cleanup.trackRound(roundId);
+
+  const { error: pErr } = await admin
+    .from("round_participants")
+    .insert(rolls.map((r) => ({ round_id: roundId, player_id: r.playerId })));
+  if (pErr) throw pErr;
+  const { error: rErr } = await admin.from("rolls").insert(
+    rolls.map((r) => ({
+      round_id: roundId,
+      player_id: r.playerId,
+      layer: 0,
+      value: r.value,
+      input_mode: "manual",
+      modifier_snapshot: r.modifierSnapshot ?? 0,
+    })),
+  );
+  if (rErr) throw rErr;
+  return roundId;
+}
+
+/**
  * The non-working spell cards still parked at location 'benched' (migration
  * 0074, issue #284) so draw_spell_card skips them. Kept in sync by hand as
  * each card is implemented and un-benched: 0074 benched 39; Yorkshire Terror
@@ -226,14 +274,15 @@ export async function seedDedicatedRoom(
  * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
  * Prophe-Tea (persistent advantage, #320, migration 0097) — Cloud of Cream
  * (targeting skip, #321, migration 0099) — Tea Heist (#438, migration 0117) —
- * Brewmageddon (Compelled Cast, #440, migration 0119) — and PG Tipped
- * (conditional override, #427, migration 0124) — are now live, so
- * 12 remain here. A test that force-holds one of these must return it to the bench,
- * not the deck, on cleanup — releaseHeldCards below does that.
+ * Brewmageddon (Compelled Cast, #440, migration 0119) — Last Drip (#426,
+ * migration 0124) — and PG Tipped (conditional override, #427, migration
+ * 0126) — are now live, so 11 remain here. A test that force-holds one of
+ * these must return it to the bench, not the deck, on cleanup —
+ * releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
-  "Tea Party Revolt", "Last Drip",
+  "Tea Party Revolt",
   "Tea Cosy",
   "Loose Leaf",
   "Marked for Brew",

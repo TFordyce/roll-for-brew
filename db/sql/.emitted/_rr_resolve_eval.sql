@@ -116,14 +116,20 @@ declare
   v_lghm_high_pid text;
   v_lghm_plain_high_pid text;
   v_tmo_plain_high text;
-  -- issue #427: the tier-2 override contest winner, and a conditional
-  -- override's compared rolls.
-  v_override_found boolean := false;
+  -- issue #427: a conditional override's compared (post-shim) rolls.
   v_cond_target_roll integer;
   v_cond_caster_roll integer;
 
   v_override record;
+  -- true when v_override holds the tier-2 winner and it can act (its target
+  -- isn't still pending). A plain flag, so an unassigned v_override is never
+  -- read (PL/pgSQL doesn't short-circuit a field reference).
+  v_override_live boolean := false;
   v_declared record;
+  -- issue #426 (Last Drip, tea_maker_override mode prev_round_highest)
+  v_started_at timestamptz;
+  v_ld_prev_round uuid;
+  v_ld_target text;
 
   -- Phase 4b (issue #311) working state
   v_pm_targets text[] := array[]::text[];
@@ -165,8 +171,8 @@ declare
   v_pa_discarded integer;
   v_pa_kept integer;
 begin
-  select status, room_id, current_layer, replay_generation, replay_frozen_rollers
-    into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers
+  select status, room_id, current_layer, replay_generation, replay_frozen_rollers, started_at
+    into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers, v_started_at
     from public.rounds
    where id = p_round_id;
 
@@ -2018,13 +2024,11 @@ begin
   end loop;
 
   if v_brewer_id is null then
-    -- Tier 2: last cast wins. Walk the overrides newest first; the first one
-    -- that enters the contest is it. issue #427: a conditional_chosen (PG
-    -- Tipped) whose condition fails never enters -- it emits a no-op step and
-    -- the walk moves on to the next-newest override, so it can't beat an
-    -- earlier one. A still-pending target enters (and stops the walk) as
-    -- before: the override can't resolve yet, so no override applies.
-    for v_override in
+    -- Tier 2: last cast wins. Walk the overrides newest first; one that can't
+    -- act (an inert Last Drip, #426, or a PG Tipped whose condition fails,
+    -- #427) never enters the contest -- it leaves a no-op Trace step with its
+    -- reason and the next-newest is considered.
+    for v_row in
       -- issue #425: an explicit `modifier_gain` number wins; the legacy
       -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
       select casts.effect_params->>'mode' as mode,
@@ -2048,40 +2052,38 @@ begin
        where casts.round_id = p_round_id
          and casts.effect_kind = 'tea_maker_override'
          and casts.negated = false
-         -- issue #425: prev_round_highest (Last Drip) is in the closed mode
-         -- set but has no behaviour until its card slice lands; until then it
-         -- never enters the contest.
-         and casts.effect_params->>'mode' <> 'prev_round_highest'
        order by casts.cast_at desc, casts.seq desc
     loop
-      if v_override.mode = 'conditional_chosen'
-         and not coalesce(v_override.target_pending, false) then
-        if v_override.condition is distinct from 'target_below_caster' then
-          raise exception 'resolve_round: unsupported conditional_chosen condition %', v_override.condition;
+      if v_row.mode = 'conditional_chosen'
+         and not coalesce(v_row.target_pending, false) then
+        -- issue #427 (PG Tipped): enters only if the target's layer-0 roll
+        -- is lower than the caster's.
+        if v_row.condition is distinct from 'target_below_caster' then
+          raise exception 'resolve_round: unsupported conditional_chosen condition %', v_row.condition;
         end if;
 
         -- The rolls after the roll-input shim (Phase 3). A player with no
         -- layer-0 roll has nothing to compare, so the condition fails.
-        v_cond_target_roll := v_rolls[array_position(v_players, v_override.chosen_player_id)];
-        v_cond_caster_roll := v_rolls[array_position(v_players, v_override.caster_id)];
+        v_cond_target_roll := v_rolls[array_position(v_players, v_row.chosen_player_id)];
+        v_cond_caster_roll := v_rolls[array_position(v_players, v_row.caster_id)];
 
         if not coalesce(v_cond_target_roll < v_cond_caster_roll, false) then
           v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
             v_step_index,
             'tea_maker_override',
             jsonb_build_object(
-              'cast_id', to_jsonb(v_override.cast_id),
+              'cast_id', to_jsonb(v_row.cast_id),
               'active_effect_id', null,
-              'card_name', to_jsonb(v_override.card_name),
-              'caster_player_id', to_jsonb(v_override.caster_id)
+              'card_name', to_jsonb(v_row.card_name),
+              'caster_player_id', to_jsonb(v_row.caster_id)
             ),
-            v_override.chosen_player_id,
+            v_row.chosen_player_id,
             jsonb_build_object('type', 'status', 'value', 'pending'),
             jsonb_build_object('type', 'status', 'value', 'condition not met'),
             jsonb_build_object(
               'outcome', 'no-op',
               'override_reason', 'condition_not_met',
-              'override_condition', v_override.condition,
+              'override_condition', v_row.condition,
               'target_roll', v_cond_target_roll,
               'caster_roll', v_cond_caster_roll
             )
@@ -2091,13 +2093,69 @@ begin
         end if;
       end if;
 
-      v_override_found := true;
+      if v_row.mode = 'prev_round_highest' then
+        -- issue #426 (Last Drip): the room's most recent resolved round
+        -- before this one -> its highest layer-0 roller (ties: lowest
+        -- modifier_snapshot, then lowest player_id).
+        v_ld_prev_round := null;
+        v_ld_target := null;
+        select pr.id into v_ld_prev_round
+          from public.rounds pr
+         where pr.room_id = v_room_id
+           and pr.status = 'resolved'
+           and pr.id <> p_round_id
+           and pr.started_at < v_started_at
+         order by pr.started_at desc, pr.id
+         limit 1;
+
+        if v_ld_prev_round is not null then
+          select r.player_id into v_ld_target
+            from public.rolls r
+           where r.round_id = v_ld_prev_round and r.layer = 0
+           order by r.value desc, r.modifier_snapshot asc, r.player_id asc
+           limit 1;
+        end if;
+
+        if v_ld_target is null
+           or not exists (
+             select 1 from public.round_participants rp
+              where rp.round_id = p_round_id and rp.player_id = v_ld_target
+           ) then
+          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+            v_step_index,
+            'tea_maker_override',
+            jsonb_build_object(
+              'cast_id', to_jsonb(v_row.cast_id),
+              'active_effect_id', null,
+              'card_name', to_jsonb(v_row.card_name),
+              'caster_player_id', to_jsonb(v_row.caster_id)
+            ),
+            v_ld_target,
+            jsonb_build_object('type', 'status', 'value', 'pending'),
+            jsonb_build_object('type', 'status', 'value', 'no effect'),
+            jsonb_build_object(
+              'outcome', 'no-op',
+              'override_reason', case when v_ld_target is null
+                                      then 'no_previous_round' else 'target_absent' end)
+          ));
+          v_step_index := v_step_index + 1;
+          continue;
+        end if;
+      end if;
+
+      -- the newest override that can act wins; one with a pending target
+      -- (a deferred Wild Brew Surge pick) still wins, and names nobody.
+      v_override := v_row;
+      v_override_live := not coalesce(v_row.target_pending, false);
       exit;
     end loop;
 
-    if v_override_found and not coalesce(v_override.target_pending, false) then
-      -- issue #427: a conditional_chosen that got here met its condition.
-      if v_override.mode in ('chosen', 'conditional_chosen') then
+    if v_override_live then
+      if v_override.mode = 'prev_round_highest' then
+        -- v_ld_target was set by the loop iteration that exited on this cast.
+        v_brewer_id := v_ld_target;
+      elsif v_override.mode in ('chosen', 'conditional_chosen') then
+        -- issue #427: a conditional_chosen that got here met its condition.
         v_brewer_id := v_override.chosen_player_id;
       elsif v_override.mode = 'highest_roll' then
         select v_players[i] into v_brewer_id
@@ -2143,8 +2201,8 @@ begin
         end if;
       else
         -- issue #425: unreachable -- the mode set is closed (CHECK on
-        -- spell_casts and spell_card_effects) and the reserved mode is
-        -- filtered out above. A guard, not a code path.
+        -- spell_casts and spell_card_effects) and every mode is handled
+        -- above. A guard, not a code path.
         raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
       end if;
 

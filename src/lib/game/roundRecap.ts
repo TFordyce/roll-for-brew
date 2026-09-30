@@ -5,7 +5,7 @@ import type {
   RoundRecapData,
   ScrappedGeneration,
 } from "@/lib/supabase/roundRecap";
-import type { CompletedLayer, ForfeitReason, ResolutionTraceStep } from "@/lib/supabase/rolls";
+import type { CompletedLayer, ForfeitReason, OverrideNoopReason, ResolutionTraceStep } from "@/lib/supabase/rolls";
 import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { joinNames } from "@/lib/game/displayName";
 
@@ -257,6 +257,13 @@ const FORFEIT_REASON_TEXT: Record<ForfeitReason, string> = {
   vote: "they were skipped by vote",
   timeout: "they timed out",
 };
+// Issue #426: why a tea_maker_override step did nothing (`override_reason`).
+const OVERRIDE_NOOP_TEXT: Record<OverrideNoopReason, (target: string) => string> = {
+  no_previous_round: () => "there's no previous round",
+  target_absent: (t) => `${t} isn't in this round`,
+  // #427: normally read via failedOverrideCondition, which names the rolls.
+  condition_not_met: () => "its condition wasn't met",
+};
 // card_heist steps carry their outcome in `after.value` (_rr_heist_trace).
 const HEIST_MOVED = "moved";
 const HEIST_FIZZLED = "fizzled";
@@ -491,6 +498,8 @@ function sentenceFor(
             : "";
         return `${played} on ${t} — condition not met${rolls}, so it doesn't pick the brewer`;
       }
+      // Issue #426: an inert Last Drip says why it did nothing.
+      if (step.overrideReason) return `${played} — no effect: ${OVERRIDE_NOOP_TEXT[step.overrideReason](t)}`;
       const noGain = String(step.after.value ?? "").includes("no modifier");
       return `${played} — ${t} brews${noGain ? " (no modifier gain)" : ""}`;
     }
