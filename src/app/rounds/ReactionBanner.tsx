@@ -11,6 +11,8 @@ import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { orderStackForResolution } from "@/lib/game/reactionStack";
 import { joinNames } from "@/lib/game/displayName";
 import { SubmitButton } from "@/app/_components/SubmitButton";
+import { SkipVote } from "@/app/rounds/SkipVote";
+import type { SkipVoteState } from "@/lib/game/skipVote";
 
 const initialCastState: SpellCastActionState = { status: "idle" };
 
@@ -18,9 +20,9 @@ const initialCastState: SpellCastActionState = { status: "idle" };
  * The reaction window's ribbon banner (issue #68): a bottom bar over the
  * already-revealed dice screen (RoundReveal/TieBanner render above it, not
  * behind a dimming overlay) rather than a full-screen modal, per the map's
- * user story 26. No timer anywhere in this component — the window only
- * closes when passReactionWindowAction reports every eligible holder has
- * passed, driven entirely by user action and realtime broadcasts.
+ * user story 26. The window closes when every eligible holder has passed,
+ * or when the table stops waiting on them: a Skip vote (SkipVote, issue #411)
+ * or the 5-minute stall backstop.
  */
 export function ReactionBanner({
   roomId,
@@ -32,6 +34,7 @@ export function ReactionBanner({
   stack,
   participants,
   pendingPlayers,
+  skipVote,
 }: {
   roomId: string;
   roundId: string;
@@ -42,6 +45,7 @@ export function ReactionBanner({
   stack: ReactionStackEntry[];
   participants: RoundParticipant[];
   pendingPlayers: ReactionWindowPendingPlayer[];
+  skipVote: SkipVoteState | null;
 }) {
   const router = useRouter();
   const [castState, castFormAction] = useActionState(castReactionSpellCardAction, initialCastState);
@@ -139,6 +143,8 @@ export function ReactionBanner({
               : "Waiting for reactions…"}
         </p>
       )}
+
+      {skipVote ? <SkipVote roundId={roundId} state={skipVote} /> : null}
     </div>
   );
 }

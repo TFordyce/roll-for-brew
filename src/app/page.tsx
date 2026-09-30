@@ -47,7 +47,12 @@ import {
   getMyPendingSpellDice,
   getRoomActiveEffects,
 } from "@/lib/supabase/spellCasts";
-import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
+import {
+  getOpenReactionWindow,
+  getReactionSkipVote,
+  getReactionStack,
+  getReactionWindowPendingPlayers,
+} from "@/lib/supabase/reactionWindow";
 import { getMyRateableRound } from "@/lib/supabase/brewRatings";
 import { getRoomRounds } from "@/lib/supabase/stats";
 import { RoundRecapHistory } from "@/app/_components/RoundRecapHistory";
@@ -179,6 +184,8 @@ export default async function HomePage() {
     openReactionWindow && activeRound ? await getReactionStack(supabase, activeRound.id) : [];
   const reactionWindowPendingPlayers =
     openReactionWindow && activeRound ? await getReactionWindowPendingPlayers(supabase, activeRound.id) : [];
+  const reactionSkipVote =
+    openReactionWindow && activeRound ? await getReactionSkipVote(supabase, activeRound.id) : null;
 
   const dispellableEffects =
     activeRound && activeRound.status === "open"
@@ -469,6 +476,7 @@ export default async function HomePage() {
           stack={reactionStack}
           participants={participants}
           pendingPlayers={reactionWindowPendingPlayers}
+          skipVote={reactionSkipVote}
         />
       ) : null}
 

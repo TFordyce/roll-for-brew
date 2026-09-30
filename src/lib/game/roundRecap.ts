@@ -1,6 +1,13 @@
-import type { LayerParticipant, RoundRecapCast, RoundRecapData, ScrappedGeneration } from "@/lib/supabase/roundRecap";
+import type {
+  LayerParticipant,
+  ReactionSkip,
+  RoundRecapCast,
+  RoundRecapData,
+  ScrappedGeneration,
+} from "@/lib/supabase/roundRecap";
 import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
 import { classifyRollCalculation } from "@/lib/game/rollCalculation";
+import { joinNames } from "@/lib/game/displayName";
 
 /**
  * One tie-break reroll level under a player's layer-0 row (issue #220). Layers
@@ -509,6 +516,51 @@ function resolvedCastState(cast: RoundRecapCast, steps: ResolutionTraceStep[]): 
   return "no-op";
 }
 
+const SKIP_REASON_TEXT: Record<ReactionSkip["reason"], string> = {
+  vote: "skipped by vote",
+  timeout: "timed out after 5 minutes",
+};
+
+/**
+ * Issue #411: the Recap's "not heard from" line — the players the reaction
+ * window stopped waiting on (skipped by vote, or timed out). It goes after the
+ * last Reaction window step (the window closed once the reactions were in),
+ * else before the first Outcome step.
+ */
+function insertReactionSkips(
+  steps: Array<RecapStep & { phase: PhaseLabel }>,
+  skips: ReactionSkip[],
+  displayName: (playerId: string) => string,
+): Array<RecapStep & { phase: PhaseLabel }> {
+  if (skips.length === 0) return steps;
+
+  const reasons = [...new Set(skips.map((s) => s.reason))];
+  const sentence = reasons
+    .map((reason) => {
+      const names = skips.filter((s) => s.reason === reason).map((s) => displayName(s.playerId));
+      return `${joinNames(names, "")}: ${SKIP_REASON_TEXT[reason]}`;
+    })
+    .join("; ");
+  const line: RecapStep & { phase: PhaseLabel } = {
+    phase: "Reaction window",
+    displayIndex: "",
+    castId: null,
+    displayKind: "not_heard_from",
+    sentence: `Not heard from ${sentence}`,
+    targetPlayer: null,
+    casterPlayerId: null,
+    beforeAfter: null,
+    statusLabel: reasons.length === 1 && reasons[0] === "timeout" ? "timed out" : "skipped",
+    statusKind: "no-op",
+    pending: false,
+  };
+
+  const lastReaction = steps.map((s) => s.phase).lastIndexOf("Reaction window");
+  const firstOutcome = steps.findIndex((s) => s.phase === "Outcome");
+  const at = lastReaction >= 0 ? lastReaction + 1 : firstOutcome >= 0 ? firstOutcome : steps.length;
+  return [...steps.slice(0, at), line, ...steps.slice(at)];
+}
+
 /** Walk an ordered step list into contiguous same-phase groups. */
 function groupByPhase(steps: Array<RecapStep & { phase: PhaseLabel }>): PhaseGroup[] {
   const groups: PhaseGroup[] = [];
@@ -542,7 +594,7 @@ export function buildRoundRecap({
   const traceDriven = traceOnly && !live && casts.length === 0 && data.trace.length > 0;
   const rows = buildRows(data, displayName);
 
-  if (casts.length === 0 && !traceDriven) {
+  if (casts.length === 0 && !traceDriven && data.reactionSkips.length === 0) {
     return {
       hasContent: false,
       castStrip: [],
@@ -620,13 +672,15 @@ export function buildRoundRecap({
         };
       });
 
+  const withSkips = insertReactionSkips(ordered, data.reactionSkips, displayName);
+
   return {
     hasContent: true,
     castStrip,
     // Issue #409: a provisional dry run never names a brewer — its Outcome
     // steps (declared number, tea-maker override, the brewer-gain ward, a
     // targeting skip) wait for the real resolution.
-    phases: groupByPhase(data.provisional ? ordered.filter((s) => s.phase !== "Outcome") : ordered),
+    phases: groupByPhase(data.provisional ? withSkips.filter((s) => s.phase !== "Outcome") : withSkips),
     showReorderCaption: !live && castStrip.length > 1,
     endedInTieBreak: !live && !data.provisional && data.layerZeroOutcome === "tie",
     rows,
@@ -691,6 +745,7 @@ export function buildScrappedGenerationRecap(
       provisional: false,
       layers: gen.layers,
       layerParticipants: gen.layerParticipants,
+      reactionSkips: [],
     },
     displayName,
     traceOnly: true,
