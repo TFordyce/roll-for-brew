@@ -1,0 +1,94 @@
+{
+  "scenario": "05-pg-tipped-not-met-earlier-override-stands",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "chosen",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 4,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "condition not met"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "no-op",
+      "caster_roll": 6,
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "PG Tipped",
+        "active_effect_id": null,
+        "caster_player_id": "P:pg-caster"
+      },
+      "target_roll": 12,
+      "display_kind": "tea_maker_override",
+      "target_player": "P:pg-target",
+      "override_reason": "condition_not_met",
+      "override_condition": "target_below_caster"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Wild Brew Surge",
+        "active_effect_id": null,
+        "caster_player_id": "P:chooser"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:chosen"
+    }
+  ],
+  "players": [
+    {
+      "player": "chooser",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "chosen",
+      "nat": null,
+      "roll": 18,
+      "total": 18,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "pg-caster",
+      "nat": null,
+      "roll": 6,
+      "total": 6,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "pg-target",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}
