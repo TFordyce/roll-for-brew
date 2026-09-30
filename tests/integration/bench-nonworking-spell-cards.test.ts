@@ -54,9 +54,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     // #320, migration 0097) — Cloud of Cream (targeting skip, #321,
     // migration 0099) — Tea Heist (#438, migration 0117) — Brewmageddon
     // (Compelled Cast, #440, migration 0119) — Last Drip (#426, migration
-    // 0124) — and PG Tipped (conditional override, #427, migration 0126) —
-    // are since implemented and un-benched, so 11.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(11);
+    // 0124) — PG Tipped (conditional override, #427, migration 0126) — and
+    // The Last Cuppa (brewer immunity, #428, migration 0128) — are since
+    // implemented and un-benched, so 10.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(10);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();

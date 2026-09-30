@@ -6,7 +6,13 @@ import type {
   RoundRecapData,
   ScrappedGeneration,
 } from "@/lib/supabase/roundRecap";
-import { parseResolutionTrace, type CompletedLayer, type ForfeitReason, type ResolutionTraceStep } from "@/lib/supabase/rolls";
+import {
+  parseResolutionTrace,
+  type CompletedLayer,
+  type ForfeitReason,
+  type ImmunityTier,
+  type ResolutionTraceStep,
+} from "@/lib/supabase/rolls";
 
 // --- fixture helpers ---------------------------------------------------
 
@@ -67,6 +73,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     heistReason: null,
     overrideReason: null,
     failedOverrideCondition: null,
+    immunity: null,
     ...overrides,
   };
 }
@@ -372,6 +379,79 @@ describe("buildRoundRecap", () => {
     expect(s.displayKind).toBe("targeting_skip");
     expect(s.sentence).toBe("Cloud of Cream — Ada is skipped for highest/lowest-modifier targeting");
     expect(model.phases.find((p) => p.label === "Outcome")?.steps.some((x) => x.displayKind === "targeting_skip")).toBe(true);
+  });
+
+  describe("brewer immunity (issue #428)", () => {
+    function immunityStep(tier: ImmunityTier, skippedCardName: string | null = null) {
+      return step({
+        displayKind: "brewer_immunity",
+        sourceCast: { castId: null, activeEffectId: "AE1", cardName: "The Last Cuppa", casterPlayerId: "ada" },
+        targetPlayer: "ada",
+        before: { type: "status", value: "brewer" },
+        after: { type: "status", value: "immune" },
+        outcome: "applied",
+        immunity: { tier, skippedCardName },
+      });
+    }
+    // A cast-less round renders no steps (buildRoundRecap's empty exit), so
+    // each fixture carries the round's Last Cuppa cast.
+    const only = (trace: ResolutionTraceStep[]) => {
+      const casts = [cast({ castId: "C0", cardName: "The Last Cuppa", casterPlayerId: "ada", effectKind: "brewer_immunity" })];
+      const model = buildRoundRecap({ data: data({ casts, trace }), displayName });
+      return { model, s: model.phases.flatMap((p) => p.steps)[0]! };
+    };
+
+    it("a declared-number match passes over the immune roller, in the Outcome group", () => {
+      const { model, s } = only([immunityStep("declared_number", "Inscribed Saucer")]);
+      expect(s.sentence).toBe("The Last Cuppa — Ada rolled the number declared by Inscribed Saucer but can't be Tea Maker");
+      expect(s.statusLabel).toBe("applied");
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("an override naming the immune player falls through", () => {
+      expect(only([immunityStep("tea_maker_override", "Drip Tray")]).s.sentence).toBe(
+        "The Last Cuppa — Drip Tray can't make Ada brew",
+      );
+    });
+
+    it("the lowest roller is passed over for the next-lowest", () => {
+      expect(only([immunityStep("lowest_roller")]).s.sentence).toBe(
+        "The Last Cuppa — Ada rolled lowest but can't be Tea Maker; the next-lowest roller brews",
+      );
+    });
+
+    it("everyone immune: immunity gives way to a Tie-Break Reroll", () => {
+      const { s } = only([
+        step({
+          displayKind: "brewer_immunity",
+          sourceCast: { castId: null, activeEffectId: null, cardName: null, casterPlayerId: null },
+          targetPlayer: null,
+          before: { type: "status", value: "immune" },
+          after: { type: "status", value: "tie" },
+          outcome: "applied",
+          immunity: { tier: "all_immune", skippedCardName: null },
+        }),
+      ]);
+      expect(s.sentence).toBe("Every player is immune — immunity gives way to a Tie-Break Reroll");
+    });
+
+    it("reads immunity_tier and skipped_card_name off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "brewer_immunity",
+          source_cast: { cast_id: null, active_effect_id: "AE1", card_name: "The Last Cuppa", caster_player_id: "ada" },
+          target_player: "ada",
+          before: { type: "status", value: "brewer" },
+          after: { type: "status", value: "immune" },
+          outcome: "applied",
+          immunity_tier: "tea_maker_override",
+          skipped_card_name: "Drip Tray",
+        },
+      ]);
+      expect(parsed!.immunity).toEqual({ tier: "tea_maker_override", skippedCardName: "Drip Tray" });
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.immunity).toBeNull();
+    });
   });
 
   describe("Tea Heist (issue #438)", () => {

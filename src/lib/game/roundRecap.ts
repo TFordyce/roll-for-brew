@@ -242,6 +242,8 @@ const OUTCOME_KINDS = new Set([
   // Issue #321: a Cloud of Cream (targeting_skip) skip is a resolver-computed
   // target-selection step, alongside the brewer-selection kinds.
   "targeting_skip",
+  // Issue #428: brewer immunity passes a player over during brewer selection.
+  "brewer_immunity",
   // Issue #438: a Tea Heist's outcome is decided in the resolver's final phase.
   "card_heist",
 ]);
@@ -485,6 +487,24 @@ function sentenceFor(
       // highest/lowest-modifier target selection; the substituted player gets
       // their own lift / brewer step, so the skip needs no target here.
       return `${k || "Cloud of Cream"} — ${t} is skipped for highest/lowest-modifier targeting`;
+    case "brewer_immunity": {
+      // Issue #428: The Last Cuppa (ADR 0005 tier 0) — an immune player is
+      // skipped at whichever tier would have named them.
+      const card = k || "Brewer immunity";
+      const skipped = step.immunity?.skippedCardName;
+      switch (step.immunity?.tier) {
+        case "declared_number":
+          return `${card} — ${t} rolled the number declared by ${skipped ?? "a card"} but can't be Tea Maker`;
+        case "tea_maker_override":
+          return `${card} — ${skipped ?? "the override"} can't make ${t} brew`;
+        case "all_immune":
+          return step.after.value === "tie"
+            ? "Every player is immune — immunity gives way to a Tie-Break Reroll"
+            : "Every player is immune — immunity gives way";
+        default:
+          return `${card} — ${t} rolled lowest but can't be Tea Maker; the next-lowest roller brews`;
+      }
+    }
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
     case "tea_maker_override": {
