@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
-import { afterDeferredCastTargetSet } from "../../src/app/rounds/roundActionHelpers";
+import { advanceRound } from "../../src/app/rounds/advanceRound";
 import {
   createTestAdminClient,
   createTestCleanup,
@@ -19,8 +19,8 @@ import {
 // 0064 dropped from open_reaction_window, so the pre-roll -> apply path a
 // TARGET forced_reroll cast rides works end to end again.
 //
-// These tests drive the RPCs finalizeReactionWindow (src/app/rounds/
-// layerResolution.ts) would call in production — open_reaction_window, then
+// These tests drive the RPCs Layer completion and finalization (advance_layer
+// / finalize_layer, ADR 0008) call in production — open_reaction_window, then
 // get_forced_reroll_targets / apply_forced_reroll — directly.
 describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (issue #286)", () => {
   let admin: SupabaseClient;
@@ -266,12 +266,12 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     });
     expect((unblocked as { player_id: string }[]).length).toBe(3);
 
-    // Drive the exact app glue setSpellCastTargetAction now runs after
-    // set_spell_cast_target: no window exists yet (resolveCompletedLayerIfAny
-    // bailed at the gate on the completing roll), so it opens one, which
-    // self-closes with no eligible reactor and finalises — attaching the
-    // no-longer-pending forced_reroll cast and driving resolution.
-    await afterDeferredCastTargetSet(caster.client, roundId as string);
+    // Raise the event setSpellCastTargetAction raises after
+    // set_spell_cast_target: no window exists yet (the completing roll's
+    // advance_layer stopped at the hold), so it opens one, which self-closes
+    // with no eligible reactor and finalises — attaching the no-longer-pending
+    // forced_reroll cast and driving resolution.
+    await advanceRound(caster.client, roundId as string, "deferredTargetSet");
 
     // A layer-0 reaction window now exists (the glue opened it for the first
     // time) and the forced_reroll cast is attached to it.

@@ -11,12 +11,14 @@ import {
   stallTimeoutFuture as future,
 } from "./setup";
 
-// Runs against a real Supabase stack. Round advancement (ADR 0008, spec #412,
-// issue #414): Layer finalization runs as one locked SQL call, finalize_layer,
-// behind the advanceRound module's reactionWindowChanged event. Each test
-// raises an event (or drives the caller that raises it) as a specific user and
-// observes the round's resulting state.
-describe.skipIf(!hasAnonTestEnv)("round advancement — Layer finalization (issue #414)", () => {
+// Runs against a real Supabase stack. Round advancement (ADR 0008, spec #412):
+// Layer finalization runs as one locked SQL call, finalize_layer, behind the
+// advanceRound module's reactionWindowChanged event (issue #414); Layer
+// completion runs through advance_layer behind layerRolled /
+// pendingDieResolved / deferredTargetSet (issue #415). Each test raises an
+// event (or drives the caller that raises it) as a specific user and observes
+// the round's resulting state.
+describe.skipIf(!hasAnonTestEnv)("round advancement (spec #412)", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
 
@@ -110,11 +112,11 @@ describe.skipIf(!hasAnonTestEnv)("round advancement — Layer finalization (issu
     expect([caster.googleSub, other.googleSub]).toContain(round.brewer_id);
   });
 
-  async function seedRoll(roundId: string, playerId: string, value: number) {
+  async function seedRoll(roundId: string, playerId: string, value: number, layer = 0) {
     const { error } = await admin.from("rolls").insert({
       round_id: roundId,
       player_id: playerId,
-      layer: 0,
+      layer,
       value,
       input_mode: "manual",
       modifier_snapshot: 0,
@@ -443,5 +445,247 @@ describe.skipIf(!hasAnonTestEnv)("round advancement — Layer finalization (issu
     const round = await roundRow(roundId);
     expect(round.status).toBe("closed");
     expect(round.current_layer).toBe(1);
+  });
+
+  async function windowsOf(roundId: string): Promise<{ layer: number; status: string }[]> {
+    const { data, error } = await admin
+      .from("spell_reaction_windows")
+      .select("layer, status")
+      .eq("round_id", roundId);
+    if (error) throw error;
+    return data as { layer: number; status: string }[];
+  }
+
+  async function pendingDieCastId(caster: Player, roundId: string): Promise<string> {
+    const { data, error } = await caster.client.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
+    expect(error).toBeNull();
+    return (data as { cast_id: string }[])[0]!.cast_id;
+  }
+
+  async function castReaction(player: Player, roundId: string) {
+    const { error } = await player.client.rpc("cast_reaction_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: null,
+      p_target_cast_id: null,
+    });
+    expect(error).toBeNull();
+  }
+
+  it("layerRolled before the Layer is complete is a noop and opens no window", async () => {
+    const [starter, other] = await Promise.all([signUp("adv-early-starter"), signUp("adv-early-other")]);
+    const roundId = await openAndCloseRound(starter, [other]);
+    const { error } = await starter.client.rpc("submit_manual_roll", { p_round_id: roundId, p_value: 4 });
+    expect(error).toBeNull();
+
+    const outcome = await advanceRound(starter.client, roundId, "layerRolled");
+
+    expect(outcome).toEqual({ outcome: "noop", reason: "layer_incomplete" });
+    expect(await windowsOf(roundId)).toEqual([]);
+  });
+
+  it("Layer 0 with nobody eligible to react opens and finalizes within one layerRolled call", async () => {
+    const [starter, other] = await Promise.all([signUp("adv-l0-starter"), signUp("adv-l0-other")]);
+    const roundId = await openAndCloseRound(starter, [other]);
+    await seedRoll(roundId, starter.googleSub, 4);
+    const { error } = await other.client.rpc("submit_manual_roll", { p_round_id: roundId, p_value: 15 });
+    expect(error).toBeNull();
+
+    const outcome = await advanceRound(other.client, roundId, "layerRolled");
+
+    expect(outcome).toMatchObject({
+      outcome: "windowOpened",
+      layer: 0,
+      windowClosed: true,
+      finalization: { outcome: "brewer", layer: 0, brewerId: starter.googleSub, cupsMade: 2 },
+      layerRolls: { layer: 0 },
+    });
+    expect(outcome.layerRolls?.rolls).toEqual(
+      expect.arrayContaining([
+        { playerId: starter.googleSub, value: 4, discardedValue: null, enteredByAdmin: false },
+        { playerId: other.googleSub, value: 15, discardedValue: null, enteredByAdmin: false },
+      ]),
+    );
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "closed" }]);
+    const round = await roundRow(roundId);
+    expect(round.status).toBe("resolved");
+    expect(round.brewer_id).toBe(starter.googleSub);
+
+    // A late second layerRolled (a racing roller's request) finds nothing to do.
+    const again = await advanceRound(starter.client, roundId, "layerRolled");
+    expect(again).toEqual({ outcome: "noop", reason: "round_not_closed" });
+  });
+
+  it("a Tie-Break Reroll Layer finalizes on its last roll with no reaction window", async () => {
+    const [starter, other] = await Promise.all([signUp("adv-tb-starter"), signUp("adv-tb-other")]);
+    const roundId = await openAndCloseRound(starter, [other]);
+    await seedRoll(roundId, starter.googleSub, 8);
+    await seedRoll(roundId, other.googleSub, 8);
+
+    const tied = await advanceRound(other.client, roundId, "layerRolled");
+    expect(tied).toMatchObject({
+      outcome: "windowOpened",
+      layer: 0,
+      windowClosed: true,
+      finalization: { outcome: "tie", layer: 1 },
+    });
+
+    await seedRoll(roundId, starter.googleSub, 12, 1);
+    const { error } = await other.client.rpc("submit_manual_roll", { p_round_id: roundId, p_value: 3 });
+    expect(error).toBeNull();
+
+    const outcome = await advanceRound(other.client, roundId, "layerRolled");
+
+    expect(outcome).toMatchObject({
+      outcome: "brewer",
+      layer: 1,
+      brewerId: other.googleSub,
+      layerRolls: { layer: 1 },
+    });
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "closed" }]);
+    expect((await roundRow(roundId)).status).toBe("resolved");
+  });
+
+  it("a Pending Spell Die resolved while the window is open leaves it open; the round resolves once the holders pass", async () => {
+    const [caster, other] = await Promise.all([signUp("adv-pd-open-caster"), signUp("adv-pd-open-other")]);
+    await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self, dice_modifier 1d6
+    await forceHold(admin, other.googleSub, "Mug Shot"); // Reaction, Opponent
+    const roundId = await openAndCloseRound(caster, [other]);
+    await seedRoll(roundId, caster.googleSub, 4);
+    await seedRoll(roundId, other.googleSub, 15);
+
+    const opened = await advanceRound(other.client, roundId, "layerRolled");
+    expect(opened).toMatchObject({ outcome: "windowOpened", layer: 0, windowClosed: false });
+
+    // Six Sugars goes into the window; Mug Shot's holder may still respond.
+    await castReaction(caster, roundId);
+    const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: await pendingDieCastId(caster, roundId),
+    });
+    expect(resolveError).toBeNull();
+
+    const outcome = await advanceRound(caster.client, roundId, "pendingDieResolved");
+
+    expect(outcome).toEqual({ outcome: "noop", reason: "window_open" });
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "open" }]);
+    expect((await roundRow(roundId)).status).toBe("closed");
+
+    // A roll-completion event against the existing window never opens a second one.
+    expect(await advanceRound(other.client, roundId, "layerRolled")).toEqual({ outcome: "noop", reason: "window_open" });
+
+    const { error: passError } = await other.client.rpc("pass_reaction_window", { p_round_id: roundId });
+    expect(passError).toBeNull();
+    const finalized = await advanceRound(other.client, roundId, "reactionWindowChanged");
+
+    expect(finalized.outcome).toBe("brewer");
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "closed" }]);
+    expect((await roundRow(roundId)).status).toBe("resolved");
+  });
+
+  it("a Pending Spell Die resolved after the window closed triggers Layer finalization", async () => {
+    const [caster, other] = await Promise.all([signUp("adv-pd-closed-caster"), signUp("adv-pd-closed-other")]);
+    await forceHold(admin, caster.googleSub, "Six Sugars");
+    const roundId = await openAndCloseRound(caster, [other]);
+    await seedRoll(roundId, caster.googleSub, 4);
+    await seedRoll(roundId, other.googleSub, 15);
+    expect(await advanceRound(other.client, roundId, "layerRolled")).toMatchObject({
+      outcome: "windowOpened",
+      windowClosed: false,
+    });
+
+    // The last Reaction card is spent: the window closes (0104), but the die holds the Layer.
+    await castReaction(caster, roundId);
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "closed" }]);
+    expect(await advanceRound(caster.client, roundId, "reactionWindowChanged")).toEqual({
+      outcome: "noop",
+      reason: "layer_incomplete",
+    });
+
+    const { error: resolveError } = await caster.client.rpc("resolve_pending_spell_die_in_app", {
+      p_cast_id: await pendingDieCastId(caster, roundId),
+    });
+    expect(resolveError).toBeNull();
+
+    const outcome = await advanceRound(caster.client, roundId, "pendingDieResolved");
+
+    expect(outcome).toMatchObject({ outcome: "brewer", layer: 0, brewerId: caster.googleSub });
+    // Not the first to find the Layer complete: the rolls were revealed when the window opened.
+    expect(outcome.layerRolls).toBeUndefined();
+    expect((await roundRow(roundId)).status).toBe("resolved");
+  });
+
+  /** Arms Yorkshire Terror (pre-roll forced_reroll) with no target, closes the round, seeds layer 0. */
+  async function deferredYorkshireTerror(caster: Player, target: Player): Promise<{ roundId: string; castId: string }> {
+    await forceHold(admin, caster.googleSub, "Yorkshire Terror");
+    const { data: roundId } = await caster.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await target.client.rpc("declare_in", { p_round_id: roundId });
+    const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_target_player_id: null,
+    });
+    expect(castError).toBeNull();
+    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await seedRoll(roundId as string, caster.googleSub, 12);
+    await seedRoll(roundId as string, target.googleSub, 15);
+    return { roundId: roundId as string, castId: castId as string };
+  }
+
+  it("a Deferred Forced-Reroll Target set with no window opens the window (and, with no reactor, finalizes)", async () => {
+    const [caster, target] = await Promise.all([signUp("adv-dt-nowin-caster"), signUp("adv-dt-nowin-target")]);
+    const { roundId, castId } = await deferredYorkshireTerror(caster, target);
+
+    // The hold: every roll is in, but the target is still pending.
+    expect(await advanceRound(target.client, roundId, "layerRolled")).toEqual({
+      outcome: "noop",
+      reason: "layer_incomplete",
+    });
+    expect(await windowsOf(roundId)).toEqual([]);
+
+    const { error: setError } = await caster.client.rpc("set_spell_cast_target", {
+      p_cast_id: castId,
+      p_target_player_id: target.googleSub,
+    });
+    expect(setError).toBeNull();
+
+    const outcome = await advanceRound(caster.client, roundId, "deferredTargetSet");
+
+    expect(outcome).toMatchObject({ outcome: "windowOpened", layer: 0, windowClosed: true, layerRolls: { layer: 0 } });
+    if (outcome.outcome !== "windowOpened") throw new Error("expected windowOpened");
+    expect(["brewer", "tie"]).toContain(outcome.finalization?.outcome);
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "closed" }]);
+    // The open attached the no-longer-pending cast, and finalization rerolled its target.
+    const { data: castRow } = await admin
+      .from("spell_casts")
+      .select("reaction_window_id, cast_inputs")
+      .eq("id", castId)
+      .single();
+    expect(castRow!.reaction_window_id).not.toBeNull();
+    expect((castRow!.cast_inputs as { roll_transform?: unknown }).roll_transform).toMatchObject({
+      players: [{ player_id: target.googleSub, before: 15 }],
+    });
+  });
+
+  it("a deferred target set while a window already exists is a noop", async () => {
+    const [caster, target] = await Promise.all([signUp("adv-dt-win-caster"), signUp("adv-dt-win-target")]);
+    await forceHold(admin, target.googleSub, "Mug Shot"); // keeps the window open
+    const { roundId, castId } = await deferredYorkshireTerror(caster, target);
+    const { data: opened, error: openError } = await admin.rpc("open_reaction_window", {
+      p_round_id: roundId,
+      p_layer: 0,
+    });
+    expect(openError).toBeNull();
+    expect((opened as { is_closed: boolean }[])[0]!.is_closed).toBe(false);
+
+    const { error: setError } = await caster.client.rpc("set_spell_cast_target", {
+      p_cast_id: castId,
+      p_target_player_id: target.googleSub,
+    });
+    expect(setError).toBeNull();
+
+    const outcome = await advanceRound(caster.client, roundId, "deferredTargetSet");
+
+    expect(outcome).toEqual({ outcome: "noop", reason: "window_open" });
+    expect(await windowsOf(roundId)).toEqual([{ layer: 0, status: "open" }]);
+    expect((await roundRow(roundId)).status).toBe("closed");
   });
 });

@@ -23,7 +23,7 @@ export type ReactionStackEntry = {
  * Calls open_reaction_window (supabase/migrations/0020_spell_reaction_window.sql):
  * opens a reaction window for a layer whose rolls are now known. If nobody
  * currently eligible holds a Reaction card, the window closes itself
- * immediately — isClosed tells the caller (layerResolution.ts) whether to
+ * immediately — isClosed tells the caller whether to
  * finalize the layer right away instead of waiting on reactions.
  */
 export async function openReactionWindow(
@@ -193,7 +193,7 @@ export async function closeReactionWindow(supabase: SupabaseClient, windowId: st
 /**
  * Calls get_forced_reroll_targets: every player a currently-active
  * forced_reroll reaction (Double Dunk, Milk First?, ...) targets for this
- * round/layer, for layerResolution.ts's finalize step to reroll in place.
+ * round/layer, for Layer finalization (finalize_layer) to reroll in place.
  */
 export async function getForcedRerollTargets(
   supabase: SupabaseClient,
@@ -230,7 +230,7 @@ export async function applyForcedReroll(
 /**
  * Calls has_active_cast_kind (0033): whether any un-negated cast of the
  * given effect_kind is active for this round/layer's reaction window — the
- * gate finalizeReactionWindow uses before calling one of the roll-transform
+ * gate Layer finalization (finalize_layer) uses before calling one of the roll-transform
  * apply_* functions below (Dunkin Disaster/Zariel's Fall/Broken Biscuit).
  */
 export async function hasActiveCastKind(
@@ -288,7 +288,7 @@ export async function applyRollPairTransform(
 // orphaned fan-out RPC was dropped in migration 0083 (issue #312).
 //
 // applyForcedReroll / applyRollFlip / applyRollSwap still run at
-// finalizeReactionWindow and still mutate rolls.value in place (RoundReveal
+// Layer finalization (finalize_layer) and still mutate rolls.value in place (RoundReveal
 // / round history / the reveal broadcast read it), but as of migration 0079
 // (issue #306) they ALSO record their exact per-player before→after into
 // spell_casts.cast_inputs.roll_transform, and resolve_round rebuilds every

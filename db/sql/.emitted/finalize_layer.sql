@@ -129,15 +129,7 @@ begin
   v_replay_pending := public.record_pending_round_replay(p_round_id);
 
   -- The Layer's final (post-shim) rolls, for the round-revealed broadcast.
-  select coalesce(jsonb_agg(jsonb_build_object(
-           'player_id', r.player_id,
-           'value', r.value,
-           'discarded_value', r.discarded_value,
-           'entered_by_admin', r.entered_by_admin)
-           order by r.player_id), '[]'::jsonb)
-    into v_rolls
-    from public.rolls r
-   where r.round_id = p_round_id and r.layer = v_layer;
+  v_rolls := public._layer_rolls_json(p_round_id, v_layer);
 
   return jsonb_build_object(
     'outcome', 'brewer',

@@ -52,9 +52,9 @@ export type StallOutcome =
  *    timed one (Six Sugars) is usually already resolved by the time its
  *    still-open reaction window would otherwise leave this same query
  *    blocked, but resolving it here too if it somehow isn't is harmless:
- *    applyLayerOutcome below is exactly what the ordinary (non-stalled)
- *    reaction-window-closes path already calls too, just via
- *    finalizeReactionWindow instead of directly.
+ *    applyLayerOutcome below resolves the Layer directly; the ordinary
+ *    (non-stalled) path reaches the same resolution through Layer
+ *    finalization (finalize_layer), which #416 moves stall onto too.
  *  - status 'closed', layer 0, every expected roller already rolled but the
  *    layer's reaction window is still status = 'open' with zero eligible
  *    Reaction-card holders (issue #387) -> close the window and finalize.
