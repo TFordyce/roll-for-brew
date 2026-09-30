@@ -88,3 +88,22 @@ export function castTargetMode(held: HeldForTargeting): CastTargetMode {
   if (held.effectKind === "declared_number_tea_maker") return "declared-number";
   return "none";
 }
+
+/**
+ * The target control for a Compelled Cast (issue #440): the same as
+ * `castTargetMode`, except that nothing defers — every participant is known
+ * in the Compelled Cast step, and `cast_spell_card` refuses a compelled cast
+ * with no target (RFB55). A deferred OPPONENT / PLAYER card and a WILD card
+ * (naming its possible tea-maker) get the single-target select instead.
+ * `includeSelf` says whether the caster may pick themselves.
+ */
+export function compelledCastTargetMode(held: HeldForTargeting): {
+  mode: CastTargetMode;
+  includeSelf: boolean;
+} {
+  const mode = castTargetMode(held);
+  if (mode === "deferred-target" || held.target === "WILD") {
+    return { mode: "at-cast-target", includeSelf: held.target !== "OPPONENT" };
+  }
+  return { mode, includeSelf: false };
+}

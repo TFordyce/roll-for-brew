@@ -15,7 +15,7 @@ import { getOwnRoll } from "@/lib/supabase/rolls";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { getMyMostRecentOrder, getMyOrderableRound, getMyOrderForRound } from "@/lib/supabase/orders";
 import { getRoundMenu } from "@/lib/supabase/menu";
-import { isExpectedLayerRoller } from "@/lib/supabase/stall";
+import { getCompelledCastStep, isExpectedLayerRoller } from "@/lib/supabase/stall";
 import {
   closeRoundAction,
   declareInAction,
@@ -39,11 +39,13 @@ import { SpellCastLive } from "@/app/rounds/SpellCastLive";
 import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { PendingSpellDiePanel } from "@/app/rounds/PendingSpellDiePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
+import { CompelledCastPanel } from "@/app/rounds/CompelledCastPanel";
 import { getMyPendingSpellDraw, getMySpellCards, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import {
   type ActiveEffectBadge,
   getDispellableActiveEffects,
   getHeistTargetIds,
+  getMyCompelledCast,
   getMyPendingCasts,
   getMyPendingSpellDice,
   getRoomActiveEffects,
@@ -188,15 +190,24 @@ export default async function HomePage() {
   const reactionSkipVote =
     openReactionWindow && activeRound ? await getReactionSkipVote(supabase, activeRound.id) : null;
 
+  // Brewmageddon (issue #440): what the caller still owes it, and who else the
+  // Compelled Cast step is holding rolling for. Only a closed Layer-0 round
+  // can be in either state.
+  const compelledRound = activeRound?.status === "closed" && activeRound.currentLayer === 0 ? activeRound : null;
+  const myCompelledCast = compelledRound ? await getMyCompelledCast(supabase, compelledRound.id) : null;
+  const compelledStep = compelledRound ? await getCompelledCastStep(supabase, compelledRound.id) : null;
+
+  // A compelled Detox holder plays their card in the Compelled Cast step,
+  // after close, so they need the dispel picker then too.
   const dispellableEffects =
-    activeRound && activeRound.status === "open"
+    activeRound && (activeRound.status === "open" || myCompelledCast?.castingTime === "A")
       ? await getDispellableActiveEffects(supabase, activeRound.id)
       : [];
 
   // Issue #438: Tea Heist's picker lists only players holding a card.
   const heistTargetIds =
     activeRound &&
-    activeRound.status === "open" &&
+    (activeRound.status === "open" || myCompelledCast?.castingTime === "A") &&
     heldSpellCards.some((c) => c.location === "held" && c.cardName === "Tea Heist")
       ? await getHeistTargetIds(supabase, activeRound.id)
       : [];
@@ -321,6 +332,24 @@ export default async function HomePage() {
       <Nav active="room" />
 
       {activeRound ? <SpellCastLive roomId={roomId} roundId={activeRound.id} /> : null}
+
+      {compelledRound ? (
+        <CompelledCastPanel
+          roundId={compelledRound.id}
+          compelled={myCompelledCast}
+          held={heldSpellCards.find((c) => c.location === "held") ?? null}
+          brewmageddonCasterName={
+            myCompelledCast ? (namesByPlayerId[myCompelledCast.brewmageddonCasterId] ?? "Someone") : ""
+          }
+          waitingOnNames={(compelledStep?.waitingOn ?? [])
+            .filter((id) => id !== playerId)
+            .map((id) => namesByPlayerId[id] ?? id)}
+          participants={participants}
+          selfPlayerId={playerId}
+          dispellableEffects={dispellableEffects}
+          heistTargetIds={heistTargetIds}
+        />
+      ) : null}
 
       <SpellCardPanel
         heldCards={heldSpellCards}
@@ -487,6 +516,7 @@ export default async function HomePage() {
           participants={participants}
           pendingPlayers={reactionWindowPendingPlayers}
           skipVote={reactionSkipVote}
+          compelled={myCompelledCast?.castingTime === "R"}
         />
       ) : null}
 

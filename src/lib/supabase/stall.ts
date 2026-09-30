@@ -158,3 +158,35 @@ export async function excludeRoundParticipant(
   });
   if (error) throw error;
 }
+
+export type CompelledCastStep = {
+  /** Who still owes Brewmageddon a compelled Action cast; rolling is held while non-empty. */
+  waitingOn: string[];
+  /** When the step ended (the last compelled Action cast or Forfeit), or null if the round had none. */
+  endedAt: string | null;
+};
+
+/**
+ * Calls the get_compelled_cast_step RPC (0119, issue #440): the Compelled Cast
+ * step Brewmageddon puts between close_round and the first roll. Layer 0's
+ * roll stall clock runs from `endedAt` when there is one, so time spent in
+ * the step never counts against the rollers.
+ */
+export async function getCompelledCastStep(supabase: SupabaseClient, roundId: string): Promise<CompelledCastStep> {
+  const { data, error } = await supabase.rpc("get_compelled_cast_step", { p_round_id: roundId });
+  if (error) throw error;
+  const row = ((data ?? []) as { waiting_on: string[] | null; ended_at: string | null }[])[0];
+  return { waitingOn: row?.waiting_on ?? [], endedAt: row?.ended_at ?? null };
+}
+
+/**
+ * Calls the forfeit_stalled_compelled_casts RPC (0119, issue #440): the stall
+ * clock's Compelled Cast branch. Forfeits every compelled Action cast still
+ * owed once enforceStallTimeout's own hasStalled check has fired, which ends
+ * the step and opens rolling. Returns who forfeited.
+ */
+export async function forfeitStalledCompelledCasts(supabase: SupabaseClient, roundId: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc("forfeit_stalled_compelled_casts", { p_round_id: roundId });
+  if (error) throw error;
+  return (data ?? []) as string[];
+}

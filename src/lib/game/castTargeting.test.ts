@@ -4,6 +4,7 @@ import {
   TWO_OTHER_PLAYER_CARDS,
   atCastTargetOptions,
   castTargetMode,
+  compelledCastTargetMode,
 } from "./castTargeting";
 
 type Held = Parameters<typeof castTargetMode>[0];
@@ -64,6 +65,37 @@ describe("castTargetMode", () => {
     expect(TWO_OTHER_PLAYER_CARDS.has("Stir the Pot")).toBe(true);
     // Stir the Pot is handled by its own picker, not the single-target select.
     expect(AT_CAST_TARGET_CARDS.has("Stir the Pot")).toBe(false);
+  });
+});
+
+describe("compelledCastTargetMode (issue #440)", () => {
+  it("names a deferred OPPONENT / PLAYER target now, from the right pool", () => {
+    expect(compelledCastTargetMode(card({ cardName: "Six Sugars", target: "OPPONENT" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: false,
+    });
+    expect(compelledCastTargetMode(card({ cardName: "Fortune's Flavour", target: "PLAYER" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: true,
+    });
+  });
+
+  it("asks a WILD card for its possible tea-maker now, from every participant", () => {
+    expect(compelledCastTargetMode(card({ cardName: "Wild Brew Surge", target: "WILD" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: true,
+    });
+  });
+
+  it("leaves every other card's control as it is", () => {
+    expect(compelledCastTargetMode(card({ cardName: "Tea for Two", target: "PLAYER" }))).toEqual({
+      mode: "at-cast-target",
+      includeSelf: false,
+    });
+    expect(compelledCastTargetMode(card({ cardName: "Stir the Pot", target: "OPPONENT" })).mode).toBe(
+      "two-other-players",
+    );
+    expect(compelledCastTargetMode(card({ cardName: "Sugar Rush", target: "SELF" })).mode).toBe("none");
   });
 });
 

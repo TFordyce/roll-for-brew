@@ -23,6 +23,9 @@ const initialCastState: SpellCastActionState = { status: "idle" };
  * user story 26. The window closes when every eligible holder has passed,
  * or when the table stops waiting on them: a Skip vote (SkipVote, issue #411)
  * or the 5-minute stall backstop.
+ *
+ * `compelled` (issue #440): Brewmageddon obliges the caller to play their
+ * Reaction card here, so there is no Pass; being skipped forfeits the card.
  */
 export function ReactionBanner({
   roomId,
@@ -35,6 +38,7 @@ export function ReactionBanner({
   participants,
   pendingPlayers,
   skipVote,
+  compelled = false,
 }: {
   roomId: string;
   roundId: string;
@@ -46,6 +50,7 @@ export function ReactionBanner({
   participants: RoundParticipant[];
   pendingPlayers: ReactionWindowPendingPlayer[];
   skipVote: SkipVoteState | null;
+  compelled?: boolean;
 }) {
   const router = useRouter();
   const [castState, castFormAction] = useActionState(castReactionSpellCardAction, initialCastState);
@@ -127,7 +132,11 @@ export function ReactionBanner({
         </form>
       ) : null}
 
-      {eligible && !alreadyPassed ? (
+      {eligible && !alreadyPassed && compelled ? (
+        <p className="font-body text-sm text-parchment">
+          Brewmageddon: you must play your card — you can&apos;t pass.
+        </p>
+      ) : eligible && !alreadyPassed ? (
         <form action={passReactionWindowAction}>
           <input type="hidden" name="roundId" value={roundId} />
           <SubmitButton className="rounded-md border-2 border-gilt px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-tavern-panel-dark disabled:cursor-not-allowed disabled:border-gilt-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">

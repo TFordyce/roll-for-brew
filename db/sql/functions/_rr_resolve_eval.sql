@@ -136,6 +136,10 @@ declare
   -- Pre-pass (issue #344) working state
   v_wb record;
 
+  -- Pre-pass (issue #440: Brewmageddon) working state
+  v_cc record;
+  v_cc_source jsonb;
+
   -- Phase 0 (issue #316: Effect Invocation) working state
   v_has_invocations boolean := false;
   v_inv record;
@@ -557,6 +561,67 @@ begin
         'outcome', 'blocked'
       )
     ));
+    v_step_index := v_step_index + 1;
+  end loop;
+
+  -- ------------------------------------------------------------------
+  -- Pre-pass (issue #440): Brewmageddon -- Compelled Cast and Forfeit.
+  --
+  -- Neither a `compel_cast` row nor a `forfeit` row changes a roll or a
+  -- modifier: the compulsion happened at close_round / in the Compelled Cast
+  -- step, and the compelled casts themselves are ordinary casts every later
+  -- phase resolves as usual. This only explains them. One `compel_cast` step
+  -- per live Brewmageddon naming its compelled set (a no-op when nobody held
+  -- a card; a countered one already has Phase 1's negated step), then one
+  -- `forfeit` step per Forfeit, in cast order, pointing back at it.
+  -- ------------------------------------------------------------------
+  for v_cc in
+    select c.id as cast_id, c.caster_id, c.effect_kind, c.cast_inputs,
+           scn.name as card_name
+      from public.spell_casts c
+      join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
+      join public.spell_cards scn on scn.id = sdi.card_id
+     where c.round_id = p_round_id
+       and ((c.effect_kind = 'compel_cast' and not c.negated) or c.effect_kind = 'forfeit')
+     order by c.seq
+  loop
+    v_cc_source := jsonb_build_object(
+      'cast_id', to_jsonb(v_cc.cast_id),
+      'active_effect_id', null,
+      'card_name', to_jsonb(v_cc.card_name),
+      'caster_player_id', to_jsonb(v_cc.caster_id)
+    );
+    if v_cc.effect_kind = 'compel_cast' then
+      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+        v_step_index,
+        'compel_cast',
+        v_cc_source,
+        null,
+        jsonb_build_object('type', 'status', 'value', 'cast'),
+        jsonb_build_object('type', 'status', 'value', 'compelled'),
+        jsonb_build_object(
+          'compelled_player_ids', coalesce((
+            select jsonb_agg(h -> 'player_id' order by h ->> 'player_id')
+              from jsonb_array_elements(coalesce(v_cc.cast_inputs -> 'compelled', '[]'::jsonb)) h
+          ), '[]'::jsonb),
+          'outcome', case
+            when jsonb_array_length(coalesce(v_cc.cast_inputs -> 'compelled', '[]'::jsonb)) > 0
+              then 'applied' else 'no-op' end)
+      ));
+    else
+      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+        v_step_index,
+        'forfeit',
+        v_cc_source,
+        v_cc.caster_id,
+        jsonb_build_object('type', 'status', 'value', 'held'),
+        jsonb_build_object('type', 'status', 'value', 'forfeited'),
+        jsonb_build_object(
+          'compelled_by', v_cc.cast_inputs -> 'compelled_by',
+          'reason', v_cc.cast_inputs -> 'reason',
+          'outcome', 'no-op')
+      ));
+    end if;
     v_step_index := v_step_index + 1;
   end loop;
 

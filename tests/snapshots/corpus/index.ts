@@ -1094,4 +1094,53 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: p1.client };
     },
   },
+  {
+    // Issue #440: Brewmageddon's own step names its compelled set; the
+    // compelled Lucky Sip resolves as an ordinary cast; the Forfeit is a
+    // no-effect step pointing back at Brewmageddon. The Brewmageddon pre-pass
+    // is not a numbered resolver phase, so it has no PHASE_TAGS entry; the
+    // declared phases are the Lucky Sip's (4a) and the pick (5).
+    name: "1-brewmageddon-compelled-cast-and-forfeit",
+    phases: ["4a", "5"],
+    note: "compel_cast step (compelled set), a compelled flat_modifier cast, and a forfeit step (no legal target).",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("brewmageddon");
+      const p2 = await ctx.signUp("compelled");
+      const p3 = await ctx.signUp("forfeiter");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      await ctx.seedRoll(roundId, p3.googleSub, 15);
+      const { castId: bm } = await ctx.seedCast(roundId, p1.googleSub, "Brewmageddon", {
+        effectKind: "compel_cast",
+        effectParams: {},
+        targetPlayerId: null,
+      });
+      const { cardInstanceId: sip } = await ctx.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 3 },
+        targetPlayerId: p2.googleSub,
+        castInputs: { compelled_by: bm },
+      });
+      const { cardInstanceId: detox } = await ctx.seedCast(roundId, p3.googleSub, "Greater Detox", {
+        effectKind: "forfeit",
+        effectParams: {},
+        targetPlayerId: p3.googleSub,
+        castInputs: { compelled_by: bm, casting_time: "A", reason: "no_legal_target" },
+      });
+      const { error } = await ctx.admin
+        .from("spell_casts")
+        .update({
+          cast_inputs: {
+            compelled: [
+              { player_id: p2.googleSub, card_instance_id: sip, casting_time: "A" },
+              { player_id: p3.googleSub, card_instance_id: detox, casting_time: "A" },
+            ],
+          },
+        })
+        .eq("id", bm);
+      if (error) throw error;
+      return { roundId, resolveWith: p1.client };
+    },
+  },
 ];

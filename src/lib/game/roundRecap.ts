@@ -5,7 +5,7 @@ import type {
   RoundRecapData,
   ScrappedGeneration,
 } from "@/lib/supabase/roundRecap";
-import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
+import type { CompletedLayer, ForfeitReason, ResolutionTraceStep } from "@/lib/supabase/rolls";
 import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { joinNames } from "@/lib/game/displayName";
 
@@ -111,6 +111,11 @@ export type CastChip = {
   cardName: string;
   casterName: string;
   state: CastState;
+  /**
+   * Issue #440: the card that compelled this cast (Brewmageddon), on a
+   * compelled cast or a Forfeit. Absent on every other chip.
+   */
+  compelledBy?: string;
 };
 
 export type BeforeAfter = {
@@ -241,6 +246,17 @@ const OUTCOME_KINDS = new Set([
   "card_heist",
 ]);
 
+// Issue #440: why a compelled card was forfeited (forfeit step `reason`).
+// The compelling card's name when its cast row is not in view.
+const BREWMAGEDDON = "Brewmageddon";
+
+const FORFEIT_REASON_TEXT: Record<ForfeitReason, string> = {
+  no_legal_target: "it had no legal target",
+  stall: "they never played it",
+  excluded: "they never rolled",
+  vote: "they were skipped by vote",
+  timeout: "they timed out",
+};
 // card_heist steps carry their outcome in `after.value` (_rr_heist_trace).
 const HEIST_MOVED = "moved";
 const HEIST_FIZZLED = "fizzled";
@@ -380,7 +396,10 @@ function fmt(value: number | string | null): string {
  * The single sentence template per display_kind. `t` is the target player's
  * display name, `c` the caster's, `k` the card name.
  */
-function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k: string }): string {
+function sentenceFor(
+  step: ResolutionTraceStep,
+  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string },
+): string {
   const { t, c, k } = names;
   const played = k ? `${c} played ${k}` : c;
 
@@ -465,6 +484,16 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       const noGain = String(step.after.value ?? "").includes("no modifier");
       return `${played} — ${t} brews${noGain ? " (no modifier gain)" : ""}`;
     }
+    case "compel_cast":
+      // Issue #440: Brewmageddon names its compelled set, or did nothing.
+      return names.compelled.length > 0
+        ? `${played} — ${joinNames(names.compelled, "")} must play their card`
+        : `${played} — nobody held a card`;
+    case "forfeit": {
+      const reason = step.compel?.reason;
+      const why = reason ? FORFEIT_REASON_TEXT[reason] : null;
+      return `${t}'s ${k} is forfeited to ${names.compelledBy}${why ? ` — ${why}` : ""}`;
+    }
     case "card_heist": {
       // Issue #438: Tea Heist. The stolen card is never named — a held card
       // is private to its holder.
@@ -485,6 +514,8 @@ function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState 
   // not moved — so it shares the muted "no-op" styling; the "frozen" label and
   // the sentence carry why.
   if (step.displayKind === "roll_frozen") return { label: "frozen", kind: "no-op" };
+  // Issue #440: a Forfeit is a no-effect step; the label says what happened.
+  if (step.displayKind === "forfeit") return { label: "forfeited", kind: "no-op" };
   if (step.displayKind === "contested_negate" && step.after.type === "status") {
     const v = String(step.after.value ?? "");
     if (v === CONTEST_BACKFIRED) return { label: "backfired", kind: "backfired" };
@@ -630,17 +661,30 @@ export function buildRoundRecap({
 
   const castById = new Map(casts.map((c) => [c.castId, c]));
 
+  // Issue #440: the card that compelled a cast (Brewmageddon), by cast id.
+  const compelledByOf = (castId: string | null): string | undefined => {
+    const compelledByCastId = castId ? castById.get(castId)?.compelledByCastId : null;
+    if (!compelledByCastId) return undefined;
+    return castById.get(compelledByCastId)?.cardName ?? BREWMAGEDDON;
+  };
+  const compelledSuffix = (compelledBy: string | undefined) =>
+    compelledBy ? ` (compelled by ${compelledBy})` : "";
+
   // ---- Cast strip -------------------------------------------------------
-  const castStrip: CastChip[] = casts.map((c) => ({
-    castId: c.castId,
-    cardName: c.cardName,
-    casterName: displayName(c.casterPlayerId),
-    state: live
-      ? c.onStack
-        ? "on-stack"
-        : "armed"
-      : resolvedCastState(c, data.trace),
-  }));
+  const castStrip: CastChip[] = casts.map((c) => {
+    const compelledBy = compelledByOf(c.castId);
+    return {
+      castId: c.castId,
+      cardName: c.cardName,
+      casterName: displayName(c.casterPlayerId),
+      state: live
+        ? c.onStack
+          ? "on-stack"
+          : "armed"
+        : resolvedCastState(c, data.trace),
+      ...(compelledBy ? { compelledBy } : {}),
+    };
+  });
 
   // ---- Ordered step rows (resolution order / cast order) ----------------
   const ordered: Array<RecapStep & { phase: PhaseLabel }> = live
@@ -649,12 +693,17 @@ export function buildRoundRecap({
         .map((c) => {
           const cName = displayName(c.casterPlayerId);
           const t = c.targetPlayerId ? displayName(c.targetPlayerId) : "the table";
+          const compelledBy = compelledByOf(c.castId);
+          const sentence =
+            c.effectKind === "forfeit"
+              ? `${cName} forfeited ${c.cardName} to ${compelledBy ?? BREWMAGEDDON}`
+              : `${cName} played ${c.cardName}${c.targetPlayerId ? ` on ${t}` : ""}${compelledSuffix(compelledBy)}`;
           return {
             phase: c.phase === "reaction" ? "Reaction window" : "Before the roll",
             displayIndex: "·",
             castId: c.castId,
             displayKind: c.effectKind ?? "spell",
-            sentence: `${cName} played ${c.cardName}${c.targetPlayerId ? ` on ${t}` : ""}`,
+            sentence,
             targetPlayer: c.targetPlayerId,
             casterPlayerId: c.casterPlayerId,
             beforeAfter: null,
@@ -679,12 +728,22 @@ export function buildRoundRecap({
                 to: fmt(step.after.value),
                 unchanged: step.before.value === step.after.value,
               };
+        // Issue #440: a compelled cast's own steps say so; a Forfeit's
+        // sentence already names what compelled it.
+        const compelledBy = compelledByOf(step.sourceCast.castId);
+        const sentence = sentenceFor(step, {
+          t,
+          c: cName,
+          k,
+          compelled: (step.compel?.compelledPlayerIds ?? []).map(displayName),
+          compelledBy: compelledBy ?? BREWMAGEDDON,
+        });
         return {
           phase: phaseForStep(step, castById),
           displayIndex: String(i + 1),
           castId: step.sourceCast.castId,
           displayKind: step.displayKind,
-          sentence: sentenceFor(step, { t, c: cName, k }),
+          sentence: step.displayKind === "forfeit" ? sentence : sentence + compelledSuffix(compelledBy),
           targetPlayer: step.targetPlayer,
           casterPlayerId: step.sourceCast.casterPlayerId,
           beforeAfter,
