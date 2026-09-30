@@ -257,6 +257,19 @@ describe.skipIf(!hasAnonTestEnv)("tea-maker override modifier gain (#425)", () =
     }
   });
 
+  it("a reserved mode (no card slice yet) stays out of the override contest instead of failing the round", async () => {
+    const p1 = await signUp("mg-reserved-1");
+    const p2 = await signUp("mg-reserved-2");
+    const roundId = await openAndCloseRound(p1, [p2]);
+    await seedRoll(roundId, p1.googleSub, 3);
+    await seedRoll(roundId, p2.googleSub, 15);
+    const { error } = await seedOverrideCast(roundId, p1, { mode: "prev_round_highest", modifier_gain: 0 });
+    expect(error).toBeNull();
+
+    const out = await resolve(p1.client, roundId);
+    expect(out).toMatchObject({ brewer_id: p1.googleSub, brewer_source: "default", modifier_gain: null });
+  });
+
   it("rejects a catalog tea_maker_override effect with an unknown mode", async () => {
     const { data: card, error: cardErr } = await admin
       .from("spell_cards")

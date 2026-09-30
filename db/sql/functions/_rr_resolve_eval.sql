@@ -1968,6 +1968,10 @@ begin
      where casts.round_id = p_round_id
        and casts.effect_kind = 'tea_maker_override'
        and casts.negated = false
+       -- issue #425: prev_round_highest (Last Drip) and conditional_chosen
+       -- (PG Tipped) are in the closed mode set but have no behaviour until
+       -- their card slices land; until then they never enter the contest.
+       and casts.effect_params->>'mode' not in ('prev_round_highest', 'conditional_chosen')
      order by casts.cast_at desc, casts.seq desc
      limit 1;
 
@@ -2017,9 +2021,9 @@ begin
           v_step_index := v_step_index + 1;
         end if;
       else
-        -- issue #425: the mode set is closed (CHECK on spell_casts and
-        -- spell_card_effects). prev_round_highest (Last Drip) and
-        -- conditional_chosen (PG Tipped) are reserved for their card slices.
+        -- issue #425: unreachable -- the mode set is closed (CHECK on
+        -- spell_casts and spell_card_effects) and the reserved modes are
+        -- filtered out above. A guard, not a code path.
         raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
       end if;
 
