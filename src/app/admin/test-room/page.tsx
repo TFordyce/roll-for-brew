@@ -31,6 +31,7 @@ import { getInDeckSpellCards, getMySpellCards } from "@/lib/supabase/spellCards"
 import {
   type ActiveEffectBadge,
   getDispellableActiveEffects,
+  getHeistTargetIds,
   getMyPendingCasts,
   getRoomActiveEffects,
 } from "@/lib/supabase/spellCasts";
@@ -171,6 +172,14 @@ export default async function TestRoomPage() {
       ? await getDispellableActiveEffects(supabase, activeRound.id)
       : [];
 
+  // Issue #438: Tea Heist's picker lists only players holding a card.
+  const heistTargetIds =
+    activeRound &&
+    activeRound.status === "open" &&
+    heldSpellCards.some((c) => c.location === "held" && c.cardName === "Tea Heist")
+      ? await getHeistTargetIds(supabase, activeRound.id)
+      : [];
+
   const activeEffects = await getRoomActiveEffects(supabase, roomId);
   const effectBadgesByPlayerId = new Map<string, ActiveEffectBadge[]>();
   for (const effect of activeEffects) {
@@ -279,6 +288,7 @@ export default async function TestRoomPage() {
         roundId={activeRound?.id ?? null}
         roundIsOpen={activeRound?.status === "open"}
         participants={participants}
+        heistTargetIds={heistTargetIds}
         selfPlayerId={playerId}
       />
 

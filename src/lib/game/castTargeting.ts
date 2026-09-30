@@ -12,7 +12,8 @@ import type { HeldSpellCard } from "@/lib/supabase/spellCards";
  *
  * These two sets mirror the by-name branches in `cast_spell_card`
  * (supabase/migrations/0096_chosen_pair_roll_transform.sql for the #318 cards,
- * plus #342/#343's Bes-Tea / Tea Leaf / Spillage / Chai-nge of Heart). Keep
+ * plus #342/#343's Bes-Tea / Tea Leaf / Spillage / Chai-nge of Heart and
+ * #438's Tea Heist). Keep
  * them in sync when another by-name OPPONENT/PLAYER special-case is added.
  */
 
@@ -27,7 +28,29 @@ export const AT_CAST_TARGET_CARDS: ReadonlySet<string> = new Set([
   "Spillage",
   // #342 — durable persistent-modifier transfer
   "Chai-nge of Heart",
+  // #438 — the cast pins the victim's held card
+  "Tea Heist",
 ]);
+
+/**
+ * At-cast cards whose target must be holding a card (`cast_spell_card` raises
+ * RFB53 otherwise). Their picker lists only the players `get_heist_targets`
+ * returns.
+ */
+const CARD_HOLDER_TARGET_CARDS: ReadonlySet<string> = new Set(["Tea Heist"]);
+
+/**
+ * The at-cast single-target picker's options: every other participant, or —
+ * for Tea Heist — only those holding a card (`cardHolderIds`).
+ */
+export function atCastTargetOptions<P extends { playerId: string }>(
+  cardName: string,
+  otherParticipants: P[],
+  cardHolderIds: readonly string[],
+): P[] {
+  if (!CARD_HOLDER_TARGET_CARDS.has(cardName)) return otherParticipants;
+  return otherParticipants.filter((p) => cardHolderIds.includes(p.playerId));
+}
 
 /**
  * By-name cards that need exactly two *other* players (never the caster)

@@ -6,7 +6,7 @@ import type {
   RoundRecapData,
   ScrappedGeneration,
 } from "@/lib/supabase/roundRecap";
-import type { CompletedLayer, ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { parseResolutionTrace, type CompletedLayer, type ResolutionTraceStep } from "@/lib/supabase/rolls";
 
 // --- fixture helpers ---------------------------------------------------
 
@@ -62,6 +62,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     pairOp: null,
     condition: null,
     diceTick: null,
+    heistReason: null,
     ...overrides,
   };
 }
@@ -367,6 +368,76 @@ describe("buildRoundRecap", () => {
     expect(s.displayKind).toBe("targeting_skip");
     expect(s.sentence).toBe("Cloud of Cream — Ada is skipped for highest/lowest-modifier targeting");
     expect(model.phases.find((p) => p.label === "Outcome")?.steps.some((x) => x.displayKind === "targeting_skip")).toBe(true);
+  });
+
+  describe("Tea Heist (issue #438)", () => {
+    function heist(after: string, over: Partial<ResolutionTraceStep> = {}) {
+      return buildRoundRecap({
+        data: data({
+          casts: [cast({ castId: "C1", cardName: "Tea Heist", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "card_heist" })],
+          trace: [
+            step({
+              displayKind: "card_heist",
+              sourceCast: { castId: "C1", activeEffectId: null, cardName: "Tea Heist", casterPlayerId: "ada" },
+              targetPlayer: "ben",
+              before: { type: "status", value: "held" },
+              after: { type: "status", value: after },
+              outcome: after === "moved" ? "applied" : "no-op",
+              ...over,
+            }),
+          ],
+        }),
+        displayName,
+      });
+    }
+    const only = (model: ReturnType<typeof buildRoundRecap>) => model.phases.flatMap((p) => p.steps)[0]!;
+
+    it("moved: the thief steals the victim's card, in the Outcome group", () => {
+      const model = heist("moved");
+      const s = only(model);
+      expect(s.sentence).toBe("Ada played Tea Heist — Ada steals Ben's card");
+      expect(s.statusLabel).toBe("moved");
+      expect(s.statusKind).toBe("applied");
+      expect(s.beforeAfter).toBeNull();
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("fizzled: the victim played the card first", () => {
+      const s = only(heist("fizzled", { heistReason: "victim_played_first" }));
+      expect(s.sentence).toBe("Ada played Tea Heist on Ben — fizzled: Ben played the card first");
+      expect(s.statusLabel).toBe("fizzled");
+      expect(s.statusKind).toBe("no-op");
+    });
+
+    it("fizzled: the thief's hand is full", () => {
+      expect(only(heist("fizzled", { heistReason: "thief_hand_full" })).sentence).toBe(
+        "Ada played Tea Heist on Ben — fizzled: Ada's hand is full",
+      );
+    });
+
+    it("countered: nothing moves", () => {
+      const s = only(heist("countered"));
+      expect(s.sentence).toBe("Ada played Tea Heist on Ben — countered, the card stays with Ben");
+      expect(s.statusLabel).toBe("countered");
+      expect(s.statusKind).toBe("negated");
+    });
+
+    it("reads heist_reason off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "card_heist",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "Tea Heist", caster_player_id: "ada" },
+          target_player: "ben",
+          before: { type: "status", value: "held" },
+          after: { type: "status", value: "fizzled" },
+          outcome: "no-op",
+          heist_reason: "victim_played_first",
+        },
+      ]);
+      expect(parsed!.heistReason).toBe("victim_played_first");
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.heistReason).toBeNull();
+    });
   });
 
   it("per-round dice tick (Calami-Tea): sentence names the rolled die, not the before→after delta", () => {

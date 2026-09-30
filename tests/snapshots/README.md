@@ -76,7 +76,7 @@ the *result*.
 
 `trace-snapshot-coverage.test.ts` fails unless:
 
-- every `PHASE_TAG` (`0a 0b 1 2 3-pre 3 4a 4b 4b-pre 4c 5`) is named by at
+- every `PHASE_TAG` (`0a 0b 1 2 3-pre 3 4a 4b 4b-pre 4c 5 6`) is named by at
   least one scenario's `phases`, and
 - every WILD d6 branch `1..6` is named by some scenario's `wildBranch`.
 

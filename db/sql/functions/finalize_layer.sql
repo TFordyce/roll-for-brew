@@ -12,8 +12,9 @@
 --      as it always has;
 --   2. calls resolve_round(uuid), the persisting resolver, unchanged;
 --   3. commits the outcome -- brewer: write the resolution (no-modifier-gain
---      included) and record any pending Round Replay; tie: advance to the next
---      Layer with the tied players.
+--      included), move any Tea Heist card (_rr_apply_heists, issue #438) and
+--      record any pending Round Replay; tie: advance to the next Layer with
+--      the tied players.
 --
 -- The Inscribed Saucer declared-number trigger needs no separate write: since
 -- #310 its sentinel is a duration-1 projection row that ages out once this
@@ -126,6 +127,10 @@ begin
     p_round_id, v_brewer_id, v_cups_made,
     coalesce((v_out ->> 'no_modifier_gain')::boolean, false));
 
+  -- Tea Heist (issue #438, ADR 0005 #383 amendment): the resolver only
+  -- traced each Heist; the card moves here, with the resolution write.
+  perform public._rr_apply_heists(p_round_id);
+
   v_replay_pending := public.record_pending_round_replay(p_round_id);
 
   -- The Layer's final (post-shim) rolls, for the round-revealed broadcast.
@@ -145,4 +150,4 @@ revoke execute on function public.finalize_layer(uuid) from public, anon;
 grant execute on function public.finalize_layer(uuid) to authenticated;
 
 comment on function public.finalize_layer(uuid) is
-  'Layer finalization (ADR 0008, issue #414). Locks the round, then returns { outcome: "noop", reason } unless the round is closed, its current Layer is complete, and (at Layer 0) its reaction window exists and is closed -- reasons: round_not_found, round_not_closed, no_window, window_open, layer_incomplete. Otherwise, in one transaction: runs the eager roll-input shim (forced rerolls, flip, swap, chosen-pair; ADR 0005), calls resolve_round(uuid) unchanged, and commits the outcome. Returns { outcome: "brewer", layer, brewer_id, cups_made, rolls: [{ player_id, value, discarded_value, entered_by_admin }], replay_pending } after writing the resolution (no-modifier-gain included) and recording any pending Round Replay; or { outcome: "tie", layer, tied_player_ids } after advancing to the next Layer (layer is the new one). Never raises for caller identity or a lost race.';
+  'Layer finalization (ADR 0008, issue #414). Locks the round, then returns { outcome: "noop", reason } unless the round is closed, its current Layer is complete, and (at Layer 0) its reaction window exists and is closed -- reasons: round_not_found, round_not_closed, no_window, window_open, layer_incomplete. Otherwise, in one transaction: runs the eager roll-input shim (forced rerolls, flip, swap, chosen-pair; ADR 0005), calls resolve_round(uuid) unchanged, and commits the outcome. Returns { outcome: "brewer", layer, brewer_id, cups_made, rolls: [{ player_id, value, discarded_value, entered_by_admin }], replay_pending } after writing the resolution (no-modifier-gain included), moving any Tea Heist card (issue #438) and recording any pending Round Replay; or { outcome: "tie", layer, tied_player_ids } after advancing to the next Layer (layer is the new one). Never raises for caller identity or a lost race.';

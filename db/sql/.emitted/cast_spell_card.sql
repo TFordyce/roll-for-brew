@@ -63,6 +63,8 @@ declare
   v_gen_tier text;
   v_gen_target_stamp text;
   v_gen_in_deck integer;
+  -- issue #438: Tea Heist's pinned card
+  v_stolen_id uuid;
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -136,7 +138,7 @@ begin
     -- keep it in sync if another by-name special-case is added.
     if p_invoked_card_name in (
          'Bes-Tea', 'Tea Leaf', 'Spillage', 'Chai-nge of Heart', 'Bitter Leech',
-         'Wild Brew Surge', 'Kettle Crash')
+         'Tea Heist', 'Wild Brew Surge', 'Kettle Crash')
        or v_gen_target_stamp = 'WILD' then
       raise exception 'cast_spell_card: % cannot be invoked by Genie yet', p_invoked_card_name
         using errcode = 'RFB50';
@@ -551,6 +553,40 @@ begin
       jsonb_build_object('per_round_delta', 1, 'direction', 'caster_gains'),
       v_cast_id
     );
+
+    return v_cast_id;
+
+  elsif v_card_name = 'Tea Heist' then
+    -- issue #438: pin the victim's held card now (never a pending_swap one);
+    -- it only moves when the round finalizes (finalize_layer ->
+    -- _rr_apply_heists), and only if the Heist survives and the victim still
+    -- holds it. The picker lists only card-holders (get_heist_targets); this
+    -- re-checks. The thief's own hand is empty now -- Tea Heist was its card.
+    if v_final_target is null then
+      raise exception 'cast_spell_card: Tea Heist requires an explicit target'
+        using errcode = 'RFB46';
+    end if;
+
+    select id into v_stolen_id
+      from public.spell_deck_instances
+     where held_by_player = v_final_target and location = 'held';
+
+    if v_stolen_id is null then
+      raise exception 'cast_spell_card: that player is not holding a card to steal'
+        using errcode = 'RFB53';
+    end if;
+
+    insert into public.spell_casts (
+      round_id, caster_id, card_instance_id, target_player_id,
+      effect_kind, effect_params, cast_inputs, target_role
+    )
+    values (
+      p_round_id, v_player_id, v_instance_id, v_final_target,
+      'card_heist', '{}'::jsonb,
+      jsonb_build_object('stolen_instance_id', v_stolen_id),
+      'TARGET'
+    )
+    returning id into v_cast_id;
 
     return v_cast_id;
   end if;
