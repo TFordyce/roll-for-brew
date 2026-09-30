@@ -6,6 +6,8 @@
 -- 0104_reaction_window_close_on_last_reaction_cast (issue #387: the 0096
 -- body with its four inline poll_round bumps folded into
 -- _rr_reopen_or_close_reaction_poll). revoke/grant unchanged since 0096.
+-- Issue #440: every return runs _rr_finish_compelled_cast, which tags a
+-- compelled Reaction holder's cast compelled_by Brewmageddon.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -155,7 +157,7 @@ begin
 
     perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   -- issue #316: Effect Invocation -- Saucerer's Apprentice (copy) and
@@ -212,7 +214,7 @@ begin
 
     perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   -- issue #342: Tea-tally Spent. Spend a clamped amount of your own effective
@@ -260,7 +262,7 @@ begin
 
     perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
-    return v_cast_id;
+    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
   end if;
 
   for v_effect in
@@ -385,7 +387,7 @@ begin
 
   perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
 
-  return v_cast_id;
+  return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
 end;
 $$;
 revoke execute on function public.cast_reaction_spell_card(uuid, text, uuid, integer) from public, anon;

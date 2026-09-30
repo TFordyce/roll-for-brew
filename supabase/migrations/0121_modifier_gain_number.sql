@@ -9,7 +9,7 @@
 --
 -- The rest of #425 -- the modifier gain number through _rr_resolve_eval,
 -- finalize_layer and the resolve_round(uuid, text, integer, integer) write --
--- is function-only and lives in db/sql/functions/ (generated migration 0118).
+-- is function-only and lives in db/sql/functions/ (generated migration 0122).
 
 alter table public.spell_card_effects
   add constraint spell_card_effects_tea_maker_override_mode_check

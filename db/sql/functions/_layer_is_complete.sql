@@ -7,7 +7,10 @@
 --   * a Pending Spell Die (a dice_modifier cast with no rolled value yet,
 --     issue #252);
 --   * a Deferred Forced-Reroll Target (a pre-roll forced_reroll cast still
---     awaiting its target, issue #325).
+--     awaiting its target, issue #325);
+--   * the Compelled Cast step (issue #440): a compelled Action cast still
+--     owed to Brewmageddon. Nobody can roll then anyway (is_expected_layer_
+--     roller), so this only makes the rule explicit here too.
 -- The single Layer-completeness read: the identity-gated and stall-resolution
 -- variants it replaced were dropped in issue #417.
 --
@@ -50,6 +53,10 @@ begin
     return false;
   end if;
 
+  if p_layer = 0 and public._compelled_cast_step_open(p_round_id) then
+    return false;
+  end if;
+
   return true;
 end;
 $$;
@@ -59,4 +66,4 @@ revoke execute on function public._layer_is_complete(uuid, integer) from public,
 grant execute on function public._layer_is_complete(uuid, integer) to service_role;
 
 comment on function public._layer_is_complete(uuid, integer) is
-  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding and no Deferred Forced-Reroll Target hold is in place. Internal to round advancement.';
+  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding, no Deferred Forced-Reroll Target hold is in place, and no compelled Action cast is still owed (issue #440). Internal to round advancement.';

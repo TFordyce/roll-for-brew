@@ -24,6 +24,11 @@ export type RoundRecapCast = {
   phase: "preroll" | "reaction";
   negated: boolean;
   redirectedToCastId: string | null;
+  /**
+   * Issue #440: the Brewmageddon cast this cast answers — a compelled cast or
+   * a Forfeit — else null.
+   */
+  compelledByCastId: string | null;
   onStack: boolean;
 };
 
@@ -138,6 +143,7 @@ type RawRecapCast = {
   phase: "preroll" | "reaction";
   negated: boolean;
   redirected_to_cast_id: string | null;
+  compelled_by_cast_id?: string | null;
   on_stack: boolean;
 };
 
@@ -285,6 +291,7 @@ export async function getRoundRecap(
       phase: c.phase,
       negated: c.negated,
       redirectedToCastId: c.redirected_to_cast_id,
+      compelledByCastId: c.compelled_by_cast_id ?? null,
       onStack: c.on_stack,
     })),
   };

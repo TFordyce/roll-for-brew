@@ -224,9 +224,10 @@ export async function seedDedicatedRoom(
  * Pot, Steaming Mug Bond, Tea for Two (#318, migration 0096) — Gambler's
  * Infusion (conditional advantage, #319, migration 0095) — the two
  * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
- * Prophe-Tea (persistent advantage, #320, migration 0097) — and Cloud of
- * Cream (targeting skip, #321, migration 0099) — are now live, so 15 remain
- * here. A test that force-holds one of these must return it to the bench,
+ * Prophe-Tea (persistent advantage, #320, migration 0097) — Cloud of Cream
+ * (targeting skip, #321, migration 0099) — Tea Heist (#438, migration 0117) —
+ * and Brewmageddon (Compelled Cast, #440, migration 0119) — are now live, so
+ * 13 remain here. A test that force-holds one of these must return it to the bench,
  * not the deck, on cleanup — releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
@@ -235,10 +236,9 @@ export const BENCHED_SPELL_CARDS = [
   "Tea Cosy",
   "Loose Leaf", "PG Tipped",
   "Marked for Brew",
-  "Loaf of Lipton", "Brew IOU", "Tea Heist",
+  "Loaf of Lipton", "Brew IOU",
   "Stale Biscuit", "Liquid Courage",
   "The Last Cuppa", "Earl of Earl Grey",
-  "Brewmageddon",
   // Dead effect kind (1)
   "Kettle Crash",
 ] as const;
@@ -675,14 +675,16 @@ export function createTestCleanup(admin: SupabaseClient) {
 
   /**
    * Deletes the tracked rounds concurrently, retrying any that fail until a
-   * pass makes no progress. spell_casts.source_cast_id (0085) has no ON DELETE
-   * clause and can point across rounds — a later round's Bitter Leech /
-   * Calami-Tea tick rows reference the earlier round's cast — so the earlier
-   * round's delete is rejected whenever it races ahead of the later one. That
-   * used to fail silently, leaving the round's casts to block the player
-   * delete below with a spell_casts_*_player_id_fkey error (issue #422).
-   * The references always point backwards, so each pass frees at least one
-   * round; a pass with no progress is a real leak and throws.
+   * pass makes no progress. Until 0116 (issue #441), spell_casts.source_cast_id
+   * had no ON DELETE clause and points across rounds — a later round's Bitter
+   * Leech / Calami-Tea tick rows reference the earlier round's cast — so the
+   * earlier round's delete was rejected whenever it raced ahead of the later
+   * one. That used to fail silently, leaving the round's casts to block the
+   * player delete below with a spell_casts_*_player_id_fkey error (issue #422).
+   * That FK is now ON DELETE SET NULL; the retry stays as a guard for any other
+   * backwards cross-round reference. Such references always point backwards,
+   * so each pass frees at least one round; a pass with no progress is a real
+   * leak and throws.
    */
   async function deleteRounds(ids: string[]) {
     let pending = ids;

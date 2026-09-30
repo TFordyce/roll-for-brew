@@ -51,9 +51,11 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     // roll-transform cards (#318, migration 0096), Gambler's Infusion (#319,
     // migration 0095), the two fixed-roll cards — Steady Hand, Sleeping
     // Camomile (#317, migration 0094) — Prophe-Tea (persistent advantage,
-    // #320, migration 0097) — and Cloud of Cream (targeting skip, #321,
-    // migration 0099) — are since implemented and un-benched, so 15.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(15);
+    // #320, migration 0097) — Cloud of Cream (targeting skip, #321,
+    // migration 0099) — Tea Heist (#438, migration 0117) — and Brewmageddon
+    // (Compelled Cast, #440, migration 0119) — are since implemented and
+    // un-benched, so 13.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(13);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();

@@ -1,0 +1,107 @@
+{
+  "scenario": "1-brewmageddon-compelled-cast-and-forfeit",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "brewmageddon",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "compelled"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Brewmageddon",
+        "active_effect_id": null,
+        "caster_player_id": "P:brewmageddon"
+      },
+      "display_kind": "compel_cast",
+      "target_player": null,
+      "compelled_player_ids": [
+        "P:compelled",
+        "P:forfeiter"
+      ]
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "forfeited"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "held"
+      },
+      "reason": "no_legal_target",
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Greater Detox",
+        "active_effect_id": null,
+        "caster_player_id": "P:forfeiter"
+      },
+      "compelled_by": "cast#1",
+      "display_kind": "forfeit",
+      "target_player": "P:forfeiter"
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 3
+      },
+      "index": 2,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#3",
+        "card_name": "Lucky Sip",
+        "active_effect_id": null,
+        "caster_player_id": "P:compelled"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:compelled"
+    }
+  ],
+  "players": [
+    {
+      "player": "brewmageddon",
+      "nat": null,
+      "roll": 10,
+      "total": 10,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "compelled",
+      "nat": null,
+      "roll": 12,
+      "total": 15,
+      "composed": 3,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "forfeiter",
+      "nat": null,
+      "roll": 15,
+      "total": 15,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

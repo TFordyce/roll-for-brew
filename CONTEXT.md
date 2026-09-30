@@ -139,7 +139,7 @@ A pre-roll `forced_reroll` cast (Yorkshire Terror, or a WILD/TABLE fan-out) arme
 _Avoid_: pending target (that's any deferred OPPONENT/PLAYER cast, `get_my_pending_casts`), deferred cast (broader — a deferred modifier or advantage cast has no layer-0 hold).
 
 **Skip vote**:
-How the table stops waiting on eligible Reaction-card holders who haven't passed an open reaction window (issue #411; migration 0114). Once 30 seconds have passed since the current poll round started, any active Layer 0 participant who isn't being waited on (already passed this poll round, or not eligible to react) can vote to skip. At ⌈n/2⌉ votes out of all active Layer 0 participants, everyone still being waited on is auto-passed straight away and the window closes as if they had passed. Votes are final and belong to one poll round: a chained Reaction cast resets both the votes and the 30-second clock. Being skipped costs the holder nothing (they keep the card), and the Round Recap names who wasn't heard from. Backstop when the vote can't pass (the players being waited on are a majority) or nobody votes: the existing 5-minute stall timer auto-passes the same players, counting from the start of the latest poll round, not `closed_at`. Distinct from the #387 recovery, which only closes a window with zero eligible holders.
+How the table stops waiting on eligible Reaction-card holders who haven't passed an open reaction window (issue #411; migration 0114). Once 30 seconds have passed since the current poll round started, any active Layer 0 participant who isn't being waited on (already passed this poll round, or not eligible to react) can vote to skip. At ⌈n/2⌉ votes out of all active Layer 0 participants, everyone still being waited on is auto-passed straight away and the window closes as if they had passed. Votes are final and belong to one poll round: a chained Reaction cast resets both the votes and the 30-second clock. Being skipped costs the holder nothing (they keep the card) — unless Brewmageddon compelled them to play it, in which case they Forfeit it — and the Round Recap names who wasn't heard from. Backstop when the vote can't pass (the players being waited on are a majority) or nobody votes: the existing 5-minute stall timer auto-passes the same players, counting from the start of the latest poll round, not `closed_at`. Distinct from the #387 recovery, which only closes a window with zero eligible holders.
 _Avoid_: timeout (the vote is the fast path; the stall timer is the backstop), force-close, kick.
 
 **Roll Exemption**:
@@ -207,7 +207,7 @@ A one-shot mark on a target player that diverts one future card draw to the mark
 _Avoid_: steal (that's Heist), curse, seize (that's Brew-merang).
 
 **Heist** (Tea Heist):
-Moving the victim's single held card into the thief's hand. The card is pinned at cast time, but it only moves when the round resolves and the Tea Heist cast was not countered. If the victim has already played that card, the Heist **fizzles**. A round replay scrap sends the card back to the victim, as long as the thief still holds it. The Tea Heist card is spent either way.
+Moving the victim's single held card into the thief's hand. The card is pinned at cast time, but it only moves when the round is finalized (never on a Provisional Recap) and the Tea Heist cast was not countered. If the thief has drawn since casting, it arrives as a keep-or-swap choice. If the thief's hand is completely full, the Heist fizzles. If the victim has already played that card, the Heist **fizzles**. A round replay scrap sends the card back to the victim, as long as the thief still holds it. The Tea Heist card is spent either way.
 _Avoid_: steal (reserved for modifier steals — Tea Leaf, Spillage), transfer, draw redirect.
 
 **Chosen-pair roll transform** (`effect_kind = 'roll_pair_transform'`):
@@ -227,5 +227,5 @@ A cast a player is obliged to make because Brewmageddon landed in their round (#
 _Avoid_: forced cast, auto-cast (the server never casts on the holder's behalf), forced play.
 
 **Forfeit**:
-The end of an unmet Compelled Cast: the held card goes back to the deck with no effect, and a no-effect entry in the Cast Log points at Brewmageddon. It happens when the card has no legal target, when the existing stall clock fires (its own branch, not a new clock), or when the holder is excluded for never rolling.
+The end of an unmet Compelled Cast: the held card goes back to the deck with no effect, and a no-effect entry in the Cast Log points at Brewmageddon. It happens when the card has no legal target, when the existing stall clock fires (its own branch, not a new clock), when the holder is excluded for never rolling, or when a compelled Reaction holder is skipped by the Skip vote or its stall backstop (#440).
 _Avoid_: discard, fizzle (that's a cast whose effect finds nothing to act on), abandon.
