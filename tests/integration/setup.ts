@@ -675,14 +675,16 @@ export function createTestCleanup(admin: SupabaseClient) {
 
   /**
    * Deletes the tracked rounds concurrently, retrying any that fail until a
-   * pass makes no progress. spell_casts.source_cast_id (0085) has no ON DELETE
-   * clause and can point across rounds — a later round's Bitter Leech /
-   * Calami-Tea tick rows reference the earlier round's cast — so the earlier
-   * round's delete is rejected whenever it races ahead of the later one. That
-   * used to fail silently, leaving the round's casts to block the player
-   * delete below with a spell_casts_*_player_id_fkey error (issue #422).
-   * The references always point backwards, so each pass frees at least one
-   * round; a pass with no progress is a real leak and throws.
+   * pass makes no progress. Until 0116 (issue #441), spell_casts.source_cast_id
+   * had no ON DELETE clause and points across rounds — a later round's Bitter
+   * Leech / Calami-Tea tick rows reference the earlier round's cast — so the
+   * earlier round's delete was rejected whenever it raced ahead of the later
+   * one. That used to fail silently, leaving the round's casts to block the
+   * player delete below with a spell_casts_*_player_id_fkey error (issue #422).
+   * That FK is now ON DELETE SET NULL; the retry stays as a guard for any other
+   * backwards cross-round reference. Such references always point backwards,
+   * so each pass frees at least one round; a pass with no progress is a real
+   * leak and throws.
    */
   async function deleteRounds(ids: string[]) {
     let pending = ids;

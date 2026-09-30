@@ -212,10 +212,9 @@ describe.skipIf(!hasAnonTestEnv)("Calami-Tea per-round dice tick (issue #289)", 
     expect(diceTickStep(out4, victim.googleSub)).toBeUndefined();
 
     // Ordered teardown: the synthesised tick rows in rounds 2-4 carry
-    // source_cast_id -> the round-1 anchor cast (a NO ACTION self-FK on
-    // spell_casts), so the later rounds must be dropped before round 1.
-    // cleanup.run() deletes tracked rounds concurrently and cannot guarantee
-    // that order.
+    // source_cast_id -> the round-1 anchor cast. That self-FK was NO ACTION
+    // until 0116 (issue #441, now ON DELETE SET NULL), when the later rounds
+    // had to be dropped before round 1; the order is kept as harmless.
     for (const r of [r4, ...laterRounds.reverse(), r1]) {
       const { error } = await admin.from("rounds").delete().eq("id", r);
       expect(error).toBeNull();
