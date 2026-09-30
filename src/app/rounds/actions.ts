@@ -35,7 +35,7 @@ import {
   resolvePendingSpellDieManual,
   setSpellCastTarget,
 } from "@/lib/supabase/spellCasts";
-import { castReactionSpellCard, passReactionWindow } from "@/lib/supabase/reactionWindow";
+import { castReactionSpellCard, passReactionWindow, voteSkipReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
@@ -590,6 +590,40 @@ export async function passReactionWindowAction(formData: FormData) {
     await passReactionWindow(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
+    revalidateRoundSurfaces();
+    return;
+  }
+
+  await advanceRound(supabase, roundId, "reactionWindowChanged");
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+}
+
+/**
+ * Casts the caller's Skip vote (issue #411) on the round's open reaction
+ * window, then raises reactionWindowChanged (ADR 0008): the vote that reaches
+ * the threshold auto-passes everyone being waited on and closes the window,
+ * so finalize_layer runs Layer finalization in the same request. Broadcasts
+ * either way so every banner's vote count refreshes. A vote the RPC rejects
+ * as too early (RFB51) or ineligible (RFB52) is a stale banner, not an error:
+ * it just re-renders, like a pass on a window that already closed.
+ */
+export async function voteSkipReactionWindowAction(formData: FormData) {
+  const roundId = formData.get("roundId");
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("voteSkipReactionWindowAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await voteSkipReactionWindow(supabase, roundId);
+  } catch (error) {
+    const code = (error as { code?: string } | null)?.code;
+    if (!isStaleRoundError(error) && code !== "RFB51" && code !== "RFB52") throw error;
     revalidateRoundSurfaces();
     return;
   }

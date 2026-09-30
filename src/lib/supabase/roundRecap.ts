@@ -117,7 +117,15 @@ export type RoundRecapData = {
   layers: CompletedLayer[];
   /** Issue #406: tie-break layer membership — the Reroll Chain's tie source. */
   layerParticipants: LayerParticipant[];
+  /**
+   * Issue #411: everyone the Layer 0 reaction window stopped waiting on —
+   * skipped by vote, or timed out by the stall backstop. Empty otherwise.
+   */
+  reactionSkips: ReactionSkip[];
 };
+
+/** A player the reaction window was closed on without hearing from them (issue #411). */
+export type ReactionSkip = { playerId: string; reason: "vote" | "timeout" };
 
 type RawRecapCast = {
   cast_id: string;
@@ -174,6 +182,7 @@ type RawRoundRecap = {
   scrapped_generations: RawScrappedGeneration[] | null;
   layers: RawScrappedGenerationRoll[] | null;
   layer_participants: { layer: number; player_id: string }[] | null;
+  reaction_skips: { player_id: string; reason: "vote" | "timeout" }[] | null;
 };
 
 /**
@@ -264,6 +273,7 @@ export async function getRoundRecap(
     scrappedGenerations: (raw.scrapped_generations ?? []).map(parseScrappedGeneration),
     layers: groupRollsByLayer(raw.layers ?? []),
     layerParticipants: parseLayerParticipants(raw.layer_participants),
+    reactionSkips: (raw.reaction_skips ?? []).map((r) => ({ playerId: r.player_id, reason: r.reason })),
     casts: (raw.casts ?? []).map((c) => ({
       castId: c.cast_id,
       seq: c.seq,

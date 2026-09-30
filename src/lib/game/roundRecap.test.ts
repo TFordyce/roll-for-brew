@@ -75,6 +75,7 @@ function data(over: Partial<RoundRecapData> = {}): RoundRecapData {
     scrappedGenerations: [],
     layers: [],
     layerParticipants: [],
+    reactionSkips: [],
     summary: null,
     provisional: false,
     ...over,
@@ -1015,5 +1016,58 @@ describe("buildRerollChain", () => {
     const lp = parts(1, "ada", "ben");
     expect(buildRerollChain("ada", layers, lp)[0]).toMatchObject({ nat: "nat1", badgeValue: 1 });
     expect(buildRerollChain("ben", layers, lp)[0]).toMatchObject({ nat: "nat20", badgeValue: 20 });
+  });
+});
+
+describe("buildRoundRecap: the reaction window's not-heard-from line (issue #411)", () => {
+  it("a zero-cast round whose window was skipped still gets a Recap with the line", () => {
+    const model = buildRoundRecap({
+      data: data({ reactionSkips: [{ playerId: "ada", reason: "vote" }, { playerId: "ben", reason: "vote" }] }),
+      displayName,
+    });
+    expect(model.hasContent).toBe(true);
+    expect(model.phases).toEqual([
+      {
+        label: "Reaction window",
+        steps: [
+          expect.objectContaining({
+            displayKind: "not_heard_from",
+            sentence: "Not heard from Ada and Ben: skipped by vote",
+            statusLabel: "skipped",
+            castId: null,
+            displayIndex: "",
+          }),
+        ],
+      },
+    ]);
+  });
+
+  it("names a timeout, and sits after the last Reaction window step and before the Outcome", () => {
+    const pre = cast({ castId: "C1", phase: "preroll" });
+    const reaction = cast({ castId: "C2", phase: "reaction", cardName: "Mug Shot" });
+    const model = buildRoundRecap({
+      data: data({
+        casts: [pre, reaction],
+        trace: [
+          step({ sourceCast: { castId: "C1", activeEffectId: null, cardName: "Lucky Sip", casterPlayerId: "cass" } }),
+          step({ sourceCast: { castId: "C2", activeEffectId: null, cardName: "Mug Shot", casterPlayerId: "cass" } }),
+          step({
+            displayKind: "tea_maker_override",
+            sourceCast: { castId: null, activeEffectId: null, cardName: null, casterPlayerId: null },
+            before: { type: "status", value: null },
+            after: { type: "status", value: null },
+          }),
+        ],
+        reactionSkips: [{ playerId: "dev", reason: "timeout" }],
+      }),
+      displayName,
+    });
+
+    expect(model.phases.map((p) => p.label)).toEqual(["Before the roll", "Reaction window", "Outcome"]);
+    const reactionSteps = model.phases[1]!.steps;
+    expect(reactionSteps.at(-1)).toMatchObject({
+      sentence: "Not heard from Dev: timed out after 5 minutes",
+      statusLabel: "timed out",
+    });
   });
 });

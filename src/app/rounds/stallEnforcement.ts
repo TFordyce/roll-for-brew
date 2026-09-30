@@ -12,7 +12,13 @@ import {
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled } from "@/lib/supabase/realtime";
 import { advanceRound } from "@/app/rounds/advanceRound";
-import { closeReactionWindow, countEligibleReactionHolders, getOpenReactionWindow } from "@/lib/supabase/reactionWindow";
+import {
+  closeReactionWindow,
+  countEligibleReactionHolders,
+  getOpenReactionWindow,
+  getReactionSkipVote,
+  timeOutReactionWindow,
+} from "@/lib/supabase/reactionWindow";
 
 export type StallOutcome =
   | { action: "none" }
@@ -20,7 +26,8 @@ export type StallOutcome =
   | { action: "excluded"; playerIds: string[] }
   | { action: "diceAutoResolved" }
   | { action: "deferredForcedRerollAbandoned" }
-  | { action: "reactionWindowRecovered" };
+  | { action: "reactionWindowRecovered" }
+  | { action: "reactionWindowTimedOut"; playerIds: string[] };
 
 /**
  * Lazy check-on-read stall-timeout enforcement (issue #21): called from
@@ -63,6 +70,10 @@ export type StallOutcome =
  *    clock again; recovers a window a pre-0104 cast_reaction_spell_card
  *    stranded (the cast reopened the poll but left nobody able to Pass),
  *    which migration 0104 prevents going forward.
+ *  - status 'closed', layer 0, the reaction window is open and players are
+ *    still being waited on 5 minutes after its latest poll round started
+ *    (issue #411, the Skip vote backstop) -> auto-pass them. This one counts
+ *    from the poll round's start, not closed_at.
  * Any exclusion that drops the layer's active (non-excluded) participant
  * count below 2 cancels the round outright instead; a cancel raises no event.
  */
@@ -133,6 +144,17 @@ export async function enforceStallTimeout(
         await closeReactionWindow(supabase, openWindow.windowId);
         await advanceRound(supabase, roundId, "stallCleared");
         return { action: "reactionWindowRecovered" };
+      }
+
+      // The Skip vote backstop (issue #411): players still being waited on
+      // 5 minutes after the latest poll round started are auto-passed, as if
+      // they had passed. Counted from the poll round, not closed_at, so a
+      // chained Reaction cast restarts it.
+      const skipVote = openWindow ? await getReactionSkipVote(supabase, roundId) : null;
+      if (skipVote && hasStalled(skipVote.pollRoundStartedAt, nowDate)) {
+        const playerIds = await timeOutReactionWindow(supabase, roundId);
+        await advanceRound(supabase, roundId, "stallCleared");
+        return { action: "reactionWindowTimedOut", playerIds };
       }
     }
     return { action: "none" };

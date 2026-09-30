@@ -34,7 +34,12 @@ import {
   getMyPendingCasts,
   getRoomActiveEffects,
 } from "@/lib/supabase/spellCasts";
-import { getOpenReactionWindow, getReactionStack, getReactionWindowPendingPlayers } from "@/lib/supabase/reactionWindow";
+import {
+  getOpenReactionWindow,
+  getReactionSkipVote,
+  getReactionStack,
+  getReactionWindowPendingPlayers,
+} from "@/lib/supabase/reactionWindow";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { PlayerTile } from "@/app/_components/PlayerTile";
 import { ActingAsSwitcher, type ActingAsOption } from "@/app/admin/test-room/ActingAsSwitcher";
@@ -158,6 +163,8 @@ export default async function TestRoomPage() {
     openReactionWindow && activeRound ? await getReactionStack(supabase, activeRound.id) : [];
   const reactionWindowPendingPlayers =
     openReactionWindow && activeRound ? await getReactionWindowPendingPlayers(supabase, activeRound.id) : [];
+  const reactionSkipVote =
+    openReactionWindow && activeRound ? await getReactionSkipVote(supabase, activeRound.id) : null;
 
   const dispellableEffects =
     activeRound && activeRound.status === "open"
@@ -404,6 +411,7 @@ export default async function TestRoomPage() {
           stack={reactionStack}
           participants={participants}
           pendingPlayers={reactionWindowPendingPlayers}
+          skipVote={reactionSkipVote}
         />
       ) : null}
 

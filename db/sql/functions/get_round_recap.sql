@@ -36,6 +36,7 @@ declare
   v_scrapped jsonb;
   v_layers jsonb;
   v_layer_participants jsonb;
+  v_reaction_skips jsonb;
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -161,6 +162,23 @@ begin
     from public.round_layer_participants rlp
    where rlp.round_id = p_round_id;
 
+  -- Issue #411: who the reaction window stopped waiting on, and why (skipped
+  -- by vote, or timed out) -- auto-passes recorded on the round's latest
+  -- Layer 0 window.
+  select coalesce(jsonb_agg(
+           jsonb_build_object('player_id', p.player_id, 'reason', p.reason)
+           order by p.player_id
+         ), '[]'::jsonb)
+    into v_reaction_skips
+    from public.spell_reaction_passes p
+   where p.reason <> 'pass'
+     and p.window_id = (
+       select w.id from public.spell_reaction_windows w
+        where w.round_id = p_round_id and w.layer = 0
+        order by w.opened_at desc
+        limit 1
+     );
+
   return jsonb_build_object(
     'resolved', v_status = 'resolved',
     -- "tie" once the round has any reroll-layer roll: layer 0 tied and the
@@ -188,7 +206,8 @@ begin
     -- generation-0 Round Recap disclosure under generation 1's headline.
     'scrapped_generations', v_scrapped,
     'layers', v_layers,
-    'layer_participants', v_layer_participants
+    'layer_participants', v_layer_participants,
+    'reaction_skips', v_reaction_skips
   );
 end;
 $$;
@@ -214,4 +233,7 @@ comment on function public.get_round_recap(uuid) is
   'otherwise provisional is false. Readable by any member of the round''s room. '
   'Issue #406: layers is every fully-rolled layer''s rolls (flat, the same '
   'withholding rule as get_round_layer_history) and layer_participants is '
-  'round_layer_participants -- tie membership for the Reroll Chain.';
+  'round_layer_participants -- tie membership for the Reroll Chain. '
+  'Issue #411: reaction_skips is [{ player_id, reason }] for everyone the '
+  'latest Layer 0 reaction window stopped waiting on (reason ''vote'' or '
+  '''timeout''), [] when nobody was skipped.';

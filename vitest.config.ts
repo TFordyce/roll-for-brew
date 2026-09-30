@@ -7,9 +7,12 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  // tsconfig's jsx is "preserve" (Next compiles it); component tests
+  // (*.test.tsx, rendered with react-dom/server) need it compiled here.
+  esbuild: { jsx: "automatic" },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "tests/**/*.test.ts"],
     setupFiles: ["./vitest.setup.ts"],
     // The integration suite shares one real-world "today" room across
     // files (rooms are keyed by calendar date, and the schema enforces one
