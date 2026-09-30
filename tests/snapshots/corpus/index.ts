@@ -12,6 +12,7 @@
 // golden diff points straight at the phase that moved. Add more freely; the
 // coverage test only fails on a *missing* phase or branch.
 
+import { forceHold } from "../../integration/setup";
 import type { Scenario } from "./framework";
 
 // tier-derived contested_negate DC: common 2 / rare 5 / epic 10 (migration
@@ -825,6 +826,87 @@ export const CORPUS: Scenario[] = [
         extra: { generation: 1 },
       });
       return { roundId, resolveWith: p1.client };
+    },
+  },
+
+  // =========================================================================
+  // Phase 6 — Tea Heist outcomes (issue #438). The resolver only traces the
+  // Heist; finalize_layer moves the card, so resolve_round's Trace here is the
+  // decision alone and stays identical across re-runs and the dry run.
+  // =========================================================================
+  {
+    name: "6-heist-moved",
+    phases: ["5", "6"],
+    note: "An un-negated Tea Heist whose victim still holds the pinned card traces held -> moved.",
+    async seed(ctx) {
+      const thief = await ctx.signUp("thief");
+      const victim = await ctx.signUp("victim");
+      const roundId = await ctx.openAndCloseRound(thief, [victim]);
+      await ctx.seedRoll(roundId, thief.googleSub, 5);
+      await ctx.seedRoll(roundId, victim.googleSub, 12);
+      const loot = await forceHold(ctx.admin, victim.googleSub, "Lucky Sip");
+      await ctx.seedCast(roundId, thief.googleSub, "Tea Heist", {
+        effectKind: "card_heist",
+        effectParams: {},
+        targetPlayerId: victim.googleSub,
+        castInputs: { stolen_instance_id: loot },
+      });
+      return { roundId, resolveWith: thief.client };
+    },
+  },
+  {
+    // Tea Heist is rare: tier DC 5, so dc_d20 15 succeeds.
+    name: "6-heist-countered",
+    phases: ["1", "5", "6"],
+    note: "A countered Tea Heist traces held -> countered after Phase 1's negated-victim step; nothing moves.",
+    async seed(ctx) {
+      const thief = await ctx.signUp("thief");
+      const victim = await ctx.signUp("victim");
+      const counter = await ctx.signUp("counter");
+      const roundId = await ctx.openAndCloseRound(thief, [victim, counter]);
+      await ctx.seedRoll(roundId, thief.googleSub, 5);
+      await ctx.seedRoll(roundId, victim.googleSub, 12);
+      await ctx.seedRoll(roundId, counter.googleSub, 14);
+      const loot = await forceHold(ctx.admin, victim.googleSub, "Lucky Sip");
+      const { castId: heist } = await ctx.seedCast(roundId, thief.googleSub, "Tea Heist", {
+        effectKind: "card_heist",
+        effectParams: {},
+        targetPlayerId: victim.googleSub,
+        castInputs: { stolen_instance_id: loot },
+      });
+      await ctx.seedCast(roundId, counter.googleSub, "Tannin Tantrum", {
+        effectKind: "contested_negate",
+        effectParams: {},
+        targetPlayerId: null,
+        parentCastId: heist,
+        castInputs: { dc_d20: 15 },
+      });
+      return { roundId, resolveWith: thief.client };
+    },
+  },
+  {
+    name: "6-heist-fizzled-victim-played-first",
+    phases: ["4a", "5", "6"],
+    note: "The victim cast the pinned card before rolling, so the Heist traces held -> fizzled (victim_played_first).",
+    async seed(ctx) {
+      const thief = await ctx.signUp("thief");
+      const victim = await ctx.signUp("victim");
+      const roundId = await ctx.openAndCloseRound(thief, [victim]);
+      await ctx.seedRoll(roundId, thief.googleSub, 5);
+      await ctx.seedRoll(roundId, victim.googleSub, 12);
+      // The victim's own cast spends the card (seedCast returns it to the deck).
+      const { cardInstanceId: played } = await ctx.seedCast(roundId, victim.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 2 },
+        targetPlayerId: victim.googleSub,
+      });
+      await ctx.seedCast(roundId, thief.googleSub, "Tea Heist", {
+        effectKind: "card_heist",
+        effectParams: {},
+        targetPlayerId: victim.googleSub,
+        castInputs: { stolen_instance_id: played },
+      });
+      return { roundId, resolveWith: thief.client };
     },
   },
 

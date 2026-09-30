@@ -2037,6 +2037,9 @@ begin
     v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
 
     if array_length(v_tied, 1) > 1 then
+      -- Phase 6 (issue #438): Tea Heist outcomes -- see the brewer exit below.
+      v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
+
       return jsonb_build_object(
         'outcome', 'tie', 'layer', 0,
         'brewer_id', null, 'brewer_source', null,
@@ -2091,6 +2094,16 @@ begin
       v_ward_hit := null;
     end if;
   end if;
+
+  -- ------------------------------------------------------------------
+  -- Phase 6 (issue #438): Tea Heist outcomes. The resolver only DECIDES and
+  -- traces here (moved / fizzled / countered) -- this body also runs as the
+  -- Provisional Recap's rolled-back dry run, so the card itself is moved by
+  -- finalize_layer's commit step (_rr_apply_heists), per the ADR 0005 #383
+  -- amendment. Emitted at the tie exit above too, since a tie's layer-0 Trace
+  -- is the one the round keeps.
+  -- ------------------------------------------------------------------
+  v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
 
   return jsonb_build_object(
     'outcome', 'brewer', 'layer', 0,

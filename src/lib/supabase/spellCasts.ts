@@ -139,6 +139,17 @@ export async function getRoomActiveEffects(
 }
 
 /**
+ * Calls the get_heist_targets RPC (issue #438): the round's other
+ * participants holding a card — Tea Heist's picker roster. Empty unless the
+ * caller is holding Tea Heist, so it reveals card-holders to no one else.
+ */
+export async function getHeistTargetIds(supabase: SupabaseClient, roundId: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc("get_heist_targets", { p_round_id: roundId });
+  if (error) throw error;
+  return (data ?? []) as string[];
+}
+
+/**
  * Calls the get_dispellable_active_effects RPC: the active effects the
  * caller's currently-held card (a Lesser-Detox-style dispel card) can end
  * early, scoped to the round's room and to the tiers the held card's text

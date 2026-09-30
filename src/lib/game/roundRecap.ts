@@ -237,7 +237,14 @@ const OUTCOME_KINDS = new Set([
   // Issue #321: a Cloud of Cream (targeting_skip) skip is a resolver-computed
   // target-selection step, alongside the brewer-selection kinds.
   "targeting_skip",
+  // Issue #438: a Tea Heist's outcome is decided in the resolver's final phase.
+  "card_heist",
 ]);
+
+// card_heist steps carry their outcome in `after.value` (_rr_heist_trace).
+const HEIST_MOVED = "moved";
+const HEIST_FIZZLED = "fizzled";
+const HEIST_COUNTERED = "countered";
 
 function numeric(value: number | string | null): number | null {
   return typeof value === "number" ? value : null;
@@ -458,6 +465,16 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       const noGain = String(step.after.value ?? "").includes("no modifier");
       return `${played} — ${t} brews${noGain ? " (no modifier gain)" : ""}`;
     }
+    case "card_heist": {
+      // Issue #438: Tea Heist. The stolen card is never named — a held card
+      // is private to its holder.
+      const heistOutcome = String(step.after.value ?? "");
+      if (heistOutcome === HEIST_MOVED) return `${played} — ${c} steals ${t}'s card`;
+      if (heistOutcome === HEIST_COUNTERED) return `${played} on ${t} — countered, the card stays with ${t}`;
+      if (step.heistReason === "already_stolen") return `${played} on ${t} — fizzled: the card was already stolen`;
+      if (step.heistReason === "thief_hand_full") return `${played} on ${t} — fizzled: ${c}'s hand is full`;
+      return `${played} on ${t} — fizzled: ${t} played the card first`;
+    }
     default:
       return k ? `${played} on ${t}` : humanKind(step.displayKind);
   }
@@ -475,6 +492,12 @@ function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState 
     if (v === CONTEST_COUNTERED) return { label: "countered", kind: "negated" };
     if (v === CONTEST_NO_EFFECT) return { label: "no effect", kind: "no-op" };
     return { label: v || "applied", kind: "applied" };
+  }
+  if (step.displayKind === "card_heist") {
+    const v = String(step.after.value ?? "");
+    if (v === HEIST_MOVED) return { label: "moved", kind: "applied" };
+    if (v === HEIST_FIZZLED) return { label: "fizzled", kind: "no-op" };
+    if (v === HEIST_COUNTERED) return { label: "countered", kind: "negated" };
   }
   switch (step.outcome) {
     case "backfired":

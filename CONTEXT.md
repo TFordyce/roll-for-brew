@@ -193,7 +193,7 @@ A one-shot mark on a target player that diverts one future card draw to the mark
 _Avoid_: steal (that's Heist), curse, seize (that's Brew-merang).
 
 **Heist** (Tea Heist):
-Moving the victim's single held card into the thief's hand. The card is pinned at cast time, but it only moves when the round resolves and the Tea Heist cast was not countered. If the victim has already played that card, the Heist **fizzles**. A round replay scrap sends the card back to the victim, as long as the thief still holds it. The Tea Heist card is spent either way.
+Moving the victim's single held card into the thief's hand. The card is pinned at cast time, but it only moves when the round is finalized (never on a Provisional Recap) and the Tea Heist cast was not countered. If the victim has already played that card, the Heist **fizzles**. A round replay scrap sends the card back to the victim, as long as the thief still holds it. The Tea Heist card is spent either way.
 _Avoid_: steal (reserved for modifier steals — Tea Leaf, Spillage), transfer, draw redirect.
 
 **Chosen-pair roll transform** (`effect_kind = 'roll_pair_transform'`):

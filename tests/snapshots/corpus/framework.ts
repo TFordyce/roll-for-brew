@@ -90,6 +90,7 @@ export const PHASE_TAGS = [
   "4b-pre", // Bitter Leech per-round tick synthesis
   "4c", // lowest_gains_highest_modifier (Broken Biscuit)
   "5", // brewer selection — declared > override > default
+  "6", // Tea Heist outcomes — moved / fizzled / countered (issue #438; traced only, moved at finalize)
 ] as const;
 
 export type PhaseTag = (typeof PHASE_TAGS)[number];
@@ -121,6 +122,7 @@ const KIND_PHASE: Partial<Record<string, PhaseTag>> = {
   targeting_skip: "5",
   declared_number_tea_maker: "5",
   tea_maker_override: "5",
+  card_heist: "6",
 };
 
 /**

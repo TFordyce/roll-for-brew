@@ -43,6 +43,7 @@ import { getMyPendingSpellDraw, getMySpellCards, getSpellCardCatalog } from "@/l
 import {
   type ActiveEffectBadge,
   getDispellableActiveEffects,
+  getHeistTargetIds,
   getMyPendingCasts,
   getMyPendingSpellDice,
   getRoomActiveEffects,
@@ -192,6 +193,14 @@ export default async function HomePage() {
       ? await getDispellableActiveEffects(supabase, activeRound.id)
       : [];
 
+  // Issue #438: Tea Heist's picker lists only players holding a card.
+  const heistTargetIds =
+    activeRound &&
+    activeRound.status === "open" &&
+    heldSpellCards.some((c) => c.location === "held" && c.cardName === "Tea Heist")
+      ? await getHeistTargetIds(supabase, activeRound.id)
+      : [];
+
   const activeEffects = await getRoomActiveEffects(supabase, roomId);
   const effectBadgesByPlayerId = new Map<string, ActiveEffectBadge[]>();
   for (const effect of activeEffects) {
@@ -328,6 +337,7 @@ export default async function HomePage() {
         roundId={activeRound?.id ?? null}
         roundIsOpen={activeRound?.status === "open"}
         participants={participants}
+        heistTargetIds={heistTargetIds}
         selfPlayerId={playerId}
       />
 

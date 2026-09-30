@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AT_CAST_TARGET_CARDS,
   TWO_OTHER_PLAYER_CARDS,
+  atCastTargetOptions,
   castTargetMode,
 } from "./castTargeting";
 
@@ -54,10 +55,27 @@ describe("castTargetMode", () => {
     expect(castTargetMode(card({ target: "WILD" }))).toBe("none");
   });
 
+  it("routes Tea Heist to the at-cast single-target select (issue #438)", () => {
+    expect(castTargetMode(card({ cardName: "Tea Heist", target: "OPPONENT" }))).toBe("at-cast-target");
+  });
+
   it("exposes the two name sets it keys off (mirroring cast_spell_card's by-name branches)", () => {
     expect(AT_CAST_TARGET_CARDS.has("Chai-nge of Heart")).toBe(true);
     expect(TWO_OTHER_PLAYER_CARDS.has("Stir the Pot")).toBe(true);
     // Stir the Pot is handled by its own picker, not the single-target select.
     expect(AT_CAST_TARGET_CARDS.has("Stir the Pot")).toBe(false);
+  });
+});
+
+describe("atCastTargetOptions", () => {
+  const others = [{ playerId: "ada" }, { playerId: "ben" }, { playerId: "cass" }];
+
+  it("lists every other participant for an ordinary at-cast card", () => {
+    expect(atCastTargetOptions("Bes-Tea", others, ["ben"])).toEqual(others);
+  });
+
+  it("lists only card-holders for Tea Heist (issue #438)", () => {
+    expect(atCastTargetOptions("Tea Heist", others, ["ben", "cass"])).toEqual([{ playerId: "ben" }, { playerId: "cass" }]);
+    expect(atCastTargetOptions("Tea Heist", others, [])).toEqual([]);
   });
 });
