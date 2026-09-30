@@ -191,8 +191,8 @@ export async function endActiveEffect(
  * PendingSpellDiePanel.tsx, the same "own outstanding thing to resolve"
  * shape as getMyPendingCasts above (a deferred OPPONENT/PLAYER target)
  * rather than a global lookup, since this must resolve before *this*
- * round's own layer can finalize (get_current_layer_rolls_if_complete's new
- * gate, same migration).
+ * round's own layer can reach Layer finalization (the completeness hold,
+ * _layer_is_complete).
  */
 export async function getMyPendingSpellDice(
   supabase: SupabaseClient,

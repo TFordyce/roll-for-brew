@@ -7,6 +7,7 @@ import {
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
+  isLayerComplete,
   signUpSignInAndEnterRoom,
   stallTimeoutFuture as future,
 } from "./setup";
@@ -237,12 +238,7 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
 
     // The gate holds: every roll is in, but layer 0 isn't "complete" while
     // the forced_reroll cast is still target_pending.
-    const { data: blocked, error: blockedError } = await caster.client.rpc(
-      "get_current_layer_rolls_if_complete",
-      { p_round_id: roundId },
-    );
-    expect(blockedError).toBeNull();
-    expect(blocked).toEqual([]);
+    expect(await isLayerComplete(admin, roundId as string, 0)).toBe(false);
 
     // The round has not resolved.
     const { data: heldRound } = await admin
@@ -260,11 +256,8 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     });
     expect(setError).toBeNull();
 
-    // Gate released — the three rolls are now visible.
-    const { data: unblocked } = await caster.client.rpc("get_current_layer_rolls_if_complete", {
-      p_round_id: roundId,
-    });
-    expect((unblocked as { player_id: string }[]).length).toBe(3);
+    // Hold released — Layer 0 is complete.
+    expect(await isLayerComplete(admin, roundId as string, 0)).toBe(true);
 
     // Raise the event setSpellCastTargetAction raises after
     // set_spell_cast_target: no window exists yet (the completing roll's

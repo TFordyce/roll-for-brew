@@ -75,7 +75,7 @@ begin
   -- Issue #409: the Provisional Recap (ADR 0007). While the round is live at
   -- layer 0 with nothing stored yet, and layer 0 is complete -- every roll
   -- in, no unrolled Pending Spell Die, no deferred forced-reroll target hold
-  -- (the same gates as get_current_layer_rolls_if_complete) -- dry-run the
+  -- (the same holds as _layer_is_complete) -- dry-run the
   -- resolver with _rr_resolve, which leaves no writes, and return its Trace
   -- and summary marked provisional. A resolved round, or a layer-0 outcome
   -- already stored (a tie that moved on to tie-break layers), returns the

@@ -118,62 +118,6 @@ export async function adminProxyRoll(
 }
 
 /**
- * Calls the get_current_layer_rolls_if_complete RPC. Returns the round's
- * current layer number and every expected roller's roll for it once
- * everyone has rolled, or null if the round is still waiting on someone.
- */
-export async function getCurrentLayerRollsIfComplete(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<CompletedLayer | null> {
-  const { data, error } = await supabase.rpc("get_current_layer_rolls_if_complete", {
-    p_round_id: roundId,
-  });
-  if (error) throw error;
-
-  const rows = (data ?? []) as {
-    layer: number;
-    player_id: string;
-    value: number;
-    modifier_snapshot: number;
-    discarded_value: number | null;
-    entered_by_admin: boolean;
-  }[];
-  const [first] = rows;
-  if (!first) return null;
-
-  return {
-    layer: first.layer,
-    rolls: rows.map((row) => ({
-      playerId: row.player_id,
-      value: row.value,
-      modifierSnapshot: row.modifier_snapshot,
-      discardedValue: row.discarded_value,
-      enteredByAdmin: row.entered_by_admin,
-    })),
-  };
-}
-
-/**
- * Calls the advance_round_layer RPC: persists a tie outcome the caller
- * already has (resolve_round's tied set, or Round Backfill's resolveLayer
- * replay), moving the round on to a new reroll
- * layer for just the tied subset. Returns the new layer number.
- */
-export async function advanceRoundLayer(
-  supabase: SupabaseClient,
-  roundId: string,
-  tiedPlayerIds: string[],
-): Promise<number> {
-  const { data, error } = await supabase.rpc("advance_round_layer", {
-    p_round_id: roundId,
-    p_tied_player_ids: tiedPlayerIds,
-  });
-  if (error) throw error;
-  return data as number;
-}
-
-/**
  * The caller's own roll for a round's given layer, or null if they haven't
  * rolled it yet. Relies on the "roller can read their own row" RLS policy —
  * this is the "reveal to myself the instant I've personally submitted"
@@ -195,29 +139,6 @@ export async function getOwnRoll(
 
   if (error) throw error;
   return data ? (data.value as number) : null;
-}
-
-/**
- * Calls the resolve_round RPC: applies a single-brewer outcome the caller
- * already has (resolve_round(uuid)'s brewer, or a tie-break layer's pick) —
- * writes rounds.brewer_id/cups_made/status='resolved'/resolved_at and, unless
- * noModifierGain is set (Drip Tray's "they gain no modifier from this
- * tea-making", 0033), increments the brewer's modifier, atomically.
- */
-export async function resolveRound(
-  supabase: SupabaseClient,
-  roundId: string,
-  brewerId: string,
-  cupsMade: number,
-  noModifierGain = false,
-): Promise<void> {
-  const { error } = await supabase.rpc("resolve_round", {
-    p_round_id: roundId,
-    p_brewer_id: brewerId,
-    p_cups_made: cupsMade,
-    p_no_modifier_gain: noModifierGain,
-  });
-  if (error) throw error;
 }
 
 /**
@@ -276,32 +197,6 @@ export type ResolutionTraceStep = {
   diceTick: { die: number | null; rolled: number } | null;
 };
 
-/**
- * The outcome of the authoritative layer-0 resolver, resolve_round(uuid)
- * (migration 0078). `brewer` carries the picked brewer plus the cups-made
- * count and whether a tea_maker_override suppressed their modifier gain;
- * `tie` carries the tied roster that must reroll in the next layer. Either
- * way `trace` is the round's Resolution Trace (empty for a tie-break reroll
- * layer, which bypasses all spell logic).
- */
-export type ResolveRoundOutcome =
-  | {
-      outcome: "brewer";
-      layer: number;
-      brewerId: string;
-      brewerSource: string;
-      cupsMade: number;
-      noModifierGain: boolean;
-      trace: ResolutionTraceStep[];
-    }
-  | {
-      outcome: "tie";
-      layer: number;
-      tiedPlayerIds: string[];
-      cupsMade: number;
-      trace: ResolutionTraceStep[];
-    };
-
 type RawTraceStep = {
   index: number;
   display_kind: string;
@@ -339,17 +234,6 @@ type RawTraceStep = {
   // value rolled against the roll this round. Absent on every other step.
   die?: number | null;
   rolled?: number | null;
-};
-
-type RawResolveRoundOutcome = {
-  outcome: "brewer" | "tie";
-  layer: number;
-  brewer_id: string | null;
-  brewer_source: string | null;
-  tied_player_ids: string[] | null;
-  cups_made: number;
-  no_modifier_gain: boolean;
-  trace: RawTraceStep[];
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -394,52 +278,10 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
 /**
  * Parses a raw `rounds.resolution_trace` JSON value (an array of 0080-shape
  * step objects, or null/absent on a pre-rebuild resolved round) into typed
- * steps. Shared by resolveRoundOutcome above and the Round Recap reader
- * (getRoundRecap, issue #314).
+ * steps. Used by the Round Recap reader (getRoundRecap, issue #314); the
+ * resolver itself runs inside Layer finalization (finalize_layer).
  */
 export function parseResolutionTrace(raw: unknown): ResolutionTraceStep[] {
   if (!Array.isArray(raw)) return [];
   return (raw as RawTraceStep[]).map(toTraceStep);
-}
-
-/**
- * Calls the authoritative resolve_round(uuid) RPC (migration 0078): composes
- * every player's round modifier, applies lowest_gains_highest_modifier as
- * modifier math, resolves tea_maker_override / declared_number precedence,
- * and picks the brewer (or the tied roster) — writing the Resolution Trace
- * onto rounds.resolution_trace. It does NOT flip the round to resolved; the
- * caller persists a brewer via resolveRound (the 4-arg RPC) or a tie via
- * advanceRoundLayer, exactly as before.
- */
-export async function resolveRoundOutcome(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<ResolveRoundOutcome> {
-  const { data, error } = await supabase.rpc("resolve_round", { p_round_id: roundId });
-  if (error) throw error;
-
-  const raw = data as RawResolveRoundOutcome;
-  const trace = (raw.trace ?? []).map(toTraceStep);
-  const cupsMade = raw.cups_made;
-
-  if (raw.outcome === "tie") {
-    if (!raw.tied_player_ids?.length) {
-      throw new Error("resolve_round returned a tie with no tied_player_ids");
-    }
-    return { outcome: "tie", layer: raw.layer, tiedPlayerIds: raw.tied_player_ids, cupsMade, trace };
-  }
-
-  if (!raw.brewer_id) {
-    throw new Error("resolve_round returned a brewer outcome with no brewer_id");
-  }
-
-  return {
-    outcome: "brewer",
-    layer: raw.layer,
-    brewerId: raw.brewer_id,
-    brewerSource: raw.brewer_source ?? "default",
-    cupsMade,
-    noModifierGain: raw.no_modifier_gain,
-    trace,
-  };
 }

@@ -1,11 +1,19 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { resolveLayer, type LayerEntry } from "../../src/lib/game/resolveLayer";
-import { createTestAdminClient, createTestCleanup, forceHold, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  forceHold,
+  getLayerRolls,
+  hasAnonTestEnv,
+  isLayerComplete,
+  signUpSignInAndEnterRoom,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // reroll-layer RPCs (supabase/migrations/0007_reroll_layers.sql) — submit_roll's
-// layer-generic behaviour, get_current_layer_rolls_if_complete,
+// layer-generic behaviour, Layer completeness (_layer_is_complete),
 // advance_round_layer, and resolve_round off a non-zero layer — the same
 // way the app drives them via src/app/rounds/actions.ts:submitRollAction.
 //
@@ -49,14 +57,11 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     expect(error).toBeNull();
   }
 
-  type CompletedLayerRow = { layer: number; player_id: string; value: number; modifier_snapshot: number };
-
-  async function getCompletedLayer(client: SupabaseClient, roundId: string) {
-    const { data, error } = await client.rpc("get_current_layer_rolls_if_complete", {
-      p_round_id: roundId,
-    });
-    expect(error).toBeNull();
-    return data as CompletedLayerRow[];
+  async function getCompletedLayer(roundId: string, layer: number) {
+    const { data: round } = await admin.from("rounds").select("current_layer").eq("id", roundId).single();
+    expect(round!.current_layer).toBe(layer);
+    expect(await isLayerComplete(admin, roundId, layer)).toBe(true);
+    return getLayerRolls(admin, roundId, layer);
   }
 
   it("resolves a multi-layer tie (including a nat-1 tie) to a single brewer, off whichever layer it finally resolves on", async () => {
@@ -78,9 +83,8 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     await seedRoll(roundId, b.googleSub, 0, 7, 3);
     await seedRoll(roundId, c.googleSub, 0, 4, 6);
 
-    const layer0Rows = await getCompletedLayer(a.client, roundId);
+    const layer0Rows = await getCompletedLayer(roundId, 0);
     expect(layer0Rows).toHaveLength(3);
-    expect(layer0Rows.every((r) => r.layer === 0)).toBe(true);
 
     const layer0Outcome = resolveLayer(
       layer0Rows.map((r): LayerEntry => ({ playerId: r.player_id, roll: r.value, modifier: r.modifier_snapshot })),
@@ -95,12 +99,7 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     expect(nextLayerAfter0).toBe(1);
 
     // a is not part of the reroll — pure spectator, no action available: a's
-    // device can't read or submit for the tied players' layer.
-    const { error: aSpectateReadError } = await a.client.rpc("get_current_layer_rolls_if_complete", {
-      p_round_id: roundId,
-    });
-    expect(aSpectateReadError).not.toBeNull();
-
+    // device can't submit for the tied players' layer.
     const { error: aSpectateRollError } = await a.client.rpc("submit_roll", { p_round_id: roundId });
     expect(aSpectateRollError).not.toBeNull();
 
@@ -109,9 +108,8 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     await seedRoll(roundId, b.googleSub, 1, 1, 3);
     await seedRoll(roundId, c.googleSub, 1, 1, 3);
 
-    const layer1Rows = await getCompletedLayer(b.client, roundId);
+    const layer1Rows = await getCompletedLayer(roundId, 1);
     expect(layer1Rows).toHaveLength(2);
-    expect(layer1Rows.every((r) => r.layer === 1)).toBe(true);
 
     const layer1Outcome = resolveLayer(
       layer1Rows.map((r): LayerEntry => ({ playerId: r.player_id, roll: r.value, modifier: r.modifier_snapshot })),
@@ -130,9 +128,8 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
     await seedRoll(roundId, b.googleSub, 2, 1, 3);
     await seedRoll(roundId, c.googleSub, 2, 9, 6);
 
-    const layer2Rows = await getCompletedLayer(b.client, roundId);
+    const layer2Rows = await getCompletedLayer(roundId, 2);
     expect(layer2Rows).toHaveLength(2);
-    expect(layer2Rows.every((r) => r.layer === 2)).toBe(true);
 
     const layer2Outcome = resolveLayer(
       layer2Rows.map((r): LayerEntry => ({ playerId: r.player_id, roll: r.value, modifier: r.modifier_snapshot })),
@@ -174,8 +171,7 @@ describe.skipIf(!hasAnonTestEnv)("tie-break and nat-1/nat-20 recursion", () => {
   });
 
   // Exercises 0061_round_layer_roll_history.sql (issue #220, piece 1 of the
-  // modal + dependent-row RoundReveal rework): unlike
-  // get_current_layer_rolls_if_complete, this RPC isn't gated to the
+  // modal + dependent-row RoundReveal rework): this RPC isn't gated to the
   // current layer or to that layer's own expected rollers — a spectator who
   // never rolled anything should still see every already-revealed layer.
   it("get_round_layer_history returns every completed layer to a spectator, withholding an incomplete one", async () => {

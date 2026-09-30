@@ -59,8 +59,8 @@ describe.skipIf(!hasAnonTestEnv)("suppressed tea-making gain survives a modifier
   }
 
   // Computes the outcome with the pure resolve_round(uuid), then commits it
-  // with the 4-arg resolve_round -- the same two calls the app makes
-  // (src/lib/supabase/rolls.ts resolveRound).
+  // with the 4-arg resolve_round -- the same two calls Layer finalization
+  // makes (finalize_layer).
   async function resolve(client: SupabaseClient, roundId: string) {
     const { data, error } = await client.rpc("resolve_round", { p_round_id: roundId });
     expect(error).toBeNull();

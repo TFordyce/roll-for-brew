@@ -83,9 +83,8 @@ Deliberately **not** moved in the cutover, though they are re-emitted more than
 once: the resolver's roll/effect shims and readers
 (`apply_roll_swap`, `apply_roll_flip`,
 `apply_forced_reroll`, `set_spell_cast_target`,
-`record_active_effect_if_persistent`, `rebuild_active_effects_projection`,
-`get_current_layer_rolls_if_complete`,
-`get_completed_layer_rolls_for_stall_resolution`, …). They are not part of the
+`record_active_effect_if_persistent`, `rebuild_active_effects_projection`, …).
+They are not part of the
 phase orchestration that #350 exists to make reviewable, and a single-rule
 resolution change does not touch them. Each moves here the next time it
 actually changes (the same rule single-definition helpers follow).

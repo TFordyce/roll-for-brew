@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { CompletedLayer } from "@/lib/supabase/rolls";
 
 /**
  * When a round's given reroll layer (layer > 0) became current
@@ -93,47 +92,6 @@ export async function getCurrentLayerRollerIds(
 
   const rows = (data ?? []) as { player_id: string }[];
   return new Set(rows.map((row) => row.player_id));
-}
-
-/**
- * Calls the get_completed_layer_rolls_for_stall_resolution RPC: the same
- * shape as getCurrentLayerRollsIfComplete, but callable by any authenticated
- * user, not just an expected roller of the current layer — see the RPC's
- * own comment (supabase/migrations/0009_stall_timeout.sql) for why that's
- * safe here specifically. No longer called since stall raises
- * advanceRound(stallCleared) instead (issue #416); #417 drops it along
- * with its RPC.
- */
-export async function getCompletedLayerRollsForStallResolution(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<CompletedLayer | null> {
-  const { data, error } = await supabase.rpc("get_completed_layer_rolls_for_stall_resolution", {
-    p_round_id: roundId,
-  });
-  if (error) throw error;
-
-  const rows = (data ?? []) as {
-    layer: number;
-    player_id: string;
-    value: number;
-    modifier_snapshot: number;
-    discarded_value: number | null;
-    entered_by_admin: boolean;
-  }[];
-  const [first] = rows;
-  if (!first) return null;
-
-  return {
-    layer: first.layer,
-    rolls: rows.map((row) => ({
-      playerId: row.player_id,
-      value: row.value,
-      modifierSnapshot: row.modifier_snapshot,
-      discardedValue: row.discarded_value,
-      enteredByAdmin: row.entered_by_admin,
-    })),
-  };
 }
 
 /**

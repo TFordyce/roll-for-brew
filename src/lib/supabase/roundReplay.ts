@@ -4,9 +4,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * The client bindings for the Round Replay mechanism — Time for Brew (issue
  * #315, spec #302 §11). The replay's rollback + generation bump live in SQL
  * (_rr_scrap_round, invoked by confirm_round_replay); this module is the thin
- * TS orchestration layer above it — recording the pending decision after a
- * round announces, reading it back for the blocking prompt, and the caster's
- * confirm / decline calls.
+ * TS layer above it — reading the pending decision back for the blocking
+ * prompt, and the caster's confirm / decline calls. The pending decision
+ * itself is recorded by Layer finalization (finalize_layer calls
+ * record_pending_round_replay in the same transaction as the resolution).
  */
 
 export type RoomPendingRoundReplay = {
@@ -14,21 +15,6 @@ export type RoomPendingRoundReplay = {
   casterId: string;
   createdAt: string;
 };
-
-/**
- * Calls record_pending_round_replay: run right after a round resolves and
- * announces. Inserts the pending_round_replay row iff the round carries a
- * surviving (non-negated, not-scrapped) round_replay cast — a no-op for every
- * ordinary round. Returns whether a decision is now pending.
- */
-export async function recordPendingRoundReplay(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc("record_pending_round_replay", { p_round_id: roundId });
-  if (error) throw error;
-  return data === true;
-}
 
 /**
  * Calls get_room_pending_round_replay: the room's outstanding replay decision,

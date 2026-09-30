@@ -5,12 +5,15 @@ import {
   createTestAdminClient,
   createTestAnonClient,
   createTestCleanup,
+  getLayerRolls,
   hasAnonTestEnv,
+  isLayerComplete,
   signUpSignInAndEnterRoom,
+  type LayerRollRow,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
-// submit_roll / get_current_layer_rolls_if_complete / resolve_round RPCs
+// submit_roll / resolve_round RPCs
 // (supabase/migrations/0005_rolls_and_resolution.sql, generalized off layer
 // 0 in 0007_reroll_layers.sql) through real signed-in sessions, the same
 // way the app drives them via
@@ -31,7 +34,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  type LayerZeroRow = { player_id: string; value: number; modifier_snapshot: number };
+  type LayerZeroRow = LayerRollRow;
 
   /**
    * Deterministically decides who *should* win a two-player layer-0 (lowest
@@ -84,33 +87,25 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     expect(ownRoll!.value).toBeGreaterThanOrEqual(1);
     expect(ownRoll!.value).toBeLessThanOrEqual(20);
 
-    // Round isn't complete yet — resolution read returns nothing.
-    const { data: incomplete } = await starter.client.rpc("get_current_layer_rolls_if_complete", {
-      p_round_id: roundId,
-    });
-    expect(incomplete).toEqual([]);
+    // Round isn't complete yet.
+    expect(await isLayerComplete(admin, roundId, 0)).toBe(false);
 
     const { error: otherRollErr } = await other.client.rpc("submit_roll", {
       p_round_id: roundId,
     });
     expect(otherRollErr).toBeNull();
 
-    // Now that everyone has rolled, the complete layer is readable — but
-    // only to a participant of this round (get_current_layer_rolls_if_complete
-    // guards against a side door around the "hidden until revealed" rule).
-    const { error: nonParticipantReadError } = await (
+    expect(await isLayerComplete(admin, roundId, 0)).toBe(true);
+
+    // The raw Layer read round advancement uses is internal — no side door
+    // around the "hidden until revealed" rule for a player.
+    const { error: sideDoorError } = await (
       await signUp("roll-nonparticipant")
-    ).client.rpc("get_current_layer_rolls_if_complete", { p_round_id: roundId });
-    expect(nonParticipantReadError).not.toBeNull();
+    ).client.rpc("_layer_rolls_json", { p_round_id: roundId, p_layer: 0 });
+    expect(sideDoorError).not.toBeNull();
 
-    const { data: complete, error: completeError } = await starter.client.rpc(
-      "get_current_layer_rolls_if_complete",
-      { p_round_id: roundId },
-    );
-    expect(completeError).toBeNull();
-    expect(complete).toHaveLength(2);
-
-    const rows = complete as LayerZeroRow[];
+    const rows = await getLayerRolls(admin, roundId, 0);
+    expect(rows).toHaveLength(2);
     const { brewerId, isSpecialCase } = pickTwoPlayerBrewer(rows);
     if (isSpecialCase) return;
 
@@ -226,10 +221,7 @@ describe.skipIf(!hasAnonTestEnv)("roll & resolve (happy path)", () => {
     await starter.client.rpc("submit_roll", { p_round_id: roundId });
     await other.client.rpc("submit_roll", { p_round_id: roundId });
 
-    const { data: rows } = await starter.client.rpc("get_current_layer_rolls_if_complete", {
-      p_round_id: roundId,
-    });
-    const complete = rows as LayerZeroRow[];
+    const complete = await getLayerRolls(admin, roundId, 0);
     const { brewerId, isSpecialCase } = pickTwoPlayerBrewer(complete);
     if (isSpecialCase) {
       await channel.unsubscribe();
