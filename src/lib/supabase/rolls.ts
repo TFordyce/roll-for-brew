@@ -203,7 +203,7 @@ export type ResolutionTraceStep = {
   compel: {
     compelledPlayerIds: string[];
     compelledByCastId: string | null;
-    reason: string | null;
+    reason: ForfeitReason | null;
   } | null;
   /**
    * Issue #438: why a Tea Heist (`card_heist`, after `fizzled`) fizzled. null
@@ -211,6 +211,12 @@ export type ResolutionTraceStep = {
    */
   heistReason: HeistFizzleReason | null;
 };
+
+/**
+ * Issue #440: why a compelled card was forfeited (the `forfeit` row's
+ * cast_inputs.reason, set by _forfeit_compelled_card's callers).
+ */
+export type ForfeitReason = "no_legal_target" | "stall" | "excluded" | "vote" | "timeout";
 
 /** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
 export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
@@ -256,7 +262,7 @@ type RawTraceStep = {
   // Brewmageddon pointer and reason. Absent on every other step.
   compelled_player_ids?: string[];
   compelled_by?: string | null;
-  reason?: string | null;
+  reason?: ForfeitReason | null;
   // Issue #438: a fizzled Tea Heist step's reason. Absent on every other step.
   heist_reason?: HeistFizzleReason | null;
 };

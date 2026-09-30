@@ -6,7 +6,7 @@ import type {
   RoundRecapData,
   ScrappedGeneration,
 } from "@/lib/supabase/roundRecap";
-import { parseResolutionTrace, type CompletedLayer, type ResolutionTraceStep } from "@/lib/supabase/rolls";
+import { parseResolutionTrace, type CompletedLayer, type ForfeitReason, type ResolutionTraceStep } from "@/lib/supabase/rolls";
 
 // --- fixture helpers ---------------------------------------------------
 
@@ -1160,7 +1160,7 @@ describe("buildRoundRecap: Brewmageddon (issue #440)", () => {
       outcome: compelledPlayerIds.length > 0 ? "applied" : "no-op",
       compel: { compelledPlayerIds, compelledByCastId: null, reason: null },
     });
-  const forfeitStep = (castId: string, player: string, cardName: string, reason: string) =>
+  const forfeitStep = (castId: string, player: string, cardName: string, reason: ForfeitReason) =>
     step({
       displayKind: "forfeit",
       sourceCast: { castId, activeEffectId: null, cardName, casterPlayerId: player },
@@ -1188,7 +1188,7 @@ describe("buildRoundRecap: Brewmageddon (issue #440)", () => {
     expect(s.statusLabel).toBe("no effect");
   });
 
-  it.each([
+  it.each<[ForfeitReason, string]>([
     ["no_legal_target", "it had no legal target"],
     ["stall", "they never played it"],
     ["excluded", "they never rolled"],

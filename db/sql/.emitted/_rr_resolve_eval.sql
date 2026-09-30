@@ -138,6 +138,7 @@ declare
 
   -- Pre-pass (issue #440: Brewmageddon) working state
   v_cc record;
+  v_cc_source jsonb;
 
   -- Phase 0 (issue #316: Effect Invocation) working state
   v_has_invocations boolean := false;
@@ -584,16 +585,17 @@ begin
        and ((c.effect_kind = 'compel_cast' and not c.negated) or c.effect_kind = 'forfeit')
      order by c.seq
   loop
+    v_cc_source := jsonb_build_object(
+      'cast_id', to_jsonb(v_cc.cast_id),
+      'active_effect_id', null,
+      'card_name', to_jsonb(v_cc.card_name),
+      'caster_player_id', to_jsonb(v_cc.caster_id)
+    );
     if v_cc.effect_kind = 'compel_cast' then
       v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
         v_step_index,
         'compel_cast',
-        jsonb_build_object(
-          'cast_id', to_jsonb(v_cc.cast_id),
-          'active_effect_id', null,
-          'card_name', to_jsonb(v_cc.card_name),
-          'caster_player_id', to_jsonb(v_cc.caster_id)
-        ),
+        v_cc_source,
         null,
         jsonb_build_object('type', 'status', 'value', 'cast'),
         jsonb_build_object('type', 'status', 'value', 'compelled'),
@@ -610,12 +612,7 @@ begin
       v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
         v_step_index,
         'forfeit',
-        jsonb_build_object(
-          'cast_id', to_jsonb(v_cc.cast_id),
-          'active_effect_id', null,
-          'card_name', to_jsonb(v_cc.card_name),
-          'caster_player_id', to_jsonb(v_cc.caster_id)
-        ),
+        v_cc_source,
         v_cc.caster_id,
         jsonb_build_object('type', 'status', 'value', 'held'),
         jsonb_build_object('type', 'status', 'value', 'forfeited'),

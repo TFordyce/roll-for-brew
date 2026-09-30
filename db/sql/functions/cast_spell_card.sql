@@ -230,15 +230,11 @@ begin
   -- step, so a compelled cast names its target now -- no deferred target,
   -- and a WILD card names its possible tea-maker before its d6 is rolled.
   if v_compelled then
-    if v_target_pending then
+    if v_target_pending or (v_target_stamp = 'WILD' and p_target_player_id is null) then
       raise exception 'cast_spell_card: a compelled cast must name its target now'
         using errcode = 'RFB55';
     end if;
     if v_target_stamp = 'WILD' then
-      if p_target_player_id is null then
-        raise exception 'cast_spell_card: a compelled cast must name its target now'
-          using errcode = 'RFB55';
-      end if;
       if not exists (
         select 1 from public.round_participants
          where round_id = p_round_id and player_id = p_target_player_id
