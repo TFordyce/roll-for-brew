@@ -1,0 +1,81 @@
+{
+  "scenario": "05-pg-tipped-compares-post-shim-rolls",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "target",
+  "brewerSource": "tea_maker_override:conditional_chosen",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": true,
+  "trace": [
+    {
+      "after": {
+        "type": "roll",
+        "value": 6
+      },
+      "index": 0,
+      "before": {
+        "type": "roll",
+        "value": 15
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Zariel's Fall",
+        "active_effect_id": null,
+        "caster_player_id": "P:low"
+      },
+      "display_kind": "roll_flip",
+      "target_player": "P:target"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer (no modifier gain)"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "PG Tipped",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:target"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 9,
+      "total": 9,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "low",
+      "nat": null,
+      "roll": 2,
+      "total": 2,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "target",
+      "nat": null,
+      "roll": 6,
+      "total": 6,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

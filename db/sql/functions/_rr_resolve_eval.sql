@@ -116,6 +116,9 @@ declare
   v_lghm_high_pid text;
   v_lghm_plain_high_pid text;
   v_tmo_plain_high text;
+  -- issue #427: a conditional override's compared (post-shim) rolls.
+  v_cond_target_roll integer;
+  v_cond_caster_roll integer;
 
   v_override record;
   -- true when v_override holds the tier-2 winner and it can act (its target
@@ -2022,18 +2025,23 @@ begin
 
   if v_brewer_id is null then
     -- Tier 2: last cast wins. Walk the overrides newest first; one that can't
-    -- act (an inert Last Drip) never enters the contest -- it leaves a no-op
-    -- Trace step with its reason and the next-newest is considered (#426).
+    -- act (an inert Last Drip, #426, or a PG Tipped whose condition fails,
+    -- #427) never enters the contest -- it leaves a no-op Trace step with its
+    -- reason and the next-newest is considered.
     for v_row in
       -- issue #425: an explicit `modifier_gain` number wins; the legacy
       -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
       select casts.effect_params->>'mode' as mode,
+             casts.effect_params->>'condition' as condition,
              coalesce(
                (casts.effect_params->>'modifier_gain')::integer,
                case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
                     then 0 end
              ) as modifier_gain,
-             casts.target_player_id as chosen_player_id,
+             -- issue #427: a Phase 1 redirect (bounced back onto the cast's
+             -- caster) retargets an override the same way it does a
+             -- modifier cast in Phase 4a.
+             coalesce(v_redirect_map ->> casts.id::text, casts.target_player_id) as chosen_player_id,
              casts.target_pending as target_pending,
              casts.id as cast_id,
              casts.caster_id as caster_id,
@@ -2044,12 +2052,47 @@ begin
        where casts.round_id = p_round_id
          and casts.effect_kind = 'tea_maker_override'
          and casts.negated = false
-         -- issue #425: conditional_chosen (PG Tipped) is in the closed mode
-         -- set but has no behaviour until its card slice lands; until then it
-         -- never enters the contest.
-         and casts.effect_params->>'mode' <> 'conditional_chosen'
        order by casts.cast_at desc, casts.seq desc
     loop
+      if v_row.mode = 'conditional_chosen'
+         and not coalesce(v_row.target_pending, false) then
+        -- issue #427 (PG Tipped): enters only if the target's layer-0 roll
+        -- is lower than the caster's.
+        if v_row.condition is distinct from 'target_below_caster' then
+          raise exception 'resolve_round: unsupported conditional_chosen condition %', v_row.condition;
+        end if;
+
+        -- The rolls after the roll-input shim (Phase 3). A player with no
+        -- layer-0 roll has nothing to compare, so the condition fails.
+        v_cond_target_roll := v_rolls[array_position(v_players, v_row.chosen_player_id)];
+        v_cond_caster_roll := v_rolls[array_position(v_players, v_row.caster_id)];
+
+        if not coalesce(v_cond_target_roll < v_cond_caster_roll, false) then
+          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+            v_step_index,
+            'tea_maker_override',
+            jsonb_build_object(
+              'cast_id', to_jsonb(v_row.cast_id),
+              'active_effect_id', null,
+              'card_name', to_jsonb(v_row.card_name),
+              'caster_player_id', to_jsonb(v_row.caster_id)
+            ),
+            v_row.chosen_player_id,
+            jsonb_build_object('type', 'status', 'value', 'pending'),
+            jsonb_build_object('type', 'status', 'value', 'condition not met'),
+            jsonb_build_object(
+              'outcome', 'no-op',
+              'override_reason', 'condition_not_met',
+              'override_condition', v_row.condition,
+              'target_roll', v_cond_target_roll,
+              'caster_roll', v_cond_caster_roll
+            )
+          ));
+          v_step_index := v_step_index + 1;
+          continue;
+        end if;
+      end if;
+
       if v_row.mode = 'prev_round_highest' then
         -- issue #426 (Last Drip): the room's most recent resolved round
         -- before this one -> its highest layer-0 roller (ties: lowest
@@ -2111,7 +2154,8 @@ begin
       if v_override.mode = 'prev_round_highest' then
         -- v_ld_target was set by the loop iteration that exited on this cast.
         v_brewer_id := v_ld_target;
-      elsif v_override.mode = 'chosen' then
+      elsif v_override.mode in ('chosen', 'conditional_chosen') then
+        -- issue #427: a conditional_chosen that got here met its condition.
         v_brewer_id := v_override.chosen_player_id;
       elsif v_override.mode = 'highest_roll' then
         select v_players[i] into v_brewer_id
@@ -2157,8 +2201,8 @@ begin
         end if;
       else
         -- issue #425: unreachable -- the mode set is closed (CHECK on
-        -- spell_casts and spell_card_effects) and the reserved mode is
-        -- filtered out above. A guard, not a code path.
+        -- spell_casts and spell_card_effects) and every mode is handled
+        -- above. A guard, not a code path.
         raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
       end if;
 

@@ -261,6 +261,8 @@ const FORFEIT_REASON_TEXT: Record<ForfeitReason, string> = {
 const OVERRIDE_NOOP_TEXT: Record<OverrideNoopReason, (target: string) => string> = {
   no_previous_round: () => "there's no previous round",
   target_absent: (t) => `${t} isn't in this round`,
+  // #427: normally read via failedOverrideCondition, which names the rolls.
+  condition_not_met: () => "its condition wasn't met",
 };
 // card_heist steps carry their outcome in `after.value` (_rr_heist_trace).
 const HEIST_MOVED = "moved";
@@ -486,6 +488,16 @@ function sentenceFor(
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
     case "tea_maker_override": {
+      // Issue #427: PG Tipped's condition failed -- the cast drops out of the
+      // override contest and selection falls through.
+      const cond = step.failedOverrideCondition;
+      if (cond) {
+        const rolls =
+          cond.targetRoll != null && cond.casterRoll != null
+            ? `: ${t} rolled ${cond.targetRoll}, not lower than ${c}'s ${cond.casterRoll}`
+            : "";
+        return `${played} on ${t} — condition not met${rolls}, so it doesn't pick the brewer`;
+      }
       // Issue #426: an inert Last Drip says why it did nothing.
       if (step.overrideReason) return `${played} — no effect: ${OVERRIDE_NOOP_TEXT[step.overrideReason](t)}`;
       const noGain = String(step.after.value ?? "").includes("no modifier");
@@ -530,6 +542,8 @@ function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState 
     if (v === CONTEST_NO_EFFECT) return { label: "no effect", kind: "no-op" };
     return { label: v || "applied", kind: "applied" };
   }
+  // Issue #427: a failed PG Tipped condition.
+  if (step.failedOverrideCondition) return { label: "condition not met", kind: "no-op" };
   if (step.displayKind === "card_heist") {
     const v = String(step.after.value ?? "");
     if (v === HEIST_MOVED) return { label: "moved", kind: "applied" };

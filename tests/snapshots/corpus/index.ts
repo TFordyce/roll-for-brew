@@ -17,6 +17,8 @@ import type { Scenario } from "./framework";
 // tier-derived contested_negate DC: common 2 / rare 5 / epic 10 (migration
 // 0080 _rr_tier_default_dc). Lucky Sip is common, so dc_d20 >= 2 succeeds.
 const GAMBLER_CONDITION = { condition: { advantage_at_or_above: 15, disadvantage_at_or_below: 5 } };
+// Issue #427: PG Tipped's catalog effect_params (migration 0126).
+const PG_TIPPED = { mode: "conditional_chosen", condition: "target_below_caster", modifier_gain: 0 };
 
 export const CORPUS: Scenario[] = [
   // =========================================================================
@@ -140,6 +142,130 @@ export const CORPUS: Scenario[] = [
         roundsRemaining: 1,
       });
       return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-pg-tipped-condition-met",
+    phases: ["5"],
+    note: "PG Tipped (#427) — conditional_chosen, target rolled below the caster: the target brews with no modifier gain over the default lowest.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [target, low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 15);
+      await ctx.seedRoll(roundId, target.googleSub, 8);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      await ctx.seedCast(roundId, caster.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-pg-tipped-condition-not-met",
+    phases: ["5"],
+    note: "PG Tipped (#427) — target rolled equal to the caster: a 'condition not met' no-op step, and the default lowest brews.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [target, low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 10);
+      await ctx.seedRoll(roundId, target.googleSub, 10);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      await ctx.seedCast(roundId, caster.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-pg-tipped-not-met-earlier-override-stands",
+    phases: ["5"],
+    note: "PG Tipped (#427) cast last but its condition fails: it never enters the last-cast-wins contest, so an earlier chosen override still names the brewer.",
+    async seed(ctx) {
+      const chooser = await ctx.signUp("chooser");
+      const pg = await ctx.signUp("pg-caster");
+      const chosen = await ctx.signUp("chosen");
+      const target = await ctx.signUp("pg-target");
+      const roundId = await ctx.openAndCloseRound(chooser, [pg, chosen, target]);
+      await ctx.seedRoll(roundId, chooser.googleSub, 3);
+      await ctx.seedRoll(roundId, pg.googleSub, 6);
+      await ctx.seedRoll(roundId, chosen.googleSub, 18);
+      await ctx.seedRoll(roundId, target.googleSub, 12);
+      await ctx.seedCast(roundId, chooser.googleSub, "Wild Brew Surge", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen" },
+        targetPlayerId: chosen.googleSub,
+        extra: { cast_at: new Date(Date.now() - 60_000).toISOString() },
+      });
+      await ctx.seedCast(roundId, pg.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: chooser.client };
+    },
+  },
+  {
+    name: "05-pg-tipped-compares-post-shim-rolls",
+    phases: ["3", "5"],
+    note: "PG Tipped (#427) compares the rolls after the roll-input shim: the target's raw 15 is flipped to 6, below the caster's 9, so the target brews.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [target, low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 9);
+      await ctx.seedRoll(roundId, target.googleSub, 15);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      await ctx.seedCast(roundId, caster.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      const win = await ctx.openWindow(roundId);
+      await ctx.seedCast(roundId, low.googleSub, "Zariel's Fall", {
+        effectKind: "roll_flip",
+        effectParams: {},
+        targetPlayerId: target.googleSub,
+        reactionWindowId: win,
+        castInputs: ctx.rollTransform("roll_flip", 1, [
+          { player_id: target.googleSub, before: 15, after: 6 },
+        ]),
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-pg-tipped-redirected-onto-caster",
+    phases: ["1", "5"],
+    note: "PG Tipped (#427) redirected back onto its caster: Phase 5 reads the redirect, the caster can't roll below themselves, so the condition fails and the default lowest brews.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("redirector");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [target, low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 15);
+      await ctx.seedRoll(roundId, target.googleSub, 8);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      const { castId: pgId } = await ctx.seedCast(roundId, caster.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      await ctx.seedCast(roundId, target.googleSub, "Kettle Storm", {
+        effectKind: "redirect",
+        effectParams: {},
+        targetPlayerId: null,
+        parentCastId: pgId,
+      });
+      return { roundId, resolveWith: caster.client };
     },
   },
 

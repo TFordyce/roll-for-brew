@@ -274,16 +274,17 @@ export async function seedPastRound(
  * fixed-roll cards — Steady Hand, Sleeping Camomile (#317, migration 0094) —
  * Prophe-Tea (persistent advantage, #320, migration 0097) — Cloud of Cream
  * (targeting skip, #321, migration 0099) — Tea Heist (#438, migration 0117) —
- * Brewmageddon (Compelled Cast, #440, migration 0119) — and Last Drip (#426,
- * migration 0124) — are now live, so 12 remain here. A test that force-holds
- * one of these must return it to the bench, not the deck, on cleanup —
+ * Brewmageddon (Compelled Cast, #440, migration 0119) — Last Drip (#426,
+ * migration 0124) — and PG Tipped (conditional override, #427, migration
+ * 0126) — are now live, so 11 remain here. A test that force-holds one of
+ * these must return it to the bench, not the deck, on cleanup —
  * releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
   "Tea Party Revolt",
   "Tea Cosy",
-  "Loose Leaf", "PG Tipped",
+  "Loose Leaf",
   "Marked for Brew",
   "Loaf of Lipton", "Brew IOU",
   "Stale Biscuit", "Liquid Courage",

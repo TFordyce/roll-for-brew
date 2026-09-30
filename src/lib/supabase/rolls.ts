@@ -212,10 +212,25 @@ export type ResolutionTraceStep = {
   heistReason: HeistFizzleReason | null;
   /**
    * Issue #426: why a `tea_maker_override` step did nothing (outcome `no-op`),
-   * e.g. an inert Last Drip. null on every other step.
+   * e.g. an inert Last Drip or a PG Tipped whose condition failed. null on
+   * every other step.
    */
   overrideReason: OverrideNoopReason | null;
+  /**
+   * Issue #427: a `tea_maker_override` step whose condition failed (PG
+   * Tipped, mode `conditional_chosen`, overrideReason `condition_not_met`) —
+   * the condition and the two rolls it compared. null on every other step,
+   * including a fired override.
+   */
+  failedOverrideCondition: {
+    condition: OverrideCondition;
+    targetRoll: number | null;
+    casterRoll: number | null;
+  } | null;
 };
+
+/** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
+export type OverrideCondition = "target_below_caster";
 
 /**
  * Issue #440: why a compelled card was forfeited (the `forfeit` row's
@@ -226,8 +241,12 @@ export type ForfeitReason = "no_legal_target" | "stall" | "excluded" | "vote" | 
 /** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
 export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
 
-/** Issue #426: why an inert Last Drip (`prev_round_highest`) did nothing. */
-export type OverrideNoopReason = "no_previous_round" | "target_absent";
+/**
+ * Why a `tea_maker_override` did nothing: an inert Last Drip
+ * (`prev_round_highest`, #426), or a PG Tipped whose condition failed
+ * (`conditional_chosen`, #427).
+ */
+export type OverrideNoopReason = "no_previous_round" | "target_absent" | "condition_not_met";
 
 type RawTraceStep = {
   index: number;
@@ -275,6 +294,11 @@ type RawTraceStep = {
   heist_reason?: HeistFizzleReason | null;
   // Issue #426: a no-op tea_maker_override step's reason. Absent on every other step.
   override_reason?: OverrideNoopReason | null;
+  // Issue #427: a failed conditional tea_maker_override (PG Tipped) — the
+  // condition and the rolls it compared. Absent on every other step.
+  override_condition?: OverrideCondition | null;
+  target_roll?: number | null;
+  caster_roll?: number | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -323,6 +347,14 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
         : null,
     heistReason: raw.heist_reason ?? null,
     overrideReason: raw.override_reason ?? null,
+    failedOverrideCondition:
+      raw.override_reason === "condition_not_met" && raw.override_condition
+        ? {
+            condition: raw.override_condition,
+            targetRoll: raw.target_roll ?? null,
+            casterRoll: raw.caster_roll ?? null,
+          }
+        : null,
   };
 }
 

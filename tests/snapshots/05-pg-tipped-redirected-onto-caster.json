@@ -1,0 +1,85 @@
+{
+  "scenario": "05-pg-tipped-redirected-onto-caster",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "low",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "target",
+        "value": "P:caster"
+      },
+      "index": 0,
+      "before": {
+        "type": "target",
+        "value": "P:redirector"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Kettle Storm",
+        "active_effect_id": null,
+        "caster_player_id": "P:redirector"
+      },
+      "display_kind": "redirect",
+      "target_player": "P:caster"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "condition not met"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "no-op",
+      "caster_roll": 15,
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "PG Tipped",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "target_roll": 15,
+      "display_kind": "tea_maker_override",
+      "target_player": "P:caster",
+      "override_reason": "condition_not_met",
+      "override_condition": "target_below_caster"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 15,
+      "total": 15,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "low",
+      "nat": null,
+      "roll": 2,
+      "total": 2,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "redirector",
+      "nat": null,
+      "roll": 8,
+      "total": 8,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}
