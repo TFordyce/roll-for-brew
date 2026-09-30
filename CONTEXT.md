@@ -65,8 +65,22 @@ A player who has declared in to a specific round (`round_participants`, via Decl
 _Avoid_: player (too broad — any room member), roller (a Participant on a Brew Debt round doesn't roll).
 
 **Tea Maker**:
-The one Participant a round picks to make the drinks — `rounds.brewer_id` in code. Gains the round's cups made as modifier unless an effect suppresses it.
+The one Participant a round picks to make the drinks — `rounds.brewer_id` in code. Gains the round's **Modifier Gain**. Picked by the **Tea-Maker Precedence Ladder**.
 _Avoid_: brewer in prose (fine as the code name), loser.
+
+**Modifier Gain**:
+What the Tea Maker adds to their modifier for making the round's tea (`rounds.brewer_modifier_gain`; `modifier_gain` in the resolver's output). Normally the round's cups made; an effect can set it to 0 (Drip Tray, an Eternal Steep ward) or to another number (e.g. double the cups made). In code, `null` means "the normal cups made", `0` means none, and any other value is used as given.
+_Avoid_: no-modifier-gain (the retired yes/no), cups made (that's the default value, not the gain).
+
+**Tea-Maker Precedence Ladder**:
+The fixed order in which a round's Tea Maker is picked when several cards compete (ADR 0005, #425). The first rung that names someone wins:
+1. **Declared number** — Inscribed Saucer's number matched by a roll.
+2. **Tea-maker override** — the last cast wins. Its mode is one of `highest_modifier`, `highest_roll`, `chosen`, `prev_round_highest` or `conditional_chosen`; an override whose condition fails never enters.
+3. **Loose Leaf roll-off** — applied once a Tea Maker is named, whichever rung named them.
+4. **Default** — the lowest roller.
+
+Immunity to being Tea Maker isn't a rung of its own. It filters every rung: an immune candidate counts as no match, and selection falls through to the next candidate. A round with a payable Brew Debt skips the ladder entirely. Cloud of Cream's targeting skip isn't part of the ladder: it only steers the `highest_modifier` override's pick, and doesn't interact with the other override modes.
+_Avoid_: override order, brewer priority.
 
 **Brew Debt**:
 The obligation the Brew IOU card leaves on its caster — the **Debtor** — once its target has actually been made Tea Maker by it: the Debtor must be Tea Maker on their next round as a Participant, and on that round nobody rolls. Stays owed across days until paid; a round where the Debtor is immune to being Tea Maker is played normally and leaves it owed.

@@ -48,4 +48,4 @@ revoke execute on function public._rr_resolve(uuid) from public, anon, authentic
 grant execute on function public._rr_resolve(uuid) to service_role;
 
 comment on function public._rr_resolve(uuid) is
-  'Issue #404 (ADR 0007): non-persisting resolver evaluation. Returns what resolve_round(uuid) returns ({ outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, no_modifier_gain, trace, players }) and leaves no writes: the pipeline runs inside a subtransaction that is always rolled back. Must stay write-free -- get_round_recap runs it on viewer page renders for the Provisional Recap. Does not roll the Calami-Tea tick die. Internal.';
+  'Issue #404 (ADR 0007): non-persisting resolver evaluation. Returns what resolve_round(uuid) returns ({ outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain, no_modifier_gain, trace, players }) and leaves no writes: the pipeline runs inside a subtransaction that is always rolled back. Must stay write-free -- get_round_recap runs it on viewer page renders for the Provisional Recap. Does not roll the Calami-Tea tick die. Internal.';

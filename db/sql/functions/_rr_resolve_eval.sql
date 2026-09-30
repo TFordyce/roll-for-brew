@@ -45,7 +45,9 @@ declare
 
   v_brewer_id text := null;
   v_brewer_source text := 'default';
-  v_no_modifier_gain boolean := false;
+  -- issue #425: the brewer's tea-making modifier gain. null = the normal
+  -- cups_made, 0 = none, any other value is used as given.
+  v_modifier_gain integer := null;
   v_tied text[];
 
   -- per-player working state, parallel arrays indexed 1..n
@@ -202,7 +204,7 @@ begin
         'outcome', 'brewer', 'layer', v_layer,
         'brewer_id', v_tied[1], 'brewer_source', 'default',
         'tied_player_ids', null,
-        'cups_made', v_participant_count, 'no_modifier_gain', false,
+        'cups_made', v_participant_count, 'modifier_gain', null, 'no_modifier_gain', false,
         'trace', '[]'::jsonb, 'players', null
       );
     end if;
@@ -211,7 +213,7 @@ begin
       'outcome', 'tie', 'layer', v_layer,
       'brewer_id', null, 'brewer_source', null,
       'tied_player_ids', to_jsonb(v_tied),
-      'cups_made', v_participant_count, 'no_modifier_gain', false,
+      'cups_made', v_participant_count, 'modifier_gain', null, 'no_modifier_gain', false,
       'trace', '[]'::jsonb, 'players', null
     );
   end if;
@@ -2011,8 +2013,14 @@ begin
   end loop;
 
   if v_brewer_id is null then
+    -- issue #425: an explicit `modifier_gain` number wins; the legacy
+    -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
     select casts.effect_params->>'mode' as mode,
-           coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false) as no_modifier_gain,
+           coalesce(
+             (casts.effect_params->>'modifier_gain')::integer,
+             case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
+                  then 0 end
+           ) as modifier_gain,
            casts.target_player_id as chosen_player_id,
            casts.target_pending as target_pending,
            casts.id as cast_id,
@@ -2025,6 +2033,10 @@ begin
      where casts.round_id = p_round_id
        and casts.effect_kind = 'tea_maker_override'
        and casts.negated = false
+       -- issue #425: prev_round_highest (Last Drip) and conditional_chosen
+       -- (PG Tipped) are in the closed mode set but have no behaviour until
+       -- their card slices land; until then they never enter the contest.
+       and casts.effect_params->>'mode' not in ('prev_round_highest', 'conditional_chosen')
      order by casts.cast_at desc, casts.seq desc
      limit 1;
 
@@ -2036,8 +2048,8 @@ begin
           from generate_subscripts(v_players, 1) i
          order by v_rolls[i] desc, v_players[i]
          limit 1;
-      else
-        -- 'highest_modifier'. issue #321: a Cloud of Cream holder is skipped
+      elsif v_override.mode = 'highest_modifier' then
+        -- issue #321: a Cloud of Cream holder is skipped
         -- and the next-highest `modifier_snapshot` roller is picked; if every
         -- roller is skipped, fall back to the plain highest.
         select r.player_id into v_tmo_plain_high
@@ -2073,9 +2085,14 @@ begin
           ));
           v_step_index := v_step_index + 1;
         end if;
+      else
+        -- issue #425: unreachable -- the mode set is closed (CHECK on
+        -- spell_casts and spell_card_effects) and the reserved modes are
+        -- filtered out above. A guard, not a code path.
+        raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
       end if;
 
-      v_no_modifier_gain := v_override.no_modifier_gain;
+      v_modifier_gain := v_override.modifier_gain;
       v_brewer_source := 'tea_maker_override:' || v_override.mode;
 
       v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
@@ -2090,7 +2107,7 @@ begin
         v_brewer_id,
         jsonb_build_object('type', 'status', 'value', 'pending'),
         jsonb_build_object('type', 'status', 'value',
-          case when v_no_modifier_gain then 'brewer (no modifier gain)' else 'brewer' end)
+          case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end)
       ));
       v_step_index := v_step_index + 1;
     end if;
@@ -2109,7 +2126,7 @@ begin
         'outcome', 'tie', 'layer', 0,
         'brewer_id', null, 'brewer_source', null,
         'tied_player_ids', to_jsonb(v_tied),
-        'cups_made', v_participant_count, 'no_modifier_gain', false,
+        'cups_made', v_participant_count, 'modifier_gain', null, 'no_modifier_gain', false,
         'trace', v_trace, 'players', v_summary
       );
     end if;
@@ -2119,10 +2136,10 @@ begin
   end if;
 
   -- issue #309: a block_earned_modifier ward on the selected brewer (Eternal
-  -- Steep) zeroes their tea-making modifier gain. resolve_round(uuid, text,
-  -- integer, boolean) turns no_modifier_gain into a zero brewer gain. This is
-  -- a property of the ward, not a competing cast, so it applies regardless of
-  -- seq.
+  -- Steep) zeroes their tea-making modifier gain: modifier_gain 0, which
+  -- resolve_round(uuid, text, integer, integer) writes as a zero brewer gain.
+  -- This is a property of the ward, not a competing cast, so it applies
+  -- regardless of seq -- and over an override's own gain (#425).
   if v_brewer_id is not null then
     select w.value into v_ward_hit
       from jsonb_array_elements(coalesce(v_ward_map -> v_brewer_id, '[]'::jsonb)) w
@@ -2130,7 +2147,7 @@ begin
      limit 1;
 
     if v_ward_hit is not null then
-      if not v_no_modifier_gain then
+      if v_modifier_gain is distinct from 0 then
         v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
           v_step_index,
           'warded',
@@ -2155,7 +2172,7 @@ begin
         ));
         v_step_index := v_step_index + 1;
       end if;
-      v_no_modifier_gain := true;
+      v_modifier_gain := 0;
       v_ward_hit := null;
     end if;
   end if;
@@ -2174,7 +2191,9 @@ begin
     'outcome', 'brewer', 'layer', 0,
     'brewer_id', v_brewer_id, 'brewer_source', v_brewer_source,
     'tied_player_ids', null,
-    'cups_made', v_participant_count, 'no_modifier_gain', v_no_modifier_gain,
+    'cups_made', v_participant_count, 'modifier_gain', v_modifier_gain,
+    -- compat alias for callers still reading the yes/no (#425)
+    'no_modifier_gain', coalesce(v_modifier_gain = 0, false),
     'trace', v_trace, 'players', v_summary
   );
 end;
@@ -2183,4 +2202,4 @@ $$;
 revoke execute on function public._rr_resolve_eval(uuid, boolean) from public, anon, authenticated;
 
 comment on function public._rr_resolve_eval(uuid, boolean) is
-  'Issue #404 (ADR 0007): the body of the authoritative layer-0 resolver, split out of resolve_round. Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, no_modifier_gain, trace, players } without persisting the Trace or the Resolution Summary. Maintains its own Cast-Log / modifier caches, so callers either keep them (resolve_round) or roll them back (_rr_resolve). p_dry_run skips the Calami-Tea tick RNG. Internal.';
+  'Issue #404 (ADR 0007): the body of the authoritative layer-0 resolver, split out of resolve_round. Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain (null = cups_made, 0 = none, else as given; issue #425), no_modifier_gain (compat alias: modifier_gain = 0), trace, players } without persisting the Trace or the Resolution Summary. Maintains its own Cast-Log / modifier caches, so callers either keep them (resolve_round) or roll them back (_rr_resolve). p_dry_run skips the Calami-Tea tick RNG. Internal.';
