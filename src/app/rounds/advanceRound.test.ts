@@ -52,7 +52,7 @@ describe("advanceRound", () => {
     expect(deps.advanceLayer).not.toHaveBeenCalled();
   });
 
-  it.each<AdvanceRoundEvent>(["layerRolled", "pendingDieResolved", "deferredTargetSet"])(
+  it.each<AdvanceRoundEvent>(["layerRolled", "pendingDieResolved", "deferredTargetSet", "stallCleared"])(
     "%s reaches advance_layer and never finalize_layer directly",
     async (event) => {
       const deps = fakeDeps(noop);
