@@ -65,7 +65,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     diceTick: null,
     compel: null,
     heistReason: null,
-    overrideCondition: null,
+    failedOverrideCondition: null,
     ...overrides,
   };
 }
@@ -473,11 +473,11 @@ describe("buildRoundRecap", () => {
     it("condition not met: a no-op Outcome step naming both rolls", () => {
       const model = pgTipped("condition not met", {
         outcome: "no-op",
-        overrideCondition: { reason: "condition_not_met", condition: "target_below_caster", targetRoll: 12, casterRoll: 9 },
+        failedOverrideCondition: { reason: "condition_not_met", condition: "target_below_caster", targetRoll: 12, casterRoll: 9 },
       });
       const s = only(model);
       expect(s.sentence).toBe(
-        "Ada played PG Tipped on Ben — condition not met: Ben rolled 12, not lower than Ada's 9; the normal pick stands",
+        "Ada played PG Tipped on Ben — condition not met: Ben rolled 12, not lower than Ada's 9, so it doesn't pick the brewer",
       );
       expect(s.statusLabel).toBe("condition not met");
       expect(s.statusKind).toBe("no-op");
@@ -488,10 +488,10 @@ describe("buildRoundRecap", () => {
       const s = only(
         pgTipped("condition not met", {
           outcome: "no-op",
-          overrideCondition: { reason: "condition_not_met", condition: "target_below_caster", targetRoll: null, casterRoll: 9 },
+          failedOverrideCondition: { reason: "condition_not_met", condition: "target_below_caster", targetRoll: null, casterRoll: 9 },
         }),
       );
-      expect(s.sentence).toBe("Ada played PG Tipped on Ben — condition not met; the normal pick stands");
+      expect(s.sentence).toBe("Ada played PG Tipped on Ben — condition not met, so it doesn't pick the brewer");
     });
 
     it("reads the override condition off the raw Trace step", () => {
@@ -510,13 +510,13 @@ describe("buildRoundRecap", () => {
           caster_roll: 9,
         },
       ]);
-      expect(parsed!.overrideCondition).toEqual({
+      expect(parsed!.failedOverrideCondition).toEqual({
         reason: "condition_not_met",
         condition: "target_below_caster",
         targetRoll: 12,
         casterRoll: 9,
       });
-      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.overrideCondition).toBeNull();
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.failedOverrideCondition).toBeNull();
     });
   });
 

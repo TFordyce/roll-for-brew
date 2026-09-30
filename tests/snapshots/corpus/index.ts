@@ -163,6 +163,62 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: chooser.client };
     },
   },
+  {
+    name: "05-pg-tipped-compares-post-shim-rolls",
+    phases: ["3", "5"],
+    note: "PG Tipped (#427) compares the rolls after the roll-input shim: the target's raw 15 is flipped to 6, below the caster's 9, so the target brews.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [target, low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 9);
+      await ctx.seedRoll(roundId, target.googleSub, 15);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      await ctx.seedCast(roundId, caster.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      const win = await ctx.openWindow(roundId);
+      await ctx.seedCast(roundId, low.googleSub, "Zariel's Fall", {
+        effectKind: "roll_flip",
+        effectParams: {},
+        targetPlayerId: target.googleSub,
+        reactionWindowId: win,
+        castInputs: ctx.rollTransform("roll_flip", 1, [
+          { player_id: target.googleSub, before: 15, after: 6 },
+        ]),
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-pg-tipped-redirected-onto-caster",
+    phases: ["1", "5"],
+    note: "PG Tipped (#427) redirected back onto its caster: Phase 5 reads the redirect, the caster can't roll below themselves, so the condition fails and the default lowest brews.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("redirector");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [target, low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 15);
+      await ctx.seedRoll(roundId, target.googleSub, 8);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      const { castId: pgId } = await ctx.seedCast(roundId, caster.googleSub, "PG Tipped", {
+        effectKind: "tea_maker_override",
+        effectParams: PG_TIPPED,
+        targetPlayerId: target.googleSub,
+      });
+      await ctx.seedCast(roundId, target.googleSub, "Kettle Storm", {
+        effectKind: "redirect",
+        effectParams: {},
+        targetPlayerId: null,
+        parentCastId: pgId,
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
 
   // =========================================================================
   // Phase 4a — modifier-bucket composition (flat / set / multiplier)

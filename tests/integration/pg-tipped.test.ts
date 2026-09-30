@@ -131,6 +131,27 @@ describe.skipIf(!hasAnonTestEnv)("PG Tipped (issue #427)", () => {
     return data!.modifier as number;
   }
 
+  /**
+   * An earlier `chosen` tea_maker_override naming `chosen`, seeded straight
+   * into the Cast Log the way the #425 tests do (no live card casts a plain
+   * `chosen` override at a player), backdated so PG Tipped is the later cast.
+   */
+  async function seedEarlierChosenOverride(roundId: string, caster: Player, chosen: Player) {
+    const donor = await forceHold(admin, caster.googleSub, "Drip Tray");
+    await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", donor);
+    const { error } = await admin.from("spell_casts").insert({
+      round_id: roundId,
+      caster_id: caster.googleSub,
+      card_instance_id: donor,
+      target_player_id: chosen.googleSub,
+      target_pending: false,
+      effect_kind: "tea_maker_override",
+      effect_params: { mode: "chosen" },
+      cast_at: new Date(Date.now() - 60_000).toISOString(),
+    });
+    expect(error).toBeNull();
+  }
+
   function overrideSteps(trace: TraceStep[] | null) {
     return (trace ?? []).filter((s) => s.display_kind === "tea_maker_override");
   }
@@ -231,21 +252,7 @@ describe.skipIf(!hasAnonTestEnv)("PG Tipped (issue #427)", () => {
     ]);
     const roundId = await startRound(chooser, [pg, chosen, pgTarget]);
 
-    // An earlier `chosen` override (WILD tea_maker_override, seeded straight
-    // into the Cast Log the way the #425 tests do), then PG Tipped cast later.
-    const donor = await forceHold(admin, chooser.googleSub, "Drip Tray");
-    await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", donor);
-    const { error: seedErr } = await admin.from("spell_casts").insert({
-      round_id: roundId,
-      caster_id: chooser.googleSub,
-      card_instance_id: donor,
-      target_player_id: chosen.googleSub,
-      target_pending: false,
-      effect_kind: "tea_maker_override",
-      effect_params: { mode: "chosen" },
-      cast_at: new Date(Date.now() - 60_000).toISOString(),
-    });
-    expect(seedErr).toBeNull();
+    await seedEarlierChosenOverride(roundId, chooser, chosen);
     const pgCastId = await cast(roundId, pg, "PG Tipped", pgTarget);
 
     // PG Tipped's target out-rolls its caster: the condition fails.
@@ -272,19 +279,7 @@ describe.skipIf(!hasAnonTestEnv)("PG Tipped (issue #427)", () => {
     ]);
     const roundId = await startRound(chooser, [pg, chosen, pgTarget]);
 
-    const donor = await forceHold(admin, chooser.googleSub, "Drip Tray");
-    await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", donor);
-    const { error: seedErr } = await admin.from("spell_casts").insert({
-      round_id: roundId,
-      caster_id: chooser.googleSub,
-      card_instance_id: donor,
-      target_player_id: chosen.googleSub,
-      target_pending: false,
-      effect_kind: "tea_maker_override",
-      effect_params: { mode: "chosen" },
-      cast_at: new Date(Date.now() - 60_000).toISOString(),
-    });
-    expect(seedErr).toBeNull();
+    await seedEarlierChosenOverride(roundId, chooser, chosen);
     await cast(roundId, pg, "PG Tipped", pgTarget);
 
     const fin = await rollAndFinalize(chooser, roundId, [[chooser, 3], [pg, 16], [chosen, 18], [pgTarget, 12]]);

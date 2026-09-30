@@ -2044,7 +2044,10 @@ begin
                case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
                     then 0 end
              ) as modifier_gain,
-             casts.target_player_id as chosen_player_id,
+             -- issue #427: a Phase 1 redirect (bounced back onto the cast's
+             -- caster) retargets an override the same way it does a
+             -- modifier cast in Phase 4a.
+             coalesce(v_redirect_map ->> casts.id::text, casts.target_player_id) as chosen_player_id,
              casts.target_pending as target_pending,
              casts.id as cast_id,
              casts.caster_id as caster_id,

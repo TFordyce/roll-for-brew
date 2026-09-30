@@ -215,7 +215,7 @@ export type ResolutionTraceStep = {
    * Tipped, mode `conditional_chosen`) — the condition and the two rolls it
    * compared. null on every other step, including a fired override.
    */
-  overrideCondition: {
+  failedOverrideCondition: {
     reason: "condition_not_met";
     condition: OverrideCondition;
     targetRoll: number | null;
@@ -332,7 +332,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
           }
         : null,
     heistReason: raw.heist_reason ?? null,
-    overrideCondition:
+    failedOverrideCondition:
       raw.override_reason === "condition_not_met" && raw.override_condition
         ? {
             reason: raw.override_reason,
