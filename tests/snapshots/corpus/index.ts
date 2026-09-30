@@ -12,7 +12,39 @@
 // golden diff points straight at the phase that moved. Add more freely; the
 // coverage test only fails on a *missing* phase or branch.
 
-import type { Scenario } from "./framework";
+import { seedDedicatedRoom, seedPastRound } from "../../integration/setup";
+import type { Player, Scenario, ScenarioContext } from "./framework";
+
+/**
+ * Last Drip (#426) reads the room's previous resolved round, so these rounds
+ * need a room of their own: seeds one holding `starter`, `others` and
+ * `bystanders` (in the room, not the round), a resolved round an hour ago
+ * with `pastRolls`, then opens and closes a round there.
+ */
+async function openAndCloseRoundAfterPast(
+  ctx: ScenarioContext,
+  starter: Player,
+  others: Player[],
+  pastRolls: { playerId: string; value: number }[],
+  bystanders: Player[] = [],
+): Promise<string> {
+  const roomId = await seedDedicatedRoom(
+    ctx.admin,
+    ctx.cleanup,
+    [starter, ...others, ...bystanders].map((p) => p.googleSub),
+  );
+  await seedPastRound(ctx.admin, ctx.cleanup, roomId, pastRolls);
+  const { data: roundId, error } = await starter.client.rpc("start_round", { p_room_id: roomId });
+  if (error) throw error;
+  ctx.cleanup.trackRound(roundId as string);
+  for (const o of others) {
+    const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+    if (dErr) throw dErr;
+  }
+  const { error: cErr } = await starter.client.rpc("close_round", { p_round_id: roundId });
+  if (cErr) throw cErr;
+  return roundId as string;
+}
 
 // tier-derived contested_negate DC: common 2 / rare 5 / epic 10 (migration
 // 0080 _rr_tier_default_dc). Lucky Sip is common, so dc_d20 >= 2 succeeds.
@@ -66,6 +98,49 @@ export const CORPUS: Scenario[] = [
       await ctx.seedCast(roundId, p1.googleSub, "Drip Tray", {
         effectKind: "tea_maker_override",
         effectParams: { mode: "highest_modifier", no_modifier_gain: true },
+        targetPlayerId: null,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-tea-maker-override-prev-round-highest",
+    phases: ["5"],
+    note: "Last Drip (#426): tea_maker_override mode=prev_round_highest names the previous resolved round's top roller, with no modifier gain.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("prevwinner");
+      const roundId = await openAndCloseRoundAfterPast(ctx, p1, [p2], [
+        { playerId: p1.googleSub, value: 4 },
+        { playerId: p2.googleSub, value: 18 },
+      ]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5);
+      await ctx.seedRoll(roundId, p2.googleSub, 16);
+      await ctx.seedCast(roundId, p1.googleSub, "Last Drip", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "prev_round_highest", modifier_gain: 0 },
+        targetPlayerId: null,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-tea-maker-override-prev-round-highest-inert",
+    phases: ["5"],
+    note: "Last Drip (#426): the previous winner isn't in this round, so a no-op step with override_reason target_absent, and the default pick stands.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("low");
+      const absent = await ctx.signUp("absent");
+      const roundId = await openAndCloseRoundAfterPast(ctx, p1, [p2], [
+        { playerId: p1.googleSub, value: 4 },
+        { playerId: absent.googleSub, value: 19 },
+      ], [absent]);
+      await ctx.seedRoll(roundId, p1.googleSub, 12);
+      await ctx.seedRoll(roundId, p2.googleSub, 3);
+      await ctx.seedCast(roundId, p1.googleSub, "Last Drip", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "prev_round_highest", modifier_gain: 0 },
         targetPlayerId: null,
       });
       return { roundId, resolveWith: p1.client };

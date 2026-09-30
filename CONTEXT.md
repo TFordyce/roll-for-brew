@@ -75,7 +75,7 @@ _Avoid_: no-modifier-gain (the retired yes/no), cups made (that's the default va
 **Tea-Maker Precedence Ladder**:
 The fixed order in which a round's Tea Maker is picked when several cards compete (ADR 0005, #425). The first rung that names someone wins:
 1. **Declared number** — Inscribed Saucer's number matched by a roll.
-2. **Tea-maker override** — the last cast wins. Its mode is one of `highest_modifier`, `highest_roll`, `chosen`, `prev_round_highest` or `conditional_chosen`; an override whose condition fails never enters.
+2. **Tea-maker override** — the last cast wins. Its mode is one of `highest_modifier`, `highest_roll`, `chosen`, `prev_round_highest` or `conditional_chosen`; an override whose condition fails (or an inert Last Drip, with no previous winner taking part) never enters.
 3. **Loose Leaf roll-off** — applied once a Tea Maker is named, whichever rung named them.
 4. **Default** — the lowest roller.
 
