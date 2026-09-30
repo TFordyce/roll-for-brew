@@ -12,7 +12,6 @@
 // golden diff points straight at the phase that moved. Add more freely; the
 // coverage test only fails on a *missing* phase or branch.
 
-import { forceHold } from "../../integration/setup";
 import type { Scenario } from "./framework";
 
 // tier-derived contested_negate DC: common 2 / rare 5 / epic 10 (migration
@@ -844,7 +843,7 @@ export const CORPUS: Scenario[] = [
       const roundId = await ctx.openAndCloseRound(thief, [victim]);
       await ctx.seedRoll(roundId, thief.googleSub, 5);
       await ctx.seedRoll(roundId, victim.googleSub, 12);
-      const loot = await forceHold(ctx.admin, victim.googleSub, "Lucky Sip");
+      const loot = await ctx.forceHold(victim.googleSub, "Lucky Sip");
       await ctx.seedCast(roundId, thief.googleSub, "Tea Heist", {
         effectKind: "card_heist",
         effectParams: {},
@@ -867,7 +866,7 @@ export const CORPUS: Scenario[] = [
       await ctx.seedRoll(roundId, thief.googleSub, 5);
       await ctx.seedRoll(roundId, victim.googleSub, 12);
       await ctx.seedRoll(roundId, counter.googleSub, 14);
-      const loot = await forceHold(ctx.admin, victim.googleSub, "Lucky Sip");
+      const loot = await ctx.forceHold(victim.googleSub, "Lucky Sip");
       const { castId: heist } = await ctx.seedCast(roundId, thief.googleSub, "Tea Heist", {
         effectKind: "card_heist",
         effectParams: {},

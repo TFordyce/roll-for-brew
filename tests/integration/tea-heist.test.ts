@@ -353,6 +353,22 @@ describe.skipIf(!hasAnonTestEnv)("Tea Heist (issue #438)", () => {
     expect(await instance(loot)).toEqual({ location: "pending_swap", held_by_player: thief.googleSub });
   });
 
+  it("fizzles when the thief's hand has no free slot (held + keep-or-swap)", async () => {
+    const { thief, roundId, loot, victim } = await castHeist("heist-hand-full");
+    const parked = await forceHold(admin, thief.googleSub, "Tannin Tantrum");
+    await admin.from("spell_deck_instances").update({ location: "pending_swap" }).eq("id", parked);
+    await forceHold(admin, thief.googleSub, "Time for Brew");
+
+    await closeRound(thief, roundId);
+    await rollAll(roundId, [thief, victim]);
+    await closedWindow(roundId);
+    await finalize(thief.client, roundId);
+
+    expect(await instance(loot)).toEqual({ location: "held", held_by_player: victim.googleSub });
+    const [step] = await heistSteps(roundId);
+    expect(step).toMatchObject({ after: { value: "fizzled" }, heist_reason: "thief_hand_full" });
+  });
+
   // ==========================================================================
   // Replay
   // ==========================================================================
@@ -375,6 +391,28 @@ describe.skipIf(!hasAnonTestEnv)("Tea Heist (issue #438)", () => {
 
     expect(await instance(loot)).toEqual({ location: "held", held_by_player: victim.googleSub });
     expect(await instance(heistInstance)).toEqual({ location: "in_deck", held_by_player: null });
+  });
+
+  it("a replay sends the card back to the deck when the victim's hand has refilled both slots", async () => {
+    const replayer = await signUp("heist-refill-brew");
+    const { thief, victim, roundId, loot } = await castHeist("heist-refill", "Lucky Sip", [replayer]);
+    await closeRound(thief, roundId);
+    await rollAll(roundId, [thief, victim, replayer]);
+    const windowId = await closedWindow(roundId);
+    const brew = await forceHold(admin, replayer.googleSub, "Time for Brew");
+    await seedReaction(roundId, replayer.googleSub, brew, { effectKind: "round_replay", windowId });
+
+    await finalize(thief.client, roundId);
+    expect(await instance(loot)).toEqual({ location: "held", held_by_player: thief.googleSub });
+    // Since the steal the victim has drawn into both slots.
+    const parked = await forceHold(admin, victim.googleSub, "Tannin Tantrum");
+    await admin.from("spell_deck_instances").update({ location: "pending_swap" }).eq("id", parked);
+    await forceHold(admin, victim.googleSub, "Bitter Leech");
+
+    const { error } = await replayer.client.rpc("confirm_round_replay", { p_round_id: roundId });
+    expect(error).toBeNull();
+    // No free slot: the card goes back to the deck rather than breaking the hand cap.
+    expect(await instance(loot)).toEqual({ location: "in_deck", held_by_player: null });
   });
 
   it("a replay leaves the card alone once the thief no longer holds it", async () => {

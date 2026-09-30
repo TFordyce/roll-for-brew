@@ -362,6 +362,8 @@ export type ScenarioContext = {
   openAndCloseRound: (starter: Player, others: Player[]) => Promise<string>;
   setRoomModifier: (roomId: string, playerId: string, modifier: number) => Promise<void>;
   seedActiveEffect: (opts: Parameters<typeof seedActiveEffectRaw>[2]) => ReturnType<typeof seedActiveEffectRaw>;
+  /** Puts a catalog card in a player's hand (`held`); returns its instance id. */
+  forceHold: (playerId: string, cardName: string) => Promise<string>;
   rollTransform: (
     kind: string,
     order: number,
@@ -505,6 +507,10 @@ export function makeContext(
 
     seedActiveEffect(opts) {
       return seedActiveEffectRaw(admin, cleanup, opts);
+    },
+
+    forceHold(playerId, cardName) {
+      return forceHold(admin, playerId, cardName);
     },
 
     rollTransform(kind, order, players, extra = {}) {

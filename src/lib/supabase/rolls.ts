@@ -196,12 +196,14 @@ export type ResolutionTraceStep = {
    */
   diceTick: { die: number | null; rolled: number } | null;
   /**
-   * Issue #438: why a Tea Heist (`card_heist`, after `fizzled`) fizzled —
-   * "victim_played_first" | "already_stolen" | "thief_hand_full". null on
-   * every other step.
+   * Issue #438: why a Tea Heist (`card_heist`, after `fizzled`) fizzled. null
+   * on every other step.
    */
-  heistReason: string | null;
+  heistReason: HeistFizzleReason | null;
 };
+
+/** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
+export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
 
 type RawTraceStep = {
   index: number;
@@ -241,7 +243,7 @@ type RawTraceStep = {
   die?: number | null;
   rolled?: number | null;
   // Issue #438: a fizzled Tea Heist step's reason. Absent on every other step.
-  heist_reason?: string | null;
+  heist_reason?: HeistFizzleReason | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {

@@ -471,7 +471,6 @@ function sentenceFor(step: ResolutionTraceStep, names: { t: string; c: string; k
       const heistOutcome = String(step.after.value ?? "");
       if (heistOutcome === HEIST_MOVED) return `${played} — ${c} steals ${t}'s card`;
       if (heistOutcome === HEIST_COUNTERED) return `${played} on ${t} — countered, the card stays with ${t}`;
-      if (step.heistReason === "already_stolen") return `${played} on ${t} — fizzled: the card was already stolen`;
       if (step.heistReason === "thief_hand_full") return `${played} on ${t} — fizzled: ${c}'s hand is full`;
       return `${played} on ${t} — fizzled: ${t} played the card first`;
     }

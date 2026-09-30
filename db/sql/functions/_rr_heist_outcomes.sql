@@ -13,22 +13,22 @@
 -- Outcomes, checked in this order:
 --   moved      -- already moved by an earlier commit (cast_inputs.heist_moved),
 --                 so a re-evaluation keeps saying what happened;
---   fizzled    -- `already_stolen`: an earlier Heist this round takes the
---                 same card;
 --   fizzled    -- `victim_played_first`: the pinned card is no longer the
 --                 victim's held card (they cast it -- counters included -- or
---                 discarded it). Checked before negation: a victim who
---                 counters the Heist WITH the pinned card fizzles it, per
---                 spec #401 story 62;
+--                 discarded it in a keep-or-swap). Checked before negation: a
+--                 victim who counters the Heist WITH the pinned card fizzles
+--                 it, per spec #401 story 62;
 --   countered  -- the Heist cast was negated (Phase 1 of the resolver has
 --                 already settled `negated` by the time this is read);
 --   fizzled    -- `thief_hand_full`: the thief has both a held card and a
---                 keep-or-swap card (a crit draw since casting), so the
---                 one-card hand cap leaves nowhere to land it;
+--                 keep-or-swap card (crit draws since casting), so the hand
+--                 cap (_rr_free_hand_slot) leaves nowhere to land it;
 --   moved      -- otherwise.
 --
--- Saucerer's Apprentice copies (cast_inputs.is_copy) carry no pinned card
--- and are ignored.
+-- One Heist per card: the deck holds a single Tea Heist instance, Genie
+-- cannot invoke it, and Saucerer's Apprentice copies (cast_inputs.is_copy)
+-- carry no pinned card and are ignored -- so no two rows ever claim the same
+-- card.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -51,7 +51,6 @@ set search_path = public
 as $$
 declare
   v_cast record;
-  v_claimed uuid[] := array[]::uuid[];
   v_location text;
   v_holder text;
 begin
@@ -79,30 +78,16 @@ begin
 
     if coalesce((v_cast.cast_inputs ->> 'heist_moved')::boolean, false) then
       outcome := 'moved';
-    elsif instance_id = any (v_claimed) then
-      outcome := 'fizzled';
-      reason := 'already_stolen';
     elsif v_location is distinct from 'held' or v_holder is distinct from victim_id then
       outcome := 'fizzled';
       reason := 'victim_played_first';
     elsif v_cast.negated then
       outcome := 'countered';
-    elsif exists (
-            select 1 from public.spell_deck_instances sdi
-             where sdi.held_by_player = v_cast.caster_id and sdi.location = 'held'
-          )
-      and exists (
-            select 1 from public.spell_deck_instances sdi
-             where sdi.held_by_player = v_cast.caster_id and sdi.location = 'pending_swap'
-          ) then
+    elsif public._rr_free_hand_slot(v_cast.caster_id) is null then
       outcome := 'fizzled';
       reason := 'thief_hand_full';
     else
       outcome := 'moved';
-    end if;
-
-    if outcome = 'moved' then
-      v_claimed := v_claimed || instance_id;
     end if;
 
     return next;
@@ -113,4 +98,4 @@ $$;
 revoke execute on function public._rr_heist_outcomes(uuid) from public, anon, authenticated;
 
 comment on function public._rr_heist_outcomes(uuid) is
-  'Issue #438 (Tea Heist, ADR 0005 #383 amendment): one row per Tea Heist cast in the round, in cast order -- { cast_id, caster_id, victim_id, instance_id, card_name, outcome: moved | fizzled | countered, reason: already_stolen | victim_played_first | thief_hand_full | null }. Decides only; _rr_resolve_eval traces it and _rr_apply_heists (finalize_layer''s commit) acts on it. Internal.';
+  'Issue #438 (Tea Heist, ADR 0005 #383 amendment): one row per Tea Heist cast in the round, in cast order -- { cast_id, caster_id, victim_id, instance_id, card_name, outcome: moved | fizzled | countered, reason: victim_played_first | thief_hand_full | null }. Decides only; _rr_resolve_eval traces it and _rr_apply_heists (finalize_layer''s commit) acts on it. Internal.';

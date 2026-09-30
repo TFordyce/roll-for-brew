@@ -6,6 +6,7 @@
 --
 -- Functions in this migration:
 --   _rr_apply_heists
+--   _rr_free_hand_slot
 --   _rr_heist_outcomes
 --   _rr_heist_trace
 --   _rr_resolve_eval
@@ -50,13 +51,8 @@ begin
       from public._rr_heist_outcomes(p_round_id) h
      where h.outcome = 'moved'
   loop
-    v_slot := case
-      when exists (
-        select 1 from public.spell_deck_instances
-         where held_by_player = v_heist.caster_id and location = 'held'
-      ) then 'pending_swap'
-      else 'held'
-    end;
+    -- never null for a `moved` row: _rr_heist_outcomes fizzles a full hand
+    v_slot := public._rr_free_hand_slot(v_heist.caster_id);
 
     update public.spell_deck_instances
        set location = v_slot, held_by_player = v_heist.caster_id
@@ -79,6 +75,45 @@ comment on function public._rr_apply_heists(uuid) is
   'Issue #438 (Tea Heist, ADR 0005 #383 amendment): moves each un-negated Heist''s pinned card from victim to thief (held, or pending_swap if the thief''s hand refilled), stamping cast_inputs.heist_moved. Called only by finalize_layer''s commit step. Idempotent: moves only while the victim still holds the card. Internal.';
 -- END db/sql/functions/_rr_apply_heists.sql
 
+-- BEGIN db/sql/functions/_rr_free_hand_slot.sql
+-- _rr_free_hand_slot(p_player_id text) -> text
+--
+-- The hand cap (migration 0018: one `held` and one `pending_swap` instance per
+-- player) as one question: where would a card handed to this player land?
+-- `held` if their hand is empty, `pending_swap` (a keep-or-swap choice) if
+-- they already hold one, null if both slots are taken. Used by Tea Heist
+-- (issue #438) -- the move to the thief (_rr_heist_outcomes /
+-- _rr_apply_heists) and the replay return to the victim (_rr_scrap_round).
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
+create or replace function public._rr_free_hand_slot(p_player_id text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when not exists (
+      select 1 from public.spell_deck_instances
+       where held_by_player = p_player_id and location = 'held'
+    ) then 'held'
+    when not exists (
+      select 1 from public.spell_deck_instances
+       where held_by_player = p_player_id and location = 'pending_swap'
+    ) then 'pending_swap'
+  end;
+$$;
+
+revoke execute on function public._rr_free_hand_slot(text) from public, anon, authenticated;
+
+comment on function public._rr_free_hand_slot(text) is
+  'Issue #438: where a card handed to this player lands under the 0018 hand cap -- held (empty hand), pending_swap (already holding one), or null (both slots taken). Internal.';
+-- END db/sql/functions/_rr_free_hand_slot.sql
+
 -- BEGIN db/sql/functions/_rr_heist_outcomes.sql
 -- _rr_heist_outcomes(p_round_id uuid) -> table
 --
@@ -95,22 +130,22 @@ comment on function public._rr_apply_heists(uuid) is
 -- Outcomes, checked in this order:
 --   moved      -- already moved by an earlier commit (cast_inputs.heist_moved),
 --                 so a re-evaluation keeps saying what happened;
---   fizzled    -- `already_stolen`: an earlier Heist this round takes the
---                 same card;
 --   fizzled    -- `victim_played_first`: the pinned card is no longer the
 --                 victim's held card (they cast it -- counters included -- or
---                 discarded it). Checked before negation: a victim who
---                 counters the Heist WITH the pinned card fizzles it, per
---                 spec #401 story 62;
+--                 discarded it in a keep-or-swap). Checked before negation: a
+--                 victim who counters the Heist WITH the pinned card fizzles
+--                 it, per spec #401 story 62;
 --   countered  -- the Heist cast was negated (Phase 1 of the resolver has
 --                 already settled `negated` by the time this is read);
 --   fizzled    -- `thief_hand_full`: the thief has both a held card and a
---                 keep-or-swap card (a crit draw since casting), so the
---                 one-card hand cap leaves nowhere to land it;
+--                 keep-or-swap card (crit draws since casting), so the hand
+--                 cap (_rr_free_hand_slot) leaves nowhere to land it;
 --   moved      -- otherwise.
 --
--- Saucerer's Apprentice copies (cast_inputs.is_copy) carry no pinned card
--- and are ignored.
+-- One Heist per card: the deck holds a single Tea Heist instance, Genie
+-- cannot invoke it, and Saucerer's Apprentice copies (cast_inputs.is_copy)
+-- carry no pinned card and are ignored -- so no two rows ever claim the same
+-- card.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -133,7 +168,6 @@ set search_path = public
 as $$
 declare
   v_cast record;
-  v_claimed uuid[] := array[]::uuid[];
   v_location text;
   v_holder text;
 begin
@@ -161,30 +195,16 @@ begin
 
     if coalesce((v_cast.cast_inputs ->> 'heist_moved')::boolean, false) then
       outcome := 'moved';
-    elsif instance_id = any (v_claimed) then
-      outcome := 'fizzled';
-      reason := 'already_stolen';
     elsif v_location is distinct from 'held' or v_holder is distinct from victim_id then
       outcome := 'fizzled';
       reason := 'victim_played_first';
     elsif v_cast.negated then
       outcome := 'countered';
-    elsif exists (
-            select 1 from public.spell_deck_instances sdi
-             where sdi.held_by_player = v_cast.caster_id and sdi.location = 'held'
-          )
-      and exists (
-            select 1 from public.spell_deck_instances sdi
-             where sdi.held_by_player = v_cast.caster_id and sdi.location = 'pending_swap'
-          ) then
+    elsif public._rr_free_hand_slot(v_cast.caster_id) is null then
       outcome := 'fizzled';
       reason := 'thief_hand_full';
     else
       outcome := 'moved';
-    end if;
-
-    if outcome = 'moved' then
-      v_claimed := v_claimed || instance_id;
     end if;
 
     return next;
@@ -195,7 +215,7 @@ $$;
 revoke execute on function public._rr_heist_outcomes(uuid) from public, anon, authenticated;
 
 comment on function public._rr_heist_outcomes(uuid) is
-  'Issue #438 (Tea Heist, ADR 0005 #383 amendment): one row per Tea Heist cast in the round, in cast order -- { cast_id, caster_id, victim_id, instance_id, card_name, outcome: moved | fizzled | countered, reason: already_stolen | victim_played_first | thief_hand_full | null }. Decides only; _rr_resolve_eval traces it and _rr_apply_heists (finalize_layer''s commit) acts on it. Internal.';
+  'Issue #438 (Tea Heist, ADR 0005 #383 amendment): one row per Tea Heist cast in the round, in cast order -- { cast_id, caster_id, victim_id, instance_id, card_name, outcome: moved | fizzled | countered, reason: victim_played_first | thief_hand_full | null }. Decides only; _rr_resolve_eval traces it and _rr_apply_heists (finalize_layer''s commit) acts on it. Internal.';
 -- END db/sql/functions/_rr_heist_outcomes.sql
 
 -- BEGIN db/sql/functions/_rr_heist_trace.sql
@@ -2527,8 +2547,8 @@ begin
   -- attempt carried out (finalize_layer stamped cast_inputs.heist_moved) is
   -- reversed -- the card goes back to the victim if the thief still holds it
   -- (held or keep-or-swap). It lands in the victim's held slot, their
-  -- keep-or-swap slot if they have drawn since, or back in the deck if both
-  -- are full. Runs before the delete below removes the cast that records it.
+  -- keep-or-swap slot if they have drawn since (_rr_free_hand_slot), or back
+  -- in the deck if both are full. Runs before the delete below removes the cast that records it.
   -- The Tea Heist card itself stays spent.
   for v_heist in
     select c.caster_id, c.target_player_id as victim_id,
@@ -2538,17 +2558,7 @@ begin
        and c.effect_kind = 'card_heist'
        and coalesce((c.cast_inputs ->> 'heist_moved')::boolean, false)
   loop
-    v_slot := case
-      when not exists (
-        select 1 from public.spell_deck_instances
-         where held_by_player = v_heist.victim_id and location = 'held'
-      ) then 'held'
-      when not exists (
-        select 1 from public.spell_deck_instances
-         where held_by_player = v_heist.victim_id and location = 'pending_swap'
-      ) then 'pending_swap'
-      else 'in_deck'
-    end;
+    v_slot := coalesce(public._rr_free_hand_slot(v_heist.victim_id), 'in_deck');
 
     update public.spell_deck_instances
        set location = v_slot,

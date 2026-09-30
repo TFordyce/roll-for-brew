@@ -34,13 +34,8 @@ begin
       from public._rr_heist_outcomes(p_round_id) h
      where h.outcome = 'moved'
   loop
-    v_slot := case
-      when exists (
-        select 1 from public.spell_deck_instances
-         where held_by_player = v_heist.caster_id and location = 'held'
-      ) then 'pending_swap'
-      else 'held'
-    end;
+    -- never null for a `moved` row: _rr_heist_outcomes fizzles a full hand
+    v_slot := public._rr_free_hand_slot(v_heist.caster_id);
 
     update public.spell_deck_instances
        set location = v_slot, held_by_player = v_heist.caster_id

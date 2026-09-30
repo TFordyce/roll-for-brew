@@ -151,8 +151,8 @@ begin
   -- attempt carried out (finalize_layer stamped cast_inputs.heist_moved) is
   -- reversed -- the card goes back to the victim if the thief still holds it
   -- (held or keep-or-swap). It lands in the victim's held slot, their
-  -- keep-or-swap slot if they have drawn since, or back in the deck if both
-  -- are full. Runs before the delete below removes the cast that records it.
+  -- keep-or-swap slot if they have drawn since (_rr_free_hand_slot), or back
+  -- in the deck if both are full. Runs before the delete below removes the cast that records it.
   -- The Tea Heist card itself stays spent.
   for v_heist in
     select c.caster_id, c.target_player_id as victim_id,
@@ -162,17 +162,7 @@ begin
        and c.effect_kind = 'card_heist'
        and coalesce((c.cast_inputs ->> 'heist_moved')::boolean, false)
   loop
-    v_slot := case
-      when not exists (
-        select 1 from public.spell_deck_instances
-         where held_by_player = v_heist.victim_id and location = 'held'
-      ) then 'held'
-      when not exists (
-        select 1 from public.spell_deck_instances
-         where held_by_player = v_heist.victim_id and location = 'pending_swap'
-      ) then 'pending_swap'
-      else 'in_deck'
-    end;
+    v_slot := coalesce(public._rr_free_hand_slot(v_heist.victim_id), 'in_deck');
 
     update public.spell_deck_instances
        set location = v_slot,

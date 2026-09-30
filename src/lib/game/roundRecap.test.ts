@@ -409,10 +409,7 @@ describe("buildRoundRecap", () => {
       expect(s.statusKind).toBe("no-op");
     });
 
-    it("fizzled: another Heist got the card first, or the thief's hand is full", () => {
-      expect(only(heist("fizzled", { heistReason: "already_stolen" })).sentence).toBe(
-        "Ada played Tea Heist on Ben — fizzled: the card was already stolen",
-      );
+    it("fizzled: the thief's hand is full", () => {
       expect(only(heist("fizzled", { heistReason: "thief_hand_full" })).sentence).toBe(
         "Ada played Tea Heist on Ben — fizzled: Ada's hand is full",
       );
