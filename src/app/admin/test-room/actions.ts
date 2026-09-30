@@ -67,7 +67,7 @@ export async function submitRollAsAction(formData: FormData): Promise<void> {
     revalidateRoundSurfaces();
     return;
   }
-  await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), playerId, forcedCardId);
+  await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), roundId, playerId, forcedCardId);
   await advanceRound(supabase, roundId, "layerRolled");
 
   revalidateRoundSurfaces();
@@ -103,7 +103,7 @@ export async function submitManualRollAsAction(formData: FormData): Promise<void
     revalidateRoundSurfaces();
     return;
   }
-  await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), playerId, forcedCardId);
+  await maybeDrawSpellCardAs(supabase, value, await getRoundRoomId(supabase, roundId), roundId, playerId, forcedCardId);
   await advanceRound(supabase, roundId, "layerRolled");
 
   revalidateRoundSurfaces();

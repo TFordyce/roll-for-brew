@@ -45,17 +45,22 @@ export async function drawSpellCard(
  * resolution, and optionally forces a specific catalog card (cardId) instead
  * of a random in-deck instance. draw_spell_card_as itself re-checks the
  * caller is an admin acting on the Test Room regardless of what's passed.
+ * roundId is the round the crit was rolled in: the RPC runs the shared
+ * crit-redirect hook against it (issue #435), so the card may go to someone
+ * other than playerId.
  */
 export async function drawSpellCardAs(
   supabase: SupabaseClient,
   trigger: "nat1" | "nat20",
   roomId: string,
+  roundId: string,
   playerId: string,
   cardId?: string,
 ): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
   const { data, error } = await supabase.rpc("draw_spell_card_as", {
     p_trigger: trigger,
     p_room_id: roomId,
+    p_round_id: roundId,
     p_player_id: playerId,
     p_card_id: cardId ?? null,
   });
