@@ -29,6 +29,8 @@ declare
   v_affected text[];
   v_roll_warded text[];
   v_pid text;
+  v_heist record;
+  v_slot text;
 begin
   select room_id, status, replay_generation, brewer_id, cups_made,
          brewer_modifier_gain, resolved_at, resolution_trace, resolution_summary
@@ -144,6 +146,32 @@ begin
   -- be restored here too -- nothing writes those marks yet (Group B is
   -- unbuilt / out of scope for #302), so there is nothing to restore. When
   -- Group B lands, add its mark-restore pass at this point.
+  --
+  -- Issue #438 (Tea Heist, ADR 0005 #383 amendment): a Heist the scrapped
+  -- attempt carried out (finalize_layer stamped cast_inputs.heist_moved) is
+  -- reversed -- the card goes back to the victim if the thief still holds it
+  -- (held or keep-or-swap). It lands in the victim's held slot, their
+  -- keep-or-swap slot if they have drawn since (_rr_free_hand_slot), or back
+  -- in the deck if both are full. Runs before the delete below removes the cast that records it.
+  -- The Tea Heist card itself stays spent.
+  for v_heist in
+    select c.caster_id, c.target_player_id as victim_id,
+           (c.cast_inputs ->> 'stolen_instance_id')::uuid as instance_id
+      from public.spell_casts c
+     where c.round_id = p_round_id
+       and c.effect_kind = 'card_heist'
+       and coalesce((c.cast_inputs ->> 'heist_moved')::boolean, false)
+  loop
+    v_slot := coalesce(public._rr_free_hand_slot(v_heist.victim_id), 'in_deck');
+
+    update public.spell_deck_instances
+       set location = v_slot,
+           held_by_player = case when v_slot = 'in_deck' then null else v_heist.victim_id end
+     where id = v_heist.instance_id
+       and held_by_player = v_heist.caster_id
+       and location in ('held', 'pending_swap');
+  end loop;
+
   delete from public.spell_casts
    where round_id = p_round_id and effect_kind <> 'round_replay';
 
@@ -201,7 +229,8 @@ comment on function public._rr_scrap_round(uuid) is
   'generation into rounds.scrapped_generations (issue #408: including its '
   'Resolution Summary as players), deletes its rolls / spell_casts '
   '(cascading promoted active effects) / reaction windows / layer participants / '
-  'Brew Ratings, backs the round out to a freshly-closed generation-1 round, '
+  'Brew Ratings (issue #438: first returning any Tea Heist card the thief '
+  'still holds to its victim), backs the round out to a freshly-closed generation-1 round, '
   'bumps replay_generation, and recomputes room_players.modifier for the brewer '
   'and every round participant. Issue #351: a participant holding an active '
   'roll-domain ward keeps their generation-0 layer-0 roll (no re-roll in '

@@ -205,7 +205,15 @@ export type ResolutionTraceStep = {
     compelledByCastId: string | null;
     reason: string | null;
   } | null;
+  /**
+   * Issue #438: why a Tea Heist (`card_heist`, after `fizzled`) fizzled. null
+   * on every other step.
+   */
+  heistReason: HeistFizzleReason | null;
 };
+
+/** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
+export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
 
 type RawTraceStep = {
   index: number;
@@ -249,6 +257,8 @@ type RawTraceStep = {
   compelled_player_ids?: string[];
   compelled_by?: string | null;
   reason?: string | null;
+  // Issue #438: a fizzled Tea Heist step's reason. Absent on every other step.
+  heist_reason?: HeistFizzleReason | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -295,6 +305,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
             reason: raw.reason ?? null,
           }
         : null,
+    heistReason: raw.heist_reason ?? null,
   };
 }
 

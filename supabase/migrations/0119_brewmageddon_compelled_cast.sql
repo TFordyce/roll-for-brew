@@ -50,7 +50,7 @@ alter table public.spell_card_effects add constraint spell_card_effects_effect_k
     'tea_maker_override', 'declared_number_tea_maker', 'wild_dispatch',
     'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
     'round_replay', 'draw_redirect', 'targeting_skip', 'per_round_dice_tick',
-    'compel_cast'
+    'card_heist', 'compel_cast'
   ));
 
 alter table public.spell_casts drop constraint spell_casts_effect_kind_check;
@@ -64,7 +64,7 @@ alter table public.spell_casts add constraint spell_casts_effect_kind_check
     'tea_maker_override', 'declared_number_tea_maker', 'wild_dispatch',
     'ward', 'persistent_modifier_transfer', 'persistent_modifier_spend',
     'round_replay', 'draw_redirect', 'targeting_skip', 'per_round_dice_tick',
-    'compel_cast', 'forfeit'
+    'card_heist', 'compel_cast', 'forfeit'
   ));
 
 -- ---------------------------------------------------------------------------
@@ -206,6 +206,21 @@ begin
 
   if v_name = 'Stir the Pot' then
     return v_others >= 2;
+  end if;
+
+  if v_name = 'Tea Heist' then
+    -- Only a player holding a card can be robbed (get_heist_targets /
+    -- cast_spell_card's RFB53 check). Other compelled Action holders still
+    -- hold theirs when the set is fixed.
+    return exists (
+      select 1 from public.round_participants rp
+       where rp.round_id = p_round_id and rp.player_id <> p_player_id
+         and rp.excluded_at is null
+         and exists (
+           select 1 from public.spell_deck_instances sdi
+            where sdi.held_by_player = rp.player_id and sdi.location = 'held'
+         )
+    );
   end if;
 
   if v_name = 'Genie in the Teapot' then
@@ -694,7 +709,7 @@ begin
      where o.player_id = v_player_id and o.casting_time = 'R'
   ) then
     raise exception 'pass_reaction_window: Brewmageddon compels you to play your card'
-      using errcode = 'RFB53';
+      using errcode = 'RFB55';
   end if;
 
   insert into public.spell_reaction_passes (window_id, poll_round, player_id)

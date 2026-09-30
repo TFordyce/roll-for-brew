@@ -116,7 +116,7 @@ export type CompelledCast = {
 };
 
 /**
- * Calls the get_my_compelled_cast RPC (0117, issue #440): what, if anything,
+ * Calls the get_my_compelled_cast RPC (0119, issue #440): what, if anything,
  * Brewmageddon still obliges the caller to play this round. null once they
  * have cast it, forfeited it, or been released (Brewmageddon countered).
  */
@@ -158,6 +158,17 @@ export async function getRoomActiveEffects(
     polarity: row.polarity,
     roundsRemaining: row.rounds_remaining,
   }));
+}
+
+/**
+ * Calls the get_heist_targets RPC (issue #438): the round's other
+ * participants holding a card — Tea Heist's picker roster. Empty unless the
+ * caller is holding Tea Heist, so it reveals card-holders to no one else.
+ */
+export async function getHeistTargetIds(supabase: SupabaseClient, roundId: string): Promise<string[]> {
+  const { data, error } = await supabase.rpc("get_heist_targets", { p_round_id: roundId });
+  if (error) throw error;
+  return (data ?? []) as string[];
 }
 
 /**

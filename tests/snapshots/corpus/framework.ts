@@ -90,6 +90,7 @@ export const PHASE_TAGS = [
   "4b-pre", // Bitter Leech per-round tick synthesis
   "4c", // lowest_gains_highest_modifier (Broken Biscuit)
   "5", // brewer selection — declared > override > default
+  "6", // Tea Heist outcomes — moved / fizzled / countered (issue #438; traced only, moved at finalize)
 ] as const;
 
 export type PhaseTag = (typeof PHASE_TAGS)[number];
@@ -121,6 +122,7 @@ const KIND_PHASE: Partial<Record<string, PhaseTag>> = {
   targeting_skip: "5",
   declared_number_tea_maker: "5",
   tea_maker_override: "5",
+  card_heist: "6",
 };
 
 /**
@@ -360,6 +362,8 @@ export type ScenarioContext = {
   openAndCloseRound: (starter: Player, others: Player[]) => Promise<string>;
   setRoomModifier: (roomId: string, playerId: string, modifier: number) => Promise<void>;
   seedActiveEffect: (opts: Parameters<typeof seedActiveEffectRaw>[2]) => ReturnType<typeof seedActiveEffectRaw>;
+  /** Puts a catalog card in a player's hand (`held`); returns its instance id. */
+  forceHold: (playerId: string, cardName: string) => Promise<string>;
   rollTransform: (
     kind: string,
     order: number,
@@ -503,6 +507,10 @@ export function makeContext(
 
     seedActiveEffect(opts) {
       return seedActiveEffectRaw(admin, cleanup, opts);
+    },
+
+    forceHold(playerId, cardName) {
+      return forceHold(admin, playerId, cardName);
     },
 
     rollTransform(kind, order, players, extra = {}) {

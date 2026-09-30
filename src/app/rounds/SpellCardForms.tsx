@@ -10,7 +10,7 @@ import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { DispellableEffect, PendingCast } from "@/lib/supabase/spellCasts";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
-import { castTargetMode, compelledCastTargetMode } from "@/lib/game/castTargeting";
+import { atCastTargetOptions, castTargetMode, compelledCastTargetMode } from "@/lib/game/castTargeting";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 
 const initialState: SpellCastActionState = { status: "idle" };
@@ -89,12 +89,15 @@ export function CastForm({
   roundId,
   held,
   participants,
+  heistTargetIds,
   selfPlayerId,
   compelled = false,
 }: {
   roundId: string;
   held: HeldSpellCard;
   participants: RoundParticipant[];
+  /** Issue #438: other participants holding a card — Tea Heist's picker roster. */
+  heistTargetIds: string[];
   selfPlayerId: string;
   compelled?: boolean;
 }) {
@@ -105,7 +108,12 @@ export function CastForm({
     ? compelledCastTargetMode(held)
     : { mode: castTargetMode(held), includeSelf: false };
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
-  const singleTargetOptions = includeSelf ? participants : otherParticipants;
+  const atCastOptions = atCastTargetOptions(
+    held.cardName,
+    includeSelf ? participants : otherParticipants,
+    heistTargetIds,
+  );
+  const noAtCastTarget = mode === "at-cast-target" && atCastOptions.length === 0;
 
   // The checkbox picker is shared by the blanket CHOSEN_PLAYERS flow and Stir
   // the Pot's exactly-two-others flow; only the count rule and copy differ.
@@ -113,7 +121,7 @@ export function CastForm({
   const isChosenPlayers = mode === "chosen-players";
   const belowMinimum = isChosenPlayers && chosenCount < MIN_CHOSEN_PLAYERS;
   const needsExactlyTwo = isTwoOthers && chosenCount !== 2;
-  const disableSubmit = belowMinimum || needsExactlyTwo;
+  const disableSubmit = belowMinimum || needsExactlyTwo || noAtCastTarget;
 
   return (
     <form action={formAction} className="mt-3">
@@ -134,13 +142,17 @@ export function CastForm({
             <option value="" disabled>
               Select a player…
             </option>
-            {singleTargetOptions.map((p) => (
+            {atCastOptions.map((p) => (
               <option key={p.playerId} value={p.playerId}>
                 {p.displayName ?? p.email}
               </option>
             ))}
           </select>
-          {compelled ? null : (
+          {noAtCastTarget ? (
+            <span className="mt-1 block font-body text-xs text-parchment-dim">
+              Nobody who has declared in is holding a card to steal yet.
+            </span>
+          ) : compelled ? null : (
             <span className="mt-1 block font-body text-xs text-parchment-dim">
               You name the target now, so you can only cast this once that player has declared in.
             </span>

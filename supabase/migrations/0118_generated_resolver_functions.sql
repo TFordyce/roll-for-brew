@@ -5,85 +5,269 @@
 -- db/sql/functions/<name>.sql and re-run the build. See db/sql/README.md.
 --
 -- Functions in this migration:
---   _layer_is_complete
+--   _rr_apply_heists
+--   _rr_free_hand_slot
+--   _rr_heist_outcomes
+--   _rr_heist_trace
 --   _rr_resolve_eval
---   advance_layer
---   cast_reaction_spell_card
+--   _rr_scrap_round
 --   cast_spell_card
---   close_round
---   get_round_recap
+--   finalize_layer
 
--- BEGIN db/sql/functions/_layer_is_complete.sql
--- _layer_is_complete(p_round_id uuid, p_layer integer) -> boolean
+-- BEGIN db/sql/functions/_rr_apply_heists.sql
+-- _rr_apply_heists(p_round_id uuid) -> void
 --
--- The Layer-completeness rules (ADR 0008, issue #414) with no caller-identity
--- gate: whether a round can advance does not depend on who asks. A Layer is
--- complete once every expected roller has rolled and, at Layer 0, neither hold
--- is in place:
---   * a Pending Spell Die (a dice_modifier cast with no rolled value yet,
---     issue #252);
---   * a Deferred Forced-Reroll Target (a pre-roll forced_reroll cast still
---     awaiting its target, issue #325);
---   * the Compelled Cast step (issue #440): a compelled Action cast still
---     owed to Brewmageddon. Nobody can roll then anyway (is_expected_layer_
---     roller), so this only makes the rule explicit here too.
--- The single Layer-completeness read: the identity-gated and stall-resolution
--- variants it replaced were dropped in issue #417.
+-- Tea Heist's move (issue #438, ADR 0005 #383 amendment). Called only by
+-- finalize_layer's commit step, in the same transaction as the resolution
+-- write -- never by the resolver, whose body also runs as the Provisional
+-- Recap's rolled-back dry run (ADR 0007).
 --
--- Internal: called by advance_layer and finalize_layer, which run with
--- definer rights. Players can't call it; the service role can (tests).
+-- For every `moved` row of _rr_heist_outcomes, moves the pinned card from the
+-- victim to the thief: into the thief's held slot, or -- if a crit draw has
+-- refilled it since casting -- their keep-or-swap slot, so the one-card hand
+-- cap holds. The Heist is not a draw, so no spell_draws row is written. The
+-- cast is stamped cast_inputs.heist_moved, which _rr_scrap_round reads to
+-- hand the card back on a Round Replay.
+--
+-- Safe to repeat: the update only fires while the victim still holds the
+-- card, so a re-run finds it with the thief and does nothing.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
 -- generated migration. See db/sql/README.md.
 
-create or replace function public._layer_is_complete(p_round_id uuid, p_layer integer)
-returns boolean
+create or replace function public._rr_apply_heists(p_round_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_heist record;
+  v_slot text;
+begin
+  for v_heist in
+    select h.cast_id, h.caster_id, h.victim_id, h.instance_id
+      from public._rr_heist_outcomes(p_round_id) h
+     where h.outcome = 'moved'
+  loop
+    -- never null for a `moved` row: _rr_heist_outcomes fizzles a full hand
+    v_slot := public._rr_free_hand_slot(v_heist.caster_id);
+
+    update public.spell_deck_instances
+       set location = v_slot, held_by_player = v_heist.caster_id
+     where id = v_heist.instance_id
+       and location = 'held'
+       and held_by_player = v_heist.victim_id;
+
+    if found then
+      update public.spell_casts
+         set cast_inputs = cast_inputs || jsonb_build_object('heist_moved', true)
+       where id = v_heist.cast_id;
+    end if;
+  end loop;
+end;
+$$;
+
+revoke execute on function public._rr_apply_heists(uuid) from public, anon, authenticated;
+
+comment on function public._rr_apply_heists(uuid) is
+  'Issue #438 (Tea Heist, ADR 0005 #383 amendment): moves each un-negated Heist''s pinned card from victim to thief (held, or pending_swap if the thief''s hand refilled), stamping cast_inputs.heist_moved. Called only by finalize_layer''s commit step. Idempotent: moves only while the victim still holds the card. Internal.';
+-- END db/sql/functions/_rr_apply_heists.sql
+
+-- BEGIN db/sql/functions/_rr_free_hand_slot.sql
+-- _rr_free_hand_slot(p_player_id text) -> text
+--
+-- The hand cap (migration 0018: one `held` and one `pending_swap` instance per
+-- player) as one question: where would a card handed to this player land?
+-- `held` if their hand is empty, `pending_swap` (a keep-or-swap choice) if
+-- they already hold one, null if both slots are taken. Used by Tea Heist
+-- (issue #438) -- the move to the thief (_rr_heist_outcomes /
+-- _rr_apply_heists) and the replay return to the victim (_rr_scrap_round).
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
+create or replace function public._rr_free_hand_slot(p_player_id text)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when not exists (
+      select 1 from public.spell_deck_instances
+       where held_by_player = p_player_id and location = 'held'
+    ) then 'held'
+    when not exists (
+      select 1 from public.spell_deck_instances
+       where held_by_player = p_player_id and location = 'pending_swap'
+    ) then 'pending_swap'
+  end;
+$$;
+
+revoke execute on function public._rr_free_hand_slot(text) from public, anon, authenticated;
+
+comment on function public._rr_free_hand_slot(text) is
+  'Issue #438: where a card handed to this player lands under the 0018 hand cap -- held (empty hand), pending_swap (already holding one), or null (both slots taken). Internal.';
+-- END db/sql/functions/_rr_free_hand_slot.sql
+
+-- BEGIN db/sql/functions/_rr_heist_outcomes.sql
+-- _rr_heist_outcomes(p_round_id uuid) -> table
+--
+-- Tea Heist (issue #438, spec #401, ADR 0005 #383 amendment): what each of
+-- the round's Heists does, decided from the Cast Log and the pinned card's
+-- current place. One row per Tea Heist cast, in cast order. Read by both
+-- sides of the split the ADR amendment records:
+--   * _rr_resolve_eval traces the outcome (a `card_heist` step) -- it runs
+--     for real inside finalize_layer and as a rolled-back dry run for every
+--     viewer's Provisional Recap, so it must only decide, never move;
+--   * _rr_apply_heists, called by finalize_layer's commit step, moves the
+--     card for each `moved` row.
+--
+-- Outcomes, checked in this order:
+--   moved      -- already moved by an earlier commit (cast_inputs.heist_moved),
+--                 so a re-evaluation keeps saying what happened;
+--   fizzled    -- `victim_played_first`: the pinned card is no longer the
+--                 victim's held card (they cast it -- counters included -- or
+--                 discarded it in a keep-or-swap). Checked before negation: a
+--                 victim who counters the Heist WITH the pinned card fizzles
+--                 it, per spec #401 story 62;
+--   countered  -- the Heist cast was negated (Phase 1 of the resolver has
+--                 already settled `negated` by the time this is read);
+--   fizzled    -- `thief_hand_full`: the thief has both a held card and a
+--                 keep-or-swap card (crit draws since casting), so the hand
+--                 cap (_rr_free_hand_slot) leaves nowhere to land it;
+--   moved      -- otherwise.
+--
+-- One Heist per card: the deck holds a single Tea Heist instance, Genie
+-- cannot invoke it, and Saucerer's Apprentice copies (cast_inputs.is_copy)
+-- carry no pinned card and are ignored -- so no two rows ever claim the same
+-- card.
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
+create or replace function public._rr_heist_outcomes(p_round_id uuid)
+returns table (
+  cast_id uuid,
+  caster_id text,
+  victim_id text,
+  instance_id uuid,
+  card_name text,
+  outcome text,
+  reason text
+)
 language plpgsql
 stable
 security definer
 set search_path = public
 as $$
+declare
+  v_cast record;
+  v_location text;
+  v_holder text;
 begin
-  if (select count(*) from public.rolls where round_id = p_round_id and layer = p_layer)
-     < public.count_expected_layer_rollers(p_round_id, p_layer) then
-    return false;
-  end if;
+  for v_cast in
+    select c.id, c.caster_id, c.target_player_id, c.negated, c.cast_inputs, sc.name as card_name
+      from public.spell_casts c
+      join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
+      join public.spell_cards sc on sc.id = sdi.card_id
+     where c.round_id = p_round_id
+       and c.effect_kind = 'card_heist'
+       and c.cast_inputs ? 'stolen_instance_id'
+       and not (c.cast_inputs ? 'is_copy')
+     order by c.seq
+  loop
+    cast_id := v_cast.id;
+    caster_id := v_cast.caster_id;
+    victim_id := v_cast.target_player_id;
+    instance_id := (v_cast.cast_inputs ->> 'stolen_instance_id')::uuid;
+    card_name := v_cast.card_name;
+    reason := null;
 
-  if p_layer = 0 and exists (
-    select 1 from public.spell_casts
-     where round_id = p_round_id and effect_kind = 'dice_modifier'
-       and not coalesce(cast_inputs ? 'dice_roll', false)
-  ) then
-    return false;
-  end if;
+    select sdi.location, sdi.held_by_player into v_location, v_holder
+      from public.spell_deck_instances sdi
+     where sdi.id = instance_id;
 
-  if p_layer = 0 and exists (
-    select 1 from public.spell_casts
-     where round_id = p_round_id
-       and effect_kind = 'forced_reroll'
-       and target_pending = true
-       and negated = false
-       and reaction_window_id is null
-  ) then
-    return false;
-  end if;
+    if coalesce((v_cast.cast_inputs ->> 'heist_moved')::boolean, false) then
+      outcome := 'moved';
+    elsif v_location is distinct from 'held' or v_holder is distinct from victim_id then
+      outcome := 'fizzled';
+      reason := 'victim_played_first';
+    elsif v_cast.negated then
+      outcome := 'countered';
+    elsif public._rr_free_hand_slot(v_cast.caster_id) is null then
+      outcome := 'fizzled';
+      reason := 'thief_hand_full';
+    else
+      outcome := 'moved';
+    end if;
 
-  if p_layer = 0 and public._compelled_cast_step_open(p_round_id) then
-    return false;
-  end if;
-
-  return true;
+    return next;
+  end loop;
 end;
 $$;
 
-revoke execute on function public._layer_is_complete(uuid, integer) from public, anon, authenticated;
--- The integration suites read completeness directly with the service role.
-grant execute on function public._layer_is_complete(uuid, integer) to service_role;
+revoke execute on function public._rr_heist_outcomes(uuid) from public, anon, authenticated;
 
-comment on function public._layer_is_complete(uuid, integer) is
-  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding, no Deferred Forced-Reroll Target hold is in place, and no compelled Action cast is still owed (issue #440). Internal to round advancement.';
--- END db/sql/functions/_layer_is_complete.sql
+comment on function public._rr_heist_outcomes(uuid) is
+  'Issue #438 (Tea Heist, ADR 0005 #383 amendment): one row per Tea Heist cast in the round, in cast order -- { cast_id, caster_id, victim_id, instance_id, card_name, outcome: moved | fizzled | countered, reason: victim_played_first | thief_hand_full | null }. Decides only; _rr_resolve_eval traces it and _rr_apply_heists (finalize_layer''s commit) acts on it. Internal.';
+-- END db/sql/functions/_rr_heist_outcomes.sql
+
+-- BEGIN db/sql/functions/_rr_heist_trace.sql
+-- _rr_heist_trace(p_round_id uuid, p_start_index integer) -> jsonb
+--
+-- Tea Heist's Resolution Trace steps (issue #438): one `card_heist` step per
+-- Heist, from _rr_heist_outcomes, numbered from p_start_index. The resolver's
+-- final phase -- _rr_resolve_eval appends these at both layer-0 exits (tie
+-- and brewer), after brewer selection. Status-only: before `held`, after
+-- `moved` | `fizzled` | `countered`; `outcome` is `applied` only for a move,
+-- and a fizzle carries `heist_reason`. The step never names the stolen card:
+-- a held card is private to its holder.
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
+create or replace function public._rr_heist_trace(p_round_id uuid, p_start_index integer)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select coalesce(jsonb_agg(
+           public._rr_trace_step(
+             p_start_index + (h.ord - 1)::integer,
+             'card_heist',
+             jsonb_build_object(
+               'cast_id', to_jsonb(h.cast_id),
+               'active_effect_id', null,
+               'card_name', to_jsonb(h.card_name),
+               'caster_player_id', to_jsonb(h.caster_id)
+             ),
+             h.victim_id,
+             jsonb_build_object('type', 'status', 'value', 'held'),
+             jsonb_build_object('type', 'status', 'value', h.outcome),
+             jsonb_strip_nulls(jsonb_build_object(
+               'outcome', case when h.outcome = 'moved' then 'applied' else 'no-op' end,
+               'heist_reason', h.reason
+             ))
+           ) order by h.ord
+         ), '[]'::jsonb)
+    from public._rr_heist_outcomes(p_round_id) with ordinality as h(
+           cast_id, caster_id, victim_id, instance_id, card_name, outcome, reason, ord);
+$$;
+
+revoke execute on function public._rr_heist_trace(uuid, integer) from public, anon, authenticated;
+
+comment on function public._rr_heist_trace(uuid, integer) is
+  'Issue #438 (Tea Heist): the resolver''s final-phase card_heist Trace steps, one per Heist (status held -> moved | fizzled | countered, heist_reason on a fizzle), numbered from p_start_index. Decides nothing itself -- reads _rr_heist_outcomes. Internal.';
+-- END db/sql/functions/_rr_heist_trace.sql
 
 -- BEGIN db/sql/functions/_rr_resolve_eval.sql
 -- _rr_resolve_eval(p_round_id uuid, p_dry_run boolean) -> jsonb
@@ -223,9 +407,6 @@ declare
 
   -- Pre-pass (issue #344) working state
   v_wb record;
-
-  -- Pre-pass (issue #440: Brewmageddon) working state
-  v_cc record;
 
   -- Phase 0 (issue #316: Effect Invocation) working state
   v_has_invocations boolean := false;
@@ -648,71 +829,6 @@ begin
         'outcome', 'blocked'
       )
     ));
-    v_step_index := v_step_index + 1;
-  end loop;
-
-  -- ------------------------------------------------------------------
-  -- Pre-pass (issue #440): Brewmageddon -- Compelled Cast and Forfeit.
-  --
-  -- Neither a `compel_cast` row nor a `forfeit` row changes a roll or a
-  -- modifier: the compulsion happened at close_round / in the Compelled Cast
-  -- step, and the compelled casts themselves are ordinary casts every later
-  -- phase resolves as usual. This only explains them. One `compel_cast` step
-  -- per live Brewmageddon naming its compelled set (a no-op when nobody held
-  -- a card; a countered one already has Phase 1's negated step), then one
-  -- `forfeit` step per Forfeit, in cast order, pointing back at it.
-  -- ------------------------------------------------------------------
-  for v_cc in
-    select c.id as cast_id, c.caster_id, c.effect_kind, c.cast_inputs,
-           scn.name as card_name
-      from public.spell_casts c
-      join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
-      join public.spell_cards scn on scn.id = sdi.card_id
-     where c.round_id = p_round_id
-       and ((c.effect_kind = 'compel_cast' and not c.negated) or c.effect_kind = 'forfeit')
-     order by c.seq
-  loop
-    if v_cc.effect_kind = 'compel_cast' then
-      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-        v_step_index,
-        'compel_cast',
-        jsonb_build_object(
-          'cast_id', to_jsonb(v_cc.cast_id),
-          'active_effect_id', null,
-          'card_name', to_jsonb(v_cc.card_name),
-          'caster_player_id', to_jsonb(v_cc.caster_id)
-        ),
-        null,
-        jsonb_build_object('type', 'status', 'value', 'cast'),
-        jsonb_build_object('type', 'status', 'value', 'compelled'),
-        jsonb_build_object(
-          'compelled_player_ids', coalesce((
-            select jsonb_agg(h -> 'player_id' order by h ->> 'player_id')
-              from jsonb_array_elements(coalesce(v_cc.cast_inputs -> 'compelled', '[]'::jsonb)) h
-          ), '[]'::jsonb),
-          'outcome', case
-            when jsonb_array_length(coalesce(v_cc.cast_inputs -> 'compelled', '[]'::jsonb)) > 0
-              then 'applied' else 'no-op' end)
-      ));
-    else
-      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-        v_step_index,
-        'forfeit',
-        jsonb_build_object(
-          'cast_id', to_jsonb(v_cc.cast_id),
-          'active_effect_id', null,
-          'card_name', to_jsonb(v_cc.card_name),
-          'caster_player_id', to_jsonb(v_cc.caster_id)
-        ),
-        v_cc.caster_id,
-        jsonb_build_object('type', 'status', 'value', 'held'),
-        jsonb_build_object('type', 'status', 'value', 'forfeited'),
-        jsonb_build_object(
-          'compelled_by', v_cc.cast_inputs -> 'compelled_by',
-          'reason', v_cc.cast_inputs -> 'reason',
-          'outcome', 'no-op')
-      ));
-    end if;
     v_step_index := v_step_index + 1;
   end loop;
 
@@ -2193,6 +2309,9 @@ begin
     v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
 
     if array_length(v_tied, 1) > 1 then
+      -- Phase 6 (issue #438): Tea Heist outcomes -- see the brewer exit below.
+      v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
+
       return jsonb_build_object(
         'outcome', 'tie', 'layer', 0,
         'brewer_id', null, 'brewer_source', null,
@@ -2248,6 +2367,16 @@ begin
     end if;
   end if;
 
+  -- ------------------------------------------------------------------
+  -- Phase 6 (issue #438): Tea Heist outcomes. The resolver only DECIDES and
+  -- traces here (moved / fizzled / countered) -- this body also runs as the
+  -- Provisional Recap's rolled-back dry run, so the card itself is moved by
+  -- finalize_layer's commit step (_rr_apply_heists), per the ADR 0005 #383
+  -- amendment. Emitted at the tie exit above too, since a tie's layer-0 Trace
+  -- is the one the round keeps.
+  -- ------------------------------------------------------------------
+  v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
+
   return jsonb_build_object(
     'outcome', 'brewer', 'layer', 0,
     'brewer_id', v_brewer_id, 'brewer_source', v_brewer_source,
@@ -2264,530 +2393,253 @@ comment on function public._rr_resolve_eval(uuid, boolean) is
   'Issue #404 (ADR 0007): the body of the authoritative layer-0 resolver, split out of resolve_round. Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, no_modifier_gain, trace, players } without persisting the Trace or the Resolution Summary. Maintains its own Cast-Log / modifier caches, so callers either keep them (resolve_round) or roll them back (_rr_resolve). p_dry_run skips the Calami-Tea tick RNG. Internal.';
 -- END db/sql/functions/_rr_resolve_eval.sql
 
--- BEGIN db/sql/functions/advance_layer.sql
--- advance_layer(p_round_id uuid) -> jsonb
+-- BEGIN db/sql/functions/_rr_scrap_round.sql
+-- _rr_scrap_round(uuid) -> void
 --
--- Layer completion (ADR 0008, issue #415): what happens once the current
--- Layer's rolls are all in. Takes the round row lock first -- the same lock
--- finalize_layer and resolve_round take, so the nested calls below reuse it --
--- then does nothing unless the round is `closed` and its current Layer is
--- complete (_layer_is_complete: every expected roller has rolled, and at
--- Layer 0 no Pending Spell Die or Deferred Forced-Reroll Target hold). Then:
---   * Layer 0 with no reaction window yet: opens it (open_reaction_window,
---     which attaches the pre-roll forced_reroll and chosen-pair casts),
---     first forfeiting any compelled Reaction card with no legal target
---     (issue #440: a Reaction card's target is checked when the window
---     opens). If
---     nobody is eligible to react the window closes on the spot and Layer
---     finalization (finalize_layer) runs in this same call.
---   * Layer 0 with a window: an open window is a noop -- the window finishes
---     normally, so a Pending Spell Die resolved mid-window only unblocks
---     finalization -- and a closed one performs Layer finalization.
---   * A Tie-Break Reroll Layer (> 0): performs Layer finalization. No window
---     is ever opened above Layer 0.
---
--- Never opens a second window, and never raises for who the caller is or for
--- losing a race: a second caller blocks on the lock, then finds the window
--- already there (or the round moved on) and returns noop.
---
--- The call that first finds the Layer complete -- the one that opens Layer
--- 0's window, or that finalizes a Tie-Break Reroll Layer -- also returns the
--- Layer's raw (pre-transform) rolls as `layer_rolls`, for the "layer rolls
--- revealed" broadcast. Called by the round-advancement module
--- (src/app/rounds/advanceRound.ts).
+-- Atomic scrap of a resolved round for replay (issue #315 / #351):
+-- snapshots the generation, backs the round out to a freshly-closed
+-- generation-1 round, recomputes modifier caches. Internal -- called
+-- only by confirm_round_replay. Verbatim from migration 0092.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
 -- generated migration. See db/sql/README.md.
 
-create or replace function public.advance_layer(p_round_id uuid)
-returns jsonb
+create or replace function public._rr_scrap_round(p_round_id uuid)
+returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
+  v_room_id uuid;
   v_status text;
-  v_layer integer;
-  v_window_closed boolean;
-  v_layer_rolls jsonb;
-  v_finalization jsonb;
+  v_gen integer;
+  v_brewer_id text;
+  v_cups_made integer;
+  v_gain integer;
+  v_resolved_at timestamptz;
+  v_trace jsonb;
+  v_summary jsonb;
+  v_snapshot jsonb;
+  v_affected text[];
+  v_roll_warded text[];
+  v_pid text;
+  v_heist record;
+  v_slot text;
 begin
-  select status, current_layer into v_status, v_layer
+  select room_id, status, replay_generation, brewer_id, cups_made,
+         brewer_modifier_gain, resolved_at, resolution_trace, resolution_summary
+    into v_room_id, v_status, v_gen, v_brewer_id, v_cups_made,
+         v_gain, v_resolved_at, v_trace, v_summary
     from public.rounds
    where id = p_round_id
-     for update;
+   for update;
 
-  if v_status is null then
-    return jsonb_build_object('outcome', 'noop', 'reason', 'round_not_found');
+  if v_room_id is null then
+    raise exception '_rr_scrap_round: round not found';
+  end if;
+  if v_status <> 'resolved' then
+    raise exception '_rr_scrap_round: round is not resolved (status %)', v_status;
   end if;
 
-  if v_status <> 'closed' then
-    return jsonb_build_object('outcome', 'noop', 'reason', 'round_not_closed');
-  end if;
+  -- Snapshot generation N's Recap payload before the delete pass removes it.
+  v_snapshot := jsonb_build_object(
+    'generation', v_gen,
+    'brewer_id', v_brewer_id,
+    'cups_made', v_cups_made,
+    'brewer_modifier_gain', v_gain,
+    'resolved_at', v_resolved_at,
+    'resolution_trace', coalesce(v_trace, '[]'::jsonb),
+    -- issue #408: the generation's own layer-0 Resolution Summary (ADR 0007),
+    -- so its disclosure rows show that attempt's totals. null when the
+    -- generation was resolved before summaries existed.
+    'players', v_summary,
+    'rolls', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'player_id', r.player_id, 'layer', r.layer, 'value', r.value,
+               'modifier_snapshot', r.modifier_snapshot,
+               'discarded_value', r.discarded_value,
+               'entered_by_admin', r.entered_by_admin)
+             order by r.layer, r.player_id)
+        from public.rolls r
+       where r.round_id = p_round_id
+    ), '[]'::jsonb),
+    'layer_participants', coalesce((
+      select jsonb_agg(jsonb_build_object(
+               'layer', rlp.layer, 'player_id', rlp.player_id)
+             order by rlp.layer, rlp.player_id)
+        from public.round_layer_participants rlp
+       where rlp.round_id = p_round_id
+    ), '[]'::jsonb)
+  );
 
-  if not public._layer_is_complete(p_round_id, v_layer) then
-    return jsonb_build_object('outcome', 'noop', 'reason', 'layer_incomplete');
-  end if;
+  -- Every player whose modifier cache generation N could have moved. The
+  -- brewer's tea-making gain and both sides of any persistent-modifier
+  -- transfer / spend are the known movers (spec §9), but rather than track
+  -- the exact set, recompute for every round participant plus the brewer
+  -- (cheap -- a handful of players -- and immune to a missed effect kind).
+  -- Captured BEFORE the delete pass removes the participant rows' basis.
+  select coalesce(array_agg(distinct p), array[]::text[])
+    into v_affected
+    from (
+      select v_brewer_id as p where v_brewer_id is not null
+      union
+      select rp.player_id
+        from public.round_participants rp
+       where rp.round_id = p_round_id
+      union
+      select sc.target_player_id
+        from public.spell_casts sc
+       where sc.round_id = p_round_id
+         and sc.effect_kind in ('persistent_modifier_transfer', 'persistent_modifier_spend')
+         and sc.target_player_id is not null
+    ) t
+   where p is not null;
 
-  if v_layer = 0 and exists (
-    select 1 from public.spell_reaction_windows
-     where round_id = p_round_id and layer = 0
-  ) then
-    if exists (
-      select 1 from public.spell_reaction_windows
-       where round_id = p_round_id and layer = 0 and status = 'open'
-    ) then
-      return jsonb_build_object('outcome', 'noop', 'reason', 'window_open');
-    end if;
+  -- issue #351: participants holding an active NEGATIVE-polarity roll-domain
+  -- ward as of this round keep their generation-0 layer-0 roll instead of
+  -- re-rolling in generation 1. Cast-Iron Kettle (polarity {negative}, domain
+  -- {modifier, roll}) is the charter case and the only current card that
+  -- matches; Jinxed Biscuit is roll-domain but positive so it is excluded
+  -- ("Jinxed Biscuit: no interaction" -- decision: Tom, 2026-09-02), and the
+  -- modifier-only wards (Bag for Life, Eternal Steep) are excluded by domain.
+  -- The carry-over is flat once a ward matches -- polarity only gates which
+  -- wards trigger it, not whether a given roll is worth freezing. Computed
+  -- BEFORE the spell_casts delete below, since _rr_active_effects_as_of reads
+  -- the Cast Log for a ward cast in this very round.
+  select coalesce(array_agg(distinct sae.target_player_id), array[]::text[])
+    into v_roll_warded
+    from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+   where sae.room_id = v_room_id
+     and sae.effect_kind = 'ward'
+     and sae.effect_params -> 'domain' ? 'roll'
+     and sae.effect_params -> 'polarity' ? 'negative'
+     and sae.target_player_id in (
+       select rp.player_id from public.round_participants rp
+        where rp.round_id = p_round_id
+     );
 
-    -- A closed window: the rolls were revealed when it opened.
-    return public.finalize_layer(p_round_id);
-  end if;
+  update public.rounds
+     set scrapped_generations = scrapped_generations || jsonb_build_array(v_snapshot)
+   where id = p_round_id;
 
-  -- First to find this Layer complete: capture its raw rolls for the reveal
-  -- before any roll transform rewrites them.
-  v_layer_rolls := jsonb_build_object(
-    'layer', v_layer,
-    'rolls', public._layer_rolls_json(p_round_id, v_layer));
+  -- Mark Time for Brew's own cast(s) scrapped -- the spec's "written at
+  -- confirm time" audit record, and the guard (alongside replay_generation)
+  -- that stops a second pending row ever being created for this round.
+  perform public._rr_mark_replay_cast_scrapped(p_round_id, true);
 
-  if v_layer > 0 then
-    return public.finalize_layer(p_round_id)
-      || jsonb_build_object('layer_rolls', v_layer_rolls);
-  end if;
-
-  perform public._forfeit_untargetable_compelled_reactions(p_round_id);
-
-  select o.is_closed into v_window_closed
-    from public.open_reaction_window(p_round_id, 0) o;
-
-  if v_window_closed then
-    v_finalization := public.finalize_layer(p_round_id);
-  end if;
-
-  return jsonb_build_object(
-    'outcome', 'windowOpened',
-    'layer', 0,
-    'window_closed', v_window_closed,
-    'finalization', v_finalization,
-    'layer_rolls', v_layer_rolls);
-end;
-$$;
-
-revoke execute on function public.advance_layer(uuid) from public, anon;
-grant execute on function public.advance_layer(uuid) to authenticated;
-
-comment on function public.advance_layer(uuid) is
-  'Layer completion (ADR 0008, issue #415). Locks the round, then returns { outcome: "noop", reason } unless the round is closed and its current Layer is complete -- reasons: round_not_found, round_not_closed, layer_incomplete, window_open. At Layer 0 with no reaction window it opens one and returns { outcome: "windowOpened", layer: 0, window_closed, finalization, layer_rolls }, where finalization is finalize_layer''s outcome when nobody was eligible to react (the window closed on the spot) and null otherwise. At Layer 0 with a closed window, or at a Tie-Break Reroll Layer, it returns finalize_layer''s outcome ({ outcome: "brewer", ... } or { outcome: "tie", ... }). layer_rolls -- { layer, rolls: [{ player_id, value, discarded_value, entered_by_admin }] }, the raw pre-transform rolls -- is present only on the call that first finds the Layer complete. Never opens a second window; never raises for caller identity or a lost race.';
--- END db/sql/functions/advance_layer.sql
-
--- BEGIN db/sql/functions/cast_reaction_spell_card.sql
--- cast_reaction_spell_card(uuid, text, uuid, integer) -> uuid
---
--- Arm a spell into an open reaction window: validation, by-name dispatch,
--- contested-negate backfire draw, Cast-Log write, and a reopen-or-close of
--- the chaining poll. Body verbatim from migration
--- 0104_reaction_window_close_on_last_reaction_cast (issue #387: the 0096
--- body with its four inline poll_round bumps folded into
--- _rr_reopen_or_close_reaction_poll). revoke/grant unchanged since 0096.
--- Issue #440: every return runs _rr_finish_compelled_cast, which tags a
--- compelled Reaction holder's cast compelled_by Brewmageddon.
---
--- Canonical source: this file is the source of truth for the function body.
--- Edit here and run `npm run build:migrations` -- do not hand-edit the
--- generated migration. See db/sql/README.md.
-
-create or replace function public.cast_reaction_spell_card(
-  p_round_id uuid, p_target_player_id text default null, p_target_cast_id uuid default null,
-  p_spend_amount integer default null
-)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_player_id text;
-  v_window_id uuid;
-  v_instance_id uuid;
-  v_card_id uuid;
-  v_casting_time text;
-  v_target_stamp text;
-  v_final_target text := p_target_player_id;
-  v_cast_id uuid;
-  v_effect record;
-  v_row_target text;
-  v_row_cast_id uuid;
-  v_cast_inputs jsonb;
-  v_dice_count integer;
-  v_dice_sides integer;
-  v_roll_total integer;
-  v_target_tier text;
-  v_target_target_player text;
-  v_target_group uuid;
-  v_dc integer;
-  v_roll integer;
-  v_participant record;
-  v_room_id uuid;
-  v_card_name text;
-  v_eff_mod integer;
-  v_spend integer;
-  -- issue #316: Effect Invocation (Saucerer's Apprentice / Brew-merang)
-  v_src_caster text;
-  v_src_group uuid;
-  v_src_card_name text;
-  v_src_parent uuid;
-begin
-  v_player_id := public.current_player_id(p_round_id);
-
-  select id into v_window_id
-    from public.spell_reaction_windows
-   where round_id = p_round_id and status = 'open'
-   order by opened_at desc
-   limit 1
-     for update;
-
-  if v_window_id is null then
-    raise exception 'cast_reaction_spell_card: no open reaction window for this round'
-      using errcode = 'RFB04';
-  end if;
-
-  if not exists (
-    select 1 from public.round_participants
-     where round_id = p_round_id and player_id = v_player_id
-  ) then
-    raise exception 'cast_reaction_spell_card: caller is not a participant in this round';
-  end if;
-
-  select sdi.id, sc.id, sc.casting_time, sc.target
-    into v_instance_id, v_card_id, v_casting_time, v_target_stamp
-    from public.spell_deck_instances sdi
-    join public.spell_cards sc on sc.id = sdi.card_id
-   where sdi.held_by_player = v_player_id and sdi.location = 'held';
-
-  if v_instance_id is null then
-    raise exception 'cast_reaction_spell_card: caller is not holding a card';
-  end if;
-
-  if v_casting_time <> 'R' then
-    raise exception 'cast_reaction_spell_card: only Reaction cards can be cast into a reaction window';
-  end if;
-
-  if v_target_stamp = 'CARD' then
-    if p_target_cast_id is null then
-      raise exception 'cast_reaction_spell_card: this card requires a target cast';
-    end if;
-    select casts.target_player_id, casts.card_instance_id, sc2.tier
-      into v_target_target_player, v_target_group, v_target_tier
-      from public.spell_casts casts
-      join public.spell_deck_instances sdi2 on sdi2.id = casts.card_instance_id
-      join public.spell_cards sc2 on sc2.id = sdi2.card_id
-     where casts.id = p_target_cast_id and casts.round_id = p_round_id;
-
-    if v_target_tier is null then
-      raise exception 'cast_reaction_spell_card: target cast not found in this round';
-    end if;
-    v_final_target := null;
-  elsif v_target_stamp = 'SELF' then
-    v_final_target := v_player_id;
-  elsif v_target_stamp in ('OPPONENT', 'PLAYER') then
-    if p_target_player_id is null then
-      raise exception 'cast_reaction_spell_card: this card requires a target player';
-    end if;
-    if v_target_stamp = 'OPPONENT' and p_target_player_id = v_player_id then
-      raise exception 'cast_reaction_spell_card: this card cannot target yourself';
-    end if;
-    if not exists (
-      select 1 from public.round_participants
-       where round_id = p_round_id and player_id = p_target_player_id
-    ) then
-      raise exception 'cast_reaction_spell_card: target is not a participant in this round';
-    end if;
-  elsif v_target_stamp = 'TABLE' then
-    v_final_target := null;
-  else
-    raise exception 'cast_reaction_spell_card: % -targeted cards cannot be cast as a reaction yet', v_target_stamp;
-  end if;
-
-  update public.spell_deck_instances
-     set location = 'in_deck', held_by_player = null
-   where id = v_instance_id;
-
-  select room_id into v_room_id from public.rounds where id = p_round_id;
-  select name into v_card_name from public.spell_cards where id = v_card_id;
-
-  -- issue #318: Brew-tal Swap (Reaction, OPPONENT) -- swap the caster's d20
-  -- with the target's. Zero spell_card_effects rows, so it is a by-name
-  -- branch emitting one roll_pair_transform cast (op = swap) with the pair
-  -- recorded in cast_inputs; apply_roll_pair_transform runs it at
-  -- reaction-window finalize and resolve_round Phase 3 adopts the result.
-  -- target_role convention across the four #318 cards: 'TARGET' when a single
-  -- non-caster is named (Brew-tal Swap / Steaming Mug Bond / Tea for Two),
-  -- 'TABLE' when the caster names two others (Stir the Pot). The pair itself
-  -- is authoritative in cast_inputs.pair; the resolver never reads target_role
-  -- for these rows.
-  if v_card_name = 'Brew-tal Swap' then
-    insert into public.spell_casts (
-      round_id, caster_id, card_instance_id, target_player_id, target_pending,
-      effect_kind, effect_params, cast_inputs, reaction_window_id, target_role
-    )
-    values (
-      p_round_id, v_player_id, v_instance_id, v_final_target, false,
-      'roll_pair_transform', jsonb_build_object('op', 'swap'),
-      jsonb_build_object('pair', jsonb_build_array(v_player_id, v_final_target)),
-      v_window_id, 'TARGET'
-    )
-    returning id into v_cast_id;
-
-    perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
-
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
-  end if;
-
-  -- issue #316: Effect Invocation -- Saucerer's Apprentice (copy) and
-  -- Brew-merang (seize). Both are CARD-targeted Reactions with NO
-  -- spell_card_effects rows, so the generic loop below would burn the card for
-  -- nothing. Instead emit a single effect_kind = NULL invoking row carrying a
-  -- pointer in cast_inputs; resolve_round Phase 0 derives the real effect.
-  if v_card_name in ('Saucerer''s Apprentice', 'Brew-merang') then
-    select src.caster_id, src.card_instance_id, srcn.name, src.parent_cast_id
-      into v_src_caster, v_src_group, v_src_card_name, v_src_parent
-      from public.spell_casts src
-      join public.spell_deck_instances srcsdi on srcsdi.id = src.card_instance_id
-      join public.spell_cards srcn on srcn.id = srcsdi.card_id
-     where src.id = p_target_cast_id and src.round_id = p_round_id
-     limit 1;
-
-    if v_src_caster is null then
-      raise exception 'cast_reaction_spell_card: target cast not found in this round';
-    end if;
-
-    -- No meta-invocation (spec §10): invocation cards cannot invoke each other.
-    if v_src_card_name in ('Saucerer''s Apprentice', 'Brew-merang', 'Genie in the Teapot') then
-      raise exception 'cast_reaction_spell_card: an invocation card cannot invoke another invocation card'
-        using errcode = 'RFB49';
-    end if;
-
-    -- Brew-merang seizes ANOTHER player's cast (card text: "When another
-    -- player plays a card").
-    if v_card_name = 'Brew-merang' and v_src_caster = v_player_id then
-      raise exception 'cast_reaction_spell_card: Brew-merang can only seize another player''s cast'
-        using errcode = 'RFB49';
-    end if;
-
-    if v_card_name = 'Brew-merang' then
-      v_cast_inputs := jsonb_build_object('seized_cast_id', p_target_cast_id);
-    else
-      -- Saucerer's Apprentice: draw every fresh copy RNG now (a copied d20 /
-      -- dice re-rolls, a copied eager roll cast gets a synthesised
-      -- roll_transform onto this caster) so resolve_round stays pure.
-      v_cast_inputs := jsonb_build_object('copied_cast_id', p_target_cast_id)
-        || jsonb_build_object('copy_inputs',
-             public._rr_build_copy_inputs(p_round_id, p_target_cast_id, v_player_id));
-    end if;
-
-    insert into public.spell_casts (
-      round_id, caster_id, card_instance_id, target_player_id, target_pending,
-      effect_kind, effect_params, cast_inputs, parent_cast_id, reaction_window_id, target_role
-    )
-    values (
-      p_round_id, v_player_id, v_instance_id, null, false,
-      null, '{}'::jsonb, v_cast_inputs, p_target_cast_id, v_window_id, 'CARD'
-    )
-    returning id into v_cast_id;
-
-    perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
-
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
-  end if;
-
-  -- issue #342: Tea-tally Spent. Spend a clamped amount of your own effective
-  -- modifier durably (a persistent_modifier_spend {delta:-n} on SELF, picked
-  -- up by resolve_round Phase 4b and _rr_spell_modifier_delta) and add the
-  -- same amount to THIS round's roll only (a round-scoped flat_modifier
-  -- {delta:+n} on SELF, composed by Phase 4a). No spell_card_effects rows.
-  if v_card_name = 'Tea-tally Spent' then
-    if p_spend_amount is null then
-      raise exception 'cast_reaction_spell_card: Tea-tally Spent requires a spend amount'
-        using errcode = 'RFB45';
-    end if;
-
-    select modifier into v_eff_mod from public.room_players
-     where room_id = v_room_id and player_id = v_player_id;
-    v_eff_mod := coalesce(v_eff_mod, 0);
-
-    if v_eff_mod <= 0 then
-      raise exception 'cast_reaction_spell_card: caster has no modifier to spend'
-        using errcode = 'RFB44';
-    end if;
-
-    v_spend := least(greatest(p_spend_amount, 0), v_eff_mod);
-
-    insert into public.spell_casts (
-      round_id, caster_id, card_instance_id, target_player_id, target_pending,
-      effect_kind, effect_params, cast_inputs, reaction_window_id, target_role
-    )
-    values (
-      p_round_id, v_player_id, v_instance_id, v_player_id, false,
-      'persistent_modifier_spend', jsonb_build_object('delta', -v_spend),
-      jsonb_build_object('spend_amount', v_spend), v_window_id, 'CASTER'
-    )
-    returning id into v_cast_id;
-
-    insert into public.spell_casts (
-      round_id, caster_id, card_instance_id, target_player_id, target_pending,
-      effect_kind, effect_params, cast_inputs, reaction_window_id, target_role, source_cast_id
-    )
-    values (
-      p_round_id, v_player_id, v_instance_id, v_player_id, false,
-      'flat_modifier', jsonb_build_object('delta', v_spend),
-      jsonb_build_object('spend_amount', v_spend), v_window_id, 'CASTER', v_cast_id
-    );
-
-    perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
-
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
-  end if;
-
-  for v_effect in
-    select target_role, effect_kind, effect_params
-      from public.spell_card_effects
-     where card_id = v_card_id
-     order by ordinal
+  -- Clean casting slate: no pass-1 casts carry into generation 1; cards spent
+  -- in pass 1 stay spent (cast_spell_card / cast_reaction_spell_card already
+  -- returned / discarded the instance at cast time -- deleting the log row
+  -- does not restore it). Deleting a spell_casts row cascades its promoted
+  -- spell_active_effects rows away (0084: source_cast_id NOT NULL, ON DELETE
+  -- CASCADE), so pass-1-promoted active effects revert and effect-duration
+  -- ticks un-happen: _rr_active_effects_as_of counts resolved rounds since the
+  -- source cast, and un-resolving this round drops it from that count.
+  --
+  -- #298 Group B: a draw_redirect mark consumed inside this generation would
+  -- be restored here too -- nothing writes those marks yet (Group B is
+  -- unbuilt / out of scope for #302), so there is nothing to restore. When
+  -- Group B lands, add its mark-restore pass at this point.
+  --
+  -- Issue #438 (Tea Heist, ADR 0005 #383 amendment): a Heist the scrapped
+  -- attempt carried out (finalize_layer stamped cast_inputs.heist_moved) is
+  -- reversed -- the card goes back to the victim if the thief still holds it
+  -- (held or keep-or-swap). It lands in the victim's held slot, their
+  -- keep-or-swap slot if they have drawn since (_rr_free_hand_slot), or back
+  -- in the deck if both are full. Runs before the delete below removes the cast that records it.
+  -- The Tea Heist card itself stays spent.
+  for v_heist in
+    select c.caster_id, c.target_player_id as victim_id,
+           (c.cast_inputs ->> 'stolen_instance_id')::uuid as instance_id
+      from public.spell_casts c
+     where c.round_id = p_round_id
+       and c.effect_kind = 'card_heist'
+       and coalesce((c.cast_inputs ->> 'heist_moved')::boolean, false)
   loop
-    if v_effect.target_role in ('TABLE', 'ALL_OTHER_PLAYERS')
-      and v_effect.effect_kind in ('flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier', 'forced_reroll') then
-      for v_participant in
-        select rp.player_id
-          from public.round_participants rp
-         where rp.round_id = p_round_id
-           and (v_effect.target_role <> 'ALL_OTHER_PLAYERS' or rp.player_id <> v_player_id)
-      loop
-        -- #312: a table-wide reaction dice_modifier rolls now, into
-        -- cast_inputs.dice_roll (raw, unsigned). resolve_round / the finalize
-        -- shim apply the sign.
-        v_cast_inputs := null;
+    v_slot := coalesce(public._rr_free_hand_slot(v_heist.victim_id), 'in_deck');
 
-        if v_effect.effect_kind = 'dice_modifier' then
-          v_dice_count := (regexp_match(v_effect.effect_params ->> 'dice', '^(\d+)d(\d+)$'))[1]::integer;
-          v_dice_sides := (regexp_match(v_effect.effect_params ->> 'dice', '^(\d+)d(\d+)$'))[2]::integer;
-
-          v_roll_total := 0;
-          for i in 1..v_dice_count loop
-            v_roll_total := v_roll_total + floor(random() * v_dice_sides + 1)::integer;
-          end loop;
-
-          v_cast_inputs := jsonb_build_object('dice_roll', v_roll_total);
-        end if;
-
-        insert into public.spell_casts (
-          round_id, caster_id, card_instance_id, target_player_id, target_pending,
-          effect_kind, effect_params, cast_inputs, parent_cast_id, reaction_window_id, target_role
-        )
-        values (
-          p_round_id, v_player_id, v_instance_id, v_participant.player_id, false,
-          v_effect.effect_kind, v_effect.effect_params, v_cast_inputs, p_target_cast_id, v_window_id, v_effect.target_role
-        )
-        returning id into v_row_cast_id;
-
-        if v_cast_id is null then
-          v_cast_id := v_row_cast_id;
-        end if;
-      end loop;
-
-      continue;
-    elsif v_effect.target_role in ('TABLE', 'ALL_OTHER_PLAYERS') then
-      v_row_target := null;
-    else
-      v_row_target := case when v_effect.target_role = 'CASTER' then v_player_id else v_final_target end;
-    end if;
-
-    insert into public.spell_casts (
-      round_id, caster_id, card_instance_id, target_player_id, target_pending,
-      effect_kind, effect_params, parent_cast_id, reaction_window_id, target_role
-    )
-    values (
-      p_round_id, v_player_id, v_instance_id, v_row_target, false,
-      v_effect.effect_kind, v_effect.effect_params, p_target_cast_id, v_window_id, v_effect.target_role
-    )
-    returning id into v_row_cast_id;
-
-    if v_cast_id is null then
-      v_cast_id := v_row_cast_id;
-    end if;
-
-    if v_effect.effect_kind = 'contested_negate' then
-      -- effect_params.dc (from the card's spell_card_effects row) overrides
-      -- the tier default: Saving Steep {"dc": 10}, Tannin Tantrum omits it.
-      v_dc := coalesce(
-        (v_effect.effect_params ->> 'dc')::integer,
-        public._rr_tier_default_dc(v_target_tier));
-      v_roll := floor(random() * 20 + 1)::integer;
-
-      -- The d20 is a server-RNG draw -> record it into the Cast Log
-      -- (cast_inputs.dc_d20) alongside the DC it was checked against.
-      update public.spell_casts
-         set cast_inputs = coalesce(cast_inputs, '{}'::jsonb)
-                           || jsonb_build_object('dc_d20', v_roll, 'dc', v_dc)
-       where id = v_row_cast_id;
-
-      -- PROVISIONAL cache for live readers only (reaction stack, the
-      -- finalize shim's negated filter, the get_round_modifier_effects
-      -- preview). resolve_round Phase 1 recomputes negation recursively
-      -- (counter-of-counter to any depth) and overwrites this
-      -- authoritatively — for a single-level counter the two always agree.
-      if v_roll >= v_dc then
-        update public.spell_casts set negated = true where id = p_target_cast_id;
-      end if;
-
-      -- Natural 1 on a counter whose card carries the backfire behaviour
-      -- (effect_params.backfire = true -- Saving Steep only; Tannin Tantrum
-      -- omits it and just "resolves as normal" on a fail, spec §8). It does
-      -- NOT negate the victim; instead resolve_round re-applies every effect
-      -- row of the victim group once more onto the reactor. Draw + record
-      -- every extra server-RNG that needs, now, into cast_inputs.backfire --
-      -- whose presence is then the resolver's backfire signal.
-      if v_roll = 1
-         and v_target_group is not null
-         and coalesce((v_effect.effect_params ->> 'backfire')::boolean, false) then
-        perform public._rr_record_backfire(v_row_cast_id, v_target_group);
-      end if;
-    elsif v_effect.effect_kind = 'redirect' then
-      -- #312: redirect records nothing of its own (spec §4: cast_inputs = {}).
-      update public.spell_casts
-         set cast_inputs = coalesce(cast_inputs, '{}'::jsonb)
-       where id = v_row_cast_id;
-
-      -- No in-place target_player_id UPDATE (spec §8). Provisional
-      -- redirected_to_cast_id pointer only; resolve_round Phase 1 derives
-      -- the effective post-redirect target from recorded state.
-      if v_target_group is not null then
-        update public.spell_casts
-           set redirected_to_cast_id = v_row_cast_id
-         where id = p_target_cast_id;
-      end if;
-    end if;
+    update public.spell_deck_instances
+       set location = v_slot,
+           held_by_player = case when v_slot = 'in_deck' then null else v_heist.victim_id end
+     where id = v_heist.instance_id
+       and held_by_player = v_heist.caster_id
+       and location in ('held', 'pending_swap');
   end loop;
 
-  perform public._rr_reopen_or_close_reaction_poll(p_round_id, v_window_id);
+  delete from public.spell_casts
+   where round_id = p_round_id and effect_kind <> 'round_replay';
 
-  return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+  -- The kept round_replay cast still points at generation N's reaction window;
+  -- drop that reference before the window rows go (spell_casts.reaction_window_id
+  -- is NO ACTION, not cascade).
+  update public.spell_casts
+     set reaction_window_id = null
+   where round_id = p_round_id and effect_kind = 'round_replay';
+
+  -- issue #351: a roll-domain ward holder keeps their generation-0 layer-0
+  -- roll (they do not re-roll in generation 1); every other roll -- theirs
+  -- at tie-break layers included -- is cleared so the rest of the table
+  -- rolls fresh. v_roll_warded is empty in the ordinary case, so this is
+  -- an unconditional delete then.
+  delete from public.rolls
+   where round_id = p_round_id
+     and not (layer = 0 and player_id = any (v_roll_warded));
+  delete from public.round_layer_participants where round_id = p_round_id;
+  delete from public.spell_reaction_windows where round_id = p_round_id;
+
+  -- Discard generation-0 Brew Ratings; Orders (a separate table) carry over
+  -- unchanged (spec §11).
+  delete from public.brew_ratings where round_id = p_round_id;
+
+  -- Back the round out to a freshly-closed generation-1 round awaiting layer-0
+  -- rolls. closed_at = now() restarts the existing 5-minute stall clock for
+  -- generation 1. brewer_modifier_gain -> 0 and the cache recompute below back
+  -- out the brewer's tea-making gain (base = sum of cups_made over rounds
+  -- brewed, per _rr_base_modifier).
+  update public.rounds
+     set status = 'closed',
+         current_layer = 0,
+         brewer_id = null,
+         cups_made = null,
+         brewer_modifier_gain = 0,
+         resolved_at = null,
+         resolution_trace = null,
+         resolution_summary = null,
+         replay_generation = replay_generation + 1,
+         replay_frozen_rollers = v_roll_warded,
+         closed_at = now()
+   where id = p_round_id;
+
+  foreach v_pid in array v_affected loop
+    perform public._rr_recompute_modifier_cache(v_room_id, v_pid);
+  end loop;
 end;
 $$;
-revoke execute on function public.cast_reaction_spell_card(uuid, text, uuid, integer) from public, anon;
-grant execute on function public.cast_reaction_spell_card(uuid, text, uuid, integer) to authenticated;
--- END db/sql/functions/cast_reaction_spell_card.sql
+
+revoke execute on function public._rr_scrap_round(uuid) from public, anon, authenticated;
+
+comment on function public._rr_scrap_round(uuid) is
+  'Issue #315: atomic scrap of a resolved round for replay -- snapshots the '
+  'generation into rounds.scrapped_generations (issue #408: including its '
+  'Resolution Summary as players), deletes its rolls / spell_casts '
+  '(cascading promoted active effects) / reaction windows / layer participants / '
+  'Brew Ratings (issue #438: first returning any Tea Heist card the thief '
+  'still holds to its victim), backs the round out to a freshly-closed generation-1 round, '
+  'bumps replay_generation, and recomputes room_players.modifier for the brewer '
+  'and every round participant. Issue #351: a participant holding an active '
+  'roll-domain ward keeps their generation-0 layer-0 roll (no re-roll in '
+  'generation 1); the frozen roster is written to rounds.replay_frozen_rollers. '
+  'Internal -- called only by confirm_round_replay.';
+-- END db/sql/functions/_rr_scrap_round.sql
 
 -- BEGIN db/sql/functions/cast_spell_card.sql
 -- cast_spell_card(uuid, text, text[], integer, text) -> uuid
 --
 -- Arm a spell during the pre-roll (declare-in) window: validation,
 -- by-name dispatch, WILD special-casing, Cast-Log write. Verbatim from
--- migration 0096, plus issue #440's Compelled Cast: a player who owes
--- Brewmageddon a compelled Action cast may cast while the round is `closed`
--- (the Compelled Cast step), must name any target now (no deferred target),
--- and every return runs _rr_finish_compelled_cast, which fans out the cast's
--- TABLE placeholders and tags it compelled_by.
+-- migration 0096.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -2848,8 +2700,8 @@ declare
   v_gen_tier text;
   v_gen_target_stamp text;
   v_gen_in_deck integer;
-  -- issue #440: a compelled cast made in the Compelled Cast step
-  v_compelled boolean := false;
+  -- issue #438: Tea Heist's pinned card
+  v_stolen_id uuid;
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -2859,11 +2711,7 @@ begin
     raise exception 'cast_spell_card: round not found';
   end if;
 
-  if v_status = 'closed' then
-    v_compelled := public._owes_compelled_action_cast(p_round_id, v_player_id);
-  end if;
-
-  if v_status <> 'open' and not v_compelled then
+  if v_status <> 'open' then
     raise exception 'cast_spell_card: round is not open for pre-roll casting'
       using errcode = 'RFB03';
   end if;
@@ -2927,7 +2775,7 @@ begin
     -- keep it in sync if another by-name special-case is added.
     if p_invoked_card_name in (
          'Bes-Tea', 'Tea Leaf', 'Spillage', 'Chai-nge of Heart', 'Bitter Leech',
-         'Wild Brew Surge', 'Kettle Crash')
+         'Tea Heist', 'Wild Brew Surge', 'Kettle Crash')
        or v_gen_target_stamp = 'WILD' then
       raise exception 'cast_spell_card: % cannot be invoked by Genie yet', p_invoked_card_name
         using errcode = 'RFB50';
@@ -3003,28 +2851,6 @@ begin
     v_final_target := null;
   else
     raise exception 'cast_spell_card: % -targeted cards cannot be cast pre-roll yet', v_target_stamp;
-  end if;
-
-  -- issue #440: every participant is already known in the Compelled Cast
-  -- step, so a compelled cast names its target now -- no deferred target,
-  -- and a WILD card names its possible tea-maker before its d6 is rolled.
-  if v_compelled then
-    if v_target_pending then
-      raise exception 'cast_spell_card: a compelled cast must name its target now'
-        using errcode = 'RFB53';
-    end if;
-    if v_target_stamp = 'WILD' then
-      if p_target_player_id is null then
-        raise exception 'cast_spell_card: a compelled cast must name its target now'
-          using errcode = 'RFB53';
-      end if;
-      if not exists (
-        select 1 from public.round_participants
-         where round_id = p_round_id and player_id = p_target_player_id
-      ) then
-        raise exception 'cast_spell_card: target is not a participant in this round';
-      end if;
-    end if;
   end if;
 
   update public.spell_deck_instances
@@ -3103,7 +2929,7 @@ begin
       returning id into v_cast_id;
     end if;
 
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+    return v_cast_id;
   end if;
 
   -- issue #343: round-scoped modifier snapshot cards. Fully special-cased
@@ -3250,7 +3076,7 @@ begin
       );
     end if;
 
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+    return v_cast_id;
   end if;
 
   -- issue #342: two durable persistent-modifier cards whose emission the
@@ -3333,7 +3159,7 @@ begin
       v_cast_id, v_ward_blocked
     );
 
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+    return v_cast_id;
 
   elsif v_card_name = 'Bitter Leech' then
     if v_final_target is null then
@@ -3365,7 +3191,41 @@ begin
       v_cast_id
     );
 
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+    return v_cast_id;
+
+  elsif v_card_name = 'Tea Heist' then
+    -- issue #438: pin the victim's held card now (never a pending_swap one);
+    -- it only moves when the round finalizes (finalize_layer ->
+    -- _rr_apply_heists), and only if the Heist survives and the victim still
+    -- holds it. The picker lists only card-holders (get_heist_targets); this
+    -- re-checks. The thief's own hand is empty now -- Tea Heist was its card.
+    if v_final_target is null then
+      raise exception 'cast_spell_card: Tea Heist requires an explicit target'
+        using errcode = 'RFB46';
+    end if;
+
+    select id into v_stolen_id
+      from public.spell_deck_instances
+     where held_by_player = v_final_target and location = 'held';
+
+    if v_stolen_id is null then
+      raise exception 'cast_spell_card: that player is not holding a card to steal'
+        using errcode = 'RFB53';
+    end if;
+
+    insert into public.spell_casts (
+      round_id, caster_id, card_instance_id, target_player_id,
+      effect_kind, effect_params, cast_inputs, target_role
+    )
+    values (
+      p_round_id, v_player_id, v_instance_id, v_final_target,
+      'card_heist', '{}'::jsonb,
+      jsonb_build_object('stolen_instance_id', v_stolen_id),
+      'TARGET'
+    )
+    returning id into v_cast_id;
+
+    return v_cast_id;
   end if;
 
   -- WILD is fully special-cased: the six branches are mutually exclusive
@@ -3469,7 +3329,7 @@ begin
       values (p_round_id, v_player_id, v_instance_id, null,
               'wild_dispatch', '{"branch": 6}'::jsonb, jsonb_build_object('branch', v_branch));
 
-      return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+      return v_cast_id;
     end if;
 
     insert into public.spell_casts (
@@ -3480,7 +3340,7 @@ begin
             'wild_dispatch', v_effect_params, jsonb_build_object('branch', v_branch))
     returning id into v_cast_id;
 
-    return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+    return v_cast_id;
   end if;
 
   for v_effect in
@@ -3649,7 +3509,7 @@ begin
        and caster_id = v_player_id;
   end if;
 
-  return public._rr_finish_compelled_cast(p_round_id, v_player_id, v_instance_id, v_cast_id);
+  return v_cast_id;
 end;
 $$;
 
@@ -3657,316 +3517,159 @@ revoke execute on function public.cast_spell_card(uuid, text, text[], integer, t
 grant execute on function public.cast_spell_card(uuid, text, text[], integer, text) to authenticated;
 -- END db/sql/functions/cast_spell_card.sql
 
--- BEGIN db/sql/functions/close_round.sql
--- close_round(p_round_id uuid) -> void
+-- BEGIN db/sql/functions/finalize_layer.sql
+-- finalize_layer(p_round_id uuid) -> jsonb
 --
--- Lock the roster and fan out a caster's TABLE / ALL_OTHER_PLAYERS
--- placeholder casts into one real spell_casts row per participant
--- (_fan_out_table_placeholder_casts, lifted out of this body unchanged in
--- issue #440), then fix Brewmageddon's compelled set (_fix_compelled_set).
+-- Layer finalization (ADR 0008, issue #414) in one locked transaction. Takes
+-- the round row lock first -- the same lock resolve_round takes, so the nested
+-- resolve_round call below reuses it -- then does nothing unless the round can
+-- finalize: it is `closed`, the current Layer is complete (_layer_is_complete,
+-- no caller-identity gate), and at Layer 0 a reaction window exists and is
+-- closed. Otherwise:
+--   1. runs the eager roll-input shim in the documented order (ADR 0005):
+--      forced rerolls, then flip, then swap, then chosen-pair. Each apply_*
+--      records its before->after into the Cast Log (cast_inputs.roll_transform)
+--      as it always has;
+--   2. calls resolve_round(uuid), the persisting resolver, unchanged;
+--   3. commits the outcome -- brewer: write the resolution (no-modifier-gain
+--      included), move any Tea Heist card (_rr_apply_heists, issue #438) and
+--      record any pending Round Replay; tie: advance to the next Layer with
+--      the tied players.
 --
--- Canonical source: this file is the source of truth for the function body.
--- Edit here and run `npm run build:migrations` -- do not hand-edit the
--- generated migration. See db/sql/README.md.
-
-create or replace function public.close_round(p_round_id uuid)
-returns void
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_player_id text;
-  v_status text;
-  v_started_by text;
-  v_declared_count integer;
-  v_room_id uuid;
-begin
-  v_player_id := public.current_player_id(p_round_id);
-
-  select status, started_by, room_id into v_status, v_started_by, v_room_id
-    from public.rounds
-   where id = p_round_id
-   for update;
-
-  if v_status is null then
-    raise exception 'close_round: round not found';
-  end if;
-
-  if v_status <> 'open' then
-    raise exception 'close_round: round is not open';
-  end if;
-
-  if v_started_by <> v_player_id then
-    raise exception 'close_round: only the round starter can close declarations';
-  end if;
-
-  select count(*) into v_declared_count
-    from public.round_participants
-   where round_id = p_round_id;
-
-  if v_declared_count < 2 then
-    raise exception 'close_round: at least 2 players must declare in before closing';
-  end if;
-
-  update public.rounds set status = 'closed', closed_at = now() where id = p_round_id;
-
-  -- TABLE / ALL_OTHER_PLAYERS placeholders fan out against the final roster.
-  perform public._fan_out_table_placeholder_casts(p_round_id);
-
-  -- Issue #440: fix Brewmageddon's compelled set now the roster is locked,
-  -- which starts the Compelled Cast step (rolling is held until every
-  -- compelled Action cast is in) and forfeits any card with no legal target.
-  perform public._fix_compelled_set(p_round_id);
-end;
-$$;
-
-revoke execute on function public.close_round(uuid) from public, anon;
-grant execute on function public.close_round(uuid) to authenticated;
--- END db/sql/functions/close_round.sql
-
--- BEGIN db/sql/functions/get_round_recap.sql
--- get_round_recap(p_round_id uuid) -> jsonb
+-- The Inscribed Saucer declared-number trigger needs no separate write: since
+-- #310 its sentinel is a duration-1 projection row that ages out once this
+-- round resolves, so committing the resolution in this transaction is what
+-- burns it -- exactly once.
 --
--- Round Recap read surface (issue #314, "the Ledger") + round-replay follow-up
--- (issue #352) + roll rows from the resolver (spec #402, ADR 0007): one
--- room-member-gated RPC that hands the client everything RoundReveal needs in a
--- single round trip -- the Resolution Trace and Resolution Summary (stored, or
--- the Provisional Recap's dry run while the round is live), the round's full
--- cast list with each cast's phase and coarse live state, its revealed layer
--- rolls and tie-break participants, and every scrapped replay generation's
--- retained Recap payload.
---
--- Leaves no writes: the provisional path calls _rr_resolve, whose writes all
--- roll back. spell_casts still has no direct SELECT policy (0019), so this
--- SECURITY DEFINER function is the read path.
+-- Never raises for who the caller is or for losing a race: a second caller
+-- blocks on the lock, then finds the round resolved (or on the next Layer)
+-- and returns noop. Called by the round-advancement module
+-- (src/app/rounds/advanceRound.ts).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
 -- generated migration. See db/sql/README.md.
 
-create or replace function public.get_round_recap(p_round_id uuid)
+create or replace function public.finalize_layer(p_round_id uuid)
 returns jsonb
 language plpgsql
 security definer
 set search_path = public
 as $$
 declare
-  v_player_id text;
   v_status text;
-  v_room_id uuid;
   v_layer integer;
-  v_trace jsonb;
-  v_summary jsonb;
-  v_provisional boolean := false;
-  v_dry jsonb;
-  v_casts jsonb;
-  v_scrapped jsonb;
-  v_layers jsonb;
-  v_layer_participants jsonb;
-  v_reaction_skips jsonb;
+  v_target text;
+  v_out jsonb;
+  v_brewer_id text;
+  v_cups_made integer;
+  v_tied text[];
+  v_next_layer integer;
+  v_replay_pending boolean;
+  v_rolls jsonb;
 begin
-  v_player_id := public.current_player_id(p_round_id);
-
-  select r.status, r.room_id, r.current_layer,
-         coalesce(r.resolution_trace, '[]'::jsonb),
-         r.resolution_summary,
-         coalesce(r.scrapped_generations, '[]'::jsonb)
-    into v_status, v_room_id, v_layer, v_trace, v_summary, v_scrapped
-    from public.rounds r
-   where r.id = p_round_id
-     -- Issue #414: the dry run below writes (then rolls back) the same Cast
-     -- Log rows Layer finalization writes. finalize_layer / resolve_round
-     -- hold the round row lock FOR UPDATE before their writes; taking it FOR
-     -- SHARE here, before ours, orders the two instead of letting them
-     -- deadlock on those rows, and means the status read above is still
-     -- true when the dry run starts. Concurrent Recap reads don't block each
-     -- other.
-     for share;
+  select status, current_layer into v_status, v_layer
+    from public.rounds
+   where id = p_round_id
+     for update;
 
   if v_status is null then
-    raise exception 'get_round_recap: round not found';
+    return jsonb_build_object('outcome', 'noop', 'reason', 'round_not_found');
   end if;
 
-  -- Issue #409: any member of the round's room may read it -- a spectator
-  -- follows the round too (spec #402 story 25). Nothing here is hidden
-  -- information: casts are already visible to the room.
-  if not exists (
-    select 1 from public.round_participants
-     where round_id = p_round_id and player_id = v_player_id
-  ) and not exists (
-    select 1 from public.room_players
-     where room_id = v_room_id and player_id = v_player_id
-  ) then
-    raise exception 'get_round_recap: caller is not in this round''s room';
+  if v_status <> 'closed' then
+    return jsonb_build_object('outcome', 'noop', 'reason', 'round_not_closed');
   end if;
 
-  -- Issue #409: the Provisional Recap (ADR 0007). While the round is live at
-  -- layer 0 with nothing stored yet, and layer 0 is complete -- every roll
-  -- in, no unrolled Pending Spell Die, no deferred forced-reroll target hold
-  -- (the same holds as _layer_is_complete) -- dry-run the
-  -- resolver with _rr_resolve, which leaves no writes, and return its Trace
-  -- and summary marked provisional. A resolved round, or a layer-0 outcome
-  -- already stored (a tie that moved on to tie-break layers), returns the
-  -- stored Trace and summary as final.
-  if v_status = 'closed' and v_layer = 0 and v_summary is null
-     and (select count(*) from public.rolls where round_id = p_round_id and layer = 0)
-         >= public.count_expected_layer_rollers(p_round_id, 0)
-     and not exists (
-       select 1 from public.spell_casts
-        where round_id = p_round_id and effect_kind = 'dice_modifier'
-          and not coalesce(cast_inputs ? 'dice_roll', false)
-     )
-     and not exists (
-       select 1 from public.spell_casts
-        where round_id = p_round_id
-          and effect_kind = 'forced_reroll'
-          and target_pending = true
-          and negated = false
-          and reaction_window_id is null
-     ) then
-    v_dry := public._rr_resolve(p_round_id);
-    v_trace := coalesce(v_dry -> 'trace', '[]'::jsonb);
-    v_summary := v_dry -> 'players';
-    v_provisional := true;
+  if v_layer = 0 then
+    -- Opening Layer 0's window is advance_layer's job; finalization only ever
+    -- follows a window that has closed.
+    if not exists (
+      select 1 from public.spell_reaction_windows
+       where round_id = p_round_id and layer = 0
+    ) then
+      return jsonb_build_object('outcome', 'noop', 'reason', 'no_window');
+    end if;
+
+    if exists (
+      select 1 from public.spell_reaction_windows
+       where round_id = p_round_id and layer = 0 and status = 'open'
+    ) then
+      return jsonb_build_object('outcome', 'noop', 'reason', 'window_open');
+    end if;
   end if;
 
-  select coalesce(jsonb_agg(
-           jsonb_build_object(
-             'cast_id', c.id,
-             'seq', c.seq,
-             'card_name', sc.name,
-             'caster_player_id', c.caster_id,
-             'target_player_id', c.target_player_id,
-             'target_pending', c.target_pending,
-             'effect_kind', c.effect_kind,
-             -- A cast attached to a reaction window is a reaction; everything
-             -- else was armed during the pre-roll (declare-in) window.
-             'phase', case when c.reaction_window_id is not null then 'reaction' else 'preroll' end,
-             'negated', coalesce(c.negated, false),
-             'redirected_to_cast_id', c.redirected_to_cast_id,
-             -- Issue #440: a compelled cast or a Forfeit points back at the
-             -- Brewmageddon cast that compelled it.
-             'compelled_by_cast_id', c.cast_inputs ->> 'compelled_by',
-             -- Coarse live state for the cast strip. Once the round leaves
-             -- 'open' every armed pre-roll cast is committed (on the stack);
-             -- a reaction cast is on the stack the moment it exists. The
-             -- renderer overrides this with the resolved outcome once a Trace
-             -- is present.
-             'on_stack', (c.reaction_window_id is not null) or (v_status <> 'open')
-           )
-           order by c.seq
-         ), '[]'::jsonb)
-    into v_casts
-    from public.spell_casts c
-    join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
-    join public.spell_cards sc on sc.id = sdi.card_id
-   where c.round_id = p_round_id;
+  if not public._layer_is_complete(p_round_id, v_layer) then
+    return jsonb_build_object('outcome', 'noop', 'reason', 'layer_incomplete');
+  end if;
 
-  -- Issue #406: the round's revealed rolls, every layer, flat (the client
-  -- groups them) -- only layers whose rolls are all in, the same withholding
-  -- rule get_round_layer_history applies, so a layer never leaks mid-roll.
-  select coalesce(jsonb_agg(
-           jsonb_build_object(
-             'player_id', r.player_id, 'layer', r.layer, 'value', r.value,
-             'modifier_snapshot', r.modifier_snapshot,
-             'discarded_value', r.discarded_value,
-             'entered_by_admin', r.entered_by_admin)
-           order by r.layer, r.player_id
-         ), '[]'::jsonb)
-    into v_layers
-    from public.rolls r
-   where r.round_id = p_round_id
-     and (
-       select count(*) from public.rolls r2
-        where r2.round_id = p_round_id and r2.layer = r.layer
-     ) >= public.count_expected_layer_rollers(p_round_id, r.layer);
+  -- 1. The eager roll-input shim (ADR 0005): forced rerolls, flip, swap,
+  -- chosen-pair -- "flip before swap before chosen-pair" is the documented
+  -- tie of record for a player hit by more than one.
+  for v_target in
+    select t.target_player_id from public.get_forced_reroll_targets(p_round_id, v_layer) t
+  loop
+    perform public.apply_forced_reroll(p_round_id, v_layer, v_target);
+  end loop;
 
-  -- Issue #406: who took part in each tie-break layer. A player tied at layer
-  -- N exactly when they are in layer N+1's set -- the Reroll Chain reads tie
-  -- membership from here instead of re-judging the tie.
-  select coalesce(jsonb_agg(
-           jsonb_build_object('layer', rlp.layer, 'player_id', rlp.player_id)
-           order by rlp.layer, rlp.player_id
-         ), '[]'::jsonb)
-    into v_layer_participants
-    from public.round_layer_participants rlp
-   where rlp.round_id = p_round_id;
+  if public.has_active_cast_kind(p_round_id, v_layer, 'roll_flip') then
+    perform 1 from public.apply_roll_flip(p_round_id, v_layer);
+  end if;
 
-  -- Issue #411: who the reaction window stopped waiting on, and why (skipped
-  -- by vote, or timed out) -- auto-passes recorded on the round's latest
-  -- Layer 0 window.
-  select coalesce(jsonb_agg(
-           jsonb_build_object('player_id', p.player_id, 'reason', p.reason)
-           order by p.player_id
-         ), '[]'::jsonb)
-    into v_reaction_skips
-    from public.spell_reaction_passes p
-   where p.reason <> 'pass'
-     and p.window_id = (
-       select w.id from public.spell_reaction_windows w
-        where w.round_id = p_round_id and w.layer = 0
-        order by w.opened_at desc
-        limit 1
-     );
+  if public.has_active_cast_kind(p_round_id, v_layer, 'roll_swap') then
+    perform 1 from public.apply_roll_swap(p_round_id, v_layer);
+  end if;
+
+  if public.has_active_cast_kind(p_round_id, v_layer, 'roll_pair_transform') then
+    perform 1 from public.apply_roll_pair_transform(p_round_id, v_layer);
+  end if;
+
+  -- 2. The persisting resolver.
+  v_out := public.resolve_round(p_round_id);
+
+  -- 3. Commit the outcome.
+  if v_out ->> 'outcome' = 'tie' then
+    select array_agg(t) into v_tied
+      from jsonb_array_elements_text(v_out -> 'tied_player_ids') t;
+
+    v_next_layer := public.advance_round_layer(p_round_id, v_tied);
+
+    return jsonb_build_object(
+      'outcome', 'tie',
+      'layer', v_next_layer,
+      'tied_player_ids', to_jsonb(v_tied));
+  end if;
+
+  v_brewer_id := v_out ->> 'brewer_id';
+  v_cups_made := (v_out ->> 'cups_made')::integer;
+
+  perform public.resolve_round(
+    p_round_id, v_brewer_id, v_cups_made,
+    coalesce((v_out ->> 'no_modifier_gain')::boolean, false));
+
+  -- Tea Heist (issue #438, ADR 0005 #383 amendment): the resolver only
+  -- traced each Heist; the card moves here, with the resolution write.
+  perform public._rr_apply_heists(p_round_id);
+
+  v_replay_pending := public.record_pending_round_replay(p_round_id);
+
+  -- The Layer's final (post-shim) rolls, for the round-revealed broadcast.
+  v_rolls := public._layer_rolls_json(p_round_id, v_layer);
 
   return jsonb_build_object(
-    'resolved', v_status = 'resolved',
-    -- "tie" once the round has any reroll-layer roll: layer 0 tied and the
-    -- brewer was settled by tie-break rolls, where no spells or reactions
-    -- apply (issue #219) -- the Recap ends at the tie. null while still live.
-    'layer_zero_outcome', case
-      when v_status <> 'resolved' then null
-      when exists (
-        select 1 from public.rolls
-         where round_id = p_round_id and layer > 0
-      ) then 'tie'
-      else 'brewer'
-    end,
-    'trace', v_trace,
-    -- Issue #407: the layer-0 Resolution Summary resolve_round stored beside
-    -- the Trace. null for a round resolved before it existed (the row renders
-    -- degraded) or not yet resolved. Issue #409: while provisional, the trace
-    -- and players are the dry run's -- "so far, reactions pending".
-    'players', v_summary,
-    'provisional', v_provisional,
-    'casts', v_casts,
-    -- Issue #352: the retained Recap payload of every scrapped replay
-    -- generation, oldest first (generation 0 is the original attempt). [] for
-    -- a round that was never replayed. The client renders each as a collapsed
-    -- generation-0 Round Recap disclosure under generation 1's headline.
-    'scrapped_generations', v_scrapped,
-    'layers', v_layers,
-    'layer_participants', v_layer_participants,
-    'reaction_skips', v_reaction_skips
-  );
+    'outcome', 'brewer',
+    'layer', v_layer,
+    'brewer_id', v_brewer_id,
+    'cups_made', v_cups_made,
+    'rolls', v_rolls,
+    'replay_pending', v_replay_pending);
 end;
 $$;
 
-revoke execute on function public.get_round_recap(uuid) from public, anon;
-grant execute on function public.get_round_recap(uuid) to authenticated;
+revoke execute on function public.finalize_layer(uuid) from public, anon;
+grant execute on function public.finalize_layer(uuid) to authenticated;
 
-comment on function public.get_round_recap(uuid) is
-  'Issue #314 (Round Recap / the Ledger) + #352: room-member-gated read '
-  'returning { resolved, layer_zero_outcome, trace, casts:[{ cast_id, seq, '
-  'card_name, caster_player_id, target_player_id, target_pending, effect_kind, '
-  'phase, negated, redirected_to_cast_id, compelled_by_cast_id, on_stack }], scrapped_generations } '
-  'for one round. trace is the persisted rounds.resolution_trace ([] until '
-  'resolved); layer_zero_outcome is ''tie'' when tie-break layers decided the '
-  'round; casts carries phase and coarse live state for the cast strip, with '
-  'resolved per-cast state derived client-side from the Trace; '
-  'scrapped_generations is rounds.scrapped_generations verbatim ([] when the '
-  'round was never replayed), each entry a generation-0 Recap payload. '
-  'Issue #407: players is rounds.resolution_summary (null before resolution '
-  'or for a pre-summary round). Issue #409: for a live layer-0 round whose '
-  'rolls are complete, trace and players come from the non-persisting '
-  '_rr_resolve dry run and provisional is true (the Provisional Recap); '
-  'otherwise provisional is false. Readable by any member of the round''s room. '
-  'Issue #406: layers is every fully-rolled layer''s rolls (flat, the same '
-  'withholding rule as get_round_layer_history) and layer_participants is '
-  'round_layer_participants -- tie membership for the Reroll Chain. '
-  'Issue #411: reaction_skips is [{ player_id, reason }] for everyone the '
-  'latest Layer 0 reaction window stopped waiting on (reason ''vote'' or '
-  '''timeout''), [] when nobody was skipped.';
--- END db/sql/functions/get_round_recap.sql
+comment on function public.finalize_layer(uuid) is
+  'Layer finalization (ADR 0008, issue #414). Locks the round, then returns { outcome: "noop", reason } unless the round is closed, its current Layer is complete, and (at Layer 0) its reaction window exists and is closed -- reasons: round_not_found, round_not_closed, no_window, window_open, layer_incomplete. Otherwise, in one transaction: runs the eager roll-input shim (forced rerolls, flip, swap, chosen-pair; ADR 0005), calls resolve_round(uuid) unchanged, and commits the outcome. Returns { outcome: "brewer", layer, brewer_id, cups_made, rolls: [{ player_id, value, discarded_value, entered_by_admin }], replay_pending } after writing the resolution (no-modifier-gain included), moving any Tea Heist card (issue #438) and recording any pending Round Replay; or { outcome: "tie", layer, tied_player_ids } after advancing to the next Layer (layer is the new one). Never raises for caller identity or a lost race.';
+-- END db/sql/functions/finalize_layer.sql
 

@@ -208,7 +208,7 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     await close(caster, roundId);
 
     const { error: deferErr } = await holder.client.rpc("cast_spell_card", { p_round_id: roundId });
-    expect(deferErr?.code).toBe("RFB53");
+    expect(deferErr?.code).toBe("RFB55");
     expect(await heldBy(holder.googleSub)).toEqual(["held"]);
 
     const { error } = await holder.client.rpc("cast_spell_card", {
@@ -267,6 +267,28 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     expect(await isExpectedRoller(stirrer, roundId)).toBe(true);
   });
 
+  it("forfeits Tea Heist only when no other participant holds a card to steal (#438)", async () => {
+    const [caster, thief, bystander] = await players("heist-caster", "heist-thief", "heist-bystander");
+    await forceHold(admin, thief.googleSub, "Tea Heist");
+    const roundId = await openRound(caster, [thief, bystander]);
+    const bmCastId = await castBrewmageddon(caster, roundId);
+    await close(caster, roundId);
+
+    expect(await forfeits(roundId)).toEqual([
+      { player: thief.googleSub, reason: "no_legal_target", compelledBy: bmCastId },
+    ]);
+
+    const [caster2, thief2, victim] = await players("heist2-caster", "heist2-thief", "heist2-victim");
+    await forceHold(admin, thief2.googleSub, "Tea Heist");
+    await forceHold(admin, victim.googleSub, "Sugar Rush");
+    const roundId2 = await openRound(caster2, [thief2, victim]);
+    await castBrewmageddon(caster2, roundId2);
+    await close(caster2, roundId2);
+
+    expect(await forfeits(roundId2)).toEqual([]);
+    expect((await step(caster2, roundId2)).waiting_on.sort()).toEqual([thief2.googleSub, victim.googleSub].sort());
+  });
+
   it("stall: forfeits outstanding compelled Action casts, excludes nobody, then restarts the roll clock", async () => {
     const [caster, holder, bystander] = await players("stall-caster", "stall-holder", "stall-bystander");
     await forceHold(admin, holder.googleSub, "Sugar Rush");
@@ -319,7 +341,7 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     const { roundId, bmCastId } = await roundWithOpenWindow(caster, [holder, bystander]);
 
     const { error: passErr } = await holder.client.rpc("pass_reaction_window", { p_round_id: roundId });
-    expect(passErr?.code).toBe("RFB53");
+    expect(passErr?.code).toBe("RFB55");
     expect(await windowStatus(roundId)).toBe("open");
 
     const { error } = await holder.client.rpc("cast_reaction_spell_card", { p_round_id: roundId });

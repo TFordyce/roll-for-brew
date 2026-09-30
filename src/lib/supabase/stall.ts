@@ -167,7 +167,7 @@ export type CompelledCastStep = {
 };
 
 /**
- * Calls the get_compelled_cast_step RPC (0117, issue #440): the Compelled Cast
+ * Calls the get_compelled_cast_step RPC (0119, issue #440): the Compelled Cast
  * step Brewmageddon puts between close_round and the first roll. Layer 0's
  * roll stall clock runs from `endedAt` when there is one, so time spent in
  * the step never counts against the rollers.
@@ -180,7 +180,7 @@ export async function getCompelledCastStep(supabase: SupabaseClient, roundId: st
 }
 
 /**
- * Calls the forfeit_stalled_compelled_casts RPC (0117, issue #440): the stall
+ * Calls the forfeit_stalled_compelled_casts RPC (0119, issue #440): the stall
  * clock's Compelled Cast branch. Forfeits every compelled Action cast still
  * owed once enforceStallTimeout's own hasStalled check has fired, which ends
  * the step and opens rolling. Returns who forfeited.

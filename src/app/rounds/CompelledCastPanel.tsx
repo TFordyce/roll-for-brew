@@ -21,6 +21,7 @@ export function CompelledCastPanel({
   participants,
   selfPlayerId,
   dispellableEffects,
+  heistTargetIds,
 }: {
   roundId: string;
   compelled: CompelledCast | null;
@@ -31,6 +32,8 @@ export function CompelledCastPanel({
   participants: RoundParticipant[];
   selfPlayerId: string;
   dispellableEffects: DispellableEffect[];
+  /** Issue #438: Tea Heist's picker roster, for a compelled Heist holder. */
+  heistTargetIds: string[];
 }) {
   if (!compelled && waitingOnNames.length === 0) return null;
 
@@ -50,7 +53,14 @@ export function CompelledCastPanel({
               held.effectKind === "dispel" ? (
                 <DispelForm roundId={roundId} cardName={held.cardName} dispellableEffects={dispellableEffects} />
               ) : (
-                <CastForm roundId={roundId} held={held} participants={participants} selfPlayerId={selfPlayerId} compelled />
+                <CastForm
+                  roundId={roundId}
+                  held={held}
+                  participants={participants}
+                  selfPlayerId={selfPlayerId}
+                  heistTargetIds={heistTargetIds}
+                  compelled
+                />
               )
             ) : null}
           </>
