@@ -1,7 +1,20 @@
--- admin_proxy_roll
+-- admin_proxy_roll(uuid, text, integer) -> void
 --
--- Nobody rolls during the Compelled Cast step, a Proxy Roll included.
--- Otherwise unchanged (0071).
+-- Proxy Roll (issue #273, migration 0071): an admin enters the number a
+-- player present at the table read out, folding them into a live round.
+-- Round-status eligibility mirrors declare_in_late's window: 'open', or
+-- 'closed' with no rolls yet; RFB32 for the stale-round race. RFB54 while the
+-- Compelled Cast step (#440) holds rolling.
+--
+-- Issue #435 (spec #401 F6): its nat 1 / nat 20 pending-draw insert is a crit
+-- entry point, so the row goes to _apply_crit_redirect's recipient; a NULL
+-- recipient (a fizzled redirect) records nothing. A no-op redirect today.
+-- Otherwise unchanged from migration 0071 (plus #440's RFB54 hold).
+--
+-- Canonical source: this file is the source of truth for the function body.
+-- Edit here and run `npm run build:migrations` -- do not hand-edit the
+-- generated migration. See db/sql/README.md.
+
 create or replace function public.admin_proxy_roll(p_round_id uuid, p_player_id text, p_value integer)
 returns void
 language plpgsql
@@ -15,6 +28,7 @@ declare
   v_room_id uuid;
   v_layer integer;
   v_modifier integer;
+  v_recipient text;
 begin
   if p_value is null or p_value < 1 or p_value > 20 then
     raise exception 'admin_proxy_roll: value must be between 1 and 20';
@@ -46,6 +60,8 @@ begin
       using errcode = 'RFB32';
   end if;
 
+  -- Nobody rolls during the Compelled Cast step (Brewmageddon, #440), a
+  -- Proxy Roll included.
   if v_status = 'closed' and public._compelled_cast_step_open(p_round_id) then
     raise exception 'admin_proxy_roll: rolling is held until every compelled cast is in'
       using errcode = 'RFB54';
@@ -77,9 +93,18 @@ begin
   -- current_player_id(p_round_id), which would credit the admin's own
   -- identity, not the proxied player's.
   if p_value in (1, 20) then
-    insert into public.pending_spell_draws (round_id, player_id, trigger)
-    values (p_round_id, p_player_id, case when p_value = 1 then 'nat1' else 'nat20' end)
-    on conflict (round_id, player_id) do nothing;
+    v_recipient := public._apply_crit_redirect(p_round_id, p_player_id);
+    if v_recipient is not null then
+      insert into public.pending_spell_draws (round_id, player_id, trigger)
+      values (p_round_id, v_recipient, case when p_value = 1 then 'nat1' else 'nat20' end)
+      on conflict (round_id, player_id) do nothing;
+    end if;
   end if;
 end;
 $$;
+
+revoke execute on function public.admin_proxy_roll(uuid, text, integer) from public, anon;
+grant execute on function public.admin_proxy_roll(uuid, text, integer) to authenticated;
+
+comment on function public.admin_proxy_roll(uuid, text, integer) is
+  'Raises RFB32 (round no longer open for a proxy roll) for the same stale-round race family as declare_in_late''s RFB31 — the round can close-then-roll between the admin form rendering and submitting.';

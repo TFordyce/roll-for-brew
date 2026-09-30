@@ -53,11 +53,12 @@ export async function maybeDrawSpellCardAs(
   supabase: Awaited<ReturnType<typeof createClient>>,
   value: number,
   roomId: string,
+  roundId: string,
   playerId: string,
   forcedCardId?: string,
 ) {
-  if (value === 1) await drawSpellCardAs(supabase, "nat1", roomId, playerId, forcedCardId);
-  else if (value === 20) await drawSpellCardAs(supabase, "nat20", roomId, playerId, forcedCardId);
+  if (value === 1) await drawSpellCardAs(supabase, "nat1", roomId, roundId, playerId, forcedCardId);
+  else if (value === 20) await drawSpellCardAs(supabase, "nat20", roomId, roundId, playerId, forcedCardId);
 }
 
 /**
