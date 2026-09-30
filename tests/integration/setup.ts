@@ -275,8 +275,9 @@ export async function seedPastRound(
  * Prophe-Tea (persistent advantage, #320, migration 0097) — Cloud of Cream
  * (targeting skip, #321, migration 0099) — Tea Heist (#438, migration 0117) —
  * Brewmageddon (Compelled Cast, #440, migration 0119) — and Last Drip (#426,
- * migration 0124) — are now live, so 12 remain here. A test that force-holds one of these must return it to the bench,
- * not the deck, on cleanup — releaseHeldCards below does that.
+ * migration 0124) — are now live, so 12 remain here. A test that force-holds
+ * one of these must return it to the bench, not the deck, on cleanup —
+ * releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows

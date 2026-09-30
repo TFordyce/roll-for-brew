@@ -399,6 +399,34 @@ describe.skipIf(!hasAnonTestEnv)("Last Drip: previous round's highest roller bre
     ]);
   });
 
+  it("Genie in the Teapot can invoke it: the previous winner brews with no gain", async () => {
+    const [caster, winner, low] = await players("gn-caster", "gn-winner", "gn-low");
+    await seedPastRound(admin, cleanup, caster.roomId, [
+      { playerId: caster.googleSub, value: 9 },
+      { playerId: winner.googleSub, value: 18 },
+      { playerId: low.googleSub, value: 2 },
+    ]);
+
+    const roundId = await openRound(caster, [winner, low]);
+    await forceHold(admin, caster.googleSub, "Genie in the Teapot");
+    const { error } = await caster.client.rpc("cast_spell_card", {
+      p_round_id: roundId,
+      p_invoked_card_name: "Last Drip",
+    });
+    expect(error).toBeNull();
+    await closeRound(caster, roundId);
+    await seedRoll(roundId, caster, 10);
+    await seedRoll(roundId, winner, 15);
+    await seedRoll(roundId, low, 3);
+
+    const out = await resolve(caster, roundId);
+    expect(out).toMatchObject({
+      brewer_id: winner.googleSub,
+      brewer_source: "tea_maker_override:prev_round_highest",
+      modifier_gain: 0,
+    });
+  });
+
   it("a declared number outranks it", async () => {
     const [caster, winner, match] = await players("dn-caster", "dn-winner", "dn-match");
     await seedPastRound(admin, cleanup, caster.roomId, [

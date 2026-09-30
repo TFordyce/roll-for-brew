@@ -2119,6 +2119,7 @@ begin
 
     if v_override_live then
       if v_override.mode = 'prev_round_highest' then
+        -- v_ld_target was set by the loop iteration that exited on this cast.
         v_brewer_id := v_ld_target;
       elsif v_override.mode = 'chosen' then
         v_brewer_id := v_override.chosen_player_id;
