@@ -22,6 +22,9 @@
 --     read of an earlier round, and a Round replay scrap does not restore it
 --     (#383 Q2), because the card it moved survives the scrap.
 --
+-- An is_undispellable row (issue #428: The Last Cuppa) skips the dispel
+-- check -- no dispel cast can end it, even one that names it.
+--
 -- Body from migration 0084 plus the spent condition; grants merge 0084
 -- (authenticated) and 0108 (service_role, the integration suite's seam).
 --
@@ -59,14 +62,17 @@ as $$
             p_room_id, src_round.started_at, (select started_at from as_of)
           ) < sae.rounds_remaining
      )
-     and not exists (
-       select 1
-         from public.spell_casts dc
-         join public.rounds dr on dr.id = dc.round_id
-        where dc.effect_kind = 'dispel'
-          and dc.effect_params ->> 'ended_effect_id' = sae.id::text
-          and coalesce(dc.negated, false) = false
-          and dr.started_at <= (select started_at from as_of)
+     and (
+       sae.is_undispellable
+       or not exists (
+         select 1
+           from public.spell_casts dc
+           join public.rounds dr on dr.id = dc.round_id
+          where dc.effect_kind = 'dispel'
+            and dc.effect_params ->> 'ended_effect_id' = sae.id::text
+            and coalesce(dc.negated, false) = false
+            and dr.started_at <= (select started_at from as_of)
+       )
      );
 $$;
 
@@ -76,7 +82,8 @@ grant execute on function public._rr_active_effects_as_of(uuid, uuid) to authent
 comment on function public._rr_active_effects_as_of(uuid, uuid) is
   'Issue #310: the spell_active_effects rows live as of a given round -- '
   'source cast not negated, duration not exhausted (resolved-round count '
-  'since the source round), not dispelled at/before the round, and (#435) '
+  'since the source round), not dispelled at/before the round (an '
+  'is_undispellable row, #428, never is), and (#435) '
   'not spent (source cast_inputs.consumed_by_round / consumed_by_draw). '
   'The shared row source for every reader that treats spell_active_effects '
   'as current game state (the ward gate/map, dispel/room badge readers, '
