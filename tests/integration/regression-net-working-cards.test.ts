@@ -6,6 +6,7 @@ import {
   forceHold,
   hasAnonTestEnv,
   seedActiveEffect,
+  seedDedicatedRoom,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -881,6 +882,9 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
   it("Wild Brew Surge dispatches every one of its six d6 branches to a consistent outcome", async () => {
     const caster = await signUp("reg-wbs-caster");
     const other = await signUp("reg-wbs-other");
+    // Own room: branches 3 and 5 pick their swap partner from every
+    // room_players row, and today's shared room holds leaked strangers (#422).
+    caster.roomId = other.roomId = await seedDedicatedRoom(admin, cleanup, [caster.googleSub, other.googleSub]);
     const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Wild Brew Surge").single();
     const { data: instance } = await admin
       .from("spell_deck_instances")
@@ -912,7 +916,7 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
         .update({ location: "held", held_by_player: caster.googleSub })
         .eq("id", wbsInstanceId);
 
-      const { data: roundId, error: startErr } = await caster.client.rpc("start_round");
+      const { data: roundId, error: startErr } = await caster.client.rpc("start_round", { p_room_id: caster.roomId });
       expect(startErr).toBeNull();
       // Track for teardown too: a mid-loop expect failure skips the
       // admin.from("rounds").delete() at the end of the iteration.
@@ -1047,6 +1051,8 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
   it("Wild Brew Surge branches 2 / 3 / 5 produce the same modifier outcome via the projection", async () => {
     const caster = await signUp("reg-wbs-e2e-caster");
     const other = await signUp("reg-wbs-e2e-other");
+    // Own room, as above: a random swap partner must be `other` (#422).
+    caster.roomId = other.roomId = await seedDedicatedRoom(admin, cleanup, [caster.googleSub, other.googleSub]);
     const { data: card } = await admin.from("spell_cards").select("id").eq("name", "Wild Brew Surge").single();
     const { data: instance } = await admin
       .from("spell_deck_instances").select("id").eq("card_id", card!.id).single();
@@ -1079,7 +1085,7 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       await admin.from("spell_deck_instances")
         .update({ location: "held", held_by_player: caster.googleSub }).eq("id", wbsInstanceId);
 
-      const { data: roundId } = await caster.client.rpc("start_round");
+      const { data: roundId } = await caster.client.rpc("start_round", { p_room_id: caster.roomId });
       cleanup.trackRound(roundId as string);
       await other.client.rpc("declare_in", { p_round_id: roundId });
       await caster.client.rpc("cast_spell_card", { p_round_id: roundId });

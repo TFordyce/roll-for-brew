@@ -1,6 +1,13 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, forceHold, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  forceHold,
+  hasAnonTestEnv,
+  seedDedicatedRoom,
+  signUpSignInAndEnterRoom,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // admin "draw for others" nat-1 forced-swap behaviour (0070, issue #267)
@@ -21,19 +28,25 @@ describe.skipIf(!hasAnonTestEnv)("draw_spell_card_as: forced swap on nat1 (issue
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
+  // A Test Room of their own rather than flipping today's shared room to
+  // is_test, which forks it for every later file (#422).
+  function testRoomFor(...playerIds: string[]) {
+    return seedDedicatedRoom(admin, cleanup, playerIds, { isTest: true });
+  }
+
   async function makeAdmin(playerId: string) {
     const { error } = await admin.from("players").update({ is_admin: true }).eq("id", playerId);
     if (error) throw error;
   }
 
   it("forces the swap on nat1 for the target player, same as the in-app path", async () => {
-    const [{ client: adminClient, googleSub: adminId }, { googleSub: targetId, roomId }] =
+    const [{ client: adminClient, googleSub: adminId }, { googleSub: targetId }] =
       await Promise.all([
         signUpSignInAndEnter("draw-as-admin"),
         signUpSignInAndEnter("draw-as-target"),
       ]);
     await makeAdmin(adminId);
-    await admin.from("rooms").update({ is_test: true }).eq("id", roomId);
+    const roomId = await testRoomFor(adminId, targetId);
     const oldInstanceId = await forceHold(admin, targetId, "Lucky Sip");
 
     const { data, error } = await adminClient.rpc("draw_spell_card_as", {
@@ -61,13 +74,13 @@ describe.skipIf(!hasAnonTestEnv)("draw_spell_card_as: forced swap on nat1 (issue
   });
 
   it("still parks as pending_swap on nat20, unaffected by the nat1 forced path", async () => {
-    const [{ client: adminClient, googleSub: adminId }, { googleSub: targetId, roomId }] =
+    const [{ client: adminClient, googleSub: adminId }, { googleSub: targetId }] =
       await Promise.all([
         signUpSignInAndEnter("draw-as-admin-nat20"),
         signUpSignInAndEnter("draw-as-target-nat20"),
       ]);
     await makeAdmin(adminId);
-    await admin.from("rooms").update({ is_test: true }).eq("id", roomId);
+    const roomId = await testRoomFor(adminId, targetId);
     await forceHold(admin, targetId, "Lucky Sip");
 
     const { data, error } = await adminClient.rpc("draw_spell_card_as", {

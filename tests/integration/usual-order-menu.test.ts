@@ -1,6 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import {
+  createTestAdminClient,
+  createTestCleanup,
+  hasAnonTestEnv,
+  signUpSignInAndEnterRoom,
+  signUpSignInIntoNonTestRoom,
+} from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises
 // usual_drinks, orders, submit_order, and round_menu, all added in
@@ -148,8 +154,13 @@ describe.skipIf(!hasAnonTestEnv)("submit_order", () => {
 
   afterEach(() => cleanup.run());
 
+  // Own room for the seeded Order Window tests: the window closes on *any*
+  // newer resolved round in the room, so a round another file resolved in
+  // today's shared room within the last hour would close it (#422). The
+  // start_round() tests below still open in today's room; they don't read
+  // roomId.
   function signUp(label: string) {
-    return signUpSignInAndEnterRoom(admin, cleanup, label);
+    return signUpSignInIntoNonTestRoom(admin, cleanup, label);
   }
 
   async function seedRound(options: {

@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInIntoNonTestRoom } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
 // brew_ratings table and the submit_brew_rating/withdraw_brew_rating RPCs
@@ -20,8 +20,11 @@ describe.skipIf(!hasAnonTestEnv)("brew ratings: submit and withdraw", () => {
 
   afterEach(() => cleanup.run());
 
+  // Own room, not today's shared one: the Rating Window closes on *any* newer
+  // resolved round in the room, so a round another file resolved in today's
+  // room within the last hour would reject these backdated seeds (#422).
   function signUp(label: string) {
-    return signUpSignInAndEnterRoom(admin, cleanup, label);
+    return signUpSignInIntoNonTestRoom(admin, cleanup, label);
   }
 
   async function seedResolvedRound(options: {
