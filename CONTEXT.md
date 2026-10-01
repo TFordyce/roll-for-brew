@@ -192,7 +192,7 @@ _Avoid_: round summary, effect breakdown, roll calculation (the per-tile display
 
 **Resolution Summary**:
 The per-player final values the resolver settled on for a round's Layer 0 — each participant's final roll, roll-time modifier, composed modifier, total, and nat-1/nat-20 standing — recorded beside the Resolution Trace, never re-derived by the app. It is what a player's roll row and badge show; the Trace steps targeting that player are the terms that explain it.
-_Avoid_: roll calculation (that's the per-tile display that renders it), final scores, outcome (that's brewer vs tie).
+_Avoid_: roll calculation (that's the per-tile display that renders it), final scores, outcome (that's brewer vs tie, or a Loose Leaf roll-off).
 
 **Provisional Recap**:
 The Round Recap and Resolution Summary as they would stand if the round resolved right now — a non-persisting run of the same resolver, shown while Layer 0's rolls are in but the round is still live (typically during the reaction window). Reactions and roll transforms still to come can change it; it becomes the real Recap only when the round resolves.

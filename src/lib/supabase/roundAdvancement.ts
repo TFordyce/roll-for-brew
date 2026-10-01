@@ -36,7 +36,7 @@ export type FinalizationOutcome =
        * Issue #431: a Loose Leaf roll-off, committed the way a tie is — the
        * named holder and the second-lowest roller reroll at the new Layer.
        */
-      rolloff?: boolean;
+      rolloff: boolean;
     }
   | { outcome: "noop"; reason: NoopReason };
 

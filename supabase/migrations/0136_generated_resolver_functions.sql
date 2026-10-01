@@ -2191,6 +2191,8 @@ declare
   v_rolloff record;
   v_rolloff_order text[];
   v_rolloff_opponent text;
+  v_rolloff_after text;
+  v_rolloff_extra jsonb;
 begin
   select room_id, started_at into v_room_id, v_started_at
     from public.rounds where id = p_round_id;
@@ -2676,6 +2678,11 @@ begin
       if coalesce(array_length(v_rolloff_order, 1), 0) >= 3
          and v_rolloff_order[2] <> v_brewer_id then
         v_rolloff_opponent := v_rolloff_order[2];
+        v_rolloff_after := 'rolloff';
+        v_rolloff_extra := jsonb_build_object('rolloff_opponent_id', v_rolloff_opponent);
+      else
+        v_rolloff_after := 'no effect';
+        v_rolloff_extra := jsonb_build_object('outcome', 'no-op', 'rolloff_reason', 'no_second_lowest');
       end if;
 
       v_steps := v_steps || jsonb_build_array(public._rr_trace_step(
@@ -2689,11 +2696,8 @@ begin
         ),
         v_brewer_id,
         jsonb_build_object('type', 'status', 'value', 'brewer'),
-        jsonb_build_object('type', 'status', 'value',
-          case when v_rolloff_opponent is null then 'no effect' else 'rolloff' end),
-        case when v_rolloff_opponent is null
-             then jsonb_build_object('outcome', 'no-op', 'rolloff_reason', 'no_second_lowest')
-             else jsonb_build_object('rolloff_opponent_id', v_rolloff_opponent) end
+        jsonb_build_object('type', 'status', 'value', v_rolloff_after),
+        v_rolloff_extra
       ));
       v_step_index := v_step_index + 1;
 
