@@ -267,6 +267,33 @@ begin
   end if;
 
   -- ------------------------------------------------------------------
+  -- issue #433 (Roll Exemption): one `roll_exemption` step per Participant
+  -- who skipped their layer-0 roll, on their own row and pointing at the
+  -- exempting cast, so the Round Recap explains the missing die. A
+  -- countered caster who rolled late is not exempt and gets no step.
+  -- ------------------------------------------------------------------
+  for v_row in
+    select ex.player_id, ex.cast_id, ex.card_name
+      from public._rr_roll_exemptions(p_round_id) ex
+     order by ex.player_id
+  loop
+    v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+      v_step_index,
+      'roll_exemption',
+      jsonb_build_object(
+        'cast_id', to_jsonb(v_row.cast_id),
+        'active_effect_id', null,
+        'card_name', to_jsonb(v_row.card_name),
+        'caster_player_id', to_jsonb(v_row.player_id)
+      ),
+      v_row.player_id,
+      jsonb_build_object('type', 'status', 'value', 'rolls'),
+      jsonb_build_object('type', 'status', 'value', 'skipped')
+    ));
+    v_step_index := v_step_index + 1;
+  end loop;
+
+  -- ------------------------------------------------------------------
   -- Phase 0a: Effect Invocation -- materialise Saucerer's Apprentice copies
   -- (issue #316, spec §10). Runs BEFORE Phase 1 so a copied contested_negate
   -- flows through the counter machinery natively. For every live copy (not

@@ -110,6 +110,7 @@ const KIND_PHASE: Partial<Record<string, PhaseTag>> = {
   redirect: "1",
   dice_tick: "3",
   roll_frozen: "3",
+  roll_exemption: "3",
   roll_swap: "3",
   roll_flip: "3",
   forced_reroll: "3",

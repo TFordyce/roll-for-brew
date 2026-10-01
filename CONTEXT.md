@@ -91,7 +91,7 @@ The one Participant in a room holding the Earl title, a dispellable **Brewer Imm
 _Avoid_: earldom, lord.
 
 **Brewer Candidate**:
-A Participant the Tea-Maker Precedence Ladder may name as Tea Maker — today, anyone without **Brewer Immunity**. Every rung asks the same question (`_rr_is_brewer_candidate`); a non-candidate counts as no match and selection falls through. Roll Exemption and Tea Cosy will extend it; the Earl is simply immune (a force on them is a title transfer, not a candidacy rule).
+A Participant the Tea-Maker Precedence Ladder may name as Tea Maker — today, anyone without **Brewer Immunity**. Every rung asks the same question (`_rr_is_brewer_candidate`); a non-candidate counts as no match and selection falls through. Tea Cosy will extend it. Roll Exemption doesn't: an exempt player is still a candidate, just never picked by a roll-derived rule since they have no roll. The Earl is simply immune (a force on them is a title transfer, not a candidacy rule).
 _Avoid_: eligible player, valid target (that's spell targeting).
 
 **Brew Debt**:

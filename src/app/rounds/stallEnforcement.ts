@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { hasStalled } from "@/lib/game/stallTimeout";
-import { getRoundById } from "@/lib/supabase/rounds";
+import { getRoundById, getRoundParticipants } from "@/lib/supabase/rounds";
 import {
   cancelRound,
   excludeRoundParticipant,
@@ -9,6 +9,7 @@ import {
   getCurrentLayerRollerIds,
   getExpectedLayerRollerIds,
   getLayerEnteredAt,
+  getLayerZeroWindowClosedAt,
   resolveStalledPendingForcedRerollCasts,
   resolveStalledPendingSpellDice,
   resolveStalledRevoltPicks,
@@ -57,7 +58,10 @@ export type StallOutcome =
  *    exclude-a-non-roller branch below must not fire here. Counted from
  *    closed_at; the roll clock after the step counts from the step's end.
  *  - status 'closed', layer 0: a declared player never rolled -> exclude
- *    them; the remaining participants' Layer is then complete.
+ *    them; the remaining participants' Layer is then complete. A player
+ *    with a Roll Exemption (issue #433) isn't expected to roll, so is never
+ *    excluded; if their exemption is countered they roll late, and this
+ *    clock restarts when the Reaction Window closes.
  *  - status 'closed', layer > 0: a tied player never submitted their
  *    reroll -> exclude them from that layer; the remaining tied players'
  *    Layer is then complete.
@@ -122,8 +126,13 @@ export async function enforceStallTimeout(
       await advanceRound(supabase, roundId, "stallCleared");
       return { action: "compelledCastsForfeited", playerIds };
     }
-    // Rolling opened when the step ended, so that is when the roll clock starts.
-    layerStartedAt = step.endedAt ?? round.closedAt;
+    // Rolling opened when the step ended, so that is when the roll clock starts
+    // -- or restarts when the Reaction Window closes (issue #433): a caster
+    // whose Roll Exemption was countered is only expected to roll from then.
+    layerStartedAt = latest(
+      step.endedAt ?? round.closedAt,
+      await getLayerZeroWindowClosedAt(supabase, roundId),
+    );
   } else {
     layerStartedAt = await getLayerEnteredAt(supabase, roundId, layer);
   }
@@ -200,20 +209,30 @@ export async function enforceStallTimeout(
   }
 
   // Layer 0 needs at least 2 active participants to resolve a round at all
-  // (mirrors close_round's own >=2 gate). A reroll layer (layer > 0) is
+  // (mirrors close_round's own >=2 gate). They are counted from the
+  // participants, not the expected rollers: a player with a Roll Exemption
+  // (issue #433) takes part without rolling. A reroll layer (layer > 0) is
   // already a tied subset of those same participants, so shrinking it to a
   // single remaining roller isn't a failure to resolve — resolve_round
   // treats that lone roller as the outright winner of the tie, same as if
   // everyone else had simply lost the reroll outright.
-  const remainingActiveCount = expectedPlayerIds.size - stalledPlayerIds.length;
-  if (layer === 0 && remainingActiveCount < 2) {
-    await cancelRound(supabase, roundId);
-    await broadcastRoundCancelled(supabase, round.roomId, { roundId });
-    return { action: "cancelled" };
+  if (layer === 0) {
+    const participants = await getRoundParticipants(supabase, roundId);
+    if (participants.filter((p) => p.excludedAt === null).length < 2) {
+      await cancelRound(supabase, roundId);
+      await broadcastRoundCancelled(supabase, round.roomId, { roundId });
+      return { action: "cancelled" };
+    }
   }
 
   // The Layer is now complete: at Layer 0 this opens the reaction window, at
   // a Tie-Break Reroll Layer it finalizes.
   await advanceRound(supabase, roundId, "stallCleared");
   return { action: "excluded", playerIds: stalledPlayerIds };
+}
+
+/** The later of two timestamps (either may be missing). */
+function latest(a: string | null, b: string | null): string | null {
+  if (a === null || b === null) return a ?? b;
+  return Date.parse(b) > Date.parse(a) ? b : a;
 }

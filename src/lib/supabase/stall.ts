@@ -194,6 +194,18 @@ export async function getCompelledCastStep(supabase: SupabaseClient, roundId: st
 }
 
 /**
+ * Calls the get_layer_zero_window_closed_at RPC (issue #433): when the round's
+ * layer-0 Reaction Window closed, or null while none has. Layer 0's roll stall
+ * clock restarts there, so a caster whose Roll Exemption was countered — an
+ * expected roller only from that moment — gets the full timeout to roll late.
+ */
+export async function getLayerZeroWindowClosedAt(supabase: SupabaseClient, roundId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("get_layer_zero_window_closed_at", { p_round_id: roundId });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+/**
  * Calls the forfeit_stalled_compelled_casts RPC (0119, issue #440): the stall
  * clock's Compelled Cast branch. Forfeits every compelled Action cast still
  * owed once enforceStallTimeout's own hasStalled check has fired, which ends

@@ -1,0 +1,72 @@
+{
+  "scenario": "05-loaf-of-lipton-skips-roll",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "loaf",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "skipped"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "rolls"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Loaf of Lipton",
+        "active_effect_id": null,
+        "caster_player_id": "P:loaf"
+      },
+      "display_kind": "roll_exemption",
+      "target_player": "P:loaf"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Loaf of Lipton",
+        "active_effect_id": null,
+        "caster_player_id": "P:loaf"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:loaf"
+    }
+  ],
+  "players": [
+    {
+      "player": "high",
+      "nat": null,
+      "roll": 17,
+      "total": 17,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "low",
+      "nat": null,
+      "roll": 2,
+      "total": 2,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

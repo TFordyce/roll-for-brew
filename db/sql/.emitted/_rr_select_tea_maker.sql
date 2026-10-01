@@ -73,6 +73,7 @@ as $$
 declare
   v_room_id uuid;
   v_started_at timestamptz;
+  v_cups_made integer;
 
   v_steps jsonb := '[]'::jsonb;
   v_step_index integer := p_step_index;
@@ -126,6 +127,7 @@ declare
   -- tier 3 (issue #431): the Loose Leaf roll-off
   v_rolloff record;
   v_rolloff_lineup integer[];
+  v_rolloff_min_lineup integer;
   v_rolloff_second_roll integer;
   v_rolloff_second_composed numeric;
   v_rolloff_opponents text[];
@@ -138,6 +140,10 @@ declare
 begin
   select room_id, started_at into v_room_id, v_started_at
     from public.rounds where id = p_round_id;
+
+  -- cups_made, counted as _rr_resolve_eval counts it
+  select count(*) into v_cups_made
+    from public.round_participants where round_id = p_round_id;
 
   select coalesce(array_agg(e ->> 'player_id' order by ord), array[]::text[]),
          coalesce(array_agg((e ->> 'roll')::integer order by ord), array[]::integer[]),
@@ -278,12 +284,15 @@ begin
   -- ------------------------------------------------------------------
   if v_brewer_id is null then
     for v_row in
-      -- issue #425: an explicit `modifier_gain` number wins; the legacy
+      -- issue #425: an explicit `modifier_gain` number wins; then (issue
+      -- #433, Loaf of Lipton's "double the usual modifier") a
+      -- `modifier_gain_multiplier` times cups_made; the legacy
       -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
       select casts.effect_params->>'mode' as mode,
              casts.effect_params->>'condition' as condition,
              coalesce(
                (casts.effect_params->>'modifier_gain')::integer,
+               (casts.effect_params->>'modifier_gain_multiplier')::integer * v_cups_made,
                case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
                     then 0 end
              ) as modifier_gain,
@@ -570,9 +579,13 @@ begin
 
     -- A fast path, and the gate on the all-immune give-way: with no live
     -- immunity the unfiltered pick stands. Skip steps read their payload from
-    -- the immunity map, since today "not a candidate" means "immune". Both
-    -- assumptions go when Roll Exemption (#433) / Tea Cosy (#434) widen
-    -- _rr_is_brewer_candidate.
+    -- the immunity map, since "not a candidate" means "immune". Roll
+    -- Exemption (#433) doesn't touch _rr_is_brewer_candidate: an exempt
+    -- player has no layer-0 roll, so they are never in the summary this pool
+    -- is drawn from, yet a `chosen` override can still name them. A round
+    -- where everyone is exempt reaches this pool empty only if every
+    -- override fell through on immunity -- the give-way below then ties
+    -- every participant, and they roll the Tie-Break Reroll normally.
     if v_immune <> '{}'::jsonb then
       select array_agg(v_players[i] order by i), array_agg(v_rolls[i] order by i),
              array_agg(v_composed[i] order by i), array_agg(v_dice_reduced[i] order by i)
@@ -633,7 +646,11 @@ begin
   -- roll-off, never a player-id tiebreak. There are none when fewer than
   -- three are in the line-up -- in a two-player round the "second-lowest"
   -- is the top roller -- or when the holder alone is second-lowest: the
-  -- card then does nothing. Otherwise the outcome is an unfinished
+  -- card then does nothing. A holder with a Roll Exemption (issue #433) has
+  -- no roll, so isn't in the line-up: the opponents are then the rollers
+  -- tied at second-lowest among the others, which takes at least two of
+  -- them. Exempt players are never opponents (no roll to order by); in the
+  -- roll-off itself everyone rolls. Otherwise the outcome is an unfinished
   -- `rolloff`, which finalize_layer commits like a tie: a Tie-Break Reroll
   -- Layer for the holder and the opponents, where the lowest roll brews
   -- with normal modifier gain.
@@ -658,7 +675,10 @@ begin
        where v_players[i] = v_brewer_id
           or public._rr_is_brewer_candidate(v_immune, v_players[i]);
 
-      if coalesce(array_length(v_rolloff_lineup, 1), 0) >= 3 then
+      -- issue #433: an exempt holder isn't in the line-up
+      v_rolloff_min_lineup := case when v_brewer_id = any (v_players) then 3 else 2 end;
+
+      if coalesce(array_length(v_rolloff_lineup, 1), 0) >= v_rolloff_min_lineup then
         select v_rolls[i], v_composed[i]
           into v_rolloff_second_roll, v_rolloff_second_composed
           from unnest(v_rolloff_lineup) i
