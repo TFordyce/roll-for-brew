@@ -86,6 +86,10 @@ _Avoid_: override order, brewer priority.
 A Participant who can't be Tea Maker (a `brewer_immunity` active effect). The Last Cuppa grants it for the rest of the day, and no card can get past it or dispel it; Tea Cosy (one round) and the Earl title will grant it too. If every Participant is immune and no override lands, immunity gives way to a Tie-Break Reroll among them all.
 _Avoid_: exempt (that's Roll Exemption — not rolling, which is separate), protected, warded (wards guard values, not the brew).
 
+**Brewer Candidate**:
+A Participant the Tea-Maker Precedence Ladder may name as Tea Maker — today, anyone without **Brewer Immunity**. Every rung asks the same question (`_rr_is_brewer_candidate`); a non-candidate counts as no match and selection falls through. Roll Exemption, Tea Cosy and the Earl extend it.
+_Avoid_: eligible player, valid target (that's spell targeting).
+
 **Brew Debt**:
 The obligation the Brew IOU card leaves on its caster — the **Debtor** — once its target has actually been made Tea Maker by it: the Debtor must be Tea Maker on their next round as a Participant, and on that round nobody rolls. Stays owed across days until paid; a round where the Debtor is immune to being Tea Maker is played normally and leaves it owed.
 _Avoid_: IOU (that's the card), forced brew (that's any tea-maker override).

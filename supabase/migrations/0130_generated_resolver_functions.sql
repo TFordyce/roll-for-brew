@@ -22,7 +22,8 @@
 -- map ({ player_id: { ae_id, caster_id, card_name, override_proof } }).
 --
 -- The place the later candidate rules extend: the Earl's override-proof
--- transfer (#429), Tea Cosy (#434) and Roll Exemption (#433).
+-- transfer (#429), Tea Cosy (#434) and Roll Exemption (#433). `immutable`
+-- holds only while it reads nothing but its arguments.
 --
 -- Internal: no grant to authenticated.
 --
@@ -137,7 +138,7 @@ declare
   -- layer-0 roller, built from the final working arrays just before Phase 5.
   v_summary jsonb := '[]'::jsonb;
 
-  -- Phase 5 (issue #451): the Selection _rr_select_tea_maker returns.
+  -- Phase 5 (issue #451): the selection result _rr_select_tea_maker returns.
   v_selection jsonb;
   v_brewer_id text := null;
   -- issue #425: the brewer's tea-making modifier gain. null = the normal
@@ -2068,8 +2069,8 @@ begin
   -- ------------------------------------------------------------------
   -- Phase 5: brewer selection -- the Tea-Maker Precedence Ladder (ADR 0005,
   -- #425 amendment), in its own module since issue #451. It takes the
-  -- Resolution Summary as its roll input and returns one Selection value:
-  -- the outcome, brewer, brewer source, ladder modifier gain, tie pool and
+  -- Resolution Summary as its roll input and returns one selection result:
+  -- the outcome, Tea Maker, brewer source, ladder modifier gain, tie pool and
   -- the Trace steps it emitted from v_step_index.
   -- ------------------------------------------------------------------
   v_selection := public._rr_select_tea_maker(
@@ -2133,7 +2134,7 @@ begin
   -- ------------------------------------------------------------------
   v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
 
-  -- The one layer-0 return, built from the Selection.
+  -- The one layer-0 return, built from the selection result.
   return jsonb_build_object(
     'outcome', v_selection -> 'outcome', 'layer', 0,
     'brewer_id', v_brewer_id, 'brewer_source', v_selection -> 'brewer_source',
@@ -2166,7 +2167,7 @@ comment on function public._rr_resolve_eval(uuid, boolean) is
 --                   { ae_id, caster_id } }).
 --   p_step_index    the Trace step cursor; steps are numbered from here.
 --
--- Returns one Selection value:
+-- Returns one selection result:
 --   { outcome          'brewer' | 'tie'
 --     brewer_id        the Tea Maker (null on a tie)
 --     brewer_source    'declared_number' | 'tea_maker_override:<mode>' |
@@ -2569,6 +2570,11 @@ begin
   if v_brewer_id is null then
     v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
 
+    -- A fast path, and the gate on the all-immune give-way: with no live
+    -- immunity the unfiltered pick stands. Skip steps read their payload from
+    -- the immunity map, since today "not a candidate" means "immune". Both
+    -- assumptions go when Roll Exemption (#433) / Tea Cosy (#434) widen
+    -- _rr_is_brewer_candidate.
     if v_immune <> '{}'::jsonb then
       select array_agg(v_players[i] order by i), array_agg(v_rolls[i] order by i),
              array_agg(v_composed[i] order by i), array_agg(v_dice_reduced[i] order by i)
@@ -2639,7 +2645,7 @@ comment on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integ
 --
 -- Authoritative round resolution: locks the closed round, runs the Resolver
 -- pipeline (_rr_resolve_eval) and persists its Resolution Trace and
--- Resolution Summary (issue #407) at the two layer-0 exits (tie and brewer).
+-- Resolution Summary (issue #407) for either layer-0 outcome (tie or brewer).
 -- Layer > 0 persists nothing (issue #219).
 -- Issue #404 (ADR 0007) moved the pipeline body into _rr_resolve_eval so the
 -- non-persisting _rr_resolve can share it; this function is the writer, and
@@ -2690,7 +2696,7 @@ revoke execute on function public.resolve_round(uuid) from public, anon;
 grant execute on function public.resolve_round(uuid) to authenticated;
 
 comment on function public.resolve_round(uuid) is
-  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351 / #289, ADR 0005). Locks the closed round, runs the Resolver pipeline (_rr_resolve_eval, issue #404; Phase 5 tea-maker selection by the Tea-Maker Precedence Ladder lives in _rr_select_tea_maker, issue #451) and persists rounds.resolution_trace and rounds.resolution_summary at both layer-0 exits (tie and brewer); layer > 0 bypasses all spell logic and persists nothing (issue #219). Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain, no_modifier_gain, trace, players }. Deterministic and idempotent over its inputs: the Cast-Log / modifier caches it maintains are rewritten identically on a re-run. The non-persisting twin is _rr_resolve (ADR 0007).';
+  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351 / #289, ADR 0005). Locks the closed round, runs the Resolver pipeline (_rr_resolve_eval, issue #404; Phase 5 tea-maker selection by the Tea-Maker Precedence Ladder lives in _rr_select_tea_maker, issue #451) and persists rounds.resolution_trace and rounds.resolution_summary for either layer-0 outcome (tie or brewer); layer > 0 bypasses all spell logic and persists nothing (issue #219). Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain, no_modifier_gain, trace, players }. Deterministic and idempotent over its inputs: the Cast-Log / modifier caches it maintains are rewritten identically on a re-run. The non-persisting twin is _rr_resolve (ADR 0007).';
 
 -- resolve_round(p_round_id uuid, p_brewer_id text, p_cups_made integer,
 --               p_modifier_gain integer) -> void

@@ -44,7 +44,7 @@ declare
   -- layer-0 roller, built from the final working arrays just before Phase 5.
   v_summary jsonb := '[]'::jsonb;
 
-  -- Phase 5 (issue #451): the Selection _rr_select_tea_maker returns.
+  -- Phase 5 (issue #451): the selection result _rr_select_tea_maker returns.
   v_selection jsonb;
   v_brewer_id text := null;
   -- issue #425: the brewer's tea-making modifier gain. null = the normal
@@ -1975,8 +1975,8 @@ begin
   -- ------------------------------------------------------------------
   -- Phase 5: brewer selection -- the Tea-Maker Precedence Ladder (ADR 0005,
   -- #425 amendment), in its own module since issue #451. It takes the
-  -- Resolution Summary as its roll input and returns one Selection value:
-  -- the outcome, brewer, brewer source, ladder modifier gain, tie pool and
+  -- Resolution Summary as its roll input and returns one selection result:
+  -- the outcome, Tea Maker, brewer source, ladder modifier gain, tie pool and
   -- the Trace steps it emitted from v_step_index.
   -- ------------------------------------------------------------------
   v_selection := public._rr_select_tea_maker(
@@ -2040,7 +2040,7 @@ begin
   -- ------------------------------------------------------------------
   v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
 
-  -- The one layer-0 return, built from the Selection.
+  -- The one layer-0 return, built from the selection result.
   return jsonb_build_object(
     'outcome', v_selection -> 'outcome', 'layer', 0,
     'brewer_id', v_brewer_id, 'brewer_source', v_selection -> 'brewer_source',

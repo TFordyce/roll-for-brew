@@ -8,7 +8,8 @@
 -- map ({ player_id: { ae_id, caster_id, card_name, override_proof } }).
 --
 -- The place the later candidate rules extend: the Earl's override-proof
--- transfer (#429), Tea Cosy (#434) and Roll Exemption (#433).
+-- transfer (#429), Tea Cosy (#434) and Roll Exemption (#433). `immutable`
+-- holds only while it reads nothing but its arguments.
 --
 -- Internal: no grant to authenticated.
 --

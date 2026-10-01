@@ -11,7 +11,7 @@
 --                   { ae_id, caster_id } }).
 --   p_step_index    the Trace step cursor; steps are numbered from here.
 --
--- Returns one Selection value:
+-- Returns one selection result:
 --   { outcome          'brewer' | 'tie'
 --     brewer_id        the Tea Maker (null on a tie)
 --     brewer_source    'declared_number' | 'tea_maker_override:<mode>' |
@@ -414,6 +414,11 @@ begin
   if v_brewer_id is null then
     v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
 
+    -- A fast path, and the gate on the all-immune give-way: with no live
+    -- immunity the unfiltered pick stands. Skip steps read their payload from
+    -- the immunity map, since today "not a candidate" means "immune". Both
+    -- assumptions go when Roll Exemption (#433) / Tea Cosy (#434) widen
+    -- _rr_is_brewer_candidate.
     if v_immune <> '{}'::jsonb then
       select array_agg(v_players[i] order by i), array_agg(v_rolls[i] order by i),
              array_agg(v_composed[i] order by i), array_agg(v_dice_reduced[i] order by i)
