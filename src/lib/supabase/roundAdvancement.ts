@@ -32,6 +32,11 @@ export type FinalizationOutcome =
       /** The new Tie-Break Reroll Layer. */
       layer: number;
       tiedPlayerIds: string[];
+      /**
+       * Issue #431: a Loose Leaf roll-off, committed the way a tie is — the
+       * named holder and the second-lowest roller reroll at the new Layer.
+       */
+      rolloff: boolean;
     }
   | { outcome: "noop"; reason: NoopReason };
 
@@ -68,7 +73,7 @@ type RawFinalizationOutcome =
       rolls: RawRoll[];
       replay_pending: boolean;
     }
-  | { outcome: "tie"; layer: number; tied_player_ids: string[] }
+  | { outcome: "tie"; layer: number; tied_player_ids: string[]; rolloff?: boolean }
   | { outcome: "noop"; reason: NoopReason };
 
 type RawLayerOutcome = (
@@ -97,7 +102,7 @@ function toFinalizationOutcome(raw: RawFinalizationOutcome): FinalizationOutcome
         replayPending: raw.replay_pending,
       };
     case "tie":
-      return { outcome: "tie", layer: raw.layer, tiedPlayerIds: raw.tied_player_ids };
+      return { outcome: "tie", layer: raw.layer, tiedPlayerIds: raw.tied_player_ids, rolloff: raw.rolloff ?? false };
     case "noop":
       return { outcome: "noop", reason: raw.reason };
   }

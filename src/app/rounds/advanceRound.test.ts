@@ -94,7 +94,7 @@ describe("advanceRound", () => {
   });
 
   it("a tie outcome broadcasts the new Layer and its tied players", async () => {
-    const deps = fakeDeps({ outcome: "tie", layer: 1, tiedPlayerIds: ["p1", "p2"] });
+    const deps = fakeDeps({ outcome: "tie", layer: 1, tiedPlayerIds: ["p1", "p2"], rolloff: false });
 
     await advanceRound(supabase, "round-1", "reactionWindowChanged", deps);
 
@@ -105,6 +105,19 @@ describe("advanceRound", () => {
     });
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
     expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
+  });
+
+  it("a Loose Leaf roll-off outcome sends the tied broadcast, so the tie modal runs the roll-off", async () => {
+    const deps = fakeDeps({ outcome: "tie", layer: 1, tiedPlayerIds: ["p1", "p3"], rolloff: true });
+
+    await advanceRound(supabase, "round-1", "reactionWindowChanged", deps);
+
+    expect(deps.broadcastLayerTied).toHaveBeenCalledWith(supabase, "room-1", {
+      roundId: "round-1",
+      layer: 1,
+      tiedPlayerIds: ["p1", "p3"],
+    });
+    expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
   });
 
   it("a noop sends no broadcast and skips the room lookup", async () => {
@@ -179,6 +192,7 @@ describe("advanceRound", () => {
       outcome: "tie",
       layer: 2,
       tiedPlayerIds: ["p1", "p2"],
+      rolloff: false,
       layerRolls: { layer: 1, rolls: rawRolls },
     });
 

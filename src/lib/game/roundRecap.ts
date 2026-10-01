@@ -246,6 +246,8 @@ const OUTCOME_KINDS = new Set([
   "brewer_immunity",
   // Issue #429: a force on the Earl passes the title, then the override lands.
   "earl_transfer",
+  // Issue #431: Loose Leaf turns the named brewer into a roll-off.
+  "named_tea_maker_rolloff",
   // Issue #438: a Tea Heist's outcome is decided in the resolver's final phase.
   "card_heist",
 ]);
@@ -412,7 +414,7 @@ function fmt(value: number | string | null): string {
  */
 function sentenceFor(
   step: ResolutionTraceStep,
-  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null; newEarl: string },
+  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null; newEarl: string; rolloffOpponents: string[] },
 ): string {
   const { t, c, k } = names;
   const played = k ? `${c} played ${k}` : c;
@@ -515,6 +517,12 @@ function sentenceFor(
       // Issue #429: forcing tea on the Earl passes the title to the forcing
       // card's caster; the override's own step then says the ex-Earl brews.
       return `${k || "Earl of Earl Grey"} — ${step.earlTransfer?.forcingCardName ?? "a card"} forces tea on ${t}, so the Earl title passes to ${names.newEarl}`;
+    case "named_tea_maker_rolloff":
+      // Issue #431: Loose Leaf -- the named holder rolls off against every
+      // roller tied at second-lowest, or the card does nothing without one.
+      return names.rolloffOpponents.length > 0
+        ? `${played} — ${t} is named Tea Maker, so ${joinNames([t, ...names.rolloffOpponents], "")} roll off; the ${names.rolloffOpponents.length > 1 ? "lowest" : "lower"} roll brews`
+        : `${played} — no effect: there's no second-lowest roller to roll off against`;
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
     case "tea_maker_override": {
@@ -792,6 +800,7 @@ export function buildRoundRecap({
           compelledBy: compelledBy ?? BREWMAGEDDON,
           pickedBy: step.pickedBy ? displayName(step.pickedBy) : null,
           newEarl: step.earlTransfer ? displayName(step.earlTransfer.newEarlPlayerId) : "",
+          rolloffOpponents: step.rolloffOpponents.map(displayName),
         });
         return {
           phase: phaseForStep(step, castById),
@@ -818,7 +827,10 @@ export function buildRoundRecap({
     // targeting skip) wait for the real resolution.
     phases: groupByPhase(data.provisional ? withSkips.filter((s) => s.phase !== "Outcome") : withSkips),
     showReorderCaption: !live && castStrip.length > 1,
-    endedInTieBreak: !live && !data.provisional && data.layerZeroOutcome === "tie",
+    // Issue #431: a Loose Leaf roll-off also goes on to a later Layer, but
+    // its own step explains that -- it isn't a tie for lowest.
+    endedInTieBreak:
+      !live && !data.provisional && data.layerZeroOutcome === "tie" && !data.trace.some((s) => s.rolloffOpponents.length > 0),
     rows,
     provisional: data.provisional,
   };

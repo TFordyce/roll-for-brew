@@ -51,7 +51,8 @@ export type TraceStep = {
 };
 
 export type ResolveOutcome = {
-  outcome: "brewer" | "tie";
+  // Issue #431: "rolloff" -- a Loose Leaf roll-off, tie-shaped.
+  outcome: "brewer" | "tie" | "rolloff";
   layer: number;
   brewer_id: string | null;
   brewer_source: string | null;
@@ -124,6 +125,7 @@ const KIND_PHASE: Partial<Record<string, PhaseTag>> = {
   targeting_skip: "5",
   brewer_immunity: "5",
   earl_transfer: "5",
+  named_tea_maker_rolloff: "5",
   declared_number_tea_maker: "5",
   tea_maker_override: "5",
   card_heist: "6",
@@ -236,6 +238,12 @@ export function normaliseTrace(trace: TraceStep[], roster: Roster): unknown[] {
         return map.get(value);
       }
       return value;
+    }
+    // A list made only of player ids is a set (e.g. Loose Leaf's tied
+    // roll-off opponents, issue #431) whose SQL order follows the per-run
+    // ids, so sort it by label -- as `tiedPlayers` is.
+    if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string" && v in roster)) {
+      return value.map((v) => map.get(v as string)).sort();
     }
     if (Array.isArray(value)) return value.map((v) => walk(v, rngKeys));
     if (value && typeof value === "object") {

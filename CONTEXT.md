@@ -76,7 +76,7 @@ _Avoid_: no-modifier-gain (the retired yes/no), cups made (that's the default va
 The fixed order in which a round's Tea Maker is picked when several cards compete (ADR 0005, #425). The first rung that names someone wins:
 1. **Declared number** — Inscribed Saucer's number matched by a roll.
 2. **Tea-maker override** — the last cast wins. Its mode is one of `highest_modifier`, `highest_roll`, `chosen`, `prev_round_highest` or `conditional_chosen`; an override whose condition fails (or an inert Last Drip, with no previous winner taking part) never enters.
-3. **Loose Leaf roll-off** — applied once a Tea Maker is named, whichever rung named them.
+3. **Loose Leaf roll-off** — applied once a Tea Maker is named, whichever rung named them. If the named player cast Loose Leaf this round, they and the second-lowest roller (by roll, then modifier) go to a Tie-Break Reroll, and the lowest roll brews with the normal Modifier Gain. Everyone tied for second-lowest joins the roll-off; player id never breaks that tie. With no distinct second-lowest roller — fewer than three in the running, as in a two-player round, or the holder alone is second-lowest — the card does nothing.
 4. **Default** — the lowest roller.
 
 **Brewer Immunity** isn't a rung of its own. It filters every rung: an immune candidate counts as no match, and selection falls through to the next candidate. A round with a payable Brew Debt skips the ladder entirely. Cloud of Cream's targeting skip isn't part of the ladder: it only steers the `highest_modifier` override's pick, and doesn't interact with the other override modes.
@@ -192,7 +192,7 @@ _Avoid_: round summary, effect breakdown, roll calculation (the per-tile display
 
 **Resolution Summary**:
 The per-player final values the resolver settled on for a round's Layer 0 — each participant's final roll, roll-time modifier, composed modifier, total, and nat-1/nat-20 standing — recorded beside the Resolution Trace, never re-derived by the app. It is what a player's roll row and badge show; the Trace steps targeting that player are the terms that explain it.
-_Avoid_: roll calculation (that's the per-tile display that renders it), final scores, outcome (that's brewer vs tie).
+_Avoid_: roll calculation (that's the per-tile display that renders it), final scores, outcome (that's brewer vs tie, or a Loose Leaf roll-off).
 
 **Provisional Recap**:
 The Round Recap and Resolution Summary as they would stand if the round resolved right now — a non-persisting run of the same resolver, shown while Layer 0's rolls are in but the round is still live (typically during the reaction window). Reactions and roll transforms still to come can change it; it becomes the real Recap only when the round resolves.

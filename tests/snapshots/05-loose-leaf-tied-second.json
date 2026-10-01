@@ -1,0 +1,78 @@
+{
+  "scenario": "05-loose-leaf-tied-second",
+  "outcome": "rolloff",
+  "layer": 0,
+  "brewer": null,
+  "brewerSource": null,
+  "tiedPlayers": [
+    "holder",
+    "tied-a",
+    "tied-b"
+  ],
+  "cupsMade": 4,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "rolloff"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Loose Leaf",
+        "active_effect_id": null,
+        "caster_player_id": "P:holder"
+      },
+      "display_kind": "named_tea_maker_rolloff",
+      "target_player": "P:holder",
+      "rolloff_opponent_ids": [
+        "P:tied-a",
+        "P:tied-b"
+      ]
+    }
+  ],
+  "players": [
+    {
+      "player": "high",
+      "nat": null,
+      "roll": 18,
+      "total": 18,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "holder",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "tied-a",
+      "nat": null,
+      "roll": 9,
+      "total": 9,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "tied-b",
+      "nat": null,
+      "roll": 9,
+      "total": 9,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

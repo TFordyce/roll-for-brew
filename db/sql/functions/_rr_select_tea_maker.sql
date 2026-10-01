@@ -12,15 +12,17 @@
 --   p_step_index    the Trace step cursor; steps are numbered from here.
 --
 -- Returns one selection result:
---   { outcome          'brewer' | 'tie'
---     brewer_id        the Tea Maker (null on a tie)
+--   { outcome          'brewer' | 'tie' | 'rolloff'
+--     brewer_id        the Tea Maker (null on a tie or a roll-off)
 --     brewer_source    'declared_number' | 'tea_maker_override:<mode>' |
---                      'default' (null on a tie)
+--                      'default' (null on a tie or a roll-off)
 --     modifier_gain    the ladder's gain (null = cups_made, 0 = none, else as
---                      given; null on a tie). The Eternal Steep ward is
---                      applied by the caller -- the ward phase is orthogonal
---                      to the ladder.
---     tied_player_ids  the Tie-Break Reroll pool (null for a brewer)
+--                      given; null on a tie or a roll-off). The Eternal Steep
+--                      ward is applied by the caller -- the ward phase is
+--                      orthogonal to the ladder.
+--     tied_player_ids  the Tie-Break Reroll pool (null for a brewer); for a
+--                      roll-off (issue #431, Loose Leaf), the named holder
+--                      then every roller tied at second-lowest
 --     earl_transfer    issue #429: { active_effect_id, from_player_id,
 --                      to_player_id, cast_id } when an override forced tea on
 --                      the Earl, else null. Decided here; finalize_layer's
@@ -28,7 +30,9 @@
 --     steps            the Resolution Trace steps it emitted, in order }
 -- The outcome is a tag so a later outcome (the Loose Leaf `rolloff`, #431)
 -- or a pre-ladder rule (the Brew Debt round, #432) is one more branch ahead
--- of the single return, not another exit.
+-- of the single return, not another exit. An `earl_transfer` can come back
+-- with a `rolloff` (the forced ex-Earl holds Loose Leaf): finalize_layer
+-- writes it when it commits the roll-off.
 --
 -- Read-only. It reads the round, the live active effects and the Cast Log,
 -- never writes, so it is safe under both resolve_round and the rolled-back
@@ -106,6 +110,15 @@ declare
   v_pool_rolls integer[];
   v_pool_composed numeric[];
   v_pool_reduced boolean[];
+
+  -- tier 3 (issue #431): the Loose Leaf roll-off
+  v_rolloff record;
+  v_rolloff_lineup integer[];
+  v_rolloff_second_roll integer;
+  v_rolloff_second_composed numeric;
+  v_rolloff_opponents text[];
+  v_rolloff_after text;
+  v_rolloff_extra jsonb;
 begin
   select room_id, started_at into v_room_id, v_started_at
     from public.rounds where id = p_round_id;
@@ -554,6 +567,94 @@ begin
     end if;
   end if;
 
+  -- ------------------------------------------------------------------
+  -- Tier 3 (issue #431): Loose Leaf roll-off. Keyed to the final named
+  -- brewer, whichever tier named them, so it runs after the default pick.
+  -- The holder's armed effect is a `named_tea_maker_rolloff` Cast Log row
+  -- for this round, aimed at them (SELF); a counter negates it in Phase 1.
+  -- The line-up is the layer-0 rollers -- the brewer and the Brewer
+  -- Candidates -- ordered by post-shim roll, then composed modifier. The
+  -- opponents are every roller other than the holder sharing the
+  -- second-place (roll, modifier): a tie there sends them all into the
+  -- roll-off, never a player-id tiebreak. There are none when fewer than
+  -- three are in the line-up -- in a two-player round the "second-lowest"
+  -- is the top roller -- or when the holder alone is second-lowest: the
+  -- card then does nothing. Otherwise the outcome is an unfinished
+  -- `rolloff`, which finalize_layer commits like a tie: a Tie-Break Reroll
+  -- Layer for the holder and the opponents, where the lowest roll brews
+  -- with normal modifier gain.
+  -- ------------------------------------------------------------------
+  if v_brewer_id is not null then
+    select casts.id, casts.caster_id, sc.name as card_name
+      into v_rolloff
+      from public.spell_casts casts
+      join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
+      join public.spell_cards sc on sc.id = sdi.card_id
+     where casts.round_id = p_round_id
+       and casts.effect_kind = 'named_tea_maker_rolloff'
+       and casts.negated = false
+       and casts.target_player_id = v_brewer_id
+     order by casts.cast_at, casts.seq
+     limit 1;
+
+    if found then
+      select array_agg(i order by i)
+        into v_rolloff_lineup
+        from generate_subscripts(v_players, 1) i
+       where v_players[i] = v_brewer_id
+          or public._rr_is_brewer_candidate(v_immune, v_players[i]);
+
+      if coalesce(array_length(v_rolloff_lineup, 1), 0) >= 3 then
+        select v_rolls[i], v_composed[i]
+          into v_rolloff_second_roll, v_rolloff_second_composed
+          from unnest(v_rolloff_lineup) i
+         order by v_rolls[i], v_composed[i]
+        offset 1 limit 1;
+
+        -- all of them roll off; listed by player id only so the order is
+        -- stable, never to pick between them
+        select array_agg(v_players[i] order by v_players[i])
+          into v_rolloff_opponents
+          from unnest(v_rolloff_lineup) i
+         where v_players[i] <> v_brewer_id
+           and v_rolls[i] = v_rolloff_second_roll
+           and v_composed[i] = v_rolloff_second_composed;
+      end if;
+
+      if v_rolloff_opponents is not null then
+        v_rolloff_after := 'rolloff';
+        v_rolloff_extra := jsonb_build_object('rolloff_opponent_ids', to_jsonb(v_rolloff_opponents));
+      else
+        v_rolloff_after := 'no effect';
+        v_rolloff_extra := jsonb_build_object('outcome', 'no-op', 'rolloff_reason', 'no_second_lowest');
+      end if;
+
+      v_steps := v_steps || jsonb_build_array(public._rr_trace_step(
+        v_step_index,
+        'named_tea_maker_rolloff',
+        jsonb_build_object(
+          'cast_id', to_jsonb(v_rolloff.id),
+          'active_effect_id', null,
+          'card_name', to_jsonb(v_rolloff.card_name),
+          'caster_player_id', to_jsonb(v_rolloff.caster_id)
+        ),
+        v_brewer_id,
+        jsonb_build_object('type', 'status', 'value', 'brewer'),
+        jsonb_build_object('type', 'status', 'value', v_rolloff_after),
+        v_rolloff_extra
+      ));
+      v_step_index := v_step_index + 1;
+
+      if v_rolloff_opponents is not null then
+        v_outcome := 'rolloff';
+        v_tied := array[v_brewer_id] || v_rolloff_opponents;
+        v_brewer_id := null;
+        v_brewer_source := null;
+        v_modifier_gain := null;
+      end if;
+    end if;
+  end if;
+
   return jsonb_build_object(
     'outcome', v_outcome,
     'brewer_id', v_brewer_id,
@@ -569,4 +670,4 @@ $$;
 revoke execute on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) from public, anon, authenticated;
 
 comment on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) is
-  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), steps }. Read-only. Called by _rr_resolve_eval only. Internal.';
+  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller, then tier 3 the Loose Leaf roll-off keyed to the named brewer against every roller tied at second-lowest, issue #431). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie|rolloff, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), steps }. Read-only. Called by _rr_resolve_eval only. Internal.';

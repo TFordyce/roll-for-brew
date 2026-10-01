@@ -56,9 +56,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     // (Compelled Cast, #440, migration 0119) — Last Drip (#426, migration
     // 0124) — PG Tipped (conditional override, #427, migration 0126) — The
     // Last Cuppa (brewer immunity, #428, migration 0128) — Tea Party Revolt
-    // (#430, migration 0131) — and Earl of Earl Grey (#429, migration 0133) —
-    // are since implemented and un-benched, so 8.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(8);
+    // (#430, migration 0131) — Earl of Earl Grey (#429, migration 0133) —
+    // and Loose Leaf (roll-off, #431, migration 0135) — are since implemented
+    // and un-benched, so 7.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(7);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();
