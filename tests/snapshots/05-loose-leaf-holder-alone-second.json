@@ -1,13 +1,10 @@
 {
-  "scenario": "05-loose-leaf-named-by-override",
-  "outcome": "rolloff",
+  "scenario": "05-loose-leaf-holder-alone-second",
+  "outcome": "brewer",
   "layer": 0,
-  "brewer": null,
-  "brewerSource": null,
-  "tiedPlayers": [
-    "holder",
-    "second"
-  ],
+  "brewer": "holder",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
   "cupsMade": 3,
   "noModifierGain": false,
   "trace": [
@@ -34,14 +31,14 @@
     {
       "after": {
         "type": "status",
-        "value": "rolloff"
+        "value": "no effect"
       },
       "index": 1,
       "before": {
         "type": "status",
         "value": "brewer"
       },
-      "outcome": "applied",
+      "outcome": "no-op",
       "source_cast": {
         "cast_id": "cast#2",
         "card_name": "Loose Leaf",
@@ -50,9 +47,7 @@
       },
       "display_kind": "named_tea_maker_rolloff",
       "target_player": "P:holder",
-      "rolloff_opponent_ids": [
-        "P:second"
-      ]
+      "rolloff_reason": "no_second_lowest"
     }
   ],
   "players": [
@@ -66,7 +61,7 @@
       "dice_reduced": false
     },
     {
-      "player": "holder",
+      "player": "high",
       "nat": null,
       "roll": 19,
       "total": 19,
@@ -75,7 +70,7 @@
       "dice_reduced": false
     },
     {
-      "player": "second",
+      "player": "holder",
       "nat": null,
       "roll": 8,
       "total": 8,

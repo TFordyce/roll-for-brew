@@ -17,10 +17,10 @@ import {
 //     `named_tea_maker_rolloff` Cast Log row aimed at the caster.
 //   * Tea-maker selection naming the holder, by any tier, returns an
 //     unfinished `rolloff` against the second-lowest layer-0 roller (roll,
-//     then modifier, then player id). finalize_layer commits it like a tie --
-//     a Tie-Break Reroll Layer for the two -- and returns a tie-shaped outcome
-//     marked `rolloff`.
-//   * At that Layer the lower roll brews, with normal modifier gain; a tied
+//     then modifier) -- every roller tied there joins it, no player-id
+//     tiebreak. finalize_layer commits it like a tie -- a Tie-Break Reroll
+//     Layer for them -- and returns a tie-shaped outcome marked `rolloff`.
+//   * At that Layer the lowest roll brews, with normal modifier gain; a tied
 //     roll-off goes to another Layer.
 //   * No distinct second-lowest (a two-player round) -> the card does nothing.
 // Assertions are on observable outcomes: finalize_layer's result, the round
@@ -31,7 +31,7 @@ type TraceStep = {
   target_player: string | null;
   after: { type: string; value: number | string | null };
   outcome: string;
-  rolloff_opponent_id?: string;
+  rolloff_opponent_ids?: string[];
   rolloff_reason?: string;
 };
 
@@ -177,7 +177,7 @@ describe.skipIf(!hasAnonTestEnv)("Loose Leaf (#431)", () => {
       target_player: holder.googleSub,
       after: { type: "status", value: "rolloff" },
       outcome: "applied",
-      rolloff_opponent_id: second.googleSub,
+      rolloff_opponent_ids: [second.googleSub],
     });
 
     // The roll-off: the holder rolls higher, so the second-lowest roller brews.
@@ -193,7 +193,30 @@ describe.skipIf(!hasAnonTestEnv)("Loose Leaf (#431)", () => {
     expect(after.brewer_modifier_gain).toBe(3);
     expect(await modifierOf(second)).toBe(secondBefore + 3);
     // The layer-0 Trace the round keeps still explains the roll-off.
-    expect(rolloffStep(after.resolution_trace)?.rolloff_opponent_id).toBe(second.googleSub);
+    expect(rolloffStep(after.resolution_trace)?.rolloff_opponent_ids).toEqual([second.googleSub]);
+  });
+
+  it("every roller tied at second-lowest joins the roll-off -- no player-id tiebreak", async () => {
+    const [holder, b, c, high] = await players("three-holder", "three-b", "three-c", "three-high");
+    const roundId = await armedRound(holder, [b, c, high], [
+      [holder, 3],
+      [b, 9],
+      [c, 9],
+      [high, 18],
+    ]);
+
+    const rolloff = await finalize(b, roundId);
+    expect(rolloff).toMatchObject({ outcome: "tie", layer: 1, rolloff: true });
+    expect(rolloff.tied_player_ids?.[0]).toBe(holder.googleSub);
+    expect([...(rolloff.tied_player_ids ?? [])].sort()).toEqual([holder.googleSub, b.googleSub, c.googleSub].sort());
+    const step = rolloffStep((await roundRow(roundId)).resolution_trace);
+    expect([...(step?.rolloff_opponent_ids ?? [])].sort()).toEqual([b.googleSub, c.googleSub].sort());
+
+    // The three roll off; the lowest brews.
+    await seedRoll(roundId, holder.googleSub, 12, 1);
+    await seedRoll(roundId, b.googleSub, 15, 1);
+    await seedRoll(roundId, c.googleSub, 5, 1);
+    expect(await finalize(b, roundId)).toMatchObject({ outcome: "brewer", layer: 1, brewer_id: c.googleSub });
   });
 
   it("a tied roll-off goes to another Layer, and the holder brews if they lose it", async () => {

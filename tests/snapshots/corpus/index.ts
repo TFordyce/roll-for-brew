@@ -1616,4 +1616,43 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: chooser.client };
     },
   },
+  {
+    name: "05-loose-leaf-tied-second",
+    phases: ["5"],
+    note: "Loose Leaf (#431) — two rollers tie for second-lowest: both join the roll-off with the holder, no player-id tiebreak.",
+    async seed(ctx) {
+      const holder = await ctx.signUp("holder");
+      const tiedA = await ctx.signUp("tied-a");
+      const tiedB = await ctx.signUp("tied-b");
+      const high = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(holder, [tiedA, tiedB, high]);
+      await ctx.seedRoll(roundId, holder.googleSub, 3);
+      await ctx.seedRoll(roundId, tiedA.googleSub, 9);
+      await ctx.seedRoll(roundId, tiedB.googleSub, 9);
+      await ctx.seedRoll(roundId, high.googleSub, 18);
+      await looseLeaf(ctx, roundId, holder.googleSub);
+      return { roundId, resolveWith: holder.client };
+    },
+  },
+  {
+    name: "05-loose-leaf-holder-alone-second",
+    phases: ["5"],
+    note: "Loose Leaf (#431) — an override names the holder, who is themselves the second-lowest roller: no distinct opponent, so a no-op step and the holder brews.",
+    async seed(ctx) {
+      const chooser = await ctx.signUp("chooser");
+      const holder = await ctx.signUp("holder");
+      const high = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(chooser, [holder, high]);
+      await ctx.seedRoll(roundId, chooser.googleSub, 2);
+      await ctx.seedRoll(roundId, holder.googleSub, 8);
+      await ctx.seedRoll(roundId, high.googleSub, 19);
+      await ctx.seedCast(roundId, chooser.googleSub, "Wild Brew Surge", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen" },
+        targetPlayerId: holder.googleSub,
+      });
+      await looseLeaf(ctx, roundId, holder.googleSub);
+      return { roundId, resolveWith: chooser.client };
+    },
+  },
 ];

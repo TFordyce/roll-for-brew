@@ -239,6 +239,12 @@ export function normaliseTrace(trace: TraceStep[], roster: Roster): unknown[] {
       }
       return value;
     }
+    // A list made only of player ids is a set (e.g. Loose Leaf's tied
+    // roll-off opponents, issue #431) whose SQL order follows the per-run
+    // ids, so sort it by label -- as `tiedPlayers` is.
+    if (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string" && v in roster)) {
+      return value.map((v) => map.get(v as string)).sort();
+    }
     if (Array.isArray(value)) return value.map((v) => walk(v, rngKeys));
     if (value && typeof value === "object") {
       const out: Record<string, unknown> = {};

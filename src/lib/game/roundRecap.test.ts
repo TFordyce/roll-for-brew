@@ -76,7 +76,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     immunity: null,
     pickedBy: null,
     earlTransfer: null,
-    rolloffOpponent: null,
+    rolloffOpponents: [],
     ...overrides,
   };
 }
@@ -513,7 +513,7 @@ describe("buildRoundRecap", () => {
         before: { type: "status", value: "brewer" },
         after: { type: "status", value: "rolloff" },
         outcome: "applied",
-        rolloffOpponent: "ben",
+        rolloffOpponents: ["ben"],
         ...over,
       });
     const render = (trace: ResolutionTraceStep[], over: Partial<RoundRecapData> = {}) => {
@@ -528,9 +528,16 @@ describe("buildRoundRecap", () => {
       expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
     });
 
+    it("names every roller tied at second-lowest when they all roll off", () => {
+      const [s] = render([rolloff({ rolloffOpponents: ["ben", "cass"] })]).phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe(
+        "Ada played Loose Leaf — Ada is named Tea Maker, so Ada, Ben and Cass roll off; the lowest roll brews",
+      );
+    });
+
     it("says it did nothing when there's no distinct second-lowest roller", () => {
       const [s] = render([
-        rolloff({ outcome: "no-op", after: { type: "status", value: "no effect" }, rolloffOpponent: null }),
+        rolloff({ outcome: "no-op", after: { type: "status", value: "no effect" }, rolloffOpponents: [] }),
       ]).phases.flatMap((p) => p.steps);
       expect(s!.sentence).toBe("Ada played Loose Leaf — no effect: there's no second-lowest roller to roll off against");
     });
@@ -538,13 +545,13 @@ describe("buildRoundRecap", () => {
     it("a roll-off decided at a later Layer isn't reported as a tie for lowest", () => {
       expect(render([rolloff()], { layerZeroOutcome: "tie" }).endedInTieBreak).toBe(false);
       expect(
-        render([rolloff({ outcome: "no-op", after: { type: "status", value: "no effect" }, rolloffOpponent: null })], {
+        render([rolloff({ outcome: "no-op", after: { type: "status", value: "no effect" }, rolloffOpponents: [] })], {
           layerZeroOutcome: "tie",
         }).endedInTieBreak,
       ).toBe(true);
     });
 
-    it("reads rolloff_opponent_id off the raw Trace step", () => {
+    it("reads rolloff_opponent_ids off the raw Trace step", () => {
       const [parsed] = parseResolutionTrace([
         {
           index: 0,
@@ -554,11 +561,11 @@ describe("buildRoundRecap", () => {
           before: { type: "status", value: "brewer" },
           after: { type: "status", value: "rolloff" },
           outcome: "applied",
-          rolloff_opponent_id: "ben",
+          rolloff_opponent_ids: ["ben", "cass"],
         },
       ]);
-      expect(parsed!.rolloffOpponent).toBe("ben");
-      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.rolloffOpponent).toBeNull();
+      expect(parsed!.rolloffOpponents).toEqual(["ben", "cass"]);
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.rolloffOpponents).toEqual([]);
     });
   });
 

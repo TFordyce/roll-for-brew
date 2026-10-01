@@ -12,12 +12,13 @@
 --   * Tea-maker selection (_rr_select_tea_maker) checks it once the brewer is
 --     named, by any tier. The holder named -> an unfinished `rolloff` outcome
 --     against the second-lowest layer-0 roller (post-shim roll, then composed
---     modifier, then player id; Brewer Candidates only). No distinct
---     second-lowest (fewer than three in that order, or the holder is
---     second-lowest) -> the card does nothing, with a no-op Trace step.
+--     modifier; Brewer Candidates only) -- every roller tied there joins it,
+--     no player-id tiebreak. No distinct second-lowest (fewer than three in
+--     that order, or the holder alone is second-lowest) -> the card does
+--     nothing, with a no-op Trace step.
 --   * finalize_layer commits a roll-off like a tie: a Tie-Break Reroll Layer
---     for the two, with a tie-shaped outcome, so the existing tie broadcast,
---     modal and flow run the roll-off. The lower roll brews with normal
+--     for the holder and opponents, with a tie-shaped outcome, so the existing
+--     tie broadcast, modal and flow run the roll-off. The lowest roll brews with normal
 --     modifier gain; a tied roll-off goes to another Layer.
 -- The function bodies are canonical in db/sql/functions/ and ship in the
 -- generated migration that follows this one (ADR 0006).

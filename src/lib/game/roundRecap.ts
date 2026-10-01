@@ -414,7 +414,7 @@ function fmt(value: number | string | null): string {
  */
 function sentenceFor(
   step: ResolutionTraceStep,
-  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null; newEarl: string; rolloffOpponent: string | null },
+  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null; newEarl: string; rolloffOpponents: string[] },
 ): string {
   const { t, c, k } = names;
   const played = k ? `${c} played ${k}` : c;
@@ -518,10 +518,10 @@ function sentenceFor(
       // card's caster; the override's own step then says the ex-Earl brews.
       return `${k || "Earl of Earl Grey"} — ${step.earlTransfer?.forcingCardName ?? "a card"} forces tea on ${t}, so the Earl title passes to ${names.newEarl}`;
     case "named_tea_maker_rolloff":
-      // Issue #431: Loose Leaf -- the named holder rolls off against the
-      // second-lowest roller, or the card does nothing without one.
-      return names.rolloffOpponent
-        ? `${played} — ${t} is named Tea Maker, so ${t} and ${names.rolloffOpponent} roll off; the lower roll brews`
+      // Issue #431: Loose Leaf -- the named holder rolls off against every
+      // roller tied at second-lowest, or the card does nothing without one.
+      return names.rolloffOpponents.length > 0
+        ? `${played} — ${t} is named Tea Maker, so ${joinNames([t, ...names.rolloffOpponents], "")} roll off; the ${names.rolloffOpponents.length > 1 ? "lowest" : "lower"} roll brews`
         : `${played} — no effect: there's no second-lowest roller to roll off against`;
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
@@ -800,7 +800,7 @@ export function buildRoundRecap({
           compelledBy: compelledBy ?? BREWMAGEDDON,
           pickedBy: step.pickedBy ? displayName(step.pickedBy) : null,
           newEarl: step.earlTransfer ? displayName(step.earlTransfer.newEarlPlayerId) : "",
-          rolloffOpponent: step.rolloffOpponent ? displayName(step.rolloffOpponent) : null,
+          rolloffOpponents: step.rolloffOpponents.map(displayName),
         });
         return {
           phase: phaseForStep(step, castById),
@@ -830,7 +830,7 @@ export function buildRoundRecap({
     // Issue #431: a Loose Leaf roll-off also goes on to a later Layer, but
     // its own step explains that -- it isn't a tie for lowest.
     endedInTieBreak:
-      !live && !data.provisional && data.layerZeroOutcome === "tie" && !data.trace.some((s) => s.rolloffOpponent),
+      !live && !data.provisional && data.layerZeroOutcome === "tie" && !data.trace.some((s) => s.rolloffOpponents.length > 0),
     rows,
     provisional: data.provisional,
   };

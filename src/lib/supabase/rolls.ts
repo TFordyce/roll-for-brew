@@ -246,11 +246,12 @@ export type ResolutionTraceStep = {
    */
   earlTransfer: { newEarlPlayerId: string; forcingCardName: string | null } | null;
   /**
-   * Issue #431: a fired Loose Leaf `named_tea_maker_rolloff` step — the
-   * second-lowest roller the named holder rolls off against. null on every
-   * other step, including an inert roll-off (no distinct second-lowest).
+   * Issue #431: a fired Loose Leaf `named_tea_maker_rolloff` step — every
+   * roller tied at second-lowest, whom the named holder rolls off against.
+   * Empty on every other step, including an inert roll-off (no distinct
+   * second-lowest).
    */
-  rolloffOpponent: string | null;
+  rolloffOpponents: string[];
 };
 
 /** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
@@ -346,9 +347,9 @@ type RawTraceStep = {
   // Absent on every other step.
   new_earl_player_id?: string | null;
   forcing_card_name?: string | null;
-  // Issue #431: a fired named_tea_maker_rolloff step's opponent. Absent on
+  // Issue #431: a fired named_tea_maker_rolloff step's opponents. Absent on
   // every other step.
-  rolloff_opponent_id?: string | null;
+  rolloff_opponent_ids?: string[] | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -412,7 +413,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
     earlTransfer: raw.new_earl_player_id
       ? { newEarlPlayerId: raw.new_earl_player_id, forcingCardName: raw.forcing_card_name ?? null }
       : null,
-    rolloffOpponent: raw.rolloff_opponent_id ?? null,
+    rolloffOpponents: raw.rolloff_opponent_ids ?? [],
   };
 }
 

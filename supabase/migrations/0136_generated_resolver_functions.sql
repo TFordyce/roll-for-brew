@@ -2098,7 +2098,7 @@ comment on function public._rr_resolve_eval(uuid, boolean) is
 --                      orthogonal to the ladder.
 --     tied_player_ids  the Tie-Break Reroll pool (null for a brewer); for a
 --                      roll-off (issue #431, Loose Leaf), the named holder
---                      then the second-lowest roller
+--                      then every roller tied at second-lowest
 --     earl_transfer    issue #429: { active_effect_id, from_player_id,
 --                      to_player_id, cast_id } when an override forced tea on
 --                      the Earl, else null. Decided here; finalize_layer's
@@ -2189,8 +2189,10 @@ declare
 
   -- tier 3 (issue #431): the Loose Leaf roll-off
   v_rolloff record;
-  v_rolloff_order text[];
-  v_rolloff_opponent text;
+  v_rolloff_lineup integer[];
+  v_rolloff_second_roll integer;
+  v_rolloff_second_composed numeric;
+  v_rolloff_opponents text[];
   v_rolloff_after text;
   v_rolloff_extra jsonb;
 begin
@@ -2646,14 +2648,17 @@ begin
   -- brewer, whichever tier named them, so it runs after the default pick.
   -- The holder's armed effect is a `named_tea_maker_rolloff` Cast Log row
   -- for this round, aimed at them (SELF); a counter negates it in Phase 1.
-  -- The opponent is the second-lowest layer-0 roller: the brewer and the
-  -- Brewer Candidates, ordered by post-shim roll, then composed modifier,
-  -- then player id. There's no distinct one when fewer than three are in
-  -- that order -- in a two-player round the "second-lowest" is the top
-  -- roller -- or when the holder is second-lowest themselves: the card then
-  -- does nothing. Otherwise the outcome is an unfinished `rolloff`, which
-  -- finalize_layer commits like a tie: a Tie-Break Reroll Layer for the two,
-  -- where the lower roll brews with normal modifier gain.
+  -- The line-up is the layer-0 rollers -- the brewer and the Brewer
+  -- Candidates -- ordered by post-shim roll, then composed modifier. The
+  -- opponents are every roller other than the holder sharing the
+  -- second-place (roll, modifier): a tie there sends them all into the
+  -- roll-off, never a player-id tiebreak. There are none when fewer than
+  -- three are in the line-up -- in a two-player round the "second-lowest"
+  -- is the top roller -- or when the holder alone is second-lowest: the
+  -- card then does nothing. Otherwise the outcome is an unfinished
+  -- `rolloff`, which finalize_layer commits like a tie: a Tie-Break Reroll
+  -- Layer for the holder and the opponents, where the lowest roll brews
+  -- with normal modifier gain.
   -- ------------------------------------------------------------------
   if v_brewer_id is not null then
     select casts.id, casts.caster_id, sc.name as card_name
@@ -2669,17 +2674,32 @@ begin
      limit 1;
 
     if found then
-      select array_agg(v_players[i] order by v_rolls[i], v_composed[i], v_players[i])
-        into v_rolloff_order
+      select array_agg(i order by i)
+        into v_rolloff_lineup
         from generate_subscripts(v_players, 1) i
        where v_players[i] = v_brewer_id
           or public._rr_is_brewer_candidate(v_immune, v_players[i]);
 
-      if coalesce(array_length(v_rolloff_order, 1), 0) >= 3
-         and v_rolloff_order[2] <> v_brewer_id then
-        v_rolloff_opponent := v_rolloff_order[2];
+      if coalesce(array_length(v_rolloff_lineup, 1), 0) >= 3 then
+        select v_rolls[i], v_composed[i]
+          into v_rolloff_second_roll, v_rolloff_second_composed
+          from unnest(v_rolloff_lineup) i
+         order by v_rolls[i], v_composed[i]
+        offset 1 limit 1;
+
+        -- all of them roll off; listed by player id only so the order is
+        -- stable, never to pick between them
+        select array_agg(v_players[i] order by v_players[i])
+          into v_rolloff_opponents
+          from unnest(v_rolloff_lineup) i
+         where v_players[i] <> v_brewer_id
+           and v_rolls[i] = v_rolloff_second_roll
+           and v_composed[i] = v_rolloff_second_composed;
+      end if;
+
+      if v_rolloff_opponents is not null then
         v_rolloff_after := 'rolloff';
-        v_rolloff_extra := jsonb_build_object('rolloff_opponent_id', v_rolloff_opponent);
+        v_rolloff_extra := jsonb_build_object('rolloff_opponent_ids', to_jsonb(v_rolloff_opponents));
       else
         v_rolloff_after := 'no effect';
         v_rolloff_extra := jsonb_build_object('outcome', 'no-op', 'rolloff_reason', 'no_second_lowest');
@@ -2701,9 +2721,9 @@ begin
       ));
       v_step_index := v_step_index + 1;
 
-      if v_rolloff_opponent is not null then
+      if v_rolloff_opponents is not null then
         v_outcome := 'rolloff';
-        v_tied := array[v_brewer_id, v_rolloff_opponent];
+        v_tied := array[v_brewer_id] || v_rolloff_opponents;
         v_brewer_id := null;
         v_brewer_source := null;
         v_modifier_gain := null;
@@ -2726,7 +2746,7 @@ $$;
 revoke execute on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) from public, anon, authenticated;
 
 comment on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) is
-  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller, then tier 3 the Loose Leaf roll-off keyed to the named brewer, issue #431). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie|rolloff, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), steps }. Read-only. Called by _rr_resolve_eval only. Internal.';
+  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller, then tier 3 the Loose Leaf roll-off keyed to the named brewer against every roller tied at second-lowest, issue #431). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie|rolloff, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), steps }. Read-only. Called by _rr_resolve_eval only. Internal.';
 -- END db/sql/functions/_rr_select_tea_maker.sql
 
 -- BEGIN db/sql/functions/finalize_layer.sql
