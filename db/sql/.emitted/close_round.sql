@@ -3,7 +3,9 @@
 -- Lock the roster and fan out a caster's TABLE / ALL_OTHER_PLAYERS
 -- placeholder casts into one real spell_casts row per participant
 -- (_fan_out_table_placeholder_casts, lifted out of this body unchanged in
--- issue #440), then fix Brewmageddon's compelled set (_fix_compelled_set).
+-- issue #440), then fix Brewmageddon's compelled set (_fix_compelled_set) --
+-- except in a debt round (issue #432), which the caller resolves straight
+-- away by raising advanceRound's roundClosed event.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -57,7 +59,11 @@ begin
   -- Issue #440: fix Brewmageddon's compelled set now the roster is locked,
   -- which starts the Compelled Cast step (rolling is held until every
   -- compelled Action cast is in) and forfeits any card with no legal target.
-  perform public._fix_compelled_set(p_round_id);
+  -- issue #432: nobody casts in a debt round, which resolves at close
+  -- (advanceRound's roundClosed event), so there is no compelled set to fix.
+  if public._brew_debt_due(p_round_id) is null then
+    perform public._fix_compelled_set(p_round_id);
+  end if;
 end;
 $$;
 

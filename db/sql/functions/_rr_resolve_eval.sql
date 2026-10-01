@@ -2050,6 +2050,8 @@ begin
     'no_modifier_gain', coalesce(v_modifier_gain = 0, false),
     -- issue #429: the Earl title transfer finalize_layer writes, or null
     'earl_transfer', v_selection -> 'earl_transfer',
+    -- issue #432: the Brew IOU / Brew Debt record finalize_layer writes, or null
+    'brewer_record', v_selection -> 'brewer_record',
     'trace', v_trace, 'players', v_summary
   );
 end;
@@ -2058,4 +2060,4 @@ $$;
 revoke execute on function public._rr_resolve_eval(uuid, boolean) from public, anon, authenticated;
 
 comment on function public._rr_resolve_eval(uuid, boolean) is
-  'Issue #404 (ADR 0007): the body of the authoritative layer-0 resolver, split out of resolve_round. Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain (null = cups_made, 0 = none, else as given; issue #425), no_modifier_gain (compat alias: modifier_gain = 0), earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), trace, players } without persisting the Trace or the Resolution Summary. Maintains its own Cast-Log / modifier caches, so callers either keep them (resolve_round) or roll them back (_rr_resolve). p_dry_run skips the Calami-Tea tick RNG. Internal.';
+  'Issue #404 (ADR 0007): the body of the authoritative layer-0 resolver, split out of resolve_round. Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain (null = cups_made, 0 = none, else as given; issue #425), no_modifier_gain (compat alias: modifier_gain = 0), earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), brewer_record (issue #432: { source brew_iou|brew_debt, cast_id } finalize_layer writes to rounds.brewer_source, or null), trace, players } without persisting the Trace or the Resolution Summary. Maintains its own Cast-Log / modifier caches, so callers either keep them (resolve_round) or roll them back (_rr_resolve). p_dry_run skips the Calami-Tea tick RNG. Internal.';

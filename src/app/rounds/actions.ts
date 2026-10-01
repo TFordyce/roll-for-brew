@@ -134,6 +134,9 @@ export async function declareInLateAction(formData: FormData) {
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
   await broadcastSpellCastChanged(supabase, roomId, { roundId });
+  // Issue #432: a Debtor declaring in late (nobody has rolled yet) turns the
+  // round into a debt round, which resolves now.
+  await advanceRound(supabase, roundId, "lateDeclared");
 
   revalidateRoundSurfaces();
 }
@@ -171,6 +174,8 @@ export async function closeRoundAction(formData: FormData) {
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastRoundClosed(supabase, roomId, { roundId });
+  // Issue #432: a debt round has nobody to roll, so it resolves at close.
+  await advanceRound(supabase, roundId, "roundClosed");
 
   revalidateRoundSurfaces();
 }

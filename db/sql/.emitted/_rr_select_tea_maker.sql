@@ -15,6 +15,7 @@
 --   { outcome          'brewer' | 'tie' | 'rolloff'
 --     brewer_id        the Tea Maker (null on a tie or a roll-off)
 --     brewer_source    'declared_number' | 'tea_maker_override:<mode>' |
+--                      'brew_debt' (issue #432) |
 --                      'default' (null on a tie or a roll-off)
 --     modifier_gain    the ladder's gain (null = cups_made, 0 = none, else as
 --                      given; null on a tie or a roll-off). The Eternal Steep
@@ -27,12 +28,22 @@
 --                      to_player_id, cast_id } when an override forced tea on
 --                      the Earl, else null. Decided here; finalize_layer's
 --                      commit step writes it (_rr_apply_earl_title).
+--     brewer_record    issue #432: { source, cast_id } for finalize_layer to
+--                      write to rounds.brewer_source -- 'brew_iou' when a
+--                      Brew IOU override named the Tea Maker (a Brew Debt is
+--                      created), 'brew_debt' when this round pays one; else
+--                      null.
 --     steps            the Resolution Trace steps it emitted, in order }
 -- The outcome is a tag so a later outcome (the Loose Leaf `rolloff`, #431)
 -- or a pre-ladder rule (the Brew Debt round, #432) is one more branch ahead
 -- of the single return, not another exit. An `earl_transfer` can come back
 -- with a `rolloff` (the forced ex-Earl holds Loose Leaf): finalize_layer
 -- writes it when it commits the roll-off.
+--
+-- Pre-ladder rule (issue #432, ADR 0005): a round that pays a Brew Debt
+-- (_brew_debt_due) skips the ladder. The Debtor is the Tea Maker with normal
+-- modifier gain. The round has no layer-0 rolls, so tier 1 can't match; the
+-- other tiers are skipped by the named brewer.
 --
 -- Read-only. It reads the round, the live active effects and the Cast Log,
 -- never writes, so it is safe under both resolve_round and the rolled-back
@@ -119,6 +130,10 @@ declare
   v_rolloff_opponents text[];
   v_rolloff_after text;
   v_rolloff_extra jsonb;
+
+  -- issue #432 (Brew IOU): the debt this round pays, and what to record
+  v_debt jsonb;
+  v_brewer_record jsonb := null;
 begin
   select room_id, started_at into v_room_id, v_started_at
     from public.rounds where id = p_round_id;
@@ -138,6 +153,33 @@ begin
      where round_id = p_round_id
        and effect_kind in ('contested_negate', 'redirect')
   ) into v_has_counters;
+
+  -- ------------------------------------------------------------------
+  -- Pre-ladder rule (issue #432): a debt round. The Debtor brews, and the
+  -- round records that it paid the debt. v_brewer_id set here skips every
+  -- tier below.
+  -- ------------------------------------------------------------------
+  v_debt := public._brew_debt_due(p_round_id);
+  if v_debt is not null then
+    v_brewer_id := v_debt ->> 'debtor_player_id';
+    v_brewer_source := 'brew_debt';
+    v_brewer_record := jsonb_build_object('source', 'brew_debt', 'cast_id', v_debt -> 'cast_id');
+    v_steps := v_steps || jsonb_build_array(public._rr_trace_step(
+      v_step_index,
+      'brew_debt',
+      jsonb_build_object(
+        'cast_id', v_debt -> 'cast_id',
+        'active_effect_id', null,
+        'card_name', v_debt -> 'card_name',
+        'caster_player_id', v_debt -> 'debtor_player_id'
+      ),
+      v_brewer_id,
+      jsonb_build_object('type', 'status', 'value', 'owes'),
+      jsonb_build_object('type', 'status', 'value', 'brewer'),
+      jsonb_build_object('brew_debt', 'paid')
+    ));
+    v_step_index := v_step_index + 1;
+  end if;
 
   -- ------------------------------------------------------------------
   -- Tier 0 (issue #428, ADR 0005): Brewer Immunity is not a pass of its
@@ -257,7 +299,9 @@ begin
              casts.effect_params->>'picker' as picker,
              casts.target_player_id as picked_player_id,
              casts.cast_inputs->>'revolt_picked_by' as picked_by,
-             coalesce(casts.cast_inputs ? 'revolt_pick_abandoned', false) as pick_abandoned
+             coalesce(casts.cast_inputs ? 'revolt_pick_abandoned', false) as pick_abandoned,
+             -- issue #432 (Brew IOU): naming the Tea Maker creates a Brew Debt
+             coalesce((casts.effect_params->>'creates_brew_debt')::boolean, false) as creates_brew_debt
         from public.spell_casts casts
         join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
         join public.spell_cards sc on sc.id = sdi.card_id
@@ -486,6 +530,15 @@ begin
         v_brewer_id := v_target;
         v_modifier_gain := v_override.modifier_gain;
         v_brewer_source := 'tea_maker_override:' || v_override.mode;
+        -- issue #432: Brew IOU picked the Tea Maker, so its caster owes a
+        -- Brew Debt (unless tier 3 turns this into a roll-off).
+        if v_override.creates_brew_debt and v_brewer_id is not null then
+          v_brewer_record := jsonb_build_object(
+            'source', 'brew_iou',
+            'cast_id', v_override.cast_id,
+            'debtor_player_id', v_override.caster_id,
+            'card_name', v_override.card_name);
+        end if;
         v_steps := v_steps || jsonb_build_array(public._rr_override_step(
           v_step_index, v_override.cast_id, v_override.card_name, v_override.caster_id,
           v_brewer_id,
@@ -584,7 +637,7 @@ begin
   -- Layer for the holder and the opponents, where the lowest roll brews
   -- with normal modifier gain.
   -- ------------------------------------------------------------------
-  if v_brewer_id is not null then
+  if v_brewer_id is not null and v_debt is null then
     select casts.id, casts.caster_id, sc.name as card_name
       into v_rolloff
       from public.spell_casts casts
@@ -651,8 +704,33 @@ begin
         v_brewer_id := null;
         v_brewer_source := null;
         v_modifier_gain := null;
+        -- issue #432: the roll-off, not Brew IOU, decides who brews -- no debt
+        v_brewer_record := null;
       end if;
     end if;
+  end if;
+
+  -- ------------------------------------------------------------------
+  -- Brew IOU (issue #432): the override named the Tea Maker, so its caster
+  -- now owes a Brew Debt, paid in their next round as a Participant.
+  -- ------------------------------------------------------------------
+  if v_brewer_record ->> 'source' = 'brew_iou' then
+    v_steps := v_steps || jsonb_build_array(public._rr_trace_step(
+      v_step_index,
+      'brew_debt',
+      jsonb_build_object(
+        'cast_id', v_brewer_record -> 'cast_id',
+        'active_effect_id', null,
+        'card_name', v_brewer_record -> 'card_name',
+        'caster_player_id', v_brewer_record -> 'debtor_player_id'
+      ),
+      v_brewer_record ->> 'debtor_player_id',
+      jsonb_build_object('type', 'status', 'value', 'clear'),
+      jsonb_build_object('type', 'status', 'value', 'owes'),
+      jsonb_build_object('brew_debt', 'created')
+    ));
+    v_step_index := v_step_index + 1;
+    v_brewer_record := v_brewer_record - 'debtor_player_id' - 'card_name';
   end if;
 
   return jsonb_build_object(
@@ -662,6 +740,7 @@ begin
     'modifier_gain', v_modifier_gain,
     'tied_player_ids', to_jsonb(v_tied),
     'earl_transfer', v_earl_transfer,
+    'brewer_record', v_brewer_record,
     'steps', v_steps
   );
 end;
@@ -670,4 +749,4 @@ $$;
 revoke execute on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) from public, anon, authenticated;
 
 comment on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) is
-  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller, then tier 3 the Loose Leaf roll-off keyed to the named brewer against every roller tied at second-lowest, issue #431). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie|rolloff, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), steps }. Read-only. Called by _rr_resolve_eval only. Internal.';
+  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller, then tier 3 the Loose Leaf roll-off keyed to the named brewer against every roller tied at second-lowest, issue #431). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie|rolloff, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), brewer_record (issue #432: the Brew IOU / Brew Debt record finalize_layer writes, or null), steps }. A round paying a Brew Debt (_brew_debt_due) skips the ladder: the Debtor brews (issue #432). Read-only. Called by _rr_resolve_eval only. Internal.';

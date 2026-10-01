@@ -217,6 +217,10 @@ begin
          brewer_id = null,
          cups_made = null,
          brewer_modifier_gain = 0,
+         -- issue #432: a scrapped paying round owes its Brew Debt again; a
+         -- scrapped Brew IOU round never created one (its cast is gone too)
+         brewer_source = null,
+         brewer_source_cast_id = null,
          resolved_at = null,
          resolution_trace = null,
          resolution_summary = null,

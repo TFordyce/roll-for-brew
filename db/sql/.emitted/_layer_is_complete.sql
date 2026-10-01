@@ -14,6 +14,8 @@
 --   * a Tea Party Revolt pick (issue #430): a Revolt cast whose target the
 --     lowest roller hasn't named yet (_revolt_pick_outstanding). advance_layer
 --     and finalize_layer report this hold as `revolt_pick_pending`.
+-- A Layer 0 with zero expected rollers (issue #432: a debt round, where
+-- nobody rolls) is complete as it stands -- no hold there can wait on a roll.
 -- The single Layer-completeness read: the identity-gated and stall-resolution
 -- variants it replaced were dropped in issue #417.
 --
@@ -31,9 +33,17 @@ stable
 security definer
 set search_path = public
 as $$
+declare
+  v_expected integer;
 begin
+  v_expected := public.count_expected_layer_rollers(p_round_id, p_layer);
+
+  if p_layer = 0 and v_expected = 0 then
+    return true;
+  end if;
+
   if (select count(*) from public.rolls where round_id = p_round_id and layer = p_layer)
-     < public.count_expected_layer_rollers(p_round_id, p_layer) then
+     < v_expected then
     return false;
   end if;
 
@@ -73,4 +83,4 @@ revoke execute on function public._layer_is_complete(uuid, integer) from public,
 grant execute on function public._layer_is_complete(uuid, integer) to service_role;
 
 comment on function public._layer_is_complete(uuid, integer) is
-  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding, no Deferred Forced-Reroll Target hold is in place, and no compelled Action cast is still owed (issue #440), and no Tea Party Revolt pick is outstanding (issue #430). Internal to round advancement.';
+  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding, no Deferred Forced-Reroll Target hold is in place, and no compelled Action cast is still owed (issue #440), and no Tea Party Revolt pick is outstanding (issue #430). A Layer 0 with zero expected rollers (issue #432: a debt round) is complete as it stands. Internal to round advancement.';

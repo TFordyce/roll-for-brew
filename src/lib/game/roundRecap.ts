@@ -250,6 +250,8 @@ const OUTCOME_KINDS = new Set([
   "named_tea_maker_rolloff",
   // Issue #438: a Tea Heist's outcome is decided in the resolver's final phase.
   "card_heist",
+  // Issue #432: Brew IOU creates a Brew Debt; a debt round pays one.
+  "brew_debt",
 ]);
 
 // Issue #440: why a compelled card was forfeited (forfeit step `reason`).
@@ -523,6 +525,13 @@ function sentenceFor(
       return names.rolloffOpponents.length > 0
         ? `${played} — ${t} is named Tea Maker, so ${joinNames([t, ...names.rolloffOpponents], "")} roll off; the ${names.rolloffOpponents.length > 1 ? "lowest" : "lower"} roll brews`
         : `${played} — no effect: there's no second-lowest roller to roll off against`;
+    case "brew_debt":
+      // Issue #432: Brew IOU named the Tea Maker, so its caster owes a Brew
+      // Debt (after "owes"); or this round paid one (after "brewer"). The
+      // paying round's step points at the Brew IOU cast of an earlier round.
+      return step.after.value === "owes"
+        ? `${k || "Brew IOU"} — ${t} owes a Brew Debt: they make tea in their next round, no roll`
+        : `${k || "Brew IOU"} — ${t} pays their Brew Debt and makes tea; nobody rolls`;
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
     case "tea_maker_override": {
@@ -705,7 +714,13 @@ export function buildRoundRecap({
   // cast list — the scrap deleted its spell_casts. Every Trace step embeds its
   // own source card + caster, so the step rows still render; only the
   // tap-to-filter cast strip is absent.
-  const traceDriven = traceOnly && !live && casts.length === 0 && data.trace.length > 0;
+  // Issue #432: a debt round has no casts of its own -- its one step (the
+  // Brew Debt paid) is the whole story, so it renders from the Trace too.
+  const traceDriven =
+    !live &&
+    casts.length === 0 &&
+    data.trace.length > 0 &&
+    (traceOnly || data.trace.some((s) => s.displayKind === "brew_debt"));
   const rows = buildRows(data, displayName);
 
   if (casts.length === 0 && !traceDriven && data.reactionSkips.length === 0) {

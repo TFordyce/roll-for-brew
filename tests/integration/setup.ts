@@ -287,7 +287,7 @@ export const BENCHED_SPELL_CARDS = [
   // No effect rows
   "Tea Cosy",
   "Marked for Brew",
-  "Loaf of Lipton", "Brew IOU",
+  "Loaf of Lipton",
   "Stale Biscuit", "Liquid Courage",
   // Dead effect kind (1)
   "Kettle Crash",

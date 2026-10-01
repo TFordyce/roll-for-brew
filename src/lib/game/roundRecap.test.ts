@@ -569,6 +569,36 @@ describe("buildRoundRecap", () => {
     });
   });
 
+  describe("Brew IOU / Brew Debt (issue #432)", () => {
+    const debt = (after: "owes" | "brewer") =>
+      step({
+        displayKind: "brew_debt",
+        sourceCast: { castId: "C0", activeEffectId: null, cardName: "Brew IOU", casterPlayerId: "ada" },
+        targetPlayer: "ada",
+        before: { type: "status", value: after === "owes" ? "clear" : "owes" },
+        after: { type: "status", value: after },
+        outcome: "applied",
+      });
+    it("says the caster now owes a Brew Debt, in the Outcome group", () => {
+      const casts = [cast({ castId: "C0", cardName: "Brew IOU", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "tea_maker_override" })];
+      const model = buildRoundRecap({ data: data({ casts, trace: [debt("owes")] }), displayName });
+      const [s] = model.phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Brew IOU — Ada owes a Brew Debt: they make tea in their next round, no roll");
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("says the Debtor pays the debt -- a debt round has no casts, only that step", () => {
+      const model = buildRoundRecap({ data: data({ trace: [debt("brewer")] }), displayName });
+      expect(model.hasContent).toBe(true);
+      const [s] = model.phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Brew IOU — Ada pays their Brew Debt and makes tea; nobody rolls");
+    });
+
+    it("a round with no casts and no Brew Debt step still has no Recap content", () => {
+      expect(buildRoundRecap({ data: data({ trace: [step()] }), displayName }).hasContent).toBe(false);
+    });
+  });
+
   describe("Tea Heist (issue #438)", () => {
     function heist(after: string, over: Partial<ResolutionTraceStep> = {}) {
       return buildRoundRecap({
