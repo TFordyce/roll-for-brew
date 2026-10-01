@@ -87,7 +87,7 @@ A Participant who can't be Tea Maker (a `brewer_immunity` active effect). The La
 _Avoid_: exempt (that's Roll Exemption — not rolling, which is separate), protected, warded (wards guard values, not the brew).
 
 **Earl** (Earl of Earl Grey):
-The one Participant in a room holding the Earl title, a dispellable **Brewer Immunity** that lasts the rest of the day. There is only ever one Earl: casting the card while someone else holds the title takes it from them. A tea-maker override that names the Earl is a **force**: the title passes to that override's caster, and the ex-Earl brews. A declared number is never a force; it just skips the Earl. An Earl who is also immune for another reason, or who cast the override themselves, is simply skipped. The title only moves when the round is finalized, never on a Provisional Recap, and a round replay scrap hands it back.
+The one Participant in a room holding the Earl title, a dispellable **Brewer Immunity** that lasts the rest of the day. There is only ever one Earl: casting the card while someone else holds the title takes it from them. A tea-maker override that names the Earl forces tea on them: the title passes to that override's caster, and the ex-Earl brews. A declared number is never a force; it just skips the Earl. An Earl who is also immune for another reason, or who cast the override themselves, is simply skipped. The title only moves when the round is finalized, never on a Provisional Recap, and a round replay scrap hands it back.
 _Avoid_: earldom, lord.
 
 **Brewer Candidate**:

@@ -100,9 +100,14 @@ as $$
      and exists (
        select 1
          from live newer
+         join public.spell_casts newer_src on newer_src.id = newer.source_cast_id
+         join public.rounds newer_round on newer_round.id = newer_src.round_id
         where newer.effect_kind = 'brewer_immunity'
           and newer.effect_params ->> 'mode' = 'earl'
           and (newer.created_at, newer.id) > (l.created_at, l.id)
+          -- only a title cast by the as-of round displaces: a historical read
+          -- still sees that round's Earl
+          and newer_round.started_at <= (select started_at from as_of)
      )
    );
 $$;

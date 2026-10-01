@@ -172,8 +172,9 @@ begin
        and location in ('held', 'pending_swap');
   end loop;
 
-  -- Issue #429 (Earl of Earl Grey): an Earl title the scrapped attempt ended
-  -- (finalize_layer's _rr_apply_earl_title) is restored. The title row it
+  -- Issue #429: every effect the scrapped attempt ended (ended_in_round_id)
+  -- is un-ended. Today that is only an Earl of Earl Grey title displaced by
+  -- finalize_layer's _rr_apply_earl_title. The title row it
   -- gave the override's caster hangs off that override cast, so the delete
   -- below takes it away.
   update public.spell_active_effects

@@ -116,9 +116,14 @@ as $$
      and exists (
        select 1
          from live newer
+         join public.spell_casts newer_src on newer_src.id = newer.source_cast_id
+         join public.rounds newer_round on newer_round.id = newer_src.round_id
         where newer.effect_kind = 'brewer_immunity'
           and newer.effect_params ->> 'mode' = 'earl'
           and (newer.created_at, newer.id) > (l.created_at, l.id)
+          -- only a title cast by the as-of round displaces: a historical read
+          -- still sees that round's Earl
+          and newer_round.started_at <= (select started_at from as_of)
      )
    );
 $$;
@@ -2501,8 +2506,9 @@ begin
        and location in ('held', 'pending_swap');
   end loop;
 
-  -- Issue #429 (Earl of Earl Grey): an Earl title the scrapped attempt ended
-  -- (finalize_layer's _rr_apply_earl_title) is restored. The title row it
+  -- Issue #429: every effect the scrapped attempt ended (ended_in_round_id)
+  -- is un-ended. Today that is only an Earl of Earl Grey title displaced by
+  -- finalize_layer's _rr_apply_earl_title. The title row it
   -- gave the override's caster hangs off that override cast, so the delete
   -- below takes it away.
   update public.spell_active_effects

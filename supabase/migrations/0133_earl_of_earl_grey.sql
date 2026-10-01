@@ -8,8 +8,8 @@
 -- Model (ADR 0005 precedence ladder, tier 0; builds on #428):
 --   * The title is a `brewer_immunity` active effect, mode `earl`, unbounded
 --     via the `persist` marker. Dispellable, and not override-proof.
---   * One Earl per room, enforced when the title is applied rather than by a
---     constraint. _rr_active_effects_as_of treats only the newest live title
+--   * One Earl per room, a read-time rule rather than a constraint:
+--     _rr_active_effects_as_of treats only the newest live title
 --     row in the room as live, so a new Earl displaces the old one from the
 --     round it is cast in; finalize_layer then ends the displaced row
 --     (ended_in_round_id) when the round really resolves, so a later dispel of
