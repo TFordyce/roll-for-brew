@@ -590,6 +590,11 @@ function sentenceFor(
       // fired step's cast is usually from an earlier round.
       const markOutcome = String(step.after.value ?? "");
       const card = k || "Marked for Brew";
+      // Issue #437: Stale Biscuit fires at draw time, after its round's Trace
+      // is written, so only its `marked` step ever appears.
+      if (markOutcome === MARK_PLACED && step.redirectTrigger === "next_draw") {
+        return `${played} — ${t} is marked: the next card ${t} draws goes to ${c}`;
+      }
       if (markOutcome === MARK_PLACED) {
         return `${played} — ${t} is marked: ${c} draws the card for ${t}'s next nat 1 or nat 20 within 5 rounds`;
       }

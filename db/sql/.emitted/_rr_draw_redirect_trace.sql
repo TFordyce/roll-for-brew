@@ -18,6 +18,12 @@
 -- written, so its step does not appear. Saucerer's Apprentice copies
 -- (cast_inputs.is_copy) project no mark and are left out.
 --
+-- Issue #437: every step carries `redirect_trigger`, the mark's trigger
+-- (`next_crit` for Marked for Brew, `next_draw` for Stale Biscuit), so the
+-- Recap can say which draw the mark takes. A `next_draw` mark fires at draw
+-- time, after its round's Trace is written, and records consumed_by_draw
+-- rather than consumed_by_round -- so only its `marked` step appears.
+--
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
 -- generated migration. See db/sql/README.md.
@@ -58,11 +64,15 @@ as $$
              s.target_player_id,
              jsonb_build_object('type', 'status', 'value', case when s.outcome = 'marked' then null else 'marked' end),
              jsonb_build_object('type', 'status', 'value', s.outcome),
-             jsonb_build_object('outcome', case when s.outcome = 'fizzled' then 'no-op' else 'applied' end)
+             jsonb_build_object(
+               'outcome', case when s.outcome = 'fizzled' then 'no-op' else 'applied' end,
+               'redirect_trigger', s.redirect_trigger
+             )
            ) order by s.ord
          ), '[]'::jsonb)
     from (
       select steps.outcome, c.id as cast_id, c.caster_id, c.target_player_id, sc.name as card_name,
+             c.effect_params ->> 'trigger' as redirect_trigger,
              row_number() over (order by steps.kind_order, c.seq, c.id) as ord
         from steps
         join public.spell_casts c on c.id = steps.cast_id
@@ -74,4 +84,4 @@ $$;
 revoke execute on function public._rr_draw_redirect_trace(uuid, integer) from public, anon, authenticated;
 
 comment on function public._rr_draw_redirect_trace(uuid, integer) is
-  'Issue #436 (Marked for Brew): the resolver''s final-phase draw_redirect Trace steps -- marked (a mark cast this round), redirected / fizzled (a mark that fired on a crit this round, read from the cast_inputs _apply_crit_redirect wrote), numbered from p_start_index. Decides nothing. Internal.';
+  'Issue #436 (Marked for Brew): the resolver''s final-phase draw_redirect Trace steps -- marked (a mark cast this round), redirected / fizzled (a mark that fired on a crit this round, read from the cast_inputs _apply_crit_redirect wrote), numbered from p_start_index; (#437) each carries redirect_trigger (next_crit / next_draw). Decides nothing. Internal.';

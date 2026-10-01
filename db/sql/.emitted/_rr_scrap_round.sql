@@ -148,7 +148,11 @@ begin
   -- pending_spell_draws, which the scrap leaves alone, so the beneficiary
   -- keeps the card -- restoring the mark would let it pay out twice. A mark
   -- cast in an earlier round is not deleted below either; only this round's
-  -- casts are, and a mark cast in this round cannot have fired yet.
+  -- casts are. A Marked for Brew mark cast in this round cannot have fired
+  -- yet. A Stale Biscuit mark (issue #437, `next_draw`) can -- it is live
+  -- once this round resolved -- and deleting its cast below takes the spent
+  -- mark with it; the card it redirected stays with the beneficiary, and
+  -- Stale Biscuit itself stays spent, so it cannot pay out twice either.
   --
   -- Issue #438 (Tea Heist, ADR 0005 #383 amendment): a Heist the scrapped
   -- attempt carried out (finalize_layer stamped cast_inputs.heist_moved) is

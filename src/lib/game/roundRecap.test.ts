@@ -71,6 +71,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     diceTick: null,
     compel: null,
     heistReason: null,
+    redirectTrigger: null,
     overrideReason: null,
     failedOverrideCondition: null,
     immunity: null,
@@ -726,6 +727,49 @@ describe("buildRoundRecap", () => {
         "Marked for Brew — fizzled: Ada already has a card to draw this round, so Ben draws their own",
       );
       expect(s).toMatchObject({ statusLabel: "fizzled", statusKind: "no-op" });
+    });
+  });
+
+  describe("Stale Biscuit (issue #437)", () => {
+    const casts = [cast({ castId: "C1", cardName: "Stale Biscuit", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "draw_redirect" })];
+
+    it("marked: says the target's next drawn card goes to the caster", () => {
+      const model = buildRoundRecap({
+        data: data({
+          casts,
+          trace: [
+            step({
+              displayKind: "draw_redirect",
+              sourceCast: { castId: "C1", activeEffectId: null, cardName: "Stale Biscuit", casterPlayerId: "ada" },
+              targetPlayer: "ben",
+              before: { type: "status", value: null },
+              after: { type: "status", value: "marked" },
+              redirectTrigger: "next_draw",
+            }),
+          ],
+        }),
+        displayName,
+      });
+      const s = model.phases.flatMap((p) => p.steps)[0]!;
+      expect(s.sentence).toBe("Ada played Stale Biscuit — Ben is marked: the next card Ben draws goes to Ada");
+      expect(s).toMatchObject({ statusLabel: "marked", statusKind: "applied" });
+    });
+
+    it("reads redirect_trigger off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "draw_redirect",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "Stale Biscuit", caster_player_id: "ada" },
+          target_player: "ben",
+          before: { type: "status", value: null },
+          after: { type: "status", value: "marked" },
+          outcome: "applied",
+          redirect_trigger: "next_draw",
+        },
+      ]);
+      expect(parsed!.redirectTrigger).toBe("next_draw");
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.redirectTrigger).toBeNull();
     });
   });
 
