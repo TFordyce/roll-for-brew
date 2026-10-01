@@ -22,6 +22,15 @@
 --     read of an earlier round, and a Round replay scrap does not restore it
 --     (#383 Q2), because the card it moved survives the scrap.
 --
+--   * its participated-rounds window is open (issue #436, Marked for Brew):
+--     a row whose effect_params carries participated_rounds_after_cast = n
+--     is live while its target has taken part in fewer than n resolved
+--     rounds strictly after the source cast's round and before the as-of
+--     round (_rr_participated_rounds_elapsed, counted from the room's next
+--     round after the cast round). Live in the cast round itself, so the
+--     roster badge shows the mark at once; _apply_crit_redirect separately
+--     never fires a mark in its cast round. Rows without the key ignore it.
+--
 --   * it has not been ended in or before the as-of round (issue #429):
 --     ended_in_round_id is null, or names a round started after the as-of
 --     round.
@@ -36,8 +45,9 @@
 -- row -- and a countered or dispelled newer title leaves the older one
 -- standing until something actually ends it.
 --
--- Body from migration 0084 plus the spent condition; grants merge 0084
--- (authenticated) and 0108 (service_role, the integration suite's seam).
+-- Body from migration 0084 plus the spent and participated-window
+-- conditions; grants merge 0084 (authenticated) and 0108 (service_role, the
+-- integration suite's seam).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -74,6 +84,17 @@ as $$
          or public._rr_effect_rounds_elapsed(
               p_room_id, src_round.started_at, (select started_at from as_of)
             ) < sae.rounds_remaining
+       )
+       and (
+         sae.effect_params ->> 'participated_rounds_after_cast' is null
+         or public._rr_participated_rounds_elapsed(
+              p_room_id, sae.target_player_id,
+              -- the room's first round after the cast round; NULL (none yet)
+              -- counts nothing
+              (select min(nr.started_at) from public.rounds nr
+                where nr.room_id = p_room_id and nr.started_at > src_round.started_at),
+              (select started_at from as_of)
+            ) < (sae.effect_params ->> 'participated_rounds_after_cast')::integer
        )
        and (
          sae.is_undispellable
@@ -120,7 +141,9 @@ comment on function public._rr_active_effects_as_of(uuid, uuid) is
   'source cast not negated, duration not exhausted (resolved-round count '
   'since the source round), not dispelled at/before the round (an '
   'is_undispellable row, #428, never is), (#435) '
-  'not spent (source cast_inputs.consumed_by_round / consumed_by_draw), and '
+  'not spent (source cast_inputs.consumed_by_round / consumed_by_draw), '
+  '(#436) inside its participated-rounds window (effect_params.'
+  'participated_rounds_after_cast, counted after the cast round), and '
   '(#429) not ended in or before the round (ended_in_round_id). Of the Earl '
   'title rows only the newest live one is returned -- one Earl per room. '
   'The shared row source for every reader that treats spell_active_effects '

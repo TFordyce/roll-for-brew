@@ -1275,6 +1275,64 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: thief.client };
     },
   },
+  // Issue #436: Marked for Brew. The mark is placed in its cast round and
+  // fires at roll time (_apply_crit_redirect); the resolver's final phase
+  // only traces what was recorded.
+  {
+    name: "6-marked-for-brew-placed",
+    phases: ["5", "6"],
+    note: "A Marked for Brew cast this round traces a `marked` draw_redirect step on its target.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const roundId = await ctx.openAndCloseRound(caster, [target]);
+      await ctx.seedRoll(roundId, caster.googleSub, 5);
+      await ctx.seedRoll(roundId, target.googleSub, 12);
+      await ctx.seedCast(roundId, caster.googleSub, "Marked for Brew", {
+        effectKind: "draw_redirect",
+        effectParams: { trigger: "next_crit", persist: true, participated_rounds_after_cast: 5 },
+        targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  ...(["redirected", "fizzled"] as const).map(
+    (outcome): Scenario => ({
+      name: `6-marked-for-brew-${outcome}`,
+      phases: ["5", "6"],
+      note:
+        outcome === "redirected"
+          ? "An earlier round's mark fires on the target's nat 20: the draw goes to the caster (marked -> redirected)."
+          : "The mark fires but the caster already has a pending draw this round, so it fizzles and the target keeps theirs (marked -> fizzled).",
+      async seed(ctx) {
+        const caster = await ctx.signUp("caster");
+        const target = await ctx.signUp("target");
+        const castRound = await ctx.seedPastRound(target.roomId, [
+          { playerId: caster.googleSub, value: 9 },
+          { playerId: target.googleSub, value: 11 },
+        ]);
+        await ctx.seedActiveEffect({
+          roomId: target.roomId,
+          targetPlayerId: target.googleSub,
+          casterId: caster.googleSub,
+          cardName: "Marked for Brew",
+          effectKind: "draw_redirect",
+          effectParams: { trigger: "next_crit", persist: true, participated_rounds_after_cast: 5 },
+          roundId: castRound,
+        });
+        const roundId = await ctx.openAndCloseRound(caster, [target]);
+        if (outcome === "fizzled") {
+          const { error } = await caster.client.rpc("record_pending_spell_draw", { p_round_id: roundId, p_trigger: "nat1" });
+          if (error) throw error;
+        }
+        const { error } = await target.client.rpc("record_pending_spell_draw", { p_round_id: roundId, p_trigger: "nat20" });
+        if (error) throw error;
+        await ctx.seedRoll(roundId, caster.googleSub, outcome === "fizzled" ? 1 : 5);
+        await ctx.seedRoll(roundId, target.googleSub, 20);
+        return { roundId, resolveWith: caster.client };
+      },
+    }),
+  ),
   {
     // Tea Heist is rare: tier DC 5, so dc_d20 15 succeeds.
     name: "6-heist-countered",
