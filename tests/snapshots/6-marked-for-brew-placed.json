@@ -26,7 +26,8 @@
         "caster_player_id": "P:caster"
       },
       "display_kind": "draw_redirect",
-      "target_player": "P:target"
+      "target_player": "P:target",
+      "redirect_trigger": "next_crit"
     }
   ],
   "players": [

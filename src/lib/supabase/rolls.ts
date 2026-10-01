@@ -211,6 +211,11 @@ export type ResolutionTraceStep = {
    */
   heistReason: HeistFizzleReason | null;
   /**
+   * Issue #437: which draw a `draw_redirect` mark takes — `next_crit`
+   * (Marked for Brew) or `next_draw` (Stale Biscuit). null on every other step.
+   */
+  redirectTrigger: DrawRedirectTrigger | null;
+  /**
    * Issue #426: why a `tea_maker_override` step did nothing (outcome `no-op`),
    * e.g. an inert Last Drip or a PG Tipped whose condition failed. null on
    * every other step.
@@ -273,6 +278,9 @@ export type ForfeitReason = "no_legal_target" | "stall" | "excluded" | "vote" | 
 /** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
 export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
 
+/** Issue #437: a Draw Redirect mark's trigger (_rr_draw_redirect_trace). */
+export type DrawRedirectTrigger = "next_crit" | "next_draw";
+
 /**
  * Why a `tea_maker_override` did nothing: an inert Last Drip
  * (`prev_round_highest`, #426), a PG Tipped whose condition failed
@@ -330,6 +338,8 @@ type RawTraceStep = {
   reason?: ForfeitReason | null;
   // Issue #438: a fizzled Tea Heist step's reason. Absent on every other step.
   heist_reason?: HeistFizzleReason | null;
+  // Issue #437: a draw_redirect step's mark trigger. Absent on every other step.
+  redirect_trigger?: DrawRedirectTrigger | null;
   // Issue #426: a no-op tea_maker_override step's reason. Absent on every other step.
   override_reason?: OverrideNoopReason | null;
   // Issue #427: a failed conditional tea_maker_override (PG Tipped) — the
@@ -397,6 +407,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
           }
         : null,
     heistReason: raw.heist_reason ?? null,
+    redirectTrigger: raw.redirect_trigger ?? null,
     overrideReason: raw.override_reason ?? null,
     failedOverrideCondition:
       raw.override_reason === "condition_not_met" && raw.override_condition
