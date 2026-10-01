@@ -257,6 +257,8 @@ describe.skipIf(!hasAnonTestEnv)("Roll Exemption + Loaf of Lipton (#433)", () =>
     const r = await round(roundId);
     expect(r).toMatchObject({ status: "resolved", brewer_id: ada.googleSub, cups_made: 3, brewer_modifier_gain: 6 });
     expect(await modifierOf(ada.roomId, ada.googleSub)).toBe(6);
+    // Resolving (which rewrites Cast Log flags) leaves the exemption standing.
+    expect(await expectedRollers(roundId, ada)).toEqual([ben.googleSub, cat.googleSub].sort());
 
     const [skip] = steps(r, "roll_exemption");
     expect(steps(r, "roll_exemption")).toHaveLength(1);

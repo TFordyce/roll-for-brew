@@ -2160,16 +2160,16 @@ as $$
          select 1 from public.spell_reaction_windows w
           where w.round_id = p_round_id and w.layer = 0 and w.status = 'closed'
        )
-       and (
-         sc.negated
-         or exists (
-           select 1 from public._rr_cast_log_resolution(p_round_id) r
-            where r.victim_group = sc.card_instance_id
-              and r.counter_kind = 'contested_negate'
-              and r.counter_succeeded
-              and not r.counter_negated
-              and not r.counter_backfired
-         )
+       -- derived from the counters alone, never the `negated` column: the
+       -- resolver also sets that for other reasons (ward pre-pass, seize)
+       -- mid-run, which must not un-exempt a player after the round resolves
+       and exists (
+         select 1 from public._rr_cast_log_resolution(p_round_id) r
+          where r.victim_group = sc.card_instance_id
+            and r.counter_kind = 'contested_negate'
+            and r.counter_succeeded
+            and not r.counter_negated
+            and not r.counter_backfired
        )
      )
    order by sc.caster_id, sc.cast_at, sc.seq;
@@ -2988,6 +2988,8 @@ declare
   v_layer integer;
   v_next_layer integer;
   v_player_id text;
+  -- issue #433: Layer 0's Roll Exemptions, read once
+  v_exempt text[] := array[]::text[];
 begin
   select status, current_layer into v_status, v_layer
     from public.rounds
@@ -3006,15 +3008,14 @@ begin
     raise exception 'advance_round_layer: at least 2 tied players required';
   end if;
 
+  if v_layer = 0 then
+    select coalesce(array_agg(ex.player_id), array[]::text[]) into v_exempt
+      from public._rr_roll_exemptions(p_round_id) ex;
+  end if;
+
   foreach v_player_id in array p_tied_player_ids loop
     if not public.is_expected_layer_roller(p_round_id, v_player_id, v_layer)
-       and not (
-         v_layer = 0
-         and exists (
-           select 1 from public._rr_roll_exemptions(p_round_id) ex
-            where ex.player_id = v_player_id
-         )
-       ) then
+       and not (v_player_id = any (v_exempt)) then
       raise exception 'advance_round_layer: % did not roll in the current layer', v_player_id;
     end if;
   end loop;

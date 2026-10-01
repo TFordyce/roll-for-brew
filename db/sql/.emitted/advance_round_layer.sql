@@ -26,6 +26,8 @@ declare
   v_layer integer;
   v_next_layer integer;
   v_player_id text;
+  -- issue #433: Layer 0's Roll Exemptions, read once
+  v_exempt text[] := array[]::text[];
 begin
   select status, current_layer into v_status, v_layer
     from public.rounds
@@ -44,15 +46,14 @@ begin
     raise exception 'advance_round_layer: at least 2 tied players required';
   end if;
 
+  if v_layer = 0 then
+    select coalesce(array_agg(ex.player_id), array[]::text[]) into v_exempt
+      from public._rr_roll_exemptions(p_round_id) ex;
+  end if;
+
   foreach v_player_id in array p_tied_player_ids loop
     if not public.is_expected_layer_roller(p_round_id, v_player_id, v_layer)
-       and not (
-         v_layer = 0
-         and exists (
-           select 1 from public._rr_roll_exemptions(p_round_id) ex
-            where ex.player_id = v_player_id
-         )
-       ) then
+       and not (v_player_id = any (v_exempt)) then
       raise exception 'advance_round_layer: % did not roll in the current layer', v_player_id;
     end if;
   end loop;
