@@ -2,7 +2,7 @@
 --
 -- Authoritative round resolution: locks the closed round, runs the Resolver
 -- pipeline (_rr_resolve_eval) and persists its Resolution Trace and
--- Resolution Summary (issue #407) at the two layer-0 exits (tie and brewer).
+-- Resolution Summary (issue #407) for either layer-0 outcome (tie or brewer).
 -- Layer > 0 persists nothing (issue #219).
 -- Issue #404 (ADR 0007) moved the pipeline body into _rr_resolve_eval so the
 -- non-persisting _rr_resolve can share it; this function is the writer, and
@@ -53,7 +53,7 @@ revoke execute on function public.resolve_round(uuid) from public, anon;
 grant execute on function public.resolve_round(uuid) to authenticated;
 
 comment on function public.resolve_round(uuid) is
-  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351 / #289, ADR 0005). Locks the closed round, runs the Resolver pipeline (_rr_resolve_eval, issue #404) and persists rounds.resolution_trace and rounds.resolution_summary at both layer-0 exits (tie and brewer); layer > 0 bypasses all spell logic and persists nothing (issue #219). Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain, no_modifier_gain, trace, players }. Deterministic and idempotent over its inputs: the Cast-Log / modifier caches it maintains are rewritten identically on a re-run. The non-persisting twin is _rr_resolve (ADR 0007).';
+  'Authoritative layer-0 outcome resolver (issues #305-#311 / #316-#319 / #321 / #342 / #344 / #351 / #289, ADR 0005). Locks the closed round, runs the Resolver pipeline (_rr_resolve_eval, issue #404; Phase 5 tea-maker selection by the Tea-Maker Precedence Ladder lives in _rr_select_tea_maker, issue #451) and persists rounds.resolution_trace and rounds.resolution_summary for either layer-0 outcome (tie or brewer); layer > 0 bypasses all spell logic and persists nothing (issue #219). Returns { outcome, layer, brewer_id, brewer_source, tied_player_ids, cups_made, modifier_gain, no_modifier_gain, trace, players }. Deterministic and idempotent over its inputs: the Cast-Log / modifier caches it maintains are rewritten identically on a re-run. The non-persisting twin is _rr_resolve (ADR 0007).';
 
 -- resolve_round(p_round_id uuid, p_brewer_id text, p_cups_made integer,
 --               p_modifier_gain integer) -> void

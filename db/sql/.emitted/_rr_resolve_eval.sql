@@ -2,9 +2,10 @@
 --
 -- The Resolver pipeline itself (Phases 0a/0b Effect Invocation, 1 Cast-Log
 -- resolution, 2 ward projection, 3 roll-input accounting, 4a/4b/4c modifier
--- composition, 5 brewer selection), returning the outcome object with its
--- Resolution Trace (`trace`) and layer-0 Resolution Summary (`players`).
--- Split out of resolve_round by issue #404 (ADR 0007).
+-- composition, 5 brewer selection -- delegated to _rr_select_tea_maker since
+-- issue #451), returning the outcome object with its Resolution Trace
+-- (`trace`) and layer-0 Resolution Summary (`players`). Split out of
+-- resolve_round by issue #404 (ADR 0007).
 --
 -- It does NOT persist the Trace or the Summary -- resolve_round does that --
 -- but it is not write-free either: it maintains Cast-Log caches that its own
@@ -43,12 +44,13 @@ declare
   -- layer-0 roller, built from the final working arrays just before Phase 5.
   v_summary jsonb := '[]'::jsonb;
 
+  -- Phase 5 (issue #451): the selection result _rr_select_tea_maker returns.
+  v_selection jsonb;
   v_brewer_id text := null;
-  v_brewer_source text := 'default';
   -- issue #425: the brewer's tea-making modifier gain. null = the normal
   -- cups_made, 0 = none, any other value is used as given.
   v_modifier_gain integer := null;
-  v_tied text[];
+  v_tied text[];   -- layer > 0 only
 
   -- per-player working state, parallel arrays indexed 1..n
   v_players text[] := array[]::text[];
@@ -115,30 +117,6 @@ declare
   v_lghm_beneficiaries text[] := array[]::text[];
   v_lghm_high_pid text;
   v_lghm_plain_high_pid text;
-  v_tmo_plain_high text;
-  -- issue #427: a conditional override's compared (post-shim) rolls.
-  v_cond_target_roll integer;
-  v_cond_caster_roll integer;
-
-  v_override record;
-  -- true when v_override holds the tier-2 winner and it can act (its target
-  -- isn't still pending). A plain flag, so an unassigned v_override is never
-  -- read (PL/pgSQL doesn't short-circuit a field reference).
-  v_override_live boolean := false;
-  v_declared record;
-  -- issue #426 (Last Drip, tea_maker_override mode prev_round_highest)
-  v_started_at timestamptz;
-  v_ld_prev_round uuid;
-  v_ld_target text;
-
-  -- issue #428 (spec #401 F2, ADR 0005 tier 0): players carrying a live
-  -- `brewer_immunity` active effect, skipped inside every Phase 5 tier.
-  v_immune jsonb := '{}'::jsonb;   -- { player_id: { ae_id, caster_id, card_name, override_proof } }
-  v_imm_pid text;
-  v_pool_players text[];
-  v_pool_rolls integer[];
-  v_pool_composed numeric[];
-  v_pool_reduced boolean[];
 
   -- Phase 4b (issue #311) working state
   v_pm_targets text[] := array[]::text[];
@@ -180,8 +158,8 @@ declare
   v_pa_discarded integer;
   v_pa_kept integer;
 begin
-  select status, room_id, current_layer, replay_generation, replay_frozen_rollers, started_at
-    into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers, v_started_at
+  select status, room_id, current_layer, replay_generation, replay_frozen_rollers
+    into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers
     from public.rounds
    where id = p_round_id;
 
@@ -1995,373 +1973,26 @@ begin
     from generate_subscripts(v_players, 1) i;
 
   -- ------------------------------------------------------------------
-  -- Phase 5: brewer selection. Precedence declared > override > default.
-  --
-  -- Tier 0 (issue #428, ADR 0005): brewer immunity is not a pass of its
-  -- own -- it is read here, directly (never through the Phase 2 ward
-  -- filter), and applied inside each tier below. An immune candidate is no
-  -- match at any tier: a declared-number roller, an override target and the
-  -- lowest-roller pool all skip them and fall through. One entry per
-  -- player; an override-proof row (The Last Cuppa) is preferred.
+  -- Phase 5: brewer selection -- the Tea-Maker Precedence Ladder (ADR 0005,
+  -- #425 amendment), in its own module since issue #451. It takes the
+  -- Resolution Summary as its roll input and returns one selection result:
+  -- the outcome, Tea Maker, brewer source, ladder modifier gain, tie pool and
+  -- the Trace steps it emitted from v_step_index.
   -- ------------------------------------------------------------------
-  select coalesce(jsonb_object_agg(im.target_player_id, im.info), '{}'::jsonb)
-    into v_immune
-    from (
-      select distinct on (sae.target_player_id)
-             sae.target_player_id,
-             jsonb_build_object(
-               'ae_id', sae.id,
-               'caster_id', sae.caster_id,
-               'card_name', sc.name,
-               'override_proof', coalesce((sae.effect_params ->> 'override_proof')::boolean, false)
-             ) as info
-        from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
-        join public.spell_cards sc on sc.id = sae.card_id
-       where sae.effect_kind = 'brewer_immunity'
-       order by sae.target_player_id,
-                coalesce((sae.effect_params ->> 'override_proof')::boolean, false) desc,
-                sae.created_at
-    ) im;
-
-  for v_declared in
-    select sae.id, (sae.effect_params->>'number')::integer as number,
-           sae.caster_id, sc.name as card_name
-      from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
-      join public.spell_cards sc on sc.id = sae.card_id
-     where sae.room_id = v_room_id
-       and sae.effect_kind = 'declared_number_tea_maker'
-     order by sae.created_at
-  loop
-    select r.player_id into v_pid
-      from public.rolls r
-     where r.round_id = p_round_id and r.layer = 0 and r.value = v_declared.number
-       and not (v_immune ? r.player_id)
-     order by r.player_id
-     limit 1;
-
-    -- issue #428: only immune rollers matched -- each is passed over and
-    -- the next declared number (or the next tier) is tried.
-    if v_pid is null then
-      for v_imm_pid in
-        select r.player_id
-          from public.rolls r
-         where r.round_id = p_round_id and r.layer = 0 and r.value = v_declared.number
-           and v_immune ? r.player_id
-         order by r.player_id
-      loop
-        v_trace := v_trace || jsonb_build_array(public._rr_brewer_immunity_step(
-          v_step_index, v_immune -> v_imm_pid, v_imm_pid, 'declared_number', v_declared.card_name
-        ));
-        v_step_index := v_step_index + 1;
-      end loop;
-    end if;
-
-    if v_pid is not null then
-      v_brewer_id := v_pid;
-      v_brewer_source := 'declared_number';
-      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-        v_step_index,
-        'declared_number_tea_maker',
-        jsonb_build_object(
-          'cast_id', null,
-          'active_effect_id', to_jsonb(v_declared.id),
-          'card_name', to_jsonb(v_declared.card_name),
-          'caster_player_id', to_jsonb(v_declared.caster_id)
-        ),
-        v_brewer_id,
-        jsonb_build_object('type', 'status', 'value', 'pending'),
-        jsonb_build_object('type', 'status', 'value', 'brewer')
-      ));
-      v_step_index := v_step_index + 1;
-      exit;
-    end if;
-  end loop;
-
-  if v_brewer_id is null then
-    -- Tier 2: last cast wins. Walk the overrides newest first; one that can't
-    -- act (an inert Last Drip, #426, or a PG Tipped whose condition fails,
-    -- #427) never enters the contest -- it leaves a no-op Trace step with its
-    -- reason and the next-newest is considered.
-    for v_row in
-      -- issue #425: an explicit `modifier_gain` number wins; the legacy
-      -- `no_modifier_gain: true` (Drip Tray) reads as 0; otherwise null.
-      select casts.effect_params->>'mode' as mode,
-             casts.effect_params->>'condition' as condition,
-             coalesce(
-               (casts.effect_params->>'modifier_gain')::integer,
-               case when coalesce((casts.effect_params->>'no_modifier_gain')::boolean, false)
-                    then 0 end
-             ) as modifier_gain,
-             -- issue #427: a Phase 1 redirect (bounced back onto the cast's
-             -- caster) retargets an override the same way it does a
-             -- modifier cast in Phase 4a.
-             coalesce(v_redirect_map ->> casts.id::text, casts.target_player_id) as chosen_player_id,
-             casts.target_pending as target_pending,
-             casts.id as cast_id,
-             casts.caster_id as caster_id,
-             sc.name as card_name
-        from public.spell_casts casts
-        join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
-        join public.spell_cards sc on sc.id = sdi.card_id
-       where casts.round_id = p_round_id
-         and casts.effect_kind = 'tea_maker_override'
-         and casts.negated = false
-       order by casts.cast_at desc, casts.seq desc
-    loop
-      if v_row.mode = 'conditional_chosen'
-         and not coalesce(v_row.target_pending, false) then
-        -- issue #427 (PG Tipped): enters only if the target's layer-0 roll
-        -- is lower than the caster's.
-        if v_row.condition is distinct from 'target_below_caster' then
-          raise exception 'resolve_round: unsupported conditional_chosen condition %', v_row.condition;
-        end if;
-
-        -- The rolls after the roll-input shim (Phase 3). A player with no
-        -- layer-0 roll has nothing to compare, so the condition fails.
-        v_cond_target_roll := v_rolls[array_position(v_players, v_row.chosen_player_id)];
-        v_cond_caster_roll := v_rolls[array_position(v_players, v_row.caster_id)];
-
-        if not coalesce(v_cond_target_roll < v_cond_caster_roll, false) then
-          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-            v_step_index,
-            'tea_maker_override',
-            jsonb_build_object(
-              'cast_id', to_jsonb(v_row.cast_id),
-              'active_effect_id', null,
-              'card_name', to_jsonb(v_row.card_name),
-              'caster_player_id', to_jsonb(v_row.caster_id)
-            ),
-            v_row.chosen_player_id,
-            jsonb_build_object('type', 'status', 'value', 'pending'),
-            jsonb_build_object('type', 'status', 'value', 'condition not met'),
-            jsonb_build_object(
-              'outcome', 'no-op',
-              'override_reason', 'condition_not_met',
-              'override_condition', v_row.condition,
-              'target_roll', v_cond_target_roll,
-              'caster_roll', v_cond_caster_roll
-            )
-          ));
-          v_step_index := v_step_index + 1;
-          continue;
-        end if;
-      end if;
-
-      if v_row.mode = 'prev_round_highest' then
-        -- issue #426 (Last Drip): the room's most recent resolved round
-        -- before this one -> its highest layer-0 roller (ties: lowest
-        -- modifier_snapshot, then lowest player_id).
-        v_ld_prev_round := null;
-        v_ld_target := null;
-        select pr.id into v_ld_prev_round
-          from public.rounds pr
-         where pr.room_id = v_room_id
-           and pr.status = 'resolved'
-           and pr.id <> p_round_id
-           and pr.started_at < v_started_at
-         order by pr.started_at desc, pr.id
-         limit 1;
-
-        if v_ld_prev_round is not null then
-          select r.player_id into v_ld_target
-            from public.rolls r
-           where r.round_id = v_ld_prev_round and r.layer = 0
-           order by r.value desc, r.modifier_snapshot asc, r.player_id asc
-           limit 1;
-        end if;
-
-        if v_ld_target is null
-           or not exists (
-             select 1 from public.round_participants rp
-              where rp.round_id = p_round_id and rp.player_id = v_ld_target
-           ) then
-          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-            v_step_index,
-            'tea_maker_override',
-            jsonb_build_object(
-              'cast_id', to_jsonb(v_row.cast_id),
-              'active_effect_id', null,
-              'card_name', to_jsonb(v_row.card_name),
-              'caster_player_id', to_jsonb(v_row.caster_id)
-            ),
-            v_ld_target,
-            jsonb_build_object('type', 'status', 'value', 'pending'),
-            jsonb_build_object('type', 'status', 'value', 'no effect'),
-            jsonb_build_object(
-              'outcome', 'no-op',
-              'override_reason', case when v_ld_target is null
-                                      then 'no_previous_round' else 'target_absent' end)
-          ));
-          v_step_index := v_step_index + 1;
-          continue;
-        end if;
-      end if;
-
-      -- the newest override that can act wins; one with a pending target
-      -- (a deferred Wild Brew Surge pick) still wins, and names nobody.
-      v_override := v_row;
-      v_override_live := not coalesce(v_row.target_pending, false);
-      exit;
-    end loop;
-
-    if v_override_live then
-      if v_override.mode = 'prev_round_highest' then
-        -- v_ld_target was set by the loop iteration that exited on this cast.
-        v_brewer_id := v_ld_target;
-      elsif v_override.mode in ('chosen', 'conditional_chosen') then
-        -- issue #427: a conditional_chosen that got here met its condition.
-        v_brewer_id := v_override.chosen_player_id;
-      elsif v_override.mode = 'highest_roll' then
-        select v_players[i] into v_brewer_id
-          from generate_subscripts(v_players, 1) i
-         order by v_rolls[i] desc, v_players[i]
-         limit 1;
-      elsif v_override.mode = 'highest_modifier' then
-        -- issue #321: a Cloud of Cream holder is skipped
-        -- and the next-highest `modifier_snapshot` roller is picked; if every
-        -- roller is skipped, fall back to the plain highest.
-        select r.player_id into v_tmo_plain_high
-          from public.rolls r
-         where r.round_id = p_round_id and r.layer = 0
-         order by r.modifier_snapshot desc, r.player_id
-         limit 1;
-
-        select r.player_id into v_brewer_id
-          from public.rolls r
-         where r.round_id = p_round_id and r.layer = 0
-           and not (r.player_id = any (v_skip_players))
-         order by r.modifier_snapshot desc, r.player_id
-         limit 1;
-
-        if v_brewer_id is null then
-          v_brewer_id := v_tmo_plain_high;
-        elsif v_tmo_plain_high is not null
-              and v_tmo_plain_high <> v_brewer_id
-              and (v_skip_map ? v_tmo_plain_high) then
-          v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-            v_step_index,
-            'targeting_skip',
-            jsonb_build_object(
-              'cast_id', null,
-              'active_effect_id', v_skip_map -> v_tmo_plain_high -> 'ae_id',
-              'card_name', to_jsonb('Cloud of Cream'::text),
-              'caster_player_id', v_skip_map -> v_tmo_plain_high -> 'caster_id'
-            ),
-            v_tmo_plain_high,
-            jsonb_build_object('type', 'status', 'value', 'targetable'),
-            jsonb_build_object('type', 'status', 'value', 'skipped')
-          ));
-          v_step_index := v_step_index + 1;
-        end if;
-      else
-        -- issue #425: unreachable -- the mode set is closed (CHECK on
-        -- spell_casts and spell_card_effects) and every mode is handled
-        -- above. A guard, not a code path.
-        raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
-      end if;
-
-      if v_brewer_id is not null and v_immune ? v_brewer_id then
-        -- issue #428: an immune override target falls through to the default
-        -- pick, whatever the mode. (Override-proof immunity -- The Last
-        -- Cuppa -- always does; the Earl slice gives a non-override-proof
-        -- `earl` holder a title transfer here instead.)
-        v_trace := v_trace || jsonb_build_array(public._rr_brewer_immunity_step(
-          v_step_index, v_immune -> v_brewer_id, v_brewer_id, 'tea_maker_override', v_override.card_name
-        ));
-        v_step_index := v_step_index + 1;
-        v_brewer_id := null;
-      else
-        v_modifier_gain := v_override.modifier_gain;
-        v_brewer_source := 'tea_maker_override:' || v_override.mode;
-
-        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-          v_step_index,
-          'tea_maker_override',
-          jsonb_build_object(
-            'cast_id', to_jsonb(v_override.cast_id),
-            'active_effect_id', null,
-            'card_name', to_jsonb(v_override.card_name),
-            'caster_player_id', to_jsonb(v_override.caster_id)
-          ),
-          v_brewer_id,
-          jsonb_build_object('type', 'status', 'value', 'pending'),
-          jsonb_build_object('type', 'status', 'value',
-            case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end)
-        ));
-        v_step_index := v_step_index + 1;
-      end if;
-    end if;
-  end if;
-
-  if v_brewer_id is null then
-    -- issue #289: v_dice_reduced excludes a Calami-Tea-floored roll from the
-    -- natural-1 auto-lose pool (a real natural 1 still brews).
-    v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
-
-    -- issue #428: the lowest-roller pool excludes immune players, so the
-    -- next-lowest roller brews. Each immune player the unfiltered pick named
-    -- gets a skip step. Everyone immune: immunity gives way, and the round
-    -- ties across every participant still in it (a Tie-Break Reroll, the
-    -- normal tie path at finalize_layer).
-    if v_immune <> '{}'::jsonb then
-      select array_agg(v_players[i] order by i), array_agg(v_rolls[i] order by i),
-             array_agg(v_composed[i] order by i), array_agg(v_dice_reduced[i] order by i)
-        into v_pool_players, v_pool_rolls, v_pool_composed, v_pool_reduced
-        from generate_subscripts(v_players, 1) i
-       where not (v_immune ? v_players[i]);
-
-      if v_pool_players is null then
-        select array_agg(rp.player_id order by rp.player_id) into v_tied
-          from public.round_participants rp
-         where rp.round_id = p_round_id and rp.excluded_at is null;
-
-        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-          v_step_index,
-          'brewer_immunity',
-          jsonb_build_object('cast_id', null, 'active_effect_id', null, 'card_name', null, 'caster_player_id', null),
-          null,
-          jsonb_build_object('type', 'status', 'value', 'immune'),
-          jsonb_build_object('type', 'status', 'value',
-            case when array_length(v_tied, 1) > 1 then 'tie' else 'brewer' end),
-          jsonb_build_object('immunity_tier', 'all_immune', 'skipped_card_name', null)
-        ));
-        v_step_index := v_step_index + 1;
-      else
-        foreach v_imm_pid in array v_tied loop
-          if v_immune ? v_imm_pid then
-            v_trace := v_trace || jsonb_build_array(public._rr_brewer_immunity_step(
-              v_step_index, v_immune -> v_imm_pid, v_imm_pid, 'lowest_roller', null
-            ));
-            v_step_index := v_step_index + 1;
-          end if;
-        end loop;
-
-        v_tied := public._rr_pick_lowest(v_pool_players, v_pool_rolls, v_pool_composed, v_pool_reduced);
-      end if;
-    end if;
-
-    if array_length(v_tied, 1) > 1 then
-      -- Phase 6 (issue #438): Tea Heist outcomes -- see the brewer exit below.
-      v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
-
-      return jsonb_build_object(
-        'outcome', 'tie', 'layer', 0,
-        'brewer_id', null, 'brewer_source', null,
-        'tied_player_ids', to_jsonb(v_tied),
-        'cups_made', v_participant_count, 'modifier_gain', null, 'no_modifier_gain', false,
-        'trace', v_trace, 'players', v_summary
-      );
-    end if;
-
-    v_brewer_id := v_tied[1];
-    v_brewer_source := 'default';
-  end if;
+  v_selection := public._rr_select_tea_maker(
+    p_round_id, v_summary, v_redirect_map, v_skip_map, v_step_index
+  );
+  v_trace := v_trace || (v_selection -> 'steps');
+  v_step_index := v_step_index + jsonb_array_length(v_selection -> 'steps');
+  v_brewer_id := v_selection ->> 'brewer_id';
+  v_modifier_gain := (v_selection ->> 'modifier_gain')::integer;
 
   -- issue #309: a block_earned_modifier ward on the selected brewer (Eternal
   -- Steep) zeroes their tea-making modifier gain: modifier_gain 0, which
   -- resolve_round(uuid, text, integer, integer) writes as a zero brewer gain.
   -- This is a property of the ward, not a competing cast, so it applies
-  -- regardless of seq -- and over an override's own gain (#425).
+  -- regardless of seq -- and over an override's own gain (#425). A tie names
+  -- no brewer, so it never reaches here.
   if v_brewer_id is not null then
     select w.value into v_ward_hit
       from jsonb_array_elements(coalesce(v_ward_map -> v_brewer_id, '[]'::jsonb)) w
@@ -2404,15 +2035,16 @@ begin
   -- traces here (moved / fizzled / countered) -- this body also runs as the
   -- Provisional Recap's rolled-back dry run, so the card itself is moved by
   -- finalize_layer's commit step (_rr_apply_heists), per the ADR 0005 #383
-  -- amendment. Emitted at the tie exit above too, since a tie's layer-0 Trace
-  -- is the one the round keeps.
+  -- amendment. Emitted for a tie too, since a tie's layer-0 Trace is the one
+  -- the round keeps.
   -- ------------------------------------------------------------------
   v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
 
+  -- The one layer-0 return, built from the selection result.
   return jsonb_build_object(
-    'outcome', 'brewer', 'layer', 0,
-    'brewer_id', v_brewer_id, 'brewer_source', v_brewer_source,
-    'tied_player_ids', null,
+    'outcome', v_selection -> 'outcome', 'layer', 0,
+    'brewer_id', v_brewer_id, 'brewer_source', v_selection -> 'brewer_source',
+    'tied_player_ids', v_selection -> 'tied_player_ids',
     'cups_made', v_participant_count, 'modifier_gain', v_modifier_gain,
     -- compat alias for callers still reading the yes/no (#425)
     'no_modifier_gain', coalesce(v_modifier_gain = 0, false),
