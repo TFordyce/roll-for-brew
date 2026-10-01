@@ -44,6 +44,9 @@ declare
   -- layer-0 roller, built from the final working arrays just before Phase 5.
   v_summary jsonb := '[]'::jsonb;
 
+  -- Phase 6 (issues #438 / #436): Tea Heist's steps, so Marked for Brew's
+  -- number on after them.
+  v_heist_steps jsonb;
   -- Phase 5 (issue #451): the selection result _rr_select_tea_maker returns.
   v_selection jsonb;
   v_brewer_id text := null;
@@ -2063,9 +2066,18 @@ begin
   -- Provisional Recap's rolled-back dry run, so the card itself is moved by
   -- finalize_layer's commit step (_rr_apply_heists), per the ADR 0005 #383
   -- amendment. Emitted for a tie too, since a tie's layer-0 Trace is the one
-  -- the round keeps.
+  -- the round keeps. Marked for Brew's draw_redirect steps (issue #436)
+  -- follow.
   -- ------------------------------------------------------------------
-  v_trace := v_trace || public._rr_heist_trace(p_round_id, v_step_index);
+  v_heist_steps := public._rr_heist_trace(p_round_id, v_step_index);
+  v_trace := v_trace || v_heist_steps;
+
+  -- Issue #436: Marked for Brew's draw_redirect steps -- marks placed this
+  -- round, and marks that fired on a crit this round (read from what
+  -- _apply_crit_redirect recorded at roll time; decides nothing).
+  v_trace := v_trace || public._rr_draw_redirect_trace(
+    p_round_id, v_step_index + jsonb_array_length(v_heist_steps)
+  );
 
   -- The one layer-0 return, built from the selection result.
   return jsonb_build_object(

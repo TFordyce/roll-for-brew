@@ -252,7 +252,13 @@ const OUTCOME_KINDS = new Set([
   "card_heist",
   // Issue #432: Brew IOU creates a Brew Debt; a debt round pays one.
   "brew_debt",
+  // Issue #436: Marked for Brew places a mark, or a mark fires on a crit.
+  "draw_redirect",
 ]);
+
+// Step kinds whose cast usually sits in an earlier round, so a round can have
+// them with no casts of its own (see traceDriven in buildRoundRecap).
+const TRACE_ONLY_KINDS = new Set(["brew_debt", "draw_redirect"]);
 
 // Issue #440: why a compelled card was forfeited (forfeit step `reason`).
 // The compelling card's name when its cast row is not in view.
@@ -279,6 +285,10 @@ const OVERRIDE_NOOP_TEXT: Record<OverrideNoopReason, (target: string) => string>
 const HEIST_MOVED = "moved";
 const HEIST_FIZZLED = "fizzled";
 const HEIST_COUNTERED = "countered";
+// draw_redirect steps carry their outcome in `after.value` (_rr_draw_redirect_trace).
+const MARK_PLACED = "marked";
+const MARK_REDIRECTED = "redirected";
+const MARK_FIZZLED = "fizzled";
 
 function numeric(value: number | string | null): number | null {
   return typeof value === "number" ? value : null;
@@ -575,6 +585,19 @@ function sentenceFor(
       if (step.heistReason === "thief_hand_full") return `${played} on ${t} — fizzled: ${c}'s hand is full`;
       return `${played} on ${t} — fizzled: ${t} played the card first`;
     }
+    case "draw_redirect": {
+      // Issue #436: Marked for Brew. The mark's caster is the beneficiary; a
+      // fired step's cast is usually from an earlier round.
+      const markOutcome = String(step.after.value ?? "");
+      const card = k || "Marked for Brew";
+      if (markOutcome === MARK_PLACED) {
+        return `${played} — ${t} is marked: ${c} draws the card for ${t}'s next nat 1 or nat 20 within 5 rounds`;
+      }
+      if (markOutcome === MARK_FIZZLED) {
+        return `${card} — fizzled: ${c} already has a card to draw this round, so ${t} draws their own`;
+      }
+      return `${card} — ${t} rolled a nat 1 or nat 20, so ${c} draws the card instead`;
+    }
     default:
       return k ? `${played} on ${t}` : humanKind(step.displayKind);
   }
@@ -604,6 +627,12 @@ function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState 
     if (v === HEIST_MOVED) return { label: "moved", kind: "applied" };
     if (v === HEIST_FIZZLED) return { label: "fizzled", kind: "no-op" };
     if (v === HEIST_COUNTERED) return { label: "countered", kind: "negated" };
+  }
+  if (step.displayKind === "draw_redirect") {
+    const v = String(step.after.value ?? "");
+    if (v === MARK_PLACED) return { label: "marked", kind: "applied" };
+    if (v === MARK_REDIRECTED) return { label: "redirected", kind: "applied" };
+    if (v === MARK_FIZZLED) return { label: "fizzled", kind: "no-op" };
   }
   switch (step.outcome) {
     case "backfired":
@@ -722,11 +751,13 @@ export function buildRoundRecap({
   // tap-to-filter cast strip is absent.
   // Issue #432: a debt round has no casts of its own -- its one step (the
   // Brew Debt paid) is the whole story, so it renders from the Trace too.
+  // Issue #436: likewise a round where an earlier round's Marked for Brew
+  // mark fired.
   const traceDriven =
     !live &&
     casts.length === 0 &&
     data.trace.length > 0 &&
-    (traceOnly || data.trace.some((s) => s.displayKind === "brew_debt"));
+    (traceOnly || data.trace.some((s) => TRACE_ONLY_KINDS.has(s.displayKind)));
   const rows = buildRows(data, displayName);
 
   if (casts.length === 0 && !traceDriven && data.reactionSkips.length === 0) {

@@ -689,6 +689,46 @@ describe("buildRoundRecap", () => {
     });
   });
 
+  describe("Marked for Brew (issue #436)", () => {
+    const mark = (after: "marked" | "redirected" | "fizzled") =>
+      step({
+        displayKind: "draw_redirect",
+        sourceCast: { castId: "C1", activeEffectId: null, cardName: "Marked for Brew", casterPlayerId: "ada" },
+        targetPlayer: "ben",
+        before: { type: "status", value: after === "marked" ? null : "marked" },
+        after: { type: "status", value: after },
+        outcome: after === "fizzled" ? "no-op" : "applied",
+      });
+    const only = (model: ReturnType<typeof buildRoundRecap>) => model.phases.flatMap((p) => p.steps)[0]!;
+    const casts = [cast({ castId: "C1", cardName: "Marked for Brew", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "draw_redirect" })];
+
+    it("marked: says whose crit the caster will draw, in the Outcome group", () => {
+      const model = buildRoundRecap({ data: data({ casts, trace: [mark("marked")] }), displayName });
+      const s = only(model);
+      expect(s.sentence).toBe(
+        "Ada played Marked for Brew — Ben is marked: Ada draws the card for Ben's next nat 1 or nat 20 within 5 rounds",
+      );
+      expect(s).toMatchObject({ statusLabel: "marked", statusKind: "applied", beforeAfter: null });
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("redirected: the mark fires in a later round with no casts of its own", () => {
+      const model = buildRoundRecap({ data: data({ trace: [mark("redirected")] }), displayName });
+      expect(model.hasContent).toBe(true);
+      const s = only(model);
+      expect(s.sentence).toBe("Marked for Brew — Ben rolled a nat 1 or nat 20, so Ada draws the card instead");
+      expect(s).toMatchObject({ statusLabel: "redirected", statusKind: "applied" });
+    });
+
+    it("fizzled: the caster already had a draw, so the target keeps theirs", () => {
+      const s = only(buildRoundRecap({ data: data({ trace: [mark("fizzled")] }), displayName }));
+      expect(s.sentence).toBe(
+        "Marked for Brew — fizzled: Ada already has a card to draw this round, so Ben draws their own",
+      );
+      expect(s).toMatchObject({ statusLabel: "fizzled", statusKind: "no-op" });
+    });
+  });
+
   describe("Last Drip (issue #426)", () => {
     function lastDrip(over: Partial<ResolutionTraceStep>, recap: Partial<RoundRecapData> = {}) {
       return buildRoundRecap({

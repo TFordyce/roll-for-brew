@@ -10,6 +10,10 @@
 --     is promoted unbounded, exactly as a persistent advantage is;
 --   * the row's `undispellable` marker is copied to
 --     spell_active_effects.is_undispellable, which every dispel path skips.
+-- and issue #436: a `draw_redirect` effect row marked persist = true (Marked
+-- for Brew's mark) is promoted unbounded too -- its window is counted in the
+-- target's participated rounds by _rr_active_effects_as_of, not in
+-- rounds_remaining.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -37,12 +41,12 @@ begin
   -- means "not persistent" for them (unchanged from 0032) -- EXCEPT an
   -- effect row explicitly marked persist = true: Prophe-Tea's rest-of-day
   -- advantage (issue #320) and The Last Cuppa's rest-of-day brewer immunity
-  -- (issue #428). Those record an unbounded row exactly as a NULL-duration
-  -- ward does.
+  -- (issue #428), and Marked for Brew's Draw Redirect mark (issue #436).
+  -- Those record an unbounded row exactly as a NULL-duration ward does.
   if v_duration is null
      and p_effect_kind <> 'ward'
      and not (
-       p_effect_kind in ('advantage', 'disadvantage', 'brewer_immunity')
+       p_effect_kind in ('advantage', 'disadvantage', 'brewer_immunity', 'draw_redirect')
        and coalesce((p_effect_params ->> 'persist')::boolean, false)
      )
   then

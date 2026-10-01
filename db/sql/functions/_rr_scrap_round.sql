@@ -142,10 +142,13 @@ begin
   -- ticks un-happen: _rr_active_effects_as_of counts resolved rounds since the
   -- source cast, and un-resolving this round drops it from that count.
   --
-  -- #298 Group B: a draw_redirect mark consumed inside this generation would
-  -- be restored here too -- nothing writes those marks yet (Group B is
-  -- unbuilt / out of scope for #302), so there is nothing to restore. When
-  -- Group B lands, add its mark-restore pass at this point.
+  -- Issue #436 (#383 Q2): a Draw Redirect mark spent inside this generation
+  -- (Marked for Brew; its source cast records cast_inputs.consumed_by_round)
+  -- is deliberately NOT restored. The crit draw it redirected sits in
+  -- pending_spell_draws, which the scrap leaves alone, so the beneficiary
+  -- keeps the card -- restoring the mark would let it pay out twice. A mark
+  -- cast in an earlier round is not deleted below either; only this round's
+  -- casts are, and a mark cast in this round cannot have fired yet.
   --
   -- Issue #438 (Tea Heist, ADR 0005 #383 amendment): a Heist the scrapped
   -- attempt carried out (finalize_layer stamped cast_inputs.heist_moved) is

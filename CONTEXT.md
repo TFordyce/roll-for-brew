@@ -219,7 +219,7 @@ A resolver-derived outcome on a *seized* cast — its effects retargeted to its 
 _Avoid_: redirect (that's the reactor's own exposure onto the original caster), steal, negate.
 
 **Draw Redirect** (Marked for Brew, Stale Biscuit):
-A one-shot mark on a target player that diverts one future card draw to the marker (the **beneficiary**). It fires at one of two moments. **Crit time** (Marked for Brew): the target's nat 1/20 Pending Spell Draw is earned by the beneficiary instead, within the target's next 5 rounds as a participant. **Draw time** (Stale Biscuit): the target still draws, but the card lands in the beneficiary's hand. The mark is **spent** when it fires. A round replay does not restore a spent mark, because the redirected draw it paid out survives the scrap too. Oldest mark fires first.
+A one-shot mark on a target player that diverts one future card draw to the marker (the **beneficiary**). It fires at one of two moments. **Crit time** (Marked for Brew): the target's nat 1/20 Pending Spell Draw is earned by the beneficiary instead, within the target's next 5 rounds as a participant, never the round it was cast in. If the beneficiary already has a Pending Spell Draw that round, the redirect **fizzles**: the mark is spent and the target keeps their own draw. **Draw time** (Stale Biscuit): the target still draws, but the card lands in the beneficiary's hand. The mark is **spent** when it fires. A round replay does not restore a spent mark, because the redirected draw it paid out survives the scrap too. Oldest mark fires first.
 _Avoid_: steal (that's Heist), curse, seize (that's Brew-merang).
 
 **Heist** (Tea Heist):
