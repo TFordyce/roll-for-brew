@@ -34,6 +34,7 @@ import {
   resolvePendingSpellDieInApp,
   resolvePendingSpellDieManual,
   setSpellCastTarget,
+  setTeaPartyRevoltTarget,
 } from "@/lib/supabase/spellCasts";
 import { castReactionSpellCard, passReactionWindow, voteSkipReactionWindow } from "@/lib/supabase/reactionWindow";
 import {
@@ -482,6 +483,41 @@ export async function setSpellCastTargetAction(
   // window opens now. A noop for any other deferred target, when a window
   // already exists, and when rolling isn't finished yet.
   await advanceRound(supabase, roundId, "deferredTargetSet");
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+  return { status: "idle" };
+}
+
+/**
+ * Records the Tea Party Revolt pick (issue #430): the lowest roller names who
+ * makes tea. Layer 0 was held for the pick, so this raises revoltPickMade —
+ * advance_layer then opens the reaction window (or finalizes, when nobody can
+ * react). Broadcasts spell-cast-changed so every page drops the prompt.
+ */
+export async function setTeaPartyRevoltTargetAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
+  const roundId = formData.get("roundId");
+  const targetPlayerId = formData.get("targetPlayerId");
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("setTeaPartyRevoltTargetAction: missing roundId");
+  }
+  if (typeof targetPlayerId !== "string" || !targetPlayerId) {
+    throw new Error("setTeaPartyRevoltTargetAction: missing targetPlayerId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await setTeaPartyRevoltTarget(supabase, roundId, targetPlayerId);
+  } catch (error) {
+    return resolveSpellCastError(error);
+  }
+  await advanceRound(supabase, roundId, "revoltPickMade");
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastSpellCastChanged(supabase, roomId, { roundId });

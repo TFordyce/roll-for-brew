@@ -276,13 +276,13 @@ export async function seedPastRound(
  * (targeting skip, #321, migration 0099) — Tea Heist (#438, migration 0117) —
  * Brewmageddon (Compelled Cast, #440, migration 0119) — Last Drip (#426,
  * migration 0124) — PG Tipped (conditional override, #427, migration 0126) —
- * and The Last Cuppa (brewer immunity, #428, migration 0128) — are now live,
- * so 10 remain here. A test that force-holds one of these must return it to
- * the bench, not the deck, on cleanup — releaseHeldCards below does that.
+ * The Last Cuppa (brewer immunity, #428, migration 0128) — and Tea Party
+ * Revolt (lowest roller picks, #430, migration 0131) — are now live, so 9
+ * remain here. A test that force-holds one of these must return it to the
+ * bench, not the deck, on cleanup — releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
-  "Tea Party Revolt",
   "Tea Cosy",
   "Loose Leaf",
   "Marked for Brew",

@@ -1,0 +1,82 @@
+{
+  "scenario": "05-tea-party-revolt-abandoned-earlier-override-stands",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "chosen",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "no effect"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Tea Party Revolt",
+        "active_effect_id": null,
+        "caster_player_id": "P:revolter"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": null,
+      "override_reason": "pick_abandoned"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Wild Brew Surge",
+        "active_effect_id": null,
+        "caster_player_id": "P:chooser"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:chosen"
+    }
+  ],
+  "players": [
+    {
+      "player": "chooser",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "chosen",
+      "nat": null,
+      "roll": 18,
+      "total": 18,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "revolter",
+      "nat": null,
+      "roll": 9,
+      "total": 9,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

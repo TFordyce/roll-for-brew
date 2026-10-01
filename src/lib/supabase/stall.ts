@@ -132,6 +132,20 @@ export async function resolveStalledPendingForcedRerollCasts(
 }
 
 /**
+ * Calls the resolve_stalled_revolt_picks RPC (0131, issue #430): abandons
+ * every Tea Party Revolt pick the lowest roller never made, once
+ * enforceStallTimeout's own hasStalled check has fired — the cast is treated
+ * as negated and the default pick stands, so the Layer 0 completeness hold
+ * releases. Returns how many casts it abandoned, so the caller only raises
+ * advanceRound(stallCleared) when there was something to recover.
+ */
+export async function resolveStalledRevoltPicks(supabase: SupabaseClient, roundId: string): Promise<number> {
+  const { data, error } = await supabase.rpc("resolve_stalled_revolt_picks", { p_round_id: roundId });
+  if (error) throw error;
+  return data as number;
+}
+
+/**
  * Calls the cancel_round RPC: cancels a stalled round (issue #21). A no-op
  * if the round has already left 'open'/'closed' by the time this runs.
  */

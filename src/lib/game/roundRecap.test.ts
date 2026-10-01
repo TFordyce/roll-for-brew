@@ -74,6 +74,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     overrideReason: null,
     failedOverrideCondition: null,
     immunity: null,
+    pickedBy: null,
     ...overrides,
   };
 }
@@ -662,6 +663,63 @@ describe("buildRoundRecap", () => {
         casterRoll: 9,
       });
       expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.failedOverrideCondition).toBeNull();
+    });
+  });
+
+  describe("Tea Party Revolt (issue #430)", () => {
+    function revolt(over: Partial<ResolutionTraceStep>) {
+      return buildRoundRecap({
+        data: data({
+          casts: [cast({ castId: "C1", cardName: "Tea Party Revolt", casterPlayerId: "ada", targetPlayerId: "ben", effectKind: "tea_maker_override" })],
+          trace: [
+            step({
+              displayKind: "tea_maker_override",
+              sourceCast: { castId: "C1", activeEffectId: null, cardName: "Tea Party Revolt", casterPlayerId: "ada" },
+              targetPlayer: "ben",
+              before: { type: "status", value: "pending" },
+              after: { type: "status", value: "brewer" },
+              ...over,
+            }),
+          ],
+        }),
+        displayName,
+      });
+    }
+    const only = (model: ReturnType<typeof buildRoundRecap>) => model.phases.flatMap((p) => p.steps)[0]!;
+    const inert = { targetPlayer: null, after: { type: "status", value: "no effect" }, outcome: "no-op" } as const;
+
+    it("the lowest roller's pick brews, and the sentence says who picked", () => {
+      const s = only(revolt({ pickedBy: "cass" }));
+      expect(s.sentence).toBe("Ada played Tea Party Revolt — Cass, the lowest roller, picks Ben to brew");
+      expect(s.statusKind).toBe("applied");
+    });
+
+    it("a stalled pick: a no-effect step saying the pick was never made", () => {
+      const s = only(revolt({ ...inert, overrideReason: "pick_abandoned" }));
+      expect(s.sentence).toBe("Ada played Tea Party Revolt — no effect: the lowest roller never picked who brews");
+      expect(s.statusKind).toBe("no-op");
+    });
+
+    it("a pick still outstanding (provisional): says it's waiting", () => {
+      const s = only(revolt({ ...inert, overrideReason: "pick_pending" }));
+      expect(s.sentence).toBe("Ada played Tea Party Revolt — no effect: the lowest roller hasn't picked yet");
+    });
+
+    it("reads picked_by off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "tea_maker_override",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "Tea Party Revolt", caster_player_id: "ada" },
+          target_player: "ben",
+          before: { type: "status", value: "pending" },
+          after: { type: "status", value: "brewer" },
+          outcome: "applied",
+          picked_by: "cass",
+        },
+      ]);
+      expect(parsed!.pickedBy).toBe("cass");
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.pickedBy).toBeNull();
     });
   });
 

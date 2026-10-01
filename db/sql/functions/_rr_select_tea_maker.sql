@@ -91,6 +91,8 @@ declare
   v_cond_target_roll integer;
   v_cond_caster_roll integer;
   v_plain_high text;
+  -- issue #430: whether Phase 1 rewrote `negated` (the round has counters)
+  v_has_counters boolean;
 
   -- tier 4: the lowest-roller pool, Brewer Candidates only
   v_pool_players text[];
@@ -109,6 +111,13 @@ begin
     from jsonb_array_elements(p_summary) with ordinality as s(e, ord);
 
   v_skip_players := array(select jsonb_object_keys(p_skip_map));
+
+  -- Phase 1's own test for whether it ran.
+  select exists (
+    select 1 from public.spell_casts
+     where round_id = p_round_id
+       and effect_kind in ('contested_negate', 'redirect')
+  ) into v_has_counters;
 
   -- ------------------------------------------------------------------
   -- Tier 0 (issue #428, ADR 0005): Brewer Immunity is not a pass of its
@@ -218,13 +227,25 @@ begin
              coalesce(casts.target_pending, false) as target_pending,
              casts.id as cast_id,
              casts.caster_id as caster_id,
-             sc.name as card_name
+             sc.name as card_name,
+             -- issue #430 (Tea Party Revolt): the lowest roller names the
+             -- target after layer 0 is rolled.
+             casts.effect_params->>'picker' as picker,
+             casts.target_player_id as picked_player_id,
+             casts.cast_inputs->>'revolt_picked_by' as picked_by,
+             coalesce(casts.cast_inputs ? 'revolt_pick_abandoned', false) as pick_abandoned
         from public.spell_casts casts
         join public.spell_deck_instances sdi on sdi.id = casts.card_instance_id
         join public.spell_cards sc on sc.id = sdi.card_id
        where casts.round_id = p_round_id
          and casts.effect_kind = 'tea_maker_override'
-         and casts.negated = false
+         -- issue #430: a Revolt abandoned by stall is negated, but still
+         -- traced so the Recap can say why it did nothing -- unless a counter
+         -- negated it. With counters, Phase 1 has rewritten `negated` to the
+         -- counter result alone, so a negated row was countered; without,
+         -- only stall negates one.
+         and (casts.negated = false
+              or (casts.cast_inputs ? 'revolt_pick_abandoned' and not v_has_counters))
        order by casts.cast_at desc, casts.seq desc
     loop
       -- One mode dispatch: each mode resolves this override to a target
@@ -269,6 +290,18 @@ begin
             'override_reason', case when v_target is null
                                     then 'no_previous_round' else 'target_absent' end);
         end if;
+
+      elsif v_row.picker = 'lowest_roller'
+            and (v_row.pick_abandoned or v_row.picked_player_id is null) then
+        -- issue #430 (Tea Party Revolt): no pick, so it never enters.
+        -- `pick_abandoned`: stall cleared it. `pick_pending`: only seen by
+        -- a dry run (the Provisional Recap) -- layer 0 is held incomplete
+        -- until the pick is made.
+        v_inert_after := 'no effect';
+        v_inert_extra := jsonb_build_object(
+          'outcome', 'no-op',
+          'override_reason', case when v_row.pick_abandoned
+                                  then 'pick_abandoned' else 'pick_pending' end);
 
       elsif v_row.target_pending then
         -- a deferred Wild Brew Surge pick: the override still wins, and
@@ -392,7 +425,9 @@ begin
           v_step_index, v_override.cast_id, v_override.card_name, v_override.caster_id,
           v_brewer_id,
           case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end,
-          null
+          -- issue #430: who made a Tea Party Revolt pick.
+          case when v_override.picked_by is not null
+               then jsonb_build_object('picked_by', v_override.picked_by) end
         ));
         v_step_index := v_step_index + 1;
       end if;

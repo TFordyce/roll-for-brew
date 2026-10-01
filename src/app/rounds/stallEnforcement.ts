@@ -11,6 +11,7 @@ import {
   getLayerEnteredAt,
   resolveStalledPendingForcedRerollCasts,
   resolveStalledPendingSpellDice,
+  resolveStalledRevoltPicks,
 } from "@/lib/supabase/stall";
 import { broadcastRoundCancelled, broadcastSpellCastChanged } from "@/lib/supabase/realtime";
 import { advanceRound } from "@/app/rounds/advanceRound";
@@ -29,6 +30,7 @@ export type StallOutcome =
   | { action: "compelledCastsForfeited"; playerIds: string[] }
   | { action: "diceAutoResolved" }
   | { action: "deferredForcedRerollAbandoned" }
+  | { action: "revoltPickAbandoned" }
   | { action: "reactionWindowRecovered" }
   | { action: "reactionWindowTimedOut"; playerIds: string[] };
 
@@ -63,7 +65,9 @@ export type StallOutcome =
  *    Pending Spell Die (issue #252, e.g. Cold Tea/Slipped Spoon's caster)
  *    is still unresolved, or a pre-roll forced_reroll cast (issue #325,
  *    Yorkshire Terror) is still awaiting its deferred target -> auto-resolve
- *    / force-negate it. Not an independent clock — it's this same
+ *    / force-negate it. A Tea Party Revolt pick the lowest roller never
+ *    made (issue #430) is cleared the same way: the cast is treated as
+ *    negated and the default pick stands. Not an independent clock — it's this same
  *    5-minute-since-closed timer catching stall shapes the "did they roll"
  *    check above can't see (the caster already rolled; they just never gave
  *    their die a value, or never named their reroll's target). In practice
@@ -132,7 +136,8 @@ export async function enforceStallTimeout(
 
   if (stalledPlayerIds.length === 0) {
     // Every expected roller has rolled, yet the Layer can still be held
-    // incomplete by a Pending Spell Die or a Deferred Forced-Reroll Target —
+    // incomplete by a Pending Spell Die, a Deferred Forced-Reroll Target or a
+    // Tea Party Revolt pick —
     // the exclude-a-non-roller logic below has nothing to do here, so this is
     // the recovery path for those shapes instead (see the doc comment above).
     if (layer === 0) {
@@ -142,13 +147,18 @@ export async function enforceStallTimeout(
       // named its deferred target (issue #325). Clear whichever is
       // outstanding; advance_layer then opens the reaction window (or
       // finalizes, if nobody can react) as it would for any complete Layer.
+      // A Tea Party Revolt pick the lowest roller never made (issue #430)
+      // is the third shape: abandon it, and the default pick stands.
       const resolvedDice = await resolveStalledPendingSpellDice(supabase, roundId);
       const abandonedRerolls = await resolveStalledPendingForcedRerollCasts(supabase, roundId);
-      if (resolvedDice > 0 || abandonedRerolls > 0) {
+      const abandonedPicks = await resolveStalledRevoltPicks(supabase, roundId);
+      if (resolvedDice > 0 || abandonedRerolls > 0 || abandonedPicks > 0) {
         await advanceRound(supabase, roundId, "stallCleared");
-        // Both shapes can be outstanding on one round; the outcome is a
+        // Several shapes can be outstanding on one round; the outcome is a
         // single label for page.tsx's "did anything happen" check, so report
-        // the rarer forced_reroll recovery when it fired.
+        // the one that changed the outcome most: an abandoned pick drops a
+        // whole card, an abandoned reroll one roll change, a die only a value.
+        if (abandonedPicks > 0) return { action: "revoltPickAbandoned" };
         return abandonedRerolls > 0
           ? { action: "deferredForcedRerollAbandoned" }
           : { action: "diceAutoResolved" };

@@ -265,6 +265,9 @@ const OVERRIDE_NOOP_TEXT: Record<OverrideNoopReason, (target: string) => string>
   target_absent: (t) => `${t} isn't in this round`,
   // #427: normally read via failedOverrideCondition, which names the rolls.
   condition_not_met: () => "its condition wasn't met",
+  // #430: Tea Party Revolt with no pick.
+  pick_abandoned: () => "the lowest roller never picked who brews",
+  pick_pending: () => "the lowest roller hasn't picked yet",
 };
 // card_heist steps carry their outcome in `after.value` (_rr_heist_trace).
 const HEIST_MOVED = "moved";
@@ -407,7 +410,7 @@ function fmt(value: number | string | null): string {
  */
 function sentenceFor(
   step: ResolutionTraceStep,
-  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string },
+  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null },
 ): string {
   const { t, c, k } = names;
   const played = k ? `${c} played ${k}` : c;
@@ -521,6 +524,8 @@ function sentenceFor(
       }
       // Issue #426: an inert Last Drip says why it did nothing.
       if (step.overrideReason) return `${played} — no effect: ${OVERRIDE_NOOP_TEXT[step.overrideReason](t)}`;
+      // Issue #430: Tea Party Revolt names who picked.
+      if (names.pickedBy) return `${played} — ${names.pickedBy}, the lowest roller, picks ${t} to brew`;
       const noGain = String(step.after.value ?? "").includes("no modifier");
       return `${played} — ${t} brews${noGain ? " (no modifier gain)" : ""}`;
     }
@@ -779,6 +784,7 @@ export function buildRoundRecap({
           k,
           compelled: (step.compel?.compelledPlayerIds ?? []).map(displayName),
           compelledBy: compelledBy ?? BREWMAGEDDON,
+          pickedBy: step.pickedBy ? displayName(step.pickedBy) : null,
         });
         return {
           phase: phaseForStep(step, castById),

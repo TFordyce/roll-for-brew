@@ -90,6 +90,35 @@ export async function setSpellCastTarget(
 }
 
 /**
+ * Calls the set_tea_party_revolt_target RPC (0131, issue #430): records who
+ * makes tea for a Tea Party Revolt. Only the lowest layer-0 roller may call
+ * it (a tie goes to the smallest player id), once every expected roller has
+ * rolled; the server checks both.
+ */
+export async function setTeaPartyRevoltTarget(
+  supabase: SupabaseClient,
+  roundId: string,
+  targetPlayerId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc("set_tea_party_revolt_target", {
+    p_round_id: roundId,
+    p_target_player_id: targetPlayerId,
+  });
+  if (error) throw error;
+}
+
+/**
+ * Calls the get_tea_party_revolt_picker RPC (0131, issue #430): the player a
+ * Tea Party Revolt pick is waiting on — the lowest layer-0 roller, once
+ * everyone has rolled — or null when no pick is outstanding.
+ */
+export async function getTeaPartyRevoltPicker(supabase: SupabaseClient, roundId: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc("get_tea_party_revolt_picker", { p_round_id: roundId });
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
+/**
  * Calls the get_my_pending_casts RPC: the caller's own casts still awaiting
  * a target for this round (user story 23) — an armed OPPONENT/PLAYER card
  * cast before declare-in closed, once the roster is final and it's time to

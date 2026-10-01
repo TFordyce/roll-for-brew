@@ -19,6 +19,7 @@ function fakeDeps(outcome: LayerOutcome): AdvanceRoundDeps {
     broadcastRoundRevealed: vi.fn(async () => {}),
     broadcastLayerTied: vi.fn(async () => {}),
     broadcastRoundReplayChanged: vi.fn(async () => {}),
+    broadcastSpellCastChanged: vi.fn(async () => {}),
   };
 }
 
@@ -52,7 +53,7 @@ describe("advanceRound", () => {
     expect(deps.advanceLayer).not.toHaveBeenCalled();
   });
 
-  it.each<AdvanceRoundEvent>(["layerRolled", "pendingDieResolved", "deferredTargetSet", "stallCleared"])(
+  it.each<AdvanceRoundEvent>(["layerRolled", "pendingDieResolved", "deferredTargetSet", "revoltPickMade", "stallCleared"])(
     "%s reaches advance_layer and never finalize_layer directly",
     async (event) => {
       const deps = fakeDeps(noop);
@@ -116,6 +117,17 @@ describe("advanceRound", () => {
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
     expect(deps.broadcastLayerTied).not.toHaveBeenCalled();
     expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
+    expect(deps.broadcastSpellCastChanged).not.toHaveBeenCalled();
+  });
+
+  it("a Layer held for a Tea Party Revolt pick broadcasts a spell-cast change, so the picker sees the prompt", async () => {
+    const deps = fakeDeps({ outcome: "noop", reason: "revolt_pick_pending" });
+
+    await advanceRound(supabase, "round-1", "layerRolled", deps);
+
+    expect(deps.broadcastSpellCastChanged).toHaveBeenCalledWith(supabase, "room-1", { roundId: "round-1" });
+    expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
+    expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
   });
 
   it("first completion broadcasts the layer rolls revealed, even when the window stays open", async () => {
