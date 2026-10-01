@@ -1,5 +1,5 @@
 {
-  "scenario": "6-marked-for-brew-redirected",
+  "scenario": "6-stale-biscuit-placed",
   "outcome": "brewer",
   "layer": 0,
   "brewer": "caster",
@@ -11,23 +11,23 @@
     {
       "after": {
         "type": "status",
-        "value": "redirected"
+        "value": "marked"
       },
       "index": 0,
       "before": {
         "type": "status",
-        "value": "marked"
+        "value": null
       },
       "outcome": "applied",
       "source_cast": {
         "cast_id": "cast#1",
-        "card_name": "Marked for Brew",
+        "card_name": "Stale Biscuit",
         "active_effect_id": null,
         "caster_player_id": "P:caster"
       },
       "display_kind": "draw_redirect",
       "target_player": "P:target",
-      "redirect_trigger": "next_crit"
+      "redirect_trigger": "next_draw"
     }
   ],
   "players": [
@@ -42,9 +42,9 @@
     },
     {
       "player": "target",
-      "nat": "nat20",
-      "roll": 20,
-      "total": 20,
+      "nat": null,
+      "roll": 12,
+      "total": 12,
       "composed": 0,
       "snapshot": 0,
       "dice_reduced": false

@@ -62,6 +62,7 @@ as $$
 declare
   v_mark record;
   v_slot text;
+  v_outcome text;
   v_draw_id uuid;
   v_already_held boolean;
   v_needs_swap_decision boolean;
@@ -105,8 +106,9 @@ begin
 
   if v_mark.source_cast_id is not null then
     v_slot := public._rr_free_hand_slot(v_mark.beneficiary_id);
+    v_outcome := case when v_slot is null then 'fizzled' else 'redirected' end;
 
-    if v_slot is not null then
+    if v_outcome = 'redirected' then
       update public.spell_deck_instances
          set location = v_slot, held_by_player = v_mark.beneficiary_id
        where id = p_instance_id;
@@ -119,7 +121,8 @@ begin
     end if;
   end if;
 
-  if v_draw_id is null then
+  -- No mark, or it fizzled: the drawer lands the card as before.
+  if v_outcome is distinct from 'redirected' then
     v_already_held := exists (
       select 1 from public.spell_deck_instances
        where held_by_player = p_player_id and location = 'held'
@@ -149,13 +152,12 @@ begin
     returning id into v_draw_id;
   end if;
 
-  if v_mark.source_cast_id is not null then
+  if v_outcome is not null then
     update public.spell_casts
        set cast_inputs = coalesce(cast_inputs, '{}'::jsonb)
                          || jsonb_build_object(
                               'consumed_by_draw', v_draw_id,
-                              'draw_redirect_outcome',
-                              case when v_slot is null then 'fizzled' else 'redirected' end
+                              'draw_redirect_outcome', v_outcome
                             )
      where id = v_mark.source_cast_id;
   end if;
@@ -165,6 +167,9 @@ end;
 $$;
 
 revoke execute on function public._land_drawn_instance(text, uuid, text) from public, anon, authenticated;
+
+comment on function public._land_drawn_instance(text, uuid, text) is
+  'Issue #435: places a just-drawn instance in the drawer''s hand (held / pending_swap / nat-1 forced swap) and logs the spell_draws row; returns needs_swap_decision. (#437) First fires the drawer''s oldest live next_draw Draw Redirect mark (Stale Biscuit): the card lands with the beneficiary''s free hand slot, or the redirect fizzles on a full hand; the mark is spent via cast_inputs.consumed_by_draw / draw_redirect_outcome. Internal.';
 -- END db/sql/functions/_land_drawn_instance.sql
 
 -- BEGIN db/sql/functions/_rr_draw_redirect_trace.sql

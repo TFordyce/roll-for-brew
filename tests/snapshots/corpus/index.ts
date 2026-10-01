@@ -1333,6 +1333,27 @@ export const CORPUS: Scenario[] = [
       },
     }),
   ),
+  // Issue #437: Stale Biscuit. Its mark fires at draw time
+  // (_land_drawn_instance), after the round's Trace is written, so only the
+  // cast round's `marked` step is traced.
+  {
+    name: "6-stale-biscuit-placed",
+    phases: ["5", "6"],
+    note: "A Stale Biscuit cast this round traces a `marked` draw_redirect step on its target, redirect_trigger next_draw.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const roundId = await ctx.openAndCloseRound(caster, [target]);
+      await ctx.seedRoll(roundId, caster.googleSub, 5);
+      await ctx.seedRoll(roundId, target.googleSub, 12);
+      await ctx.seedCast(roundId, caster.googleSub, "Stale Biscuit", {
+        effectKind: "draw_redirect",
+        effectParams: { trigger: "next_draw", persist: true },
+        targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
   {
     // Tea Heist is rare: tier DC 5, so dc_d20 15 succeeds.
     name: "6-heist-countered",

@@ -355,6 +355,27 @@ describe.skipIf(!hasAnonTestEnv)("Stale Biscuit (issue #437)", () => {
     expect(await castInputs(castId)).toMatchObject({ draw_redirect_outcome: "redirected" });
   });
 
+  it("admin_proxy_roll: a proxied nat 20 for the target, drawn by the target, goes to the caster", async () => {
+    const { caster, target, castId, others } = await castMark("proxy", ["admin"]);
+    const adminPlayer = others[0]!;
+    const { error: adminErr } = await admin.from("players").update({ is_admin: true }).eq("id", adminPlayer.googleSub);
+    expect(adminErr).toBeNull();
+    const roundId = await startRound(caster, [target, adminPlayer]);
+
+    const { error: proxyErr } = await adminPlayer.client.rpc("admin_proxy_roll", {
+      p_round_id: roundId,
+      p_player_id: target.googleSub,
+      p_value: 20,
+    });
+    expect(proxyErr).toBeNull();
+    const { data, error } = await target.client.rpc("draw_pending_spell_card", { p_round_id: roundId });
+    expect(error).toBeNull();
+    const [row] = data as DrawResult[];
+
+    expect(await instance(row!.instance_id)).toEqual({ location: "held", held_by_player: caster.googleSub });
+    expect(await castInputs(castId)).toMatchObject({ draw_redirect_outcome: "redirected" });
+  });
+
   // ==========================================================================
   // Chaining with Marked for Brew
   // ==========================================================================
@@ -396,9 +417,10 @@ describe.skipIf(!hasAnonTestEnv)("Stale Biscuit (issue #437)", () => {
       [caster.googleSub, 6],
       [target.googleSub, 14],
     ] as const) {
-      await admin
+      const { error: rollErr } = await admin
         .from("rolls")
         .insert({ round_id: castRound, player_id: p, layer: 0, value: v, input_mode: "manual", modifier_snapshot: 0 });
+      expect(rollErr).toBeNull();
     }
     const { error: resolveErr } = await caster.client.rpc("resolve_round", { p_round_id: castRound });
     expect(resolveErr).toBeNull();
