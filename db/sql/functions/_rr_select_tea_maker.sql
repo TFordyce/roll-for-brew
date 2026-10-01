@@ -21,6 +21,10 @@
 --                      applied by the caller -- the ward phase is orthogonal
 --                      to the ladder.
 --     tied_player_ids  the Tie-Break Reroll pool (null for a brewer)
+--     earl_transfer    issue #429: { active_effect_id, from_player_id,
+--                      to_player_id, cast_id } when an override forced tea on
+--                      the Earl, else null. Decided here; finalize_layer's
+--                      commit step writes it (_rr_apply_earl_title).
 --     steps            the Resolution Trace steps it emitted, in order }
 -- The outcome is a tag so a later outcome (the Loose Leaf `rolloff`, #431)
 -- or a pre-ladder rule (the Brew Debt round, #432) is one more branch ahead
@@ -70,8 +74,11 @@ declare
   v_composed numeric[];
   v_dice_reduced boolean[];
 
-  -- tier 0: { player_id: { ae_id, caster_id, card_name, override_proof } }
+  -- tier 0: { player_id: { ae_id, caster_id, card_name, override_proof, mode } }
   v_immune jsonb;
+  -- issue #429 (Earl of Earl Grey): an override naming the Earl passes the
+  -- title to its caster. Decided here, written by finalize_layer.
+  v_earl_transfer jsonb := null;
   v_skip_players text[];
 
   v_declared record;
@@ -126,7 +133,9 @@ begin
   -- candidate is no match at any tier: a declared-number roller, an
   -- override target and the lowest-roller pool all skip them and fall
   -- through. One entry per player; an override-proof row (The Last Cuppa)
-  -- is preferred.
+  -- is preferred, then any immunity other than the Earl title (issue #429):
+  -- an Earl who is immune for another reason too is passed over like anyone
+  -- immune, not forced.
   -- ------------------------------------------------------------------
   select coalesce(jsonb_object_agg(im.target_player_id, im.info), '{}'::jsonb)
     into v_immune
@@ -137,13 +146,15 @@ begin
                'ae_id', sae.id,
                'caster_id', sae.caster_id,
                'card_name', sc.name,
-               'override_proof', coalesce((sae.effect_params ->> 'override_proof')::boolean, false)
+               'override_proof', coalesce((sae.effect_params ->> 'override_proof')::boolean, false),
+               'mode', sae.effect_params ->> 'mode'
              ) as info
         from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
         join public.spell_cards sc on sc.id = sae.card_id
        where sae.effect_kind = 'brewer_immunity'
        order by sae.target_player_id,
                 coalesce((sae.effect_params ->> 'override_proof')::boolean, false) desc,
+                (sae.effect_params ->> 'mode' = 'earl') asc,
                 sae.created_at
     ) im;
 
@@ -405,11 +416,52 @@ begin
 
     if v_override_live then
       if v_target is not null
+         and v_immune -> v_target ->> 'mode' = 'earl'
+         and v_override.caster_id is distinct from v_target then
+        -- issue #429 (ADR 0005 tier 0's one exception): forcing tea on the
+        -- Earl passes the title to the override's caster FIRST, and the
+        -- override then lands on the ex-Earl, who brews (the branch below).
+        -- Any mode counts as a force. Only decided and traced here -- this
+        -- also runs under the Provisional Recap's rolled-back dry run (ADR
+        -- 0007) -- and finalize_layer's commit step writes it
+        -- (_rr_apply_earl_title). An Earl immune for another reason too
+        -- isn't `earl` in v_immune, and an override the Earl cast on
+        -- themselves can't pass the title to its own holder: both fall
+        -- through as plain immunity.
+        v_earl_transfer := jsonb_build_object(
+          'active_effect_id', v_immune -> v_target -> 'ae_id',
+          'from_player_id', v_target,
+          'to_player_id', v_override.caster_id,
+          'cast_id', v_override.cast_id
+        );
+
+        v_steps := v_steps || jsonb_build_array(public._rr_trace_step(
+          v_step_index,
+          'earl_transfer',
+          jsonb_build_object(
+            'cast_id', null,
+            'active_effect_id', v_immune -> v_target -> 'ae_id',
+            'card_name', v_immune -> v_target -> 'card_name',
+            'caster_player_id', v_immune -> v_target -> 'caster_id'
+          ),
+          v_target,
+          jsonb_build_object('type', 'status', 'value', 'earl'),
+          jsonb_build_object('type', 'status', 'value', 'title passed'),
+          jsonb_build_object(
+            'new_earl_player_id', v_override.caster_id,
+            'forcing_card_name', v_override.card_name
+          )
+        ));
+        v_step_index := v_step_index + 1;
+      end if;
+
+      if v_target is not null
+         and v_earl_transfer is null
          and not public._rr_is_brewer_candidate(v_immune, v_target) then
         -- issue #428: an immune override target falls through to the default
         -- pick, whatever the mode. (Override-proof immunity -- The Last
-        -- Cuppa -- always does; the Earl slice gives a non-override-proof
-        -- `earl` holder a title transfer here instead.)
+        -- Cuppa -- always does; a forced Earl passed the title above
+        -- instead, issue #429.)
         v_steps := v_steps || jsonb_build_array(public._rr_brewer_immunity_step(
           v_step_index, v_immune -> v_target, v_target, 'tea_maker_override', v_override.card_name
         ));
@@ -508,6 +560,7 @@ begin
     'brewer_source', v_brewer_source,
     'modifier_gain', v_modifier_gain,
     'tied_player_ids', to_jsonb(v_tied),
+    'earl_transfer', v_earl_transfer,
     'steps', v_steps
   );
 end;
@@ -516,4 +569,4 @@ $$;
 revoke execute on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) from public, anon, authenticated;
 
 comment on function public._rr_select_tea_maker(uuid, jsonb, jsonb, jsonb, integer) is
-  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie, brewer_id, brewer_source, modifier_gain, tied_player_ids, steps }. Read-only. Called by _rr_resolve_eval only. Internal.';
+  'Issue #451 (ADR 0005 #425 amendment): Phase 5 of the Resolver pipeline -- tea-maker selection by the Tea-Maker Precedence Ladder (tier 0 Brewer Immunity via _rr_is_brewer_candidate, tier 1 declared number, tier 2 tea_maker_override last-cast-wins, tier 4 default lowest roller). Takes the layer-0 Resolution Summary, Phase 1 redirects, the targeting_skip map and the Trace step cursor; returns { outcome brewer|tie, brewer_id, brewer_source, modifier_gain, tied_player_ids, earl_transfer (issue #429: the Earl title transfer finalize_layer writes, or null), steps }. Read-only. Called by _rr_resolve_eval only. Internal.';

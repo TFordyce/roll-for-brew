@@ -239,6 +239,12 @@ export type ResolutionTraceStep = {
    * lowest roller who picked the brewer. null on every other step.
    */
   pickedBy: string | null;
+  /**
+   * Issue #429: an `earl_transfer` step — a tea-maker override forced tea on
+   * the Earl, so the title passed to the override's caster (the new Earl) and
+   * the ex-Earl brews. null on every other step.
+   */
+  earlTransfer: { newEarlPlayerId: string; forcingCardName: string | null } | null;
 };
 
 /** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
@@ -330,6 +336,10 @@ type RawTraceStep = {
   skipped_card_name?: string | null;
   // Issue #430: a fired Tea Party Revolt step's picker. Absent on every other step.
   picked_by?: string | null;
+  // Issue #429: an earl_transfer step's new Earl and the forcing card.
+  // Absent on every other step.
+  new_earl_player_id?: string | null;
+  forcing_card_name?: string | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -390,6 +400,9 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
       ? { tier: raw.immunity_tier, skippedCardName: raw.skipped_card_name ?? null }
       : null,
     pickedBy: raw.picked_by ?? null,
+    earlTransfer: raw.new_earl_player_id
+      ? { newEarlPlayerId: raw.new_earl_player_id, forcingCardName: raw.forcing_card_name ?? null }
+      : null,
   };
 }
 

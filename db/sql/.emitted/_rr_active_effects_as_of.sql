@@ -22,8 +22,19 @@
 --     read of an earlier round, and a Round replay scrap does not restore it
 --     (#383 Q2), because the card it moved survives the scrap.
 --
+--   * it has not been ended in or before the as-of round (issue #429):
+--     ended_in_round_id is null, or names a round started after the as-of
+--     round.
+--
 -- An is_undispellable row (issue #428: The Last Cuppa) skips the dispel
 -- check -- no dispel cast can end it, even one that names it.
+--
+-- One Earl (issue #429, Earl of Earl Grey): of the Earl title rows
+-- (`brewer_immunity`, mode `earl`) live by the rules above, only the newest
+-- (created_at, then id) is returned. A new Earl displaces the old one from
+-- the round the title is taken in -- before finalize_layer has ended the old
+-- row -- and a countered or dispelled newer title leaves the older one
+-- standing until something actually ends it.
 --
 -- Body from migration 0084 plus the spent condition; grants merge 0084
 -- (authenticated) and 0108 (service_role, the integration suite's seam).
@@ -47,33 +58,58 @@ as $$
   -- membership gate stays with the public-facing RPCs.
   with as_of as (
     select started_at from public.rounds where id = p_as_of_round_id
-  )
-  select sae.*
-    from public.spell_active_effects sae
-    join public.spell_casts src on src.id = sae.source_cast_id
-    join public.rounds src_round on src_round.id = src.round_id
-   where sae.room_id = p_room_id
-     and coalesce(src.negated, false) = false
-     and src.cast_inputs ->> 'consumed_by_round' is null
-     and src.cast_inputs ->> 'consumed_by_draw' is null
-     and (
-       sae.rounds_remaining is null
-       or public._rr_effect_rounds_elapsed(
-            p_room_id, src_round.started_at, (select started_at from as_of)
-          ) < sae.rounds_remaining
-     )
-     and (
-       sae.is_undispellable
-       or not exists (
-         select 1
-           from public.spell_casts dc
-           join public.rounds dr on dr.id = dc.round_id
-          where dc.effect_kind = 'dispel'
-            and dc.effect_params ->> 'ended_effect_id' = sae.id::text
-            and coalesce(dc.negated, false) = false
-            and dr.started_at <= (select started_at from as_of)
+  ),
+  live as (
+    select sae.*
+      from public.spell_active_effects sae
+      join public.spell_casts src on src.id = sae.source_cast_id
+      join public.rounds src_round on src_round.id = src.round_id
+      left join public.rounds ended_round on ended_round.id = sae.ended_in_round_id
+     where sae.room_id = p_room_id
+       and coalesce(src.negated, false) = false
+       and src.cast_inputs ->> 'consumed_by_round' is null
+       and src.cast_inputs ->> 'consumed_by_draw' is null
+       and (
+         sae.rounds_remaining is null
+         or public._rr_effect_rounds_elapsed(
+              p_room_id, src_round.started_at, (select started_at from as_of)
+            ) < sae.rounds_remaining
        )
-     );
+       and (
+         sae.is_undispellable
+         or not exists (
+           select 1
+             from public.spell_casts dc
+             join public.rounds dr on dr.id = dc.round_id
+            where dc.effect_kind = 'dispel'
+              and dc.effect_params ->> 'ended_effect_id' = sae.id::text
+              and coalesce(dc.negated, false) = false
+              and dr.started_at <= (select started_at from as_of)
+         )
+       )
+       and (
+         ended_round.id is null
+         or ended_round.started_at > (select started_at from as_of)
+       )
+  )
+  select l.*
+    from live l
+   where not (
+     l.effect_kind = 'brewer_immunity'
+     and l.effect_params ->> 'mode' = 'earl'
+     and exists (
+       select 1
+         from live newer
+         join public.spell_casts newer_src on newer_src.id = newer.source_cast_id
+         join public.rounds newer_round on newer_round.id = newer_src.round_id
+        where newer.effect_kind = 'brewer_immunity'
+          and newer.effect_params ->> 'mode' = 'earl'
+          and (newer.created_at, newer.id) > (l.created_at, l.id)
+          -- only a title cast by the as-of round displaces: a historical read
+          -- still sees that round's Earl
+          and newer_round.started_at <= (select started_at from as_of)
+     )
+   );
 $$;
 
 revoke execute on function public._rr_active_effects_as_of(uuid, uuid) from public, anon;
@@ -83,8 +119,10 @@ comment on function public._rr_active_effects_as_of(uuid, uuid) is
   'Issue #310: the spell_active_effects rows live as of a given round -- '
   'source cast not negated, duration not exhausted (resolved-round count '
   'since the source round), not dispelled at/before the round (an '
-  'is_undispellable row, #428, never is), and (#435) '
-  'not spent (source cast_inputs.consumed_by_round / consumed_by_draw). '
+  'is_undispellable row, #428, never is), (#435) '
+  'not spent (source cast_inputs.consumed_by_round / consumed_by_draw), and '
+  '(#429) not ended in or before the round (ended_in_round_id). Of the Earl '
+  'title rows only the newest live one is returned -- one Earl per room. '
   'The shared row source for every reader that treats spell_active_effects '
   'as current game state (the ward gate/map, dispel/room badge readers, '
   'resolve_round''s phases).';

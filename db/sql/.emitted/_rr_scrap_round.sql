@@ -172,6 +172,15 @@ begin
        and location in ('held', 'pending_swap');
   end loop;
 
+  -- Issue #429: every effect the scrapped attempt ended (ended_in_round_id)
+  -- is un-ended. Today that is only an Earl of Earl Grey title displaced by
+  -- finalize_layer's _rr_apply_earl_title. The title row it
+  -- gave the override's caster hangs off that override cast, so the delete
+  -- below takes it away.
+  update public.spell_active_effects
+     set ended_in_round_id = null
+   where ended_in_round_id = p_round_id;
+
   delete from public.spell_casts
    where round_id = p_round_id and effect_kind <> 'round_replay';
 
@@ -230,7 +239,7 @@ comment on function public._rr_scrap_round(uuid) is
   'Resolution Summary as players), deletes its rolls / spell_casts '
   '(cascading promoted active effects) / reaction windows / layer participants / '
   'Brew Ratings (issue #438: first returning any Tea Heist card the thief '
-  'still holds to its victim), backs the round out to a freshly-closed generation-1 round, '
+  'still holds to its victim; issue #429: restoring any Earl title it ended), backs the round out to a freshly-closed generation-1 round, '
   'bumps replay_generation, and recomputes room_players.modifier for the brewer '
   'and every round participant. Issue #351: a participant holding an active '
   'roll-domain ward keeps their generation-0 layer-0 roll (no re-roll in '

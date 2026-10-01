@@ -123,6 +123,7 @@ const KIND_PHASE: Partial<Record<string, PhaseTag>> = {
   lowest_gains_highest_modifier: "4c",
   targeting_skip: "5",
   brewer_immunity: "5",
+  earl_transfer: "5",
   declared_number_tea_maker: "5",
   tea_maker_override: "5",
   card_heist: "6",
