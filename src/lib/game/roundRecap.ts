@@ -482,6 +482,10 @@ function sentenceFor(
     }
     case "redirect":
       return `${played} — the effect is redirected to ${t}`;
+    case "roll_exemption":
+      // Issue #433: a Roll Exemption (Loaf of Lipton) -- the player has no
+      // layer-0 die this round, and this says why.
+      return `${t} skipped their roll — ${k || "Roll Exemption"}`;
     case "roll_frozen":
       // Issue #351: on a Time for Brew replay, a negative-polarity roll-domain
       // ward holder keeps their generation-0 roll — no source cast on the step.
@@ -582,6 +586,8 @@ function statusFor(step: ResolutionTraceStep): { label: string; kind: CastState 
   // not moved — so it shares the muted "no-op" styling; the "frozen" label and
   // the sentence carry why.
   if (step.displayKind === "roll_frozen") return { label: "frozen", kind: "no-op" };
+  // Issue #433: the missing die is the effect.
+  if (step.displayKind === "roll_exemption") return { label: "skipped", kind: "applied" };
   // Issue #440: a Forfeit is a no-effect step; the label says what happened.
   if (step.displayKind === "forfeit") return { label: "forfeited", kind: "no-op" };
   if (step.displayKind === "contested_negate" && step.after.type === "status") {

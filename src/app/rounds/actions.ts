@@ -174,7 +174,8 @@ export async function closeRoundAction(formData: FormData) {
 
   const roomId = await getRoundRoomId(supabase, roundId);
   await broadcastRoundClosed(supabase, roomId, { roundId });
-  // Issue #432: a debt round has nobody to roll, so it resolves at close.
+  // Issue #432 / #433: a debt round, or one where every participant has a
+  // Roll Exemption, has nobody to roll, so it advances at close.
   await advanceRound(supabase, roundId, "roundClosed");
 
   revalidateRoundSurfaces();

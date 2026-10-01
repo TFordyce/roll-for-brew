@@ -599,6 +599,26 @@ describe("buildRoundRecap", () => {
     });
   });
 
+  describe("Roll Exemption (issue #433)", () => {
+    const skip = step({
+      displayKind: "roll_exemption",
+      sourceCast: { castId: "C0", activeEffectId: null, cardName: "Loaf of Lipton", casterPlayerId: "ada" },
+      targetPlayer: "ada",
+      before: { type: "status", value: "rolls" },
+      after: { type: "status", value: "skipped" },
+      outcome: "applied",
+    });
+    const casts = [cast({ castId: "C0", cardName: "Loaf of Lipton", casterPlayerId: "ada", targetPlayerId: "ada", effectKind: "tea_maker_override" })];
+
+    it("says the player skipped their roll, naming the card, before the roll", () => {
+      const model = buildRoundRecap({ data: data({ casts, trace: [skip] }), displayName });
+      const phase = model.phases.find((p) => p.label === "Before the roll");
+      const [s] = phase!.steps;
+      expect(s!.sentence).toBe("Ada skipped their roll — Loaf of Lipton");
+      expect(s).toMatchObject({ statusLabel: "skipped", statusKind: "applied" });
+    });
+  });
+
   describe("Tea Heist (issue #438)", () => {
     function heist(after: string, over: Partial<ResolutionTraceStep> = {}) {
       return buildRoundRecap({

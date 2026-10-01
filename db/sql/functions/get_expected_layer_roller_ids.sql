@@ -6,11 +6,15 @@
 -- enforcement and the room page all read it.
 --   * Layer 0: every Participant not excluded -- except in a debt round
 --     (issue #432, _brew_debt_due), where nobody rolls. The round then
---     resolves at close with the Debtor as Tea Maker.
+--     resolves at close with the Debtor as Tea Maker. A Participant with a
+--     Roll Exemption (issue #433, _rr_roll_exemptions) is left out too; once
+--     a countered exemption's window has closed they are expected again and
+--     roll late. With nobody left to roll, Layer 0 is complete at close.
 --   * A Tie-Break Reroll Layer: its round_layer_participants not excluded.
+--     An exempt player rolls normally here.
 --
 -- Moved from migration 0014 into db/sql/ by issue #432 (the first change
--- since). Body otherwise unchanged.
+-- since).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -30,7 +34,12 @@ begin
 
     return query
       select rp.player_id from public.round_participants rp
-       where rp.round_id = p_round_id and rp.excluded_at is null;
+       where rp.round_id = p_round_id and rp.excluded_at is null
+         -- uncorrelated, so the exemptions are read once (player_id is
+         -- never null, so NOT IN is safe)
+         and rp.player_id not in (
+           select ex.player_id from public._rr_roll_exemptions(p_round_id) ex
+         );
   else
     return query
       select rlp.player_id from public.round_layer_participants rlp
@@ -43,4 +52,4 @@ revoke execute on function public.get_expected_layer_roller_ids(uuid, integer) f
 grant execute on function public.get_expected_layer_roller_ids(uuid, integer) to authenticated;
 
 comment on function public.get_expected_layer_roller_ids(uuid, integer) is
-  'The players expected to roll a round''s Layer (0014): at Layer 0 every non-excluded Participant, or nobody in a debt round (issue #432, _brew_debt_due); above Layer 0 the Tie-Break Reroll Layer''s non-excluded participants. Backs is_expected_layer_roller and count_expected_layer_rollers.';
+  'The players expected to roll a round''s Layer (0014): at Layer 0 every non-excluded Participant, or nobody in a debt round (issue #432, _brew_debt_due), never a Participant with a Roll Exemption (issue #433, _rr_roll_exemptions); above Layer 0 the Tie-Break Reroll Layer''s non-excluded participants. Backs is_expected_layer_roller and count_expected_layer_rollers.';

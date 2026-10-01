@@ -32,7 +32,9 @@ import {
  *   Forced-Reroll Target or a Tea Party Revolt pick, or closed a stranded
  *   window).
  * - `roundClosed`: the round starter closed declarations (issue #432). A
- *   debt round has nobody to roll, so it resolves here.
+ *   debt round has nobody to roll, so it resolves here; so does a round where
+ *   every participant has a Roll Exemption (issue #433), which first opens
+ *   its Reaction Window.
  * - `lateDeclared`: a player joined after close (issue #432). A Debtor's Late
  *   Declare before anyone has rolled makes it a debt round, resolved here.
  *

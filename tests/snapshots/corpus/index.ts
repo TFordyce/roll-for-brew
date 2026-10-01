@@ -1655,6 +1655,28 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: chooser.client };
     },
   },
+  // Issue #433: Roll Exemption -- Loaf of Lipton's caster has no layer-0
+  // roll (a roll_exemption step says so) and brews by its `chosen`
+  // self-override with double modifier gain.
+  {
+    name: "05-loaf-of-lipton-skips-roll",
+    phases: ["3", "5"],
+    note: "Loaf of Lipton (#433): its caster skips the layer-0 roll (roll_exemption step) and the chosen self-override names them Tea Maker over the lower roller.",
+    async seed(ctx) {
+      const loaf = await ctx.signUp("loaf");
+      const low = await ctx.signUp("low");
+      const high = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(loaf, [low, high]);
+      await ctx.seedRoll(roundId, low.googleSub, 2);
+      await ctx.seedRoll(roundId, high.googleSub, 17);
+      await ctx.seedCast(roundId, loaf.googleSub, "Loaf of Lipton", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen", modifier_gain_multiplier: 2, exempt_from_rolling: true },
+        targetPlayerId: loaf.googleSub,
+      });
+      return { roundId, resolveWith: loaf.client };
+    },
+  },
   // Issue #432: Brew IOU -- a `chosen` override that, when it names the Tea
   // Maker, leaves its caster owing a Brew Debt; the Debtor's next round pays.
   {
