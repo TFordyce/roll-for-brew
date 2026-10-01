@@ -53,7 +53,15 @@ describe("advanceRound", () => {
     expect(deps.advanceLayer).not.toHaveBeenCalled();
   });
 
-  it.each<AdvanceRoundEvent>(["layerRolled", "pendingDieResolved", "deferredTargetSet", "revoltPickMade", "stallCleared"])(
+  it.each<AdvanceRoundEvent>([
+    "layerRolled",
+    "pendingDieResolved",
+    "deferredTargetSet",
+    "revoltPickMade",
+    "stallCleared",
+    "roundClosed",
+    "lateDeclared",
+  ])(
     "%s reaches advance_layer and never finalize_layer directly",
     async (event) => {
       const deps = fakeDeps(noop);
@@ -81,6 +89,25 @@ describe("advanceRound", () => {
     });
     expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
     expect(deps.broadcastLayerTied).not.toHaveBeenCalled();
+    expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
+  });
+
+  it("roundClosed resolving a debt round broadcasts the reveal with no rolls", async () => {
+    // Issue #432: a debt round resolves at close -- advance_layer finalizes it
+    // with no window and no layer_rolls, and the Debtor is the Tea Maker.
+    const debtRound: LayerOutcome = { ...brewer, brewerId: "p2", rolls: [] };
+    const deps = fakeDeps(debtRound);
+
+    await advanceRound(supabase, "round-1", "roundClosed", deps);
+
+    expect(deps.advanceLayer).toHaveBeenCalledWith(supabase, "round-1");
+    expect(deps.broadcastRoundRevealed).toHaveBeenCalledWith(supabase, "room-1", {
+      roundId: "round-1",
+      layer: 0,
+      brewerId: "p2",
+      cupsMade: 2,
+      rolls: [],
+    });
     expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
   });
 

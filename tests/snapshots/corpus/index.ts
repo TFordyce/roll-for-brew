@@ -1655,4 +1655,50 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: chooser.client };
     },
   },
+  // Issue #432: Brew IOU -- a `chosen` override that, when it names the Tea
+  // Maker, leaves its caster owing a Brew Debt; the Debtor's next round pays.
+  {
+    name: "05-brew-iou-creates-debt",
+    phases: ["5"],
+    note: "Brew IOU (#432) names the Tea Maker, so a brew_debt step records that its caster now owes a Brew Debt.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const target = await ctx.signUp("target");
+      const roundId = await ctx.openAndCloseRound(caster, [target]);
+      await ctx.seedRoll(roundId, caster.googleSub, 2);
+      await ctx.seedRoll(roundId, target.googleSub, 19);
+      await ctx.seedCast(roundId, caster.googleSub, "Brew IOU", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen", creates_brew_debt: true },
+        targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-brew-debt-round-paid",
+    phases: ["5"],
+    note: "A debt round (#432): the Debtor's next round has no rolls; the ladder is skipped and the Debtor brews, paying the Brew Debt.",
+    async seed(ctx) {
+      const debtor = await ctx.signUp("debtor");
+      const target = await ctx.signUp("target");
+      // The earlier Brew IOU round, resolved with the debt recorded on it.
+      const iouRound = await ctx.seedPastRound(debtor.roomId, [
+        { playerId: debtor.googleSub, value: 2 },
+        { playerId: target.googleSub, value: 19 },
+      ]);
+      const { castId } = await ctx.seedCast(iouRound, debtor.googleSub, "Brew IOU", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen", creates_brew_debt: true },
+        targetPlayerId: target.googleSub,
+      });
+      const { error } = await ctx.admin
+        .from("rounds")
+        .update({ brewer_id: target.googleSub, cups_made: 2, brewer_source: "brew_iou", brewer_source_cast_id: castId })
+        .eq("id", iouRound);
+      if (error) throw error;
+      const roundId = await ctx.openAndCloseRound(target, [debtor]);
+      return { roundId, resolveWith: target.client };
+    },
+  },
 ];

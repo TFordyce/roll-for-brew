@@ -31,6 +31,10 @@ import {
  *   non-roller, auto-resolved a Pending Spell Die, abandoned a Deferred
  *   Forced-Reroll Target or a Tea Party Revolt pick, or closed a stranded
  *   window).
+ * - `roundClosed`: the round starter closed declarations (issue #432). A
+ *   debt round has nobody to roll, so it resolves here.
+ * - `lateDeclared`: a player joined after close (issue #432). A Debtor's Late
+ *   Declare before anyone has rolled makes it a debt round, resolved here.
  *
  * Every event except `reactionWindowChanged` routes through advance_layer.
  */
@@ -40,7 +44,9 @@ export type AdvanceRoundEvent =
   | "pendingDieResolved"
   | "deferredTargetSet"
   | "revoltPickMade"
-  | "stallCleared";
+  | "stallCleared"
+  | "roundClosed"
+  | "lateDeclared";
 
 /** The module's one injectable seam: its database entry points plus the broadcasts advancing can cause. */
 export type AdvanceRoundDeps = {
@@ -118,6 +124,8 @@ function runEntryPoint(
     case "deferredTargetSet":
     case "revoltPickMade":
     case "stallCleared":
+    case "roundClosed":
+    case "lateDeclared":
       return deps.advanceLayer(supabase, roundId);
   }
 }

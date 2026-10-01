@@ -1,0 +1,73 @@
+{
+  "scenario": "05-brew-iou-creates-debt",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "target",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Brew IOU",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:target"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "owes"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "clear"
+      },
+      "outcome": "applied",
+      "brew_debt": "created",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Brew IOU",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "brew_debt",
+      "target_player": "P:caster"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 2,
+      "total": 2,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "target",
+      "nat": null,
+      "roll": 19,
+      "total": 19,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

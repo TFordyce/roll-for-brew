@@ -19,6 +19,9 @@
 --     finalization -- and a closed one performs Layer finalization.
 --   * A Tie-Break Reroll Layer (> 0): performs Layer finalization. No window
 --     is ever opened above Layer 0.
+--   * A debt round (issue #432, _brew_debt_due): nobody rolls, so Layer 0 is
+--     complete at close; performs Layer finalization straight away, with no
+--     Reaction Window. The roundClosed / lateDeclared events reach it.
 --
 -- Never opens a second window, and never raises for who the caller is or for
 -- losing a race: a second caller blocks on the lock, then finds the window
@@ -64,6 +67,12 @@ begin
     -- issue #430: `revolt_pick_pending` when rolled but waiting on a Tea
     -- Party Revolt pick.
     return jsonb_build_object('outcome', 'noop', 'reason', public._layer_hold_reason(p_round_id, v_layer));
+  end if;
+
+  -- issue #432: a debt round (_brew_debt_due) has nobody to roll and nothing
+  -- to react to -- it finalizes straight away, with no Reaction Window.
+  if v_layer = 0 and public._brew_debt_due(p_round_id) is not null then
+    return public.finalize_layer(p_round_id);
   end if;
 
   if v_layer = 0 and exists (
@@ -114,4 +123,4 @@ revoke execute on function public.advance_layer(uuid) from public, anon;
 grant execute on function public.advance_layer(uuid) to authenticated;
 
 comment on function public.advance_layer(uuid) is
-  'Layer completion (ADR 0008, issue #415). Locks the round, then returns { outcome: "noop", reason } unless the round is closed and its current Layer is complete -- reasons: round_not_found, round_not_closed, layer_incomplete, revolt_pick_pending (rolled, but a Tea Party Revolt pick is outstanding; issue #430), window_open. At Layer 0 with no reaction window it opens one and returns { outcome: "windowOpened", layer: 0, window_closed, finalization, layer_rolls }, where finalization is finalize_layer''s outcome when nobody was eligible to react (the window closed on the spot) and null otherwise. At Layer 0 with a closed window, or at a Tie-Break Reroll Layer, it returns finalize_layer''s outcome ({ outcome: "brewer", ... } or { outcome: "tie", ... }). layer_rolls -- { layer, rolls: [{ player_id, value, discarded_value, entered_by_admin }] }, the raw pre-transform rolls -- is present only on the call that first finds the Layer complete. Never opens a second window; never raises for caller identity or a lost race.';
+  'Layer completion (ADR 0008, issue #415). Locks the round, then returns { outcome: "noop", reason } unless the round is closed and its current Layer is complete -- reasons: round_not_found, round_not_closed, layer_incomplete, revolt_pick_pending (rolled, but a Tea Party Revolt pick is outstanding; issue #430), window_open. At Layer 0 with no reaction window it opens one and returns { outcome: "windowOpened", layer: 0, window_closed, finalization, layer_rolls }, where finalization is finalize_layer''s outcome when nobody was eligible to react (the window closed on the spot) and null otherwise. At Layer 0 with a closed window, at a Tie-Break Reroll Layer, or in a debt round (issue #432: no rolls, no window), it returns finalize_layer''s outcome ({ outcome: "brewer", ... } or { outcome: "tie", ... }). layer_rolls -- { layer, rolls: [{ player_id, value, discarded_value, entered_by_admin }] }, the raw pre-transform rolls -- is present only on the call that first finds the Layer complete. Never opens a second window; never raises for caller identity or a lost race.';

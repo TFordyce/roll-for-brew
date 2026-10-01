@@ -1,0 +1,34 @@
+{
+  "scenario": "05-brew-debt-round-paid",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "debtor",
+  "brewerSource": "brew_debt",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "owes"
+      },
+      "outcome": "applied",
+      "brew_debt": "paid",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Brew IOU",
+        "active_effect_id": null,
+        "caster_player_id": "P:debtor"
+      },
+      "display_kind": "brew_debt",
+      "target_player": "P:debtor"
+    }
+  ],
+  "players": []
+}
