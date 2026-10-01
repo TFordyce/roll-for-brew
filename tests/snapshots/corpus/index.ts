@@ -1677,6 +1677,38 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: loaf.client };
     },
   },
+  // Issue #434: Tea Cosy -- its caster skips the layer-0 roll and holds a
+  // one-round brewer_immunity, so an override naming them falls through.
+  {
+    name: "05-tea-cosy-exempt-and-immune",
+    phases: ["3", "5"],
+    note: "Tea Cosy (#434): its caster skips the layer-0 roll (roll_exemption step) and is immune this round, so a chosen override naming them falls through to the lowest roller (brewer_immunity step).",
+    async seed(ctx) {
+      const cosy = await ctx.signUp("cosy");
+      const chooser = await ctx.signUp("chooser");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(cosy, [chooser, low]);
+      await ctx.seedRoll(roundId, chooser.googleSub, 14);
+      await ctx.seedRoll(roundId, low.googleSub, 3);
+      // The cast and the row it promotes (migration 0141's catalog row).
+      await ctx.seedActiveEffect({
+        roomId: cosy.roomId,
+        targetPlayerId: cosy.googleSub,
+        casterId: cosy.googleSub,
+        cardName: "Tea Cosy",
+        effectKind: "brewer_immunity",
+        effectParams: { mode: "tea_cosy", exempt_from_rolling: true },
+        roundsRemaining: 1,
+        roundId,
+      });
+      await ctx.seedCast(roundId, chooser.googleSub, "Drip Tray", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen" },
+        targetPlayerId: cosy.googleSub,
+      });
+      return { roundId, resolveWith: chooser.client };
+    },
+  },
   // Issue #432: Brew IOU -- a `chosen` override that, when it names the Tea
   // Maker, leaves its caster owing a Brew Debt; the Debtor's next round pays.
   {

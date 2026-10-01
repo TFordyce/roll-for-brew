@@ -83,7 +83,7 @@ The fixed order in which a round's Tea Maker is picked when several cards compet
 _Avoid_: override order, brewer priority.
 
 **Brewer Immunity**:
-A Participant who can't be Tea Maker (a `brewer_immunity` active effect). The Last Cuppa grants it for the rest of the day, and no card can get past it or dispel it; the **Earl** title grants it until the title passes on or is dispelled; Tea Cosy (one round) will grant it too. If every Participant is immune and no override lands, immunity gives way to a Tie-Break Reroll among them all.
+A Participant who can't be Tea Maker (a `brewer_immunity` active effect). The Last Cuppa grants it for the rest of the day, and no card can get past it or dispel it; the **Earl** title grants it until the title passes on or is dispelled; Tea Cosy grants it for the one round it is cast in, and a dispel can end it. If every Participant is immune and no override lands, immunity gives way to a Tie-Break Reroll among them all.
 _Avoid_: exempt (that's Roll Exemption — not rolling, which is separate), protected, warded (wards guard values, not the brew).
 
 **Earl** (Earl of Earl Grey):
@@ -91,7 +91,7 @@ The one Participant in a room holding the Earl title, a dispellable **Brewer Imm
 _Avoid_: earldom, lord.
 
 **Brewer Candidate**:
-A Participant the Tea-Maker Precedence Ladder may name as Tea Maker — today, anyone without **Brewer Immunity**. Every rung asks the same question (`_rr_is_brewer_candidate`); a non-candidate counts as no match and selection falls through. Tea Cosy will extend it. Roll Exemption doesn't: an exempt player is still a candidate, just never picked by a roll-derived rule since they have no roll. The Earl is simply immune (a force on them is a title transfer, not a candidacy rule).
+A Participant the Tea-Maker Precedence Ladder may name as Tea Maker — today, anyone without **Brewer Immunity**. Every rung asks the same question (`_rr_is_brewer_candidate`); a non-candidate counts as no match and selection falls through. Tea Cosy needs no rule of its own: it grants Brewer Immunity for the round. Roll Exemption doesn't: an exempt player is still a candidate, just never picked by a roll-derived rule since they have no roll. The Earl is simply immune (a force on them is a title transfer, not a candidacy rule).
 _Avoid_: eligible player, valid target (that's spell targeting).
 
 **Brew Debt**:
