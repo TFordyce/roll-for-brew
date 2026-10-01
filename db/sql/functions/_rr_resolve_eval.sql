@@ -1991,8 +1991,8 @@ begin
   -- Steep) zeroes their tea-making modifier gain: modifier_gain 0, which
   -- resolve_round(uuid, text, integer, integer) writes as a zero brewer gain.
   -- This is a property of the ward, not a competing cast, so it applies
-  -- regardless of seq -- and over an override's own gain (#425). A tie names
-  -- no brewer, so it never reaches here.
+  -- regardless of seq -- and over an override's own gain (#425). A tie, or a
+  -- Loose Leaf roll-off (#431), names no brewer, so it never reaches here.
   if v_brewer_id is not null then
     select w.value into v_ward_hit
       from jsonb_array_elements(coalesce(v_ward_map -> v_brewer_id, '[]'::jsonb)) w

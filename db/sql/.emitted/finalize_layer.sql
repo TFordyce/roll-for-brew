@@ -15,7 +15,11 @@
 --      included, issue #425), move any Tea Heist card (_rr_apply_heists,
 --      issue #438), write the Earl of Earl Grey title (_rr_apply_earl_title,
 --      issue #429) and record any pending Round Replay; tie: advance to the
---      next Layer with the tied players.
+--      next Layer with the tied players. A Loose Leaf roll-off (issue #431)
+--      commits the way a tie does -- a Tie-Break Reroll Layer for the named
+--      holder and the second-lowest roller -- and returns a tie-shaped outcome
+--      marked `rolloff`. It also writes any Earl title transfer decided with
+--      it now, since the deciding Layer's resolve won't return it again.
 --
 -- The Inscribed Saucer declared-number trigger needs no separate write: since
 -- #310 its sentinel is a duration-1 projection row that ages out once this
@@ -112,16 +116,24 @@ begin
   v_out := public.resolve_round(p_round_id);
 
   -- 3. Commit the outcome.
-  if v_out ->> 'outcome' = 'tie' then
+  if v_out ->> 'outcome' in ('tie', 'rolloff') then
     select array_agg(t) into v_tied
       from jsonb_array_elements_text(v_out -> 'tied_player_ids') t;
 
     v_next_layer := public.advance_round_layer(p_round_id, v_tied);
 
+    -- issue #431: an Earl forced into a Loose Leaf roll-off has still been
+    -- forced, so the title passes now: the roll-off Layer's resolve carries
+    -- no transfer. Idempotent, like its later call on the brewer commit.
+    if v_out ->> 'outcome' = 'rolloff' then
+      perform public._rr_apply_earl_title(p_round_id, v_out -> 'earl_transfer');
+    end if;
+
     return jsonb_build_object(
       'outcome', 'tie',
       'layer', v_next_layer,
-      'tied_player_ids', to_jsonb(v_tied));
+      'tied_player_ids', to_jsonb(v_tied),
+      'rolloff', v_out ->> 'outcome' = 'rolloff');
   end if;
 
   v_brewer_id := v_out ->> 'brewer_id';
@@ -161,4 +173,4 @@ revoke execute on function public.finalize_layer(uuid) from public, anon;
 grant execute on function public.finalize_layer(uuid) to authenticated;
 
 comment on function public.finalize_layer(uuid) is
-  'Layer finalization (ADR 0008, issue #414). Locks the round, then returns { outcome: "noop", reason } unless the round is closed, its current Layer is complete, and (at Layer 0) its reaction window exists and is closed -- reasons: round_not_found, round_not_closed, no_window, window_open, layer_incomplete, revolt_pick_pending (rolled, but a Tea Party Revolt pick is outstanding; issue #430). Otherwise, in one transaction: runs the eager roll-input shim (forced rerolls, flip, swap, chosen-pair; ADR 0005), calls resolve_round(uuid) unchanged, and commits the outcome. Returns { outcome: "brewer", layer, brewer_id, cups_made, rolls: [{ player_id, value, discarded_value, entered_by_admin }], replay_pending } after writing the resolution (its modifier gain included, issue #425), moving any Tea Heist card (issue #438), writing the Earl of Earl Grey title (issue #429) and recording any pending Round Replay; or { outcome: "tie", layer, tied_player_ids } after advancing to the next Layer (layer is the new one). Never raises for caller identity or a lost race.';
+  'Layer finalization (ADR 0008, issue #414). Locks the round, then returns { outcome: "noop", reason } unless the round is closed, its current Layer is complete, and (at Layer 0) its reaction window exists and is closed -- reasons: round_not_found, round_not_closed, no_window, window_open, layer_incomplete, revolt_pick_pending (rolled, but a Tea Party Revolt pick is outstanding; issue #430). Otherwise, in one transaction: runs the eager roll-input shim (forced rerolls, flip, swap, chosen-pair; ADR 0005), calls resolve_round(uuid) unchanged, and commits the outcome. Returns { outcome: "brewer", layer, brewer_id, cups_made, rolls: [{ player_id, value, discarded_value, entered_by_admin }], replay_pending } after writing the resolution (its modifier gain included, issue #425), moving any Tea Heist card (issue #438), writing the Earl of Earl Grey title (issue #429) and recording any pending Round Replay; or { outcome: "tie", layer, tied_player_ids, rolloff } after advancing to the next Layer (layer is the new one; rolloff true when it is a Loose Leaf roll-off, issue #431, which also writes any Earl title transfer decided with it). Never raises for caller identity or a lost race.';

@@ -76,6 +76,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     immunity: null,
     pickedBy: null,
     earlTransfer: null,
+    rolloffOpponent: null,
     ...overrides,
   };
 }
@@ -500,6 +501,64 @@ describe("buildRoundRecap", () => {
       ]);
       expect(parsed!.earlTransfer).toEqual({ newEarlPlayerId: "ben", forcingCardName: "Drip Tray" });
       expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.earlTransfer).toBeNull();
+    });
+  });
+
+  describe("Loose Leaf roll-off (issue #431)", () => {
+    const rolloff = (over: Partial<ResolutionTraceStep> = {}) =>
+      step({
+        displayKind: "named_tea_maker_rolloff",
+        sourceCast: { castId: "C0", activeEffectId: null, cardName: "Loose Leaf", casterPlayerId: "ada" },
+        targetPlayer: "ada",
+        before: { type: "status", value: "brewer" },
+        after: { type: "status", value: "rolloff" },
+        outcome: "applied",
+        rolloffOpponent: "ben",
+        ...over,
+      });
+    const render = (trace: ResolutionTraceStep[], over: Partial<RoundRecapData> = {}) => {
+      const casts = [cast({ castId: "C0", cardName: "Loose Leaf", casterPlayerId: "ada", targetPlayerId: "ada", effectKind: "named_tea_maker_rolloff" })];
+      return buildRoundRecap({ data: data({ casts, trace, ...over }), displayName });
+    };
+
+    it("says the named holder rolls off against the second-lowest roller, in the Outcome group", () => {
+      const model = render([rolloff()]);
+      const [s] = model.phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Ada played Loose Leaf — Ada is named Tea Maker, so Ada and Ben roll off; the lower roll brews");
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("says it did nothing when there's no distinct second-lowest roller", () => {
+      const [s] = render([
+        rolloff({ outcome: "no-op", after: { type: "status", value: "no effect" }, rolloffOpponent: null }),
+      ]).phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Ada played Loose Leaf — no effect: there's no second-lowest roller to roll off against");
+    });
+
+    it("a roll-off decided at a later Layer isn't reported as a tie for lowest", () => {
+      expect(render([rolloff()], { layerZeroOutcome: "tie" }).endedInTieBreak).toBe(false);
+      expect(
+        render([rolloff({ outcome: "no-op", after: { type: "status", value: "no effect" }, rolloffOpponent: null })], {
+          layerZeroOutcome: "tie",
+        }).endedInTieBreak,
+      ).toBe(true);
+    });
+
+    it("reads rolloff_opponent_id off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "named_tea_maker_rolloff",
+          source_cast: { cast_id: "C0", active_effect_id: null, card_name: "Loose Leaf", caster_player_id: "ada" },
+          target_player: "ada",
+          before: { type: "status", value: "brewer" },
+          after: { type: "status", value: "rolloff" },
+          outcome: "applied",
+          rolloff_opponent_id: "ben",
+        },
+      ]);
+      expect(parsed!.rolloffOpponent).toBe("ben");
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.rolloffOpponent).toBeNull();
     });
   });
 

@@ -277,15 +277,15 @@ export async function seedPastRound(
  * Brewmageddon (Compelled Cast, #440, migration 0119) — Last Drip (#426,
  * migration 0124) — PG Tipped (conditional override, #427, migration 0126) —
  * The Last Cuppa (brewer immunity, #428, migration 0128) — Tea Party Revolt
- * (lowest roller picks, #430, migration 0131) — and Earl of Earl Grey (#429,
- * migration 0133) — are now live, so 8 remain here. A test that force-holds
+ * (lowest roller picks, #430, migration 0131) — Earl of Earl Grey (#429,
+ * migration 0133) — and Loose Leaf (roll-off, #431, migration 0135) — are
+ * now live, so 7 remain here. A test that force-holds
  * one of these must return it to the bench, not the deck, on cleanup —
  * releaseHeldCards below does that.
  */
 export const BENCHED_SPELL_CARDS = [
   // No effect rows
   "Tea Cosy",
-  "Loose Leaf",
   "Marked for Brew",
   "Loaf of Lipton", "Brew IOU",
   "Stale Biscuit", "Liquid Courage",

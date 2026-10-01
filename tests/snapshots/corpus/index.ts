@@ -12,7 +12,7 @@
 // golden diff points straight at the phase that moved. Add more freely; the
 // coverage test only fails on a *missing* phase or branch.
 
-import type { Scenario } from "./framework";
+import type { Scenario, ScenarioContext } from "./framework";
 
 // tier-derived contested_negate DC: common 2 / rare 5 / epic 10 (migration
 // 0080 _rr_tier_default_dc). Lucky Sip is common, so dc_d20 >= 2 succeeds.
@@ -46,6 +46,16 @@ function earl(roomId: string, holder: string) {
     effectParams: { mode: "earl", persist: true },
     roundsRemaining: null,
   };
+}
+
+/** Issue #431: a Loose Leaf armed by `holder` (its catalog row, migration 0135). */
+function looseLeaf(ctx: ScenarioContext, roundId: string, holder: string) {
+  return ctx.seedCast(roundId, holder, "Loose Leaf", {
+    effectKind: "named_tea_maker_rolloff",
+    effectParams: {},
+    targetPlayerId: holder,
+    extra: { target_role: "CASTER" },
+  });
 }
 
 export const CORPUS: Scenario[] = [
@@ -1553,6 +1563,57 @@ export const CORPUS: Scenario[] = [
         .eq("id", bm);
       if (error) throw error;
       return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-loose-leaf-rolloff",
+    phases: ["5"],
+    note: "Loose Leaf (#431) — the holder rolls lowest and is named Tea Maker: an unfinished roll-off against the second-lowest roller.",
+    async seed(ctx) {
+      const holder = await ctx.signUp("holder");
+      const second = await ctx.signUp("second");
+      const high = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(holder, [second, high]);
+      await ctx.seedRoll(roundId, holder.googleSub, 3);
+      await ctx.seedRoll(roundId, second.googleSub, 9);
+      await ctx.seedRoll(roundId, high.googleSub, 18);
+      await looseLeaf(ctx, roundId, holder.googleSub);
+      return { roundId, resolveWith: holder.client };
+    },
+  },
+  {
+    name: "05-loose-leaf-two-player-inert",
+    phases: ["5"],
+    note: "Loose Leaf (#431) in a two-player round — no distinct second-lowest roller, so a no-op step and the holder brews.",
+    async seed(ctx) {
+      const holder = await ctx.signUp("holder");
+      const other = await ctx.signUp("other");
+      const roundId = await ctx.openAndCloseRound(holder, [other]);
+      await ctx.seedRoll(roundId, holder.googleSub, 3);
+      await ctx.seedRoll(roundId, other.googleSub, 12);
+      await looseLeaf(ctx, roundId, holder.googleSub);
+      return { roundId, resolveWith: holder.client };
+    },
+  },
+  {
+    name: "05-loose-leaf-named-by-override",
+    phases: ["5"],
+    note: "Loose Leaf (#431) — an override names the top-rolling holder; the roll-off is against the second-lowest roller, not the lowest.",
+    async seed(ctx) {
+      const chooser = await ctx.signUp("chooser");
+      const second = await ctx.signUp("second");
+      const holder = await ctx.signUp("holder");
+      const roundId = await ctx.openAndCloseRound(chooser, [second, holder]);
+      await ctx.seedRoll(roundId, chooser.googleSub, 2);
+      await ctx.seedRoll(roundId, second.googleSub, 8);
+      await ctx.seedRoll(roundId, holder.googleSub, 19);
+      await ctx.seedCast(roundId, chooser.googleSub, "Wild Brew Surge", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen" },
+        targetPlayerId: holder.googleSub,
+      });
+      await looseLeaf(ctx, roundId, holder.googleSub);
+      return { roundId, resolveWith: chooser.client };
     },
   },
 ];
