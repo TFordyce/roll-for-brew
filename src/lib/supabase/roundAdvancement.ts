@@ -7,7 +7,14 @@ export type RevealedRoll = RoundRevealedPayload["rolls"][number];
  * Why a locked read found nothing to do — the closed set finalize_layer's and
  * advance_layer's `comment on` document.
  */
-export type NoopReason = "round_not_found" | "round_not_closed" | "no_window" | "window_open" | "layer_incomplete";
+export type NoopReason =
+  | "round_not_found"
+  | "round_not_closed"
+  | "no_window"
+  | "window_open"
+  | "layer_incomplete"
+  // Issue #430: layer 0 is rolled, but a Tea Party Revolt pick is outstanding.
+  | "revolt_pick_pending";
 
 /** The two ends of Layer finalization, or a noop — what finalize_layer returns. */
 export type FinalizationOutcome =

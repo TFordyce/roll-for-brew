@@ -40,6 +40,7 @@ import { SpellDrawChoicePanel } from "@/app/rounds/SpellDrawChoicePanel";
 import { PendingSpellDiePanel } from "@/app/rounds/PendingSpellDiePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { CompelledCastPanel } from "@/app/rounds/CompelledCastPanel";
+import { TeaPartyRevoltPanel } from "@/app/rounds/TeaPartyRevoltPanel";
 import { getMyPendingSpellDraw, getMySpellCards, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import {
   type ActiveEffectBadge,
@@ -49,6 +50,7 @@ import {
   getMyPendingCasts,
   getMyPendingSpellDice,
   getRoomActiveEffects,
+  getTeaPartyRevoltPicker,
 } from "@/lib/supabase/spellCasts";
 import {
   getOpenReactionWindow,
@@ -196,6 +198,10 @@ export default async function HomePage() {
   const compelledRound = activeRound?.status === "closed" && activeRound.currentLayer === 0 ? activeRound : null;
   const myCompelledCast = compelledRound ? await getMyCompelledCast(supabase, compelledRound.id) : null;
   const compelledStep = compelledRound ? await getCompelledCastStep(supabase, compelledRound.id) : null;
+
+  // Tea Party Revolt (issue #430): once layer 0 is rolled, the round waits on
+  // the lowest roller to choose who makes tea.
+  const revoltPickerId = compelledRound ? await getTeaPartyRevoltPicker(supabase, compelledRound.id) : null;
 
   // A compelled Detox holder plays their card in the Compelled Cast step,
   // after close, so they need the dispel picker then too.
@@ -348,6 +354,16 @@ export default async function HomePage() {
           selfPlayerId={playerId}
           dispellableEffects={dispellableEffects}
           heistTargetIds={heistTargetIds}
+        />
+      ) : null}
+
+      {activeRound && revoltPickerId ? (
+        <TeaPartyRevoltPanel
+          roundId={activeRound.id}
+          pickerId={revoltPickerId}
+          pickerName={namesByPlayerId[revoltPickerId] ?? "The lowest roller"}
+          selfPlayerId={playerId}
+          participants={participants}
         />
       ) : null}
 

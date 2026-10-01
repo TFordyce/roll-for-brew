@@ -234,6 +234,11 @@ export type ResolutionTraceStep = {
    * on every other step.
    */
   immunity: { tier: ImmunityTier; skippedCardName: string | null } | null;
+  /**
+   * Issue #430: on a fired Tea Party Revolt `tea_maker_override` step, the
+   * lowest roller who picked the brewer. null on every other step.
+   */
+  pickedBy: string | null;
 };
 
 /** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
@@ -257,10 +262,16 @@ export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
 
 /**
  * Why a `tea_maker_override` did nothing: an inert Last Drip
- * (`prev_round_highest`, #426), or a PG Tipped whose condition failed
- * (`conditional_chosen`, #427).
+ * (`prev_round_highest`, #426), a PG Tipped whose condition failed
+ * (`conditional_chosen`, #427), or a Tea Party Revolt with no pick (#430) —
+ * abandoned by stall, or still pending in a Provisional Recap.
  */
-export type OverrideNoopReason = "no_previous_round" | "target_absent" | "condition_not_met";
+export type OverrideNoopReason =
+  | "no_previous_round"
+  | "target_absent"
+  | "condition_not_met"
+  | "pick_abandoned"
+  | "pick_pending";
 
 type RawTraceStep = {
   index: number;
@@ -317,6 +328,8 @@ type RawTraceStep = {
   // Absent on every other step.
   immunity_tier?: ImmunityTier | null;
   skipped_card_name?: string | null;
+  // Issue #430: a fired Tea Party Revolt step's picker. Absent on every other step.
+  picked_by?: string | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -376,6 +389,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
     immunity: raw.immunity_tier
       ? { tier: raw.immunity_tier, skippedCardName: raw.skipped_card_name ?? null }
       : null,
+    pickedBy: raw.picked_by ?? null,
   };
 }
 

@@ -11,6 +11,7 @@ import {
   broadcastLayerTied,
   broadcastRoundReplayChanged,
   broadcastRoundRevealed,
+  broadcastSpellCastChanged,
 } from "@/lib/supabase/realtime";
 
 /**
@@ -24,9 +25,12 @@ import {
  *   Roll, or a Test Room roll-as.
  * - `pendingDieResolved`: a Pending Spell Die was given its value.
  * - `deferredTargetSet`: a deferred spell-cast target was named.
+ * - `revoltPickMade`: the lowest roller named who makes tea for a Tea Party
+ *   Revolt (issue #430).
  * - `stallCleared`: stall enforcement cleared a blockage (excluded a
  *   non-roller, auto-resolved a Pending Spell Die, abandoned a Deferred
- *   Forced-Reroll Target, or closed a stranded window).
+ *   Forced-Reroll Target or a Tea Party Revolt pick, or closed a stranded
+ *   window).
  *
  * Every event except `reactionWindowChanged` routes through advance_layer.
  */
@@ -35,6 +39,7 @@ export type AdvanceRoundEvent =
   | "layerRolled"
   | "pendingDieResolved"
   | "deferredTargetSet"
+  | "revoltPickMade"
   | "stallCleared";
 
 /** The module's one injectable seam: its database entry points plus the broadcasts advancing can cause. */
@@ -46,6 +51,7 @@ export type AdvanceRoundDeps = {
   broadcastRoundRevealed: typeof broadcastRoundRevealed;
   broadcastLayerTied: typeof broadcastLayerTied;
   broadcastRoundReplayChanged: typeof broadcastRoundReplayChanged;
+  broadcastSpellCastChanged: typeof broadcastSpellCastChanged;
 };
 
 const defaultDeps: AdvanceRoundDeps = {
@@ -56,6 +62,7 @@ const defaultDeps: AdvanceRoundDeps = {
   broadcastRoundRevealed,
   broadcastLayerTied,
   broadcastRoundReplayChanged,
+  broadcastSpellCastChanged,
 };
 
 /**
@@ -64,7 +71,9 @@ const defaultDeps: AdvanceRoundDeps = {
  * database step the event allows and sends every broadcast the outcome causes
  * — layer rolls revealed when this call first found the Layer complete, then
  * round revealed (plus round replay changed when a replay is now pending) for
- * a brewer, layer tied for a tie, nothing for a noop or a window left open.
+ * a brewer, layer tied for a tie, nothing for a noop or a window left open —
+ * except a Layer held for a Tea Party Revolt pick (issue #430), which sends a
+ * spell-cast change so the lowest roller's page shows the pick prompt.
  * Anyone may raise an event, spectators included: nothing here checks who the
  * caller is.
  */
@@ -77,7 +86,8 @@ export async function advanceRound(
   const outcome = await runEntryPoint(supabase, roundId, event, deps);
   const finalization = outcome.outcome === "windowOpened" ? outcome.finalization : outcome;
   const finalized = finalization !== null && finalization.outcome !== "noop";
-  if (!outcome.layerRolls && !finalized) return outcome;
+  const awaitingRevoltPick = outcome.outcome === "noop" && outcome.reason === "revolt_pick_pending";
+  if (!outcome.layerRolls && !finalized && !awaitingRevoltPick) return outcome;
 
   const roomId = await deps.getRoundRoomId(supabase, roundId);
 
@@ -86,6 +96,9 @@ export async function advanceRound(
   }
   if (finalized) {
     await broadcastFinalization(supabase, roomId, roundId, finalization, deps);
+  }
+  if (awaitingRevoltPick) {
+    await deps.broadcastSpellCastChanged(supabase, roomId, { roundId });
   }
 
   return outcome;
@@ -103,6 +116,7 @@ function runEntryPoint(
     case "layerRolled":
     case "pendingDieResolved":
     case "deferredTargetSet":
+    case "revoltPickMade":
     case "stallCleared":
       return deps.advanceLayer(supabase, roundId);
   }

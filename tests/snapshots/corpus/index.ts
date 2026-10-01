@@ -19,6 +19,8 @@ import type { Scenario } from "./framework";
 const GAMBLER_CONDITION = { condition: { advantage_at_or_above: 15, disadvantage_at_or_below: 5 } };
 // Issue #427: PG Tipped's catalog effect_params (migration 0126).
 const PG_TIPPED = { mode: "conditional_chosen", condition: "target_below_caster", modifier_gain: 0 };
+// Issue #430: Tea Party Revolt's catalog effect_params (migration 0131).
+const TEA_PARTY_REVOLT = { mode: "chosen", picker: "lowest_roller" };
 
 /** Issue #428: a live, carried-forward Last Cuppa immunity on `holder`. */
 function lastCuppa(roomId: string, holder: string) {
@@ -221,6 +223,76 @@ export const CORPUS: Scenario[] = [
         effectKind: "tea_maker_override",
         effectParams: PG_TIPPED,
         targetPlayerId: target.googleSub,
+      });
+      return { roundId, resolveWith: chooser.client };
+    },
+  },
+  {
+    name: "05-tea-party-revolt-picked",
+    phases: ["5"],
+    note: "Tea Party Revolt (#430) — the lowest roller picked the top roller, who brews; the step names the picker.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const low = await ctx.signUp("low");
+      const high = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(caster, [low, high]);
+      await ctx.seedRoll(roundId, caster.googleSub, 11);
+      await ctx.seedRoll(roundId, low.googleSub, 3);
+      await ctx.seedRoll(roundId, high.googleSub, 18);
+      await ctx.seedCast(roundId, caster.googleSub, "Tea Party Revolt", {
+        effectKind: "tea_maker_override",
+        effectParams: TEA_PARTY_REVOLT,
+        targetPlayerId: high.googleSub,
+        castInputs: { revolt_picked_by: low.googleSub },
+        extra: { target_role: "TABLE" },
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-tea-party-revolt-pick-abandoned",
+    phases: ["5"],
+    note: "Tea Party Revolt (#430) — stall abandoned the pick: a 'pick_abandoned' no-op step, and the default lowest brews.",
+    async seed(ctx) {
+      const caster = await ctx.signUp("caster");
+      const low = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(caster, [low]);
+      await ctx.seedRoll(roundId, caster.googleSub, 11);
+      await ctx.seedRoll(roundId, low.googleSub, 3);
+      await ctx.seedCast(roundId, caster.googleSub, "Tea Party Revolt", {
+        effectKind: "tea_maker_override",
+        effectParams: TEA_PARTY_REVOLT,
+        targetPlayerId: null,
+        castInputs: { revolt_pick_abandoned: true },
+        extra: { target_role: "TABLE", negated: true },
+      });
+      return { roundId, resolveWith: caster.client };
+    },
+  },
+  {
+    name: "05-tea-party-revolt-abandoned-earlier-override-stands",
+    phases: ["5"],
+    note: "Tea Party Revolt (#430) cast last but its pick was abandoned: it never enters the last-cast-wins contest, so an earlier chosen override still names the brewer.",
+    async seed(ctx) {
+      const chooser = await ctx.signUp("chooser");
+      const revolter = await ctx.signUp("revolter");
+      const chosen = await ctx.signUp("chosen");
+      const roundId = await ctx.openAndCloseRound(chooser, [revolter, chosen]);
+      await ctx.seedRoll(roundId, chooser.googleSub, 3);
+      await ctx.seedRoll(roundId, revolter.googleSub, 9);
+      await ctx.seedRoll(roundId, chosen.googleSub, 18);
+      await ctx.seedCast(roundId, chooser.googleSub, "Wild Brew Surge", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen" },
+        targetPlayerId: chosen.googleSub,
+        extra: { cast_at: new Date(Date.now() - 60_000).toISOString() },
+      });
+      await ctx.seedCast(roundId, revolter.googleSub, "Tea Party Revolt", {
+        effectKind: "tea_maker_override",
+        effectParams: TEA_PARTY_REVOLT,
+        targetPlayerId: null,
+        castInputs: { revolt_pick_abandoned: true },
+        extra: { target_role: "TABLE", negated: true },
       });
       return { roundId, resolveWith: chooser.client };
     },

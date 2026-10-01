@@ -1,0 +1,62 @@
+{
+  "scenario": "05-tea-party-revolt-picked",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "high",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "picked_by": "P:low",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Tea Party Revolt",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:high"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 11,
+      "total": 11,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "high",
+      "nat": null,
+      "roll": 18,
+      "total": 18,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "low",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

@@ -10,7 +10,10 @@
 --     awaiting its target, issue #325);
 --   * the Compelled Cast step (issue #440): a compelled Action cast still
 --     owed to Brewmageddon. Nobody can roll then anyway (is_expected_layer_
---     roller), so this only makes the rule explicit here too.
+--     roller), so this only makes the rule explicit here too;
+--   * a Tea Party Revolt pick (issue #430): a Revolt cast whose target the
+--     lowest roller hasn't named yet (_revolt_pick_outstanding). advance_layer
+--     and finalize_layer report this hold as `revolt_pick_pending`.
 -- The single Layer-completeness read: the identity-gated and stall-resolution
 -- variants it replaced were dropped in issue #417.
 --
@@ -57,6 +60,10 @@ begin
     return false;
   end if;
 
+  if p_layer = 0 and public._revolt_pick_outstanding(p_round_id) then
+    return false;
+  end if;
+
   return true;
 end;
 $$;
@@ -66,4 +73,4 @@ revoke execute on function public._layer_is_complete(uuid, integer) from public,
 grant execute on function public._layer_is_complete(uuid, integer) to service_role;
 
 comment on function public._layer_is_complete(uuid, integer) is
-  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding, no Deferred Forced-Reroll Target hold is in place, and no compelled Action cast is still owed (issue #440). Internal to round advancement.';
+  'Issue #414 (ADR 0008): Layer completeness with no caller-identity gate -- every expected roller has rolled and, at Layer 0, no Pending Spell Die is outstanding, no Deferred Forced-Reroll Target hold is in place, and no compelled Action cast is still owed (issue #440), and no Tea Party Revolt pick is outstanding (issue #430). Internal to round advancement.';
