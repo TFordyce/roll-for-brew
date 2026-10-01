@@ -227,10 +227,24 @@ export type ResolutionTraceStep = {
     targetRoll: number | null;
     casterRoll: number | null;
   } | null;
+  /**
+   * Issue #428: a `brewer_immunity` step — which tier of tea-maker selection
+   * passed over the immune player, and the declared-number or override card
+   * it overrode (null for the lowest-roller and everyone-immune tiers). null
+   * on every other step.
+   */
+  immunity: { tier: ImmunityTier; skippedCardName: string | null } | null;
 };
 
 /** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
 export type OverrideCondition = "target_below_caster";
+
+/**
+ * Issue #428: where brewer immunity (ADR 0005 tier 0) skipped a player —
+ * a declared-number match, an override target, the lowest roller — or
+ * `all_immune`, where immunity gave way to a Tie-Break Reroll.
+ */
+export type ImmunityTier = "declared_number" | "tea_maker_override" | "lowest_roller" | "all_immune";
 
 /**
  * Issue #440: why a compelled card was forfeited (the `forfeit` row's
@@ -299,6 +313,10 @@ type RawTraceStep = {
   override_condition?: OverrideCondition | null;
   target_roll?: number | null;
   caster_roll?: number | null;
+  // Issue #428: a brewer_immunity step's tier and the card it overrode.
+  // Absent on every other step.
+  immunity_tier?: ImmunityTier | null;
+  skipped_card_name?: string | null;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -355,6 +373,9 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
             casterRoll: raw.caster_roll ?? null,
           }
         : null,
+    immunity: raw.immunity_tier
+      ? { tier: raw.immunity_tier, skippedCardName: raw.skipped_card_name ?? null }
+      : null,
   };
 }
 

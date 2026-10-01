@@ -131,6 +131,15 @@ declare
   v_ld_prev_round uuid;
   v_ld_target text;
 
+  -- issue #428 (spec #401 F2, ADR 0005 tier 0): players carrying a live
+  -- `brewer_immunity` active effect, skipped inside every Phase 5 tier.
+  v_immune jsonb := '{}'::jsonb;   -- { player_id: { ae_id, caster_id, card_name, override_proof } }
+  v_imm_pid text;
+  v_pool_players text[];
+  v_pool_rolls integer[];
+  v_pool_composed numeric[];
+  v_pool_reduced boolean[];
+
   -- Phase 4b (issue #311) working state
   v_pm_targets text[] := array[]::text[];
   v_pm_running numeric;
@@ -1987,7 +1996,33 @@ begin
 
   -- ------------------------------------------------------------------
   -- Phase 5: brewer selection. Precedence declared > override > default.
+  --
+  -- Tier 0 (issue #428, ADR 0005): brewer immunity is not a pass of its
+  -- own -- it is read here, directly (never through the Phase 2 ward
+  -- filter), and applied inside each tier below. An immune candidate is no
+  -- match at any tier: a declared-number roller, an override target and the
+  -- lowest-roller pool all skip them and fall through. One entry per
+  -- player; an override-proof row (The Last Cuppa) is preferred.
   -- ------------------------------------------------------------------
+  select coalesce(jsonb_object_agg(im.target_player_id, im.info), '{}'::jsonb)
+    into v_immune
+    from (
+      select distinct on (sae.target_player_id)
+             sae.target_player_id,
+             jsonb_build_object(
+               'ae_id', sae.id,
+               'caster_id', sae.caster_id,
+               'card_name', sc.name,
+               'override_proof', coalesce((sae.effect_params ->> 'override_proof')::boolean, false)
+             ) as info
+        from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
+        join public.spell_cards sc on sc.id = sae.card_id
+       where sae.effect_kind = 'brewer_immunity'
+       order by sae.target_player_id,
+                coalesce((sae.effect_params ->> 'override_proof')::boolean, false) desc,
+                sae.created_at
+    ) im;
+
   for v_declared in
     select sae.id, (sae.effect_params->>'number')::integer as number,
            sae.caster_id, sc.name as card_name
@@ -2000,7 +2035,26 @@ begin
     select r.player_id into v_pid
       from public.rolls r
      where r.round_id = p_round_id and r.layer = 0 and r.value = v_declared.number
+       and not (v_immune ? r.player_id)
+     order by r.player_id
      limit 1;
+
+    -- issue #428: only immune rollers matched -- each is passed over and
+    -- the next declared number (or the next tier) is tried.
+    if v_pid is null then
+      for v_imm_pid in
+        select r.player_id
+          from public.rolls r
+         where r.round_id = p_round_id and r.layer = 0 and r.value = v_declared.number
+           and v_immune ? r.player_id
+         order by r.player_id
+      loop
+        v_trace := v_trace || jsonb_build_array(public._rr_brewer_immunity_step(
+          v_step_index, v_immune -> v_imm_pid, v_imm_pid, 'declared_number', v_declared.card_name
+        ));
+        v_step_index := v_step_index + 1;
+      end loop;
+    end if;
 
     if v_pid is not null then
       v_brewer_id := v_pid;
@@ -2206,24 +2260,36 @@ begin
         raise exception 'resolve_round: unsupported tea_maker_override mode %', v_override.mode;
       end if;
 
-      v_modifier_gain := v_override.modifier_gain;
-      v_brewer_source := 'tea_maker_override:' || v_override.mode;
+      if v_brewer_id is not null and v_immune ? v_brewer_id then
+        -- issue #428: an immune override target falls through to the default
+        -- pick, whatever the mode. (Override-proof immunity -- The Last
+        -- Cuppa -- always does; the Earl slice gives a non-override-proof
+        -- `earl` holder a title transfer here instead.)
+        v_trace := v_trace || jsonb_build_array(public._rr_brewer_immunity_step(
+          v_step_index, v_immune -> v_brewer_id, v_brewer_id, 'tea_maker_override', v_override.card_name
+        ));
+        v_step_index := v_step_index + 1;
+        v_brewer_id := null;
+      else
+        v_modifier_gain := v_override.modifier_gain;
+        v_brewer_source := 'tea_maker_override:' || v_override.mode;
 
-      v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
-        v_step_index,
-        'tea_maker_override',
-        jsonb_build_object(
-          'cast_id', to_jsonb(v_override.cast_id),
-          'active_effect_id', null,
-          'card_name', to_jsonb(v_override.card_name),
-          'caster_player_id', to_jsonb(v_override.caster_id)
-        ),
-        v_brewer_id,
-        jsonb_build_object('type', 'status', 'value', 'pending'),
-        jsonb_build_object('type', 'status', 'value',
-          case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end)
-      ));
-      v_step_index := v_step_index + 1;
+        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+          v_step_index,
+          'tea_maker_override',
+          jsonb_build_object(
+            'cast_id', to_jsonb(v_override.cast_id),
+            'active_effect_id', null,
+            'card_name', to_jsonb(v_override.card_name),
+            'caster_player_id', to_jsonb(v_override.caster_id)
+          ),
+          v_brewer_id,
+          jsonb_build_object('type', 'status', 'value', 'pending'),
+          jsonb_build_object('type', 'status', 'value',
+            case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end)
+        ));
+        v_step_index := v_step_index + 1;
+      end if;
     end if;
   end if;
 
@@ -2231,6 +2297,48 @@ begin
     -- issue #289: v_dice_reduced excludes a Calami-Tea-floored roll from the
     -- natural-1 auto-lose pool (a real natural 1 still brews).
     v_tied := public._rr_pick_lowest(v_players, v_rolls, v_composed, v_dice_reduced);
+
+    -- issue #428: the lowest-roller pool excludes immune players, so the
+    -- next-lowest roller brews. Each immune player the unfiltered pick named
+    -- gets a skip step. Everyone immune: immunity gives way, and the round
+    -- ties across every participant still in it (a Tie-Break Reroll, the
+    -- normal tie path at finalize_layer).
+    if v_immune <> '{}'::jsonb then
+      select array_agg(v_players[i] order by i), array_agg(v_rolls[i] order by i),
+             array_agg(v_composed[i] order by i), array_agg(v_dice_reduced[i] order by i)
+        into v_pool_players, v_pool_rolls, v_pool_composed, v_pool_reduced
+        from generate_subscripts(v_players, 1) i
+       where not (v_immune ? v_players[i]);
+
+      if v_pool_players is null then
+        select array_agg(rp.player_id order by rp.player_id) into v_tied
+          from public.round_participants rp
+         where rp.round_id = p_round_id and rp.excluded_at is null;
+
+        v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
+          v_step_index,
+          'brewer_immunity',
+          jsonb_build_object('cast_id', null, 'active_effect_id', null, 'card_name', null, 'caster_player_id', null),
+          null,
+          jsonb_build_object('type', 'status', 'value', 'immune'),
+          jsonb_build_object('type', 'status', 'value',
+            case when array_length(v_tied, 1) > 1 then 'tie' else 'brewer' end),
+          jsonb_build_object('immunity_tier', 'all_immune', 'skipped_card_name', null)
+        ));
+        v_step_index := v_step_index + 1;
+      else
+        foreach v_imm_pid in array v_tied loop
+          if v_immune ? v_imm_pid then
+            v_trace := v_trace || jsonb_build_array(public._rr_brewer_immunity_step(
+              v_step_index, v_immune -> v_imm_pid, v_imm_pid, 'lowest_roller', null
+            ));
+            v_step_index := v_step_index + 1;
+          end if;
+        end loop;
+
+        v_tied := public._rr_pick_lowest(v_pool_players, v_pool_rolls, v_pool_composed, v_pool_reduced);
+      end if;
+    end if;
 
     if array_length(v_tied, 1) > 1 then
       -- Phase 6 (issue #438): Tea Heist outcomes -- see the brewer exit below.

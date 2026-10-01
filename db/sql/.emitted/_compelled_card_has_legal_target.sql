@@ -48,7 +48,8 @@ begin
     return v_target in ('SELF', 'PLAYER', 'TABLE');
   end if;
 
-  -- A Detox (dispel) needs an active effect of a tier it can end.
+  -- A Detox (dispel) needs an active effect of a tier it can end -- and one
+  -- that can be dispelled at all (issue #428: not The Last Cuppa's).
   select e.effect_params into v_dispel_params
     from public.spell_card_effects e
    where e.card_id = v_card_id and e.effect_kind = 'dispel'
@@ -59,6 +60,7 @@ begin
         from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
         join public.spell_cards sc2 on sc2.id = sae.card_id
        where sc2.tier in (select jsonb_array_elements_text(v_dispel_params -> 'tiers'))
+         and not sae.is_undispellable
     );
   end if;
 

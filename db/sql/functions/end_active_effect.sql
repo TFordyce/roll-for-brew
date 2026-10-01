@@ -1,8 +1,8 @@
 -- end_active_effect
 --
 -- A Detox (dispel) is played through its own RPC; a compelled Detox holder
--- plays it in the Compelled Cast step like any other Action card. Otherwise
--- unchanged (0084).
+-- plays it in the Compelled Cast step like any other Action card. An
+-- is_undispellable effect (issue #428) is refused. Otherwise unchanged (0084).
 create or replace function public.end_active_effect(p_round_id uuid, p_effect_id uuid)
 returns void
 language plpgsql
@@ -21,6 +21,7 @@ declare
   v_target_player_id text;
   v_target_tier text;
   v_target_room_id uuid;
+  v_undispellable boolean;
 begin
   v_player_id := public.current_player_id(p_round_id);
 
@@ -54,14 +55,20 @@ begin
 
   select array(select jsonb_array_elements_text(v_effect_params -> 'tiers')) into v_tiers;
 
-  select sae.target_player_id, sc2.tier, sae.room_id
-    into v_target_player_id, v_target_tier, v_target_room_id
+  select sae.target_player_id, sc2.tier, sae.room_id, sae.is_undispellable
+    into v_target_player_id, v_target_tier, v_target_room_id, v_undispellable
     from public.spell_active_effects sae
     join public.spell_cards sc2 on sc2.id = sae.card_id
    where sae.id = p_effect_id;
 
   if v_target_player_id is null then
     raise exception 'end_active_effect: active effect not found';
+  end if;
+
+  -- issue #428: The Last Cuppa's immunity can't be dispelled. The picker
+  -- (get_dispellable_active_effects) never offers it; this refuses a direct call.
+  if v_undispellable then
+    raise exception 'end_active_effect: this effect cannot be dispelled';
   end if;
 
   if v_target_room_id <> v_room_id then

@@ -79,8 +79,12 @@ The fixed order in which a round's Tea Maker is picked when several cards compet
 3. **Loose Leaf roll-off** — applied once a Tea Maker is named, whichever rung named them.
 4. **Default** — the lowest roller.
 
-Immunity to being Tea Maker isn't a rung of its own. It filters every rung: an immune candidate counts as no match, and selection falls through to the next candidate. A round with a payable Brew Debt skips the ladder entirely. Cloud of Cream's targeting skip isn't part of the ladder: it only steers the `highest_modifier` override's pick, and doesn't interact with the other override modes.
+**Brewer Immunity** isn't a rung of its own. It filters every rung: an immune candidate counts as no match, and selection falls through to the next candidate. A round with a payable Brew Debt skips the ladder entirely. Cloud of Cream's targeting skip isn't part of the ladder: it only steers the `highest_modifier` override's pick, and doesn't interact with the other override modes.
 _Avoid_: override order, brewer priority.
+
+**Brewer Immunity**:
+A Participant who can't be Tea Maker (a `brewer_immunity` active effect). The Last Cuppa grants it for the rest of the day, and no card can get past it or dispel it; Tea Cosy (one round) and the Earl title will grant it too. If every Participant is immune and no override lands, immunity gives way to a Tie-Break Reroll among them all.
+_Avoid_: exempt (that's Roll Exemption — not rolling, which is separate), protected, warded (wards guard values, not the brew).
 
 **Brew Debt**:
 The obligation the Brew IOU card leaves on its caster — the **Debtor** — once its target has actually been made Tea Maker by it: the Debtor must be Tea Maker on their next round as a Participant, and on that round nobody rolls. Stays owed across days until paid; a round where the Debtor is immune to being Tea Maker is played normally and leaves it owed.
