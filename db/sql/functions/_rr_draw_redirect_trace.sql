@@ -30,22 +30,18 @@ security definer
 set search_path = public
 as $$
   with steps as (
-    select c.id as cast_id, c.caster_id, c.target_player_id, sc.name as card_name,
-           'marked' as outcome, 0 as kind_order, c.seq
+    -- marks placed this round
+    select c.id as cast_id, 'marked' as outcome, 0 as kind_order
       from public.spell_casts c
-      join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
-      join public.spell_cards sc on sc.id = sdi.card_id
      where c.round_id = p_round_id
        and c.effect_kind = 'draw_redirect'
        and c.target_player_id is not null
        and not coalesce(c.negated, false)
        and not coalesce(c.cast_inputs ? 'is_copy', false)
     union all
-    select c.id, c.caster_id, c.target_player_id, sc.name,
-           c.cast_inputs ->> 'draw_redirect_outcome', 1, c.seq
+    -- marks that fired this round
+    select c.id, c.cast_inputs ->> 'draw_redirect_outcome', 1
       from public.spell_casts c
-      join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
-      join public.spell_cards sc on sc.id = sdi.card_id
      where c.effect_kind = 'draw_redirect'
        and c.cast_inputs ->> 'consumed_by_round' = p_round_id::text
   )
@@ -66,8 +62,12 @@ as $$
            ) order by s.ord
          ), '[]'::jsonb)
     from (
-      select steps.*, row_number() over (order by kind_order, seq, cast_id) as ord
+      select steps.outcome, c.id as cast_id, c.caster_id, c.target_player_id, sc.name as card_name,
+             row_number() over (order by steps.kind_order, c.seq, c.id) as ord
         from steps
+        join public.spell_casts c on c.id = steps.cast_id
+        join public.spell_deck_instances sdi on sdi.id = c.card_instance_id
+        join public.spell_cards sc on sc.id = sdi.card_id
     ) s;
 $$;
 

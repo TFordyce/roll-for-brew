@@ -45,8 +45,9 @@
 -- row -- and a countered or dispelled newer title leaves the older one
 -- standing until something actually ends it.
 --
--- Body from migration 0084 plus the spent and participated-window conditions; grants merge 0084
--- (authenticated) and 0108 (service_role, the integration suite's seam).
+-- Body from migration 0084 plus the spent and participated-window
+-- conditions; grants merge 0084 (authenticated) and 0108 (service_role, the
+-- integration suite's seam).
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the

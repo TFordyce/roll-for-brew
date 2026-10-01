@@ -44,9 +44,6 @@ declare
   -- layer-0 roller, built from the final working arrays just before Phase 5.
   v_summary jsonb := '[]'::jsonb;
 
-  -- Phase 6 (issues #438 / #436): Tea Heist's steps, so Marked for Brew's
-  -- number on after them.
-  v_heist_steps jsonb;
   -- Phase 5 (issue #451): the selection result _rr_select_tea_maker returns.
   v_selection jsonb;
   v_brewer_id text := null;
@@ -160,6 +157,9 @@ declare
   v_pa_value integer;
   v_pa_discarded integer;
   v_pa_kept integer;
+  -- Phase 6 (issues #438 / #436): Tea Heist's steps, so Marked for Brew's
+  -- number on after them.
+  v_heist_steps jsonb;
 begin
   select status, room_id, current_layer, replay_generation, replay_frozen_rollers
     into v_status, v_room_id, v_layer, v_gen, v_frozen_rollers

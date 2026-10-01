@@ -187,10 +187,22 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
       draw_redirect_outcome: "redirected",
     });
 
-    // "The first time": a second crit the same round (a tie-break layer) is
-    // the target's own.
+    // "The first time": a second crit the same round, in a tie-break layer,
+    // is the target's own.
+    const { error: layerErr } = await admin.from("rounds").update({ current_layer: 1 }).eq("id", roundId);
+    expect(layerErr).toBeNull();
     await recordCrit(target, roundId);
     expect(await pendingDraws(roundId)).toEqual({ [caster.googleSub]: "nat1", [target.googleSub]: "nat20" });
+  });
+
+  it("a retried crit call in the same layer draws once, for the caster", async () => {
+    const { caster, target } = await castMark("retry");
+    const roundId = await startRound(caster, [target]);
+
+    await recordCrit(target, roundId);
+    await recordCrit(target, roundId);
+
+    expect(await pendingDraws(roundId)).toEqual({ [caster.googleSub]: "nat20" });
   });
 
   it("never fires in the cast round itself", async () => {
