@@ -35,7 +35,8 @@
 --     started rolling stays a normal round (a Late Declare only converts it
 --     while nobody has rolled);
 --   * a Debtor is a Participant (not excluded) with a live debt from a round
---     resolved before this one closed;
+--     resolved before this one closed (before now, while it is still open --
+--     the only wall-clock read; fixed once the round closes);
 --   * that Debtor has no Brewer Immunity as of this round. An immune Debtor
 --     plays normally and the debt stays owed.
 -- Several debts: the oldest (Brew IOU round resolved first, then cast order)
@@ -2567,8 +2568,9 @@ comment on function public._rr_scrap_round(uuid) is
 -- modifier gain. The round has no layer-0 rolls, so tier 1 can't match; the
 -- other tiers are skipped by the named brewer.
 --
--- Read-only. It reads the round, the live active effects and the Cast Log,
--- never writes, so it is safe under both resolve_round and the rolled-back
+-- Read-only. It reads the round, the live active effects and the Cast Log --
+-- and, through _brew_debt_due (issue #432), the Brew IOU / Brew Debt records
+-- of the Participants' other rounds, in any room -- and never writes, so it is safe under both resolve_round and the rolled-back
 -- _rr_resolve dry run.
 --
 -- Rolls: the ladder's tiers do not all read the same roll value. The
@@ -3649,11 +3651,14 @@ begin
 
   -- Brew IOU (issue #432): what made the Tea Maker brew, when a later round
   -- reads it back -- ('brew_iou', cast) creates a Brew Debt, ('brew_debt',
-  -- cast) pays it (_brew_debt_due). Null for every other resolution.
-  update public.rounds
-     set brewer_source = v_out -> 'brewer_record' ->> 'source',
-         brewer_source_cast_id = (v_out -> 'brewer_record' ->> 'cast_id')::uuid
-   where id = p_round_id;
+  -- cast) pays it (_brew_debt_due). Null for every other resolution. Only
+  -- Layer 0 decides it: a Tie-Break Reroll Layer has no spell logic (#219).
+  if v_layer = 0 then
+    update public.rounds
+       set brewer_source = v_out -> 'brewer_record' ->> 'source',
+           brewer_source_cast_id = (v_out -> 'brewer_record' ->> 'cast_id')::uuid
+     where id = p_round_id;
+  end if;
 
   v_replay_pending := public.record_pending_round_replay(p_round_id);
 

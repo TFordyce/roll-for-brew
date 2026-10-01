@@ -376,6 +376,64 @@ describe.skipIf(!hasAnonTestEnv)("Brew IOU (#432)", () => {
     expect(await expectedRollers(next, caster)).toEqual([caster.googleSub, other.googleSub, target.googleSub].sort());
   });
 
+  it("active effects still age through a debt round", async () => {
+    const [caster, target] = await players("g-caster", "g-target");
+    await brewIouRound(caster, target, []);
+
+    const debtRound = await openRound(target, [caster]);
+    // A one-round effect from the debt round itself: live in it, gone after.
+    await seedActiveEffect(admin, cleanup, {
+      roomId: caster.roomId,
+      targetPlayerId: target.googleSub,
+      casterId: target.googleSub,
+      cardName: "Prophe-Tea",
+      effectKind: "advantage",
+      roundsRemaining: 1,
+      roundId: debtRound,
+    });
+    await payDebt(target, debtRound, caster);
+
+    const next = await openRound(target, [caster]);
+    const { data, error } = await admin.rpc("_rr_active_effects_as_of", {
+      p_room_id: caster.roomId,
+      p_as_of_round_id: next,
+    });
+    expect(error).toBeNull();
+    expect((data as { effect_kind: string }[]).filter((e) => e.effect_kind === "advantage")).toEqual([]);
+  });
+
+  it("no debt when Brew IOU's target goes on to a Loose Leaf roll-off", async () => {
+    const [caster, target, mid] = await players("ll-caster", "ll-target", "ll-mid");
+    const roundId = await openRound(caster, [target, mid]);
+    await castBrewIou(caster, roundId, target);
+    await close(caster, roundId);
+    const leaf = await forceHold(admin, target.googleSub, "Loose Leaf");
+    await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", leaf);
+    const { error } = await admin.from("spell_casts").insert({
+      round_id: roundId,
+      caster_id: target.googleSub,
+      card_instance_id: leaf,
+      target_player_id: target.googleSub,
+      target_pending: false,
+      effect_kind: "named_tea_maker_rolloff",
+      effect_params: {},
+    });
+    expect(error).toBeNull();
+
+    const fin = await rollAndResolve(caster, roundId, [[caster, 2], [target, 19], [mid, 10]]);
+    expect(fin).toMatchObject({ outcome: "tie" });
+    // The target loses the roll-off and brews -- still no debt.
+    const { error: rErr } = await admin.from("rolls").insert([
+      { round_id: roundId, player_id: target.googleSub, layer: 1, value: 3, input_mode: "manual", modifier_snapshot: 0 },
+      { round_id: roundId, player_id: mid.googleSub, layer: 1, value: 15, input_mode: "manual", modifier_snapshot: 0 },
+    ]);
+    expect(rErr).toBeNull();
+    expect(await advance(caster.client, roundId)).toMatchObject({ outcome: "brewer", brewer_id: target.googleSub });
+    const r = await round(roundId);
+    expect(r.brewer_source).toBeNull();
+    expect(steps(r, "brew_debt")).toEqual([]);
+  });
+
   it("nobody can roll in a debt round", async () => {
     const [caster, target] = await players("r-caster", "r-target");
     await brewIouRound(caster, target, []);

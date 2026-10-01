@@ -45,8 +45,9 @@
 -- modifier gain. The round has no layer-0 rolls, so tier 1 can't match; the
 -- other tiers are skipped by the named brewer.
 --
--- Read-only. It reads the round, the live active effects and the Cast Log,
--- never writes, so it is safe under both resolve_round and the rolled-back
+-- Read-only. It reads the round, the live active effects and the Cast Log --
+-- and, through _brew_debt_due (issue #432), the Brew IOU / Brew Debt records
+-- of the Participants' other rounds, in any room -- and never writes, so it is safe under both resolve_round and the rolled-back
 -- _rr_resolve dry run.
 --
 -- Rolls: the ladder's tiers do not all read the same roll value. The

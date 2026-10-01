@@ -169,11 +169,14 @@ begin
 
   -- Brew IOU (issue #432): what made the Tea Maker brew, when a later round
   -- reads it back -- ('brew_iou', cast) creates a Brew Debt, ('brew_debt',
-  -- cast) pays it (_brew_debt_due). Null for every other resolution.
-  update public.rounds
-     set brewer_source = v_out -> 'brewer_record' ->> 'source',
-         brewer_source_cast_id = (v_out -> 'brewer_record' ->> 'cast_id')::uuid
-   where id = p_round_id;
+  -- cast) pays it (_brew_debt_due). Null for every other resolution. Only
+  -- Layer 0 decides it: a Tie-Break Reroll Layer has no spell logic (#219).
+  if v_layer = 0 then
+    update public.rounds
+       set brewer_source = v_out -> 'brewer_record' ->> 'source',
+           brewer_source_cast_id = (v_out -> 'brewer_record' ->> 'cast_id')::uuid
+     where id = p_round_id;
+  end if;
 
   v_replay_pending := public.record_pending_round_replay(p_round_id);
 

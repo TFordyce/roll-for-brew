@@ -17,7 +17,8 @@
 --     started rolling stays a normal round (a Late Declare only converts it
 --     while nobody has rolled);
 --   * a Debtor is a Participant (not excluded) with a live debt from a round
---     resolved before this one closed;
+--     resolved before this one closed (before now, while it is still open --
+--     the only wall-clock read; fixed once the round closes);
 --   * that Debtor has no Brewer Immunity as of this round. An immune Debtor
 --     plays normally and the debt stays owed.
 -- Several debts: the oldest (Brew IOU round resolved first, then cast order)
