@@ -207,7 +207,8 @@ describe.skipIf(!hasAnonTestEnv)("Tea Cosy (#434)", () => {
     return data!.id as string;
   }
 
-  const steps = (r: RoundRow, kind: string) => (r.resolution_trace ?? []).filter((s) => s.display_kind === kind);
+  const stepsOf = (trace: TraceStep[] | null, kind: string) => (trace ?? []).filter((s) => s.display_kind === kind);
+  const steps = (r: RoundRow, kind: string) => stepsOf(r.resolution_trace, kind);
 
   // -----------------------------------------------------------------------
   // The card.
@@ -466,7 +467,7 @@ describe.skipIf(!hasAnonTestEnv)("Tea Cosy (#434)", () => {
     expect(resErr).toBeNull();
     expect(outcome).toMatchObject({ outcome: "brewer", brewer_id: ada.googleSub });
     const trace = (outcome as { trace: TraceStep[] }).trace;
-    expect(trace.filter((s) => s.display_kind === "brewer_immunity")).toEqual([]);
-    expect(trace.filter((s) => s.display_kind === "roll_exemption")).toEqual([]);
+    expect(stepsOf(trace, "brewer_immunity")).toEqual([]);
+    expect(stepsOf(trace, "roll_exemption")).toEqual([]);
   });
 });

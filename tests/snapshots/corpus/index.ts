@@ -1677,12 +1677,12 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: loaf.client };
     },
   },
-  // Issue #434: Tea Cosy -- its caster skips the layer-0 roll and holds a
+  // Issue #434: Tea Cosy -- its caster has no layer-0 roll and holds a
   // one-round brewer_immunity, so an override naming them falls through.
   {
     name: "05-tea-cosy-exempt-and-immune",
     phases: ["3", "5"],
-    note: "Tea Cosy (#434): its caster skips the layer-0 roll (roll_exemption step) and is immune this round, so a chosen override naming them falls through to the lowest roller (brewer_immunity step).",
+    note: "Tea Cosy (#434): its caster is roll-exempt -- no layer-0 roll (roll_exemption step) -- and is immune this round, so a chosen override naming them falls through to the lowest roller (brewer_immunity step).",
     async seed(ctx) {
       const cosy = await ctx.signUp("cosy");
       const chooser = await ctx.signUp("chooser");

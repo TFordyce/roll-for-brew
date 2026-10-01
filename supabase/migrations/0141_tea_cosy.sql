@@ -15,11 +15,14 @@
 -- Countered, both halves go together: the negated source cast makes the
 -- immunity row not live, and the caster rolls late once the layer-0 Reaction
 -- Window closes. A Round replay's clean slate deletes the cast and, with it,
--- the promoted row. Every participant on Tea Cosy: no layer-0 roll is
+-- the promoted row. A dispel (Greater Detox) ends the immunity row only: the
+-- exemption rides on the cast, so the caster still doesn't roll but can be
+-- named by a `chosen` override. Every participant on Tea Cosy: no layer-0 roll is
 -- expected, the round resolves at close, and immunity gives way to a
 -- Tie-Break Reroll among them all (_rr_select_tea_maker).
 --
--- No function body changes.
+-- No function body changes: the generated migration that follows this one
+-- (ADR 0006) re-emits _rr_is_brewer_candidate for its header comment only.
 
 -- ---------------------------------------------------------------------------
 -- 1. One round of immunity.
