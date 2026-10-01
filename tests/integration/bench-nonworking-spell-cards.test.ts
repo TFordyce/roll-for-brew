@@ -58,9 +58,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     // Last Cuppa (brewer immunity, #428, migration 0128) — Tea Party Revolt
     // (#430, migration 0131) — Earl of Earl Grey (#429, migration 0133) —
     // Loose Leaf (roll-off, #431, migration 0135) — Brew IOU (Brew Debt,
-    // #432, migration 0137) — and Loaf of Lipton (Roll Exemption, #433,
-    // migration 0139) — are since implemented and un-benched, so 5.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(5);
+    // #432, migration 0137) — Loaf of Lipton (Roll Exemption, #433,
+    // migration 0139) — and Tea Cosy (#434, migration 0141) — are since
+    // implemented and un-benched, so 4.
+    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(4);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();
