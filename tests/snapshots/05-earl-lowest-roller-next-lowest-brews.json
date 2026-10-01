@@ -1,0 +1,63 @@
+{
+  "scenario": "05-earl-lowest-roller-next-lowest-brews",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "next-low",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "immune"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Earl of Earl Grey",
+        "active_effect_id": "fx#1",
+        "caster_player_id": "P:earl"
+      },
+      "display_kind": "brewer_immunity",
+      "immunity_tier": "lowest_roller",
+      "target_player": "P:earl",
+      "skipped_card_name": null
+    }
+  ],
+  "players": [
+    {
+      "player": "earl",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "high",
+      "nat": null,
+      "roll": 18,
+      "total": 18,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "next-low",
+      "nat": null,
+      "roll": 7,
+      "total": 7,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

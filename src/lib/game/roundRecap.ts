@@ -244,6 +244,8 @@ const OUTCOME_KINDS = new Set([
   "targeting_skip",
   // Issue #428: brewer immunity passes a player over during brewer selection.
   "brewer_immunity",
+  // Issue #429: a force on the Earl passes the title, then the override lands.
+  "earl_transfer",
   // Issue #438: a Tea Heist's outcome is decided in the resolver's final phase.
   "card_heist",
 ]);
@@ -410,7 +412,7 @@ function fmt(value: number | string | null): string {
  */
 function sentenceFor(
   step: ResolutionTraceStep,
-  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null },
+  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null; newEarl: string },
 ): string {
   const { t, c, k } = names;
   const played = k ? `${c} played ${k}` : c;
@@ -509,6 +511,10 @@ function sentenceFor(
           return `${card} — ${t} rolled lowest but can't be Tea Maker; the next-lowest roll brews`;
       }
     }
+    case "earl_transfer":
+      // Issue #429: forcing tea on the Earl passes the title to the forcing
+      // card's caster; the override's own step then says the ex-Earl brews.
+      return `${k || "Earl of Earl Grey"} — ${step.earlTransfer?.forcingCardName ?? "a card"} forces tea on ${t}, so the Earl title passes to ${names.newEarl}`;
     case "declared_number_tea_maker":
       return `${k || "Declared number"}: ${t} rolled the declared number and brews`;
     case "tea_maker_override": {
@@ -785,6 +791,7 @@ export function buildRoundRecap({
           compelled: (step.compel?.compelledPlayerIds ?? []).map(displayName),
           compelledBy: compelledBy ?? BREWMAGEDDON,
           pickedBy: step.pickedBy ? displayName(step.pickedBy) : null,
+          newEarl: step.earlTransfer ? displayName(step.earlTransfer.newEarlPlayerId) : "",
         });
         return {
           phase: phaseForStep(step, castById),

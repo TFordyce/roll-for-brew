@@ -75,6 +75,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     failedOverrideCondition: null,
     immunity: null,
     pickedBy: null,
+    earlTransfer: null,
     ...overrides,
   };
 }
@@ -452,6 +453,53 @@ describe("buildRoundRecap", () => {
       ]);
       expect(parsed!.immunity).toEqual({ tier: "tea_maker_override", skippedCardName: "Drip Tray" });
       expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.immunity).toBeNull();
+    });
+  });
+
+  describe("Earl of Earl Grey title transfer (issue #429)", () => {
+    const transfer = (forcingCardName: string | null) =>
+      step({
+        displayKind: "earl_transfer",
+        sourceCast: { castId: null, activeEffectId: "AE1", cardName: "Earl of Earl Grey", casterPlayerId: "ada" },
+        targetPlayer: "ada",
+        before: { type: "status", value: "earl" },
+        after: { type: "status", value: "title passed" },
+        outcome: "applied",
+        earlTransfer: { newEarlPlayerId: "ben", forcingCardName },
+      });
+    const render = (trace: ResolutionTraceStep[]) => {
+      const casts = [cast({ castId: "C0", cardName: "Drip Tray", casterPlayerId: "ben", effectKind: "tea_maker_override" })];
+      return buildRoundRecap({ data: data({ casts, trace }), displayName });
+    };
+
+    it("says the force passes the title to its caster, in the Outcome group", () => {
+      const model = render([transfer("Drip Tray")]);
+      const [s] = model.phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Earl of Earl Grey — Drip Tray forces tea on Ada, so the Earl title passes to Ben");
+      expect(model.phases.find((p) => p.label === "Outcome")?.steps).toHaveLength(1);
+    });
+
+    it("falls back when the forcing card is unnamed", () => {
+      const [s] = render([transfer(null)]).phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Earl of Earl Grey — a card forces tea on Ada, so the Earl title passes to Ben");
+    });
+
+    it("reads new_earl_player_id and forcing_card_name off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "earl_transfer",
+          source_cast: { cast_id: null, active_effect_id: "AE1", card_name: "Earl of Earl Grey", caster_player_id: "ada" },
+          target_player: "ada",
+          before: { type: "status", value: "earl" },
+          after: { type: "status", value: "title passed" },
+          outcome: "applied",
+          new_earl_player_id: "ben",
+          forcing_card_name: "Drip Tray",
+        },
+      ]);
+      expect(parsed!.earlTransfer).toEqual({ newEarlPlayerId: "ben", forcingCardName: "Drip Tray" });
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.earlTransfer).toBeNull();
     });
   });
 

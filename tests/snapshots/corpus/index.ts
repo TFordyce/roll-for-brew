@@ -35,6 +35,19 @@ function lastCuppa(roomId: string, holder: string) {
   };
 }
 
+/** Issue #429: a live, carried-forward Earl of Earl Grey title on `holder`. */
+function earl(roomId: string, holder: string) {
+  return {
+    roomId,
+    targetPlayerId: holder,
+    casterId: holder,
+    cardName: "Earl of Earl Grey",
+    effectKind: "brewer_immunity",
+    effectParams: { mode: "earl", persist: true },
+    roundsRemaining: null,
+  };
+}
+
 export const CORPUS: Scenario[] = [
   // =========================================================================
   // Phase 5 — brewer selection (default / override / declared)
@@ -427,6 +440,68 @@ export const CORPUS: Scenario[] = [
       await ctx.seedRoll(roundId, p2.googleSub, 11);
       await ctx.seedActiveEffect(lastCuppa(p1.roomId, p1.googleSub));
       await ctx.seedActiveEffect(lastCuppa(p1.roomId, p2.googleSub));
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  // Issue #429: Earl of Earl Grey -- immune like anyone, except a force on the
+  // Earl passes the title to the forcing card's caster and the ex-Earl brews.
+  {
+    name: "05-earl-lowest-roller-next-lowest-brews",
+    phases: ["5"],
+    note: "The Earl rolls lowest and is passed over; the next-lowest roller brews.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("earl");
+      const p2 = await ctx.signUp("next-low");
+      const p3 = await ctx.signUp("high");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 3);
+      await ctx.seedRoll(roundId, p2.googleSub, 7);
+      await ctx.seedRoll(roundId, p3.googleSub, 18);
+      await ctx.seedActiveEffect(earl(p1.roomId, p1.googleSub));
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-earl-override-transfers-title",
+    phases: ["5"],
+    note: "A chosen override naming the Earl passes the title to its caster first; the ex-Earl brews.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("earl");
+      const p2 = await ctx.signUp("caster");
+      const p3 = await ctx.signUp("low");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 17);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      await ctx.seedRoll(roundId, p3.googleSub, 5);
+      await ctx.seedActiveEffect(earl(p1.roomId, p1.googleSub));
+      await ctx.seedCast(roundId, p2.googleSub, "Drip Tray", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "chosen" },
+        targetPlayerId: p1.googleSub,
+      });
+      return { roundId, resolveWith: p2.client };
+    },
+  },
+  {
+    name: "05-earl-declared-number-no-transfer",
+    phases: ["5"],
+    note: "A declared number the Earl rolled is a plain immunity skip -- no title transfer.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("earl-13");
+      const p2 = await ctx.signUp("declarer");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 13);
+      await ctx.seedRoll(roundId, p2.googleSub, 15);
+      await ctx.seedActiveEffect(earl(p1.roomId, p1.googleSub));
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p2.googleSub,
+        casterId: p2.googleSub,
+        cardName: "Inscribed Saucer",
+        effectKind: "declared_number_tea_maker",
+        effectParams: { number: 13 },
+        roundsRemaining: 1,
+      });
       return { roundId, resolveWith: p1.client };
     },
   },

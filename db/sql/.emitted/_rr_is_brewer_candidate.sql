@@ -7,8 +7,10 @@
 -- Brewer Immunity has exactly one form. p_immune is the selection's immunity
 -- map ({ player_id: { ae_id, caster_id, card_name, override_proof } }).
 --
--- The place the later candidate rules extend: the Earl's override-proof
--- transfer (#429), Tea Cosy (#434) and Roll Exemption (#433). `immutable`
+-- The place the later candidate rules extend: Tea Cosy (#434) and Roll
+-- Exemption (#433). The Earl of Earl Grey (#429) needs nothing here -- the
+-- Earl is no candidate at any tier; an override that forces tea on them is
+-- a title transfer handled at _rr_select_tea_maker's override tier. `immutable`
 -- holds only while it reads nothing but its arguments.
 --
 -- Internal: no grant to authenticated.
