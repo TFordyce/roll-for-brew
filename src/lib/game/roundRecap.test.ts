@@ -416,7 +416,7 @@ describe("buildRoundRecap", () => {
 
     it("the lowest roller is passed over for the next-lowest", () => {
       expect(only([immunityStep("lowest_roller")]).s.sentence).toBe(
-        "The Last Cuppa — Ada rolled lowest but can't be Tea Maker; the next-lowest roller brews",
+        "The Last Cuppa — Ada rolled lowest but can't be Tea Maker; the next-lowest roll brews",
       );
     });
 
@@ -432,7 +432,7 @@ describe("buildRoundRecap", () => {
           immunity: { tier: "all_immune", skippedCardName: null },
         }),
       ]);
-      expect(s.sentence).toBe("Every player is immune — immunity gives way to a Tie-Break Reroll");
+      expect(s.sentence).toBe("Every Participant is immune — immunity gives way to a Tie-Break Reroll");
     });
 
     it("reads immunity_tier and skipped_card_name off the raw Trace step", () => {

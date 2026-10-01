@@ -499,10 +499,11 @@ function sentenceFor(
           return `${card} — ${skipped ?? "the override"} can't make ${t} brew`;
         case "all_immune":
           return step.after.value === "tie"
-            ? "Every player is immune — immunity gives way to a Tie-Break Reroll"
-            : "Every player is immune — immunity gives way";
+            ? "Every Participant is immune — immunity gives way to a Tie-Break Reroll"
+            : "Every Participant is immune — immunity gives way";
+        case "lowest_roller":
         default:
-          return `${card} — ${t} rolled lowest but can't be Tea Maker; the next-lowest roller brews`;
+          return `${card} — ${t} rolled lowest but can't be Tea Maker; the next-lowest roll brews`;
       }
     }
     case "declared_number_tea_maker":
