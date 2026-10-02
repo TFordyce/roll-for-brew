@@ -282,17 +282,14 @@ export async function seedPastRound(
  * (Brew Debt, #432, migration 0137) — Loaf of Lipton (Roll Exemption,
  * #433, migration 0139) — Tea Cosy (immunity + Roll Exemption, #434,
  * migration 0141) — Marked for Brew (Draw Redirect, #436, migration 0143) —
- * and Stale Biscuit (Draw Redirect, #437, migration 0145) — are now live, so
- * 2 remain here. A test that force-holds
- * one of these must return it to the bench, not the deck, on cleanup —
- * releaseHeldCards below does that.
+ * Stale Biscuit (Draw Redirect, #437, migration 0145) — and Liquid Courage
+ * (Courage Token, #439, migration 0147) — are now live. Kettle Crash was
+ * un-benched long ago (#285, migration 0076) but lingered on this list, so
+ * releaseHeldCards re-benched it after any test that held it. None remain.
+ * A test that force-holds one of these must return it to the bench, not the
+ * deck, on cleanup — releaseHeldCards below does that.
  */
-export const BENCHED_SPELL_CARDS = [
-  // No effect rows
-  "Liquid Courage",
-  // Dead effect kind (1)
-  "Kettle Crash",
-] as const;
+export const BENCHED_SPELL_CARDS: readonly string[] = [];
 
 /**
  * Forces a specific catalog card into a player's hand directly (admin

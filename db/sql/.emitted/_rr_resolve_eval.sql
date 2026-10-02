@@ -18,6 +18,12 @@
 -- p_dry_run changes exactly one thing: the Calami-Tea tick die is not rolled
 -- (a dry run must not show a die the real resolve will re-roll).
 --
+-- Issue #439: a Courage Token spend (cast_inputs.courage_token_cast_id)
+-- shares its gift's card_instance_id but is not part of that card's group --
+-- Phase 1 group negation, wards, seize and backfire skip it, and it is
+-- negated exactly when its gift cast is. Phase 4a adds its die like any
+-- Pending Spell Die and tags the step `courage_token`.
+--
 -- Internal: no grant to authenticated.
 --
 -- Canonical source: this file is the source of truth for the function body.
@@ -344,6 +350,8 @@ begin
         select id, effect_kind, effect_params, parent_cast_id, reaction_window_id
           from public.spell_casts
          where card_instance_id = v_inv.source_group
+           -- issue #439: a Courage Token spend isn't part of the card's group
+           and not coalesce(cast_inputs ? 'courage_token_cast_id', false)
          order by seq
       loop
         if v_src_row.effect_kind in ('contested_negate', 'redirect') then
@@ -423,9 +431,12 @@ begin
       end if;
     end loop;
 
+    -- issue #439: a Courage Token spend shares the gifting card's instance
+    -- but isn't part of its card group; it is settled after this block.
     update public.spell_casts
        set negated = (card_instance_id = any (v_negated_groups))
-     where round_id = p_round_id;
+     where round_id = p_round_id
+       and not coalesce(cast_inputs ? 'courage_token_cast_id', false);
 
     update public.spell_casts
        set redirected_to_cast_id = null
@@ -510,6 +521,7 @@ begin
         join public.spell_cards sc on sc.id = sdi.card_id
        where c.round_id = p_round_id
          and c.card_instance_id = any (v_negated_groups)
+         and not coalesce(c.cast_inputs ? 'courage_token_cast_id', false)
        order by c.card_instance_id, c.seq
     loop
       v_trace := v_trace || jsonb_build_array(public._rr_trace_step(
@@ -529,6 +541,18 @@ begin
       v_step_index := v_step_index + 1;
     end loop;
   end if;
+
+  -- issue #439: a Courage Token spend is void exactly when its gift cast is
+  -- negated -- the token never existed. Counters can't target a spend, and
+  -- the card-group negation above skips it, so this is its only source of
+  -- negation. Runs every resolve: a gift countered in this round was settled
+  -- just above; a gift in an earlier round is already final.
+  update public.spell_casts sp
+     set negated = coalesce(gift.negated, false)
+    from public.spell_casts gift
+   where sp.round_id = p_round_id
+     and sp.cast_inputs ? 'courage_token_cast_id'
+     and gift.id = (sp.cast_inputs ->> 'courage_token_cast_id')::uuid;
 
   -- ------------------------------------------------------------------
   -- Pre-pass (issue #344): ward-blocked modifier transfers & snapshots.
@@ -551,7 +575,8 @@ begin
          and cast_inputs ? 'ward_blocked_by'
     ) g
    where sc.round_id = p_round_id
-     and sc.card_instance_id = g.card_instance_id;
+     and sc.card_instance_id = g.card_instance_id
+     and not coalesce(sc.cast_inputs ? 'courage_token_cast_id', false);
 
   for v_wb in
     select sc.id as cast_id, sc.caster_id,
@@ -780,6 +805,8 @@ begin
                  row_number() over (partition by effect_kind, effect_params order by seq) as rn
             from public.spell_casts
            where round_id = p_round_id and card_instance_id = v_inv.source_group
+             -- issue #439: a Courage Token spend isn't part of the card's group
+             and not coalesce(cast_inputs ? 'courage_token_cast_id', false)
         ) r
         where r.id = sc.id;
       end if;
@@ -1369,6 +1396,11 @@ begin
       'target_player', v_eff_target
     );
 
+    -- issue #439: a Courage Token spend's step says so.
+    if coalesce(v_row.cast_inputs ? 'courage_token_cast_id', false) then
+      v_el := v_el || jsonb_build_object('courage_token', true);
+    end if;
+
     if v_row.effect_kind = 'flat_modifier' then
       v_el := v_el || jsonb_build_object('flat', coalesce((v_row.effect_params->>'delta')::numeric, 0));
     elsif v_row.effect_kind = 'dice_modifier' then
@@ -1455,6 +1487,8 @@ begin
         join public.spell_casts pr on pr.card_instance_id = clr.victim_group
          and pr.effect_kind in
            ('flat_modifier', 'dice_modifier', 'modifier_multiplier', 'set_modifier')
+         -- issue #439: a Courage Token spend isn't part of the card's group
+         and not coalesce(pr.cast_inputs ? 'courage_token_cast_id', false)
        where clr.counter_backfired
        order by clr.counter_seq, pr.seq
     loop
@@ -1567,6 +1601,8 @@ begin
         jsonb_build_object('type', 'modifier', 'value', v_after),
         case when v_el ? 'backfire'
           then jsonb_build_object('backfire', true)
+          when v_el ? 'courage_token'
+          then jsonb_build_object('courage_token', true)
           else '{}'::jsonb
         end
       ));

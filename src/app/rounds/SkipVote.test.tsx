@@ -8,6 +8,7 @@ vi.mock("@/app/rounds/actions", () => ({
   voteSkipReactionWindowAction: vi.fn(),
   passReactionWindowAction: vi.fn(),
   castReactionSpellCardAction: vi.fn(),
+  spendCourageTokenAction: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 vi.mock("@/lib/supabase/useRoomChannel", () => ({ useRoomChannel: vi.fn() }));
@@ -97,5 +98,46 @@ describe("ReactionBanner with a Skip vote (issue #411)", () => {
     expect(html).toContain("Pass");
     expect(html).toContain("The table is voting to skip. Pass or react now.");
     expect(html).not.toContain("Skip waiting");
+  });
+});
+
+describe("ReactionBanner with a Courage Token (issue #439)", () => {
+  const base = {
+    roomId: "room",
+    roundId: "r1",
+    selfPlayerId: "me",
+    heldReactionCard: null,
+    stack: [],
+    participants: [],
+    pendingPlayers: [],
+    skipVote: null,
+  };
+  const token = { effectId: "e1", giverPlayerId: "ada", giverDisplayName: "Ada", dice: "1d6" };
+
+  it("prompts a token holder with no Reaction card to spend it, or pass", () => {
+    const html = renderToStaticMarkup(
+      <ReactionBanner {...base} eligible alreadyPassed={false} courageTokens={[token]} />,
+    );
+    expect(html).toContain("Courage Token</strong> from Ada");
+    expect(html).toContain("Add d6");
+    expect(html).toContain("Pass");
+    expect(html).not.toContain("React with");
+  });
+
+  it("counts several tokens and offers the oldest", () => {
+    const html = renderToStaticMarkup(
+      <ReactionBanner
+        {...base}
+        eligible
+        alreadyPassed={false}
+        courageTokens={[token, { ...token, effectId: "e2", giverPlayerId: "ben", giverDisplayName: "Ben" }]}
+      />,
+    );
+    expect(html).toContain("from Ada (2 held)");
+  });
+
+  it("offers nothing once the holder has passed", () => {
+    const html = renderToStaticMarkup(<ReactionBanner {...base} eligible alreadyPassed courageTokens={[token]} />);
+    expect(html).not.toContain("Courage Token");
   });
 });

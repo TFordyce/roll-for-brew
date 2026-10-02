@@ -14,6 +14,10 @@
 -- for Brew's mark) is promoted unbounded too -- its window is counted in the
 -- target's participated rounds by _rr_active_effects_as_of, not in
 -- rounds_remaining.
+-- and issue #439: a `courage_token` effect row marked persist = true
+-- (Liquid Courage's Courage Token) is promoted unbounded too -- its 3 rounds
+-- are the recipient's participated rounds from the gift round, counted by
+-- _rr_active_effects_as_of.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -41,12 +45,13 @@ begin
   -- means "not persistent" for them (unchanged from 0032) -- EXCEPT an
   -- effect row explicitly marked persist = true: Prophe-Tea's rest-of-day
   -- advantage (issue #320) and The Last Cuppa's rest-of-day brewer immunity
-  -- (issue #428), and Marked for Brew's Draw Redirect mark (issue #436).
+  -- (issue #428), Marked for Brew's Draw Redirect mark (issue #436) and
+  -- Liquid Courage's Courage Token (issue #439).
   -- Those record an unbounded row exactly as a NULL-duration ward does.
   if v_duration is null
      and p_effect_kind <> 'ward'
      and not (
-       p_effect_kind in ('advantage', 'disadvantage', 'brewer_immunity', 'draw_redirect')
+       p_effect_kind in ('advantage', 'disadvantage', 'brewer_immunity', 'draw_redirect', 'courage_token')
        and coalesce((p_effect_params ->> 'persist')::boolean, false)
      )
   then

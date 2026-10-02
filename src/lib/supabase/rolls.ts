@@ -257,6 +257,11 @@ export type ResolutionTraceStep = {
    * second-lowest).
    */
   rolloffOpponents: string[];
+  /**
+   * Issue #439: a `dice_modifier` step that is a spent Courage Token (Liquid
+   * Courage) rather than a cast card. false on every other step.
+   */
+  courageToken: boolean;
 };
 
 /** Issue #427: a `conditional_chosen` override's condition (effect_params.condition). */
@@ -360,6 +365,9 @@ type RawTraceStep = {
   // Issue #431: a fired named_tea_maker_rolloff step's opponents. Absent on
   // every other step.
   rolloff_opponent_ids?: string[] | null;
+  // Issue #439: a spent Courage Token's dice_modifier step. Absent on every
+  // other step.
+  courage_token?: boolean;
 };
 
 function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
@@ -425,6 +433,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
       ? { newEarlPlayerId: raw.new_earl_player_id, forcingCardName: raw.forcing_card_name ?? null }
       : null,
     rolloffOpponents: raw.rolloff_opponent_ids ?? [],
+    courageToken: raw.courage_token ?? false,
   };
 }
 

@@ -37,10 +37,12 @@ begin
   if v_casting_time = 'R' then
     if v_target = 'CARD' then
       -- Another player's cast to answer. Brewmageddon itself always is one.
+      -- A Courage Token spend (issue #439) isn't a card, so it isn't one.
       return exists (
         select 1 from public.spell_casts c
          where c.round_id = p_round_id and c.caster_id <> p_player_id
            and c.effect_kind is distinct from 'forfeit'
+           and not coalesce(c.cast_inputs ? 'courage_token_cast_id', false)
       );
     elsif v_target = 'OPPONENT' then
       return v_others >= 1;
