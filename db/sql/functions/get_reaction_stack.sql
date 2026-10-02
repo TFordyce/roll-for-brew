@@ -3,7 +3,8 @@
 -- The reaction stack also carries the round's Brewmageddon cast while a
 -- window is open: it is always a legal CARD target (#385), and a compelled
 -- CARD-target Reaction holder must be able to pick it even when no cast is
--- attached to the window. Otherwise unchanged (0021).
+-- attached to the window. Issue #439: a Courage Token spend is left off the
+-- stack -- it isn't a card. Otherwise unchanged (0021).
 create or replace function public.get_reaction_stack(p_round_id uuid)
 returns table (
   cast_id uuid, card_name text, caster_id text, caster_name text,
@@ -22,7 +23,10 @@ begin
       join public.spell_cards sc on sc.id = sdi.card_id
       join public.players p on p.id = casts.caster_id
       left join public.spell_reaction_windows w on w.id = casts.reaction_window_id
-     where (w.round_id = p_round_id and w.status = 'open')
+     where (w.round_id = p_round_id and w.status = 'open'
+            -- issue #439: a Courage Token spend isn't a card, so it is never
+            -- on the stack a CARD-target Reaction picks from.
+            and not coalesce(casts.cast_inputs ? 'courage_token_cast_id', false))
         or (casts.round_id = p_round_id
             and casts.effect_kind = 'compel_cast'
             and exists (

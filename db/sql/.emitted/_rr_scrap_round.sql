@@ -188,6 +188,9 @@ begin
      set ended_in_round_id = null
    where ended_in_round_id = p_round_id;
 
+  -- Issue #439: this also deletes any Courage Token spend rows, so a token
+  -- spent in the scrapped attempt is unspent again (spent is derived from
+  -- those rows by _rr_active_effects_as_of).
   delete from public.spell_casts
    where round_id = p_round_id and effect_kind <> 'round_replay';
 

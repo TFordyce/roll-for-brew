@@ -470,8 +470,14 @@ function sentenceFor(
         ? `${played} — ${t} subtracts ${rolled} from their roll`
         : `${played} — ${t} subtracts a die from their roll`;
     }
-    case "flat_modifier":
     case "dice_modifier":
+      // Issue #439: a spent Courage Token isn't a card being played.
+      if (step.courageToken) {
+        const added = Number(step.after.value) - Number(step.before.value);
+        return `${t} spent a Courage Token${k ? ` (${k})` : ""} — +${added} to their roll`;
+      }
+      return `${played} on ${t}`;
+    case "flat_modifier":
       return `${played} on ${t}`;
     case "modifier_multiplier":
       return `${played} — ${t}'s modifier is multiplied`;

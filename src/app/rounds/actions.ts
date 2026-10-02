@@ -36,7 +36,12 @@ import {
   setSpellCastTarget,
   setTeaPartyRevoltTarget,
 } from "@/lib/supabase/spellCasts";
-import { castReactionSpellCard, passReactionWindow, voteSkipReactionWindow } from "@/lib/supabase/reactionWindow";
+import {
+  castReactionSpellCard,
+  passReactionWindow,
+  spendCourageToken,
+  voteSkipReactionWindow,
+} from "@/lib/supabase/reactionWindow";
 import {
   isStaleRoundError,
   maybeRecordPendingSpellDraw,
@@ -599,6 +604,39 @@ export async function castReactionSpellCardAction(
   const supabase = await createClient();
   try {
     await castReactionSpellCard(supabase, roundId, { targetPlayerId, targetCastId });
+  } catch (error) {
+    return resolveSpellCastError(error);
+  }
+
+  await advanceRound(supabase, roundId, "reactionWindowChanged");
+
+  const roomId = await getRoundRoomId(supabase, roundId);
+  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+
+  revalidateRoundSurfaces();
+  return { status: "idle" };
+}
+
+/**
+ * Spends the caller's Courage Token (issue #439, Liquid Courage) in the
+ * round's open Layer-0 reaction window: a Pending Spell Die on their own
+ * roll. Like a Reaction cast it reopens the poll, so it raises
+ * reactionWindowChanged (the window may have closed if the spender was the
+ * last one being waited on) and broadcasts the change.
+ */
+export async function spendCourageTokenAction(
+  _prevState: SpellCastActionState,
+  formData: FormData,
+): Promise<SpellCastActionState> {
+  const roundId = formData.get("roundId");
+
+  if (typeof roundId !== "string" || !roundId) {
+    throw new Error("spendCourageTokenAction: missing roundId");
+  }
+
+  const supabase = await createClient();
+  try {
+    await spendCourageToken(supabase, roundId);
   } catch (error) {
     return resolveSpellCastError(error);
   }

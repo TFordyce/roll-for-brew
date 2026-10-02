@@ -1,0 +1,53 @@
+{
+  "scenario": "4a-courage-token-spend",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "giver",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "modifier",
+        "value": 5
+      },
+      "index": 0,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Liquid Courage",
+        "active_effect_id": null,
+        "caster_player_id": "P:spender"
+      },
+      "display_kind": "dice_modifier",
+      "courage_token": true,
+      "target_player": "P:spender"
+    }
+  ],
+  "players": [
+    {
+      "player": "giver",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "spender",
+      "nat": null,
+      "roll": 9,
+      "total": 14,
+      "composed": 5,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

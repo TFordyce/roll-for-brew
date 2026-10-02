@@ -538,6 +538,38 @@ export const CORPUS: Scenario[] = [
     },
   },
   {
+    // Issue #439: the spend points at the gift's card instance and names the
+    // gift cast; the gift itself traces nothing.
+    name: "4a-courage-token-spend",
+    phases: ["4a", "5"],
+    note: "A spent Courage Token adds its rolled d6 to the spender's composed modifier as one step tagged courage_token.",
+    async seed(ctx) {
+      const spender = await ctx.signUp("spender");
+      const giver = await ctx.signUp("giver");
+      const { castId: giftCastId } = await ctx.seedActiveEffect({
+        roomId: spender.roomId,
+        targetPlayerId: spender.googleSub,
+        casterId: giver.googleSub,
+        cardName: "Liquid Courage",
+        effectKind: "courage_token",
+        effectParams: { dice: "1d6", persist: true, participated_rounds_from_cast: 3 },
+      });
+      const roundId = await ctx.openAndCloseRound(giver, [spender]);
+      await ctx.seedRoll(roundId, spender.googleSub, 9);
+      await ctx.seedRoll(roundId, giver.googleSub, 12);
+      const windowId = await ctx.openWindow(roundId);
+      await ctx.seedCast(roundId, spender.googleSub, "Liquid Courage", {
+        effectKind: "dice_modifier",
+        effectParams: { dice: "1d6" },
+        targetPlayerId: spender.googleSub,
+        reactionWindowId: windowId,
+        castInputs: { courage_token_cast_id: giftCastId, dice_roll: 5 },
+        extra: { target_role: "CASTER" },
+      });
+      return { roundId, resolveWith: giver.client };
+    },
+  },
+  {
     // Issue #406: roll-time totals (10 vs 12) don't tie; the composed ones do.
     // The Reroll Chain must read this tie from layer 1's participants, since
     // re-judging it on roll-time modifiers would miss it.

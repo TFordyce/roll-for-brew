@@ -78,6 +78,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     pickedBy: null,
     earlTransfer: null,
     rolloffOpponents: [],
+    courageToken: false,
     ...overrides,
   };
 }
@@ -567,6 +568,38 @@ describe("buildRoundRecap", () => {
       ]);
       expect(parsed!.rolloffOpponents).toEqual(["ben", "cass"]);
       expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.rolloffOpponents).toEqual([]);
+    });
+  });
+
+  describe("Liquid Courage spend (issue #439)", () => {
+    const spend = (over: Partial<ResolutionTraceStep> = {}) =>
+      step({
+        displayKind: "dice_modifier",
+        sourceCast: { castId: "C0", activeEffectId: null, cardName: "Liquid Courage", casterPlayerId: "ada" },
+        targetPlayer: "ada",
+        before: { type: "modifier", value: 0 },
+        after: { type: "modifier", value: 5 },
+        courageToken: true,
+        ...over,
+      });
+    const render = (trace: ResolutionTraceStep[]) => {
+      const casts = [cast({ castId: "C0", cardName: "Liquid Courage", casterPlayerId: "ada", targetPlayerId: "ada", effectKind: "dice_modifier" })];
+      return buildRoundRecap({ data: data({ casts, trace }), displayName });
+    };
+
+    it("says the holder spent a Courage Token and what it added", () => {
+      const [s] = render([spend()]).phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Ada spent a Courage Token (Liquid Courage) — +5 to their roll");
+    });
+
+    it("a plain dice_modifier step keeps the card sentence", () => {
+      const [s] = render([spend({ courageToken: false })]).phases.flatMap((p) => p.steps);
+      expect(s!.sentence).toBe("Ada played Liquid Courage on Ada");
+    });
+
+    it("reads courage_token off the raw Trace step", () => {
+      expect(parseResolutionTrace([{ ...step(), display_kind: "dice_modifier", courage_token: true }])[0]!.courageToken).toBe(true);
+      expect(parseResolutionTrace([{ ...step(), display_kind: "dice_modifier" }])[0]!.courageToken).toBe(false);
     });
   });
 

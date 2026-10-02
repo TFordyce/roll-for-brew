@@ -7,7 +7,8 @@
 -- body with its four inline poll_round bumps folded into
 -- _rr_reopen_or_close_reaction_poll). revoke/grant unchanged since 0096.
 -- Issue #440: every return runs _rr_finish_compelled_cast, which tags a
--- compelled Reaction holder's cast compelled_by Brewmageddon.
+-- compelled Reaction holder's cast compelled_by Brewmageddon. Issue #439: a
+-- CARD-target Reaction can't target a Courage Token spend.
 --
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
@@ -93,12 +94,16 @@ begin
     if p_target_cast_id is null then
       raise exception 'cast_reaction_spell_card: this card requires a target cast';
     end if;
+    -- issue #439: a Courage Token spend isn't a card, so no CARD-target
+    -- Reaction can target it -- it reads as not found, as it is not on the
+    -- stack (get_reaction_stack) either.
     select casts.target_player_id, casts.card_instance_id, sc2.tier
       into v_target_target_player, v_target_group, v_target_tier
       from public.spell_casts casts
       join public.spell_deck_instances sdi2 on sdi2.id = casts.card_instance_id
       join public.spell_cards sc2 on sc2.id = sdi2.card_id
-     where casts.id = p_target_cast_id and casts.round_id = p_round_id;
+     where casts.id = p_target_cast_id and casts.round_id = p_round_id
+       and not coalesce(casts.cast_inputs ? 'courage_token_cast_id', false);
 
     if v_target_tier is null then
       raise exception 'cast_reaction_spell_card: target cast not found in this round';

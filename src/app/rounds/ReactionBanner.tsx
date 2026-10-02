@@ -3,10 +3,10 @@
 import { useActionState } from "react";
 import { useRouter } from "next/navigation";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
-import { castReactionSpellCardAction, passReactionWindowAction } from "@/app/rounds/actions";
+import { castReactionSpellCardAction, passReactionWindowAction, spendCourageTokenAction } from "@/app/rounds/actions";
 import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
-import type { ReactionStackEntry, ReactionWindowPendingPlayer } from "@/lib/supabase/reactionWindow";
+import type { CourageToken, ReactionStackEntry, ReactionWindowPendingPlayer } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import { orderStackForResolution } from "@/lib/game/reactionStack";
 import { joinNames } from "@/lib/game/displayName";
@@ -26,6 +26,11 @@ const initialCastState: SpellCastActionState = { status: "idle" };
  *
  * `compelled` (issue #440): Brewmageddon obliges the caller to play their
  * Reaction card here, so there is no Pass; being skipped forfeits the card.
+ *
+ * `courageTokens` (issue #439): the caller's unspent Liquid Courage tokens,
+ * passed only for a Layer-0 window. Each is a Reaction Source on its own, so
+ * a player with no Reaction card is still prompted, and may spend one to add
+ * 1d6 to their roll (a Pending Spell Die they then roll).
  */
 export function ReactionBanner({
   roomId,
@@ -39,6 +44,7 @@ export function ReactionBanner({
   pendingPlayers,
   skipVote,
   compelled = false,
+  courageTokens = [],
 }: {
   roomId: string;
   roundId: string;
@@ -51,9 +57,11 @@ export function ReactionBanner({
   pendingPlayers: ReactionWindowPendingPlayer[];
   skipVote: SkipVoteState | null;
   compelled?: boolean;
+  courageTokens?: CourageToken[];
 }) {
   const router = useRouter();
   const [castState, castFormAction] = useActionState(castReactionSpellCardAction, initialCastState);
+  const [spendState, spendFormAction] = useActionState(spendCourageTokenAction, initialCastState);
 
   useRoomChannel(roomId, roundId, {
     "reaction-window-changed": () => router.refresh(),
@@ -127,6 +135,25 @@ export function ReactionBanner({
           {castState.status === "error" ? (
             <p role="alert" className="w-full font-body text-xs text-red-500">
               {castState.message}
+            </p>
+          ) : null}
+        </form>
+      ) : null}
+
+      {eligible && courageTokens.length > 0 && !alreadyPassed ? (
+        <form action={spendFormAction} className="mb-2 flex flex-wrap items-center gap-2">
+          <input type="hidden" name="roundId" value={roundId} />
+          <span className="font-body text-sm text-parchment">
+            Spend a <strong className="text-gilt-bright">Courage Token</strong> from{" "}
+            {courageTokens[0]!.giverDisplayName}
+            {courageTokens.length > 1 ? ` (${courageTokens.length} held)` : ""}?
+          </span>
+          <SubmitButton className="rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
+            Add {courageTokens[0]!.dice.replace(/^1d/, "d")}
+          </SubmitButton>
+          {spendState.status === "error" ? (
+            <p role="alert" className="w-full font-body text-xs text-red-500">
+              {spendState.message}
             </p>
           ) : null}
         </form>

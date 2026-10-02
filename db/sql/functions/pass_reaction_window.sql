@@ -2,7 +2,9 @@
 --
 -- A compelled Reaction holder cannot pass the Layer-0 window: they must cast
 -- (or be skipped, which forfeits). Released holders (Brewmageddon countered)
--- pass as normal. Otherwise unchanged (0064).
+-- pass as normal. Issue #439: who counts as passed is read off
+-- _is_reaction_source, the predicate count_eligible_reaction_holders counts,
+-- so a Courage Token holder's pass counts. Otherwise unchanged (0064).
 create or replace function public.pass_reaction_window(p_round_id uuid)
 returns boolean
 language plpgsql
@@ -47,11 +49,8 @@ begin
 
   select count(*) into v_passed_count
     from public.spell_reaction_passes p
-    join public.spell_deck_instances sdi on sdi.held_by_player = p.player_id
-    join public.spell_cards sc on sc.id = sdi.card_id
-    join public.round_participants rp on rp.player_id = sdi.held_by_player
    where p.window_id = v_window_id and p.poll_round = v_poll_round
-     and sdi.location = 'held' and sc.casting_time = 'R' and rp.round_id = p_round_id;
+     and public._is_reaction_source(p_round_id, p.player_id);
 
   if v_passed_count >= v_eligible_count then
     perform public.close_reaction_window(v_window_id);

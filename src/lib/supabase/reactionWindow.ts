@@ -59,8 +59,9 @@ export type ReactionWindowPendingPlayer = {
 
 /**
  * Calls get_reaction_window_pending_players (0065): every round participant
- * currently eligible for the round's open reaction window (holding a usable
- * Reaction card) who hasn't yet passed or cast this poll round — the ribbon
+ * currently eligible for the round's open reaction window (holding a
+ * Reaction Source: a usable Reaction card or, issue #439, a Courage Token at
+ * Layer 0) who hasn't yet passed or cast this poll round — the ribbon
  * banner (ReactionBanner.tsx) names these players instead of showing a
  * generic "waiting" message. Empty if no window is open.
  */
@@ -126,6 +127,44 @@ export async function castReactionSpellCard(
     p_target_cast_id: options.targetCastId ?? null,
     p_spend_amount: options.spendAmount ?? null,
   });
+  if (error) throw error;
+  return data as string;
+}
+
+export type CourageToken = {
+  effectId: string;
+  giverPlayerId: string;
+  giverDisplayName: string;
+  dice: string;
+};
+
+/**
+ * Calls get_my_courage_tokens (issue #439): the caller's live, unspent
+ * Courage Tokens (Liquid Courage) as of the round, oldest first. Only
+ * spendable in a Layer-0 window -- the banner checks the window's layer.
+ */
+export async function getMyCourageTokens(supabase: SupabaseClient, roundId: string): Promise<CourageToken[]> {
+  const { data, error } = await supabase.rpc("get_my_courage_tokens", { p_round_id: roundId });
+  if (error) throw error;
+
+  return ((data ?? []) as { effect_id: string; giver_player_id: string; giver_display_name: string; dice: string }[]).map(
+    (row) => ({
+      effectId: row.effect_id,
+      giverPlayerId: row.giver_player_id,
+      giverDisplayName: row.giver_display_name,
+      dice: row.dice,
+    }),
+  );
+}
+
+/**
+ * Calls spend_courage_token (issue #439): spends the caller's oldest Courage
+ * Token in the open Layer-0 window, recording a Pending Spell Die (1d6) on
+ * their own roll; returns the spend's cast id. Reopens the poll like a
+ * Reaction cast. Raises RFB04 with no open window, RFB56 with nothing to spend.
+ */
+export async function spendCourageToken(supabase: SupabaseClient, roundId: string): Promise<string> {
+  const { data, error } = await supabase.rpc("spend_courage_token", { p_round_id: roundId });
   if (error) throw error;
   return data as string;
 }

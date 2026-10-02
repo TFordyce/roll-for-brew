@@ -53,6 +53,7 @@ import {
   getTeaPartyRevoltPicker,
 } from "@/lib/supabase/spellCasts";
 import {
+  getMyCourageTokens,
   getOpenReactionWindow,
   getReactionSkipVote,
   getReactionStack,
@@ -191,6 +192,10 @@ export default async function HomePage() {
     openReactionWindow && activeRound ? await getReactionWindowPendingPlayers(supabase, activeRound.id) : [];
   const reactionSkipVote =
     openReactionWindow && activeRound ? await getReactionSkipVote(supabase, activeRound.id) : null;
+  // Liquid Courage (issue #439): a Courage Token is only spendable in a
+  // Layer-0 window.
+  const myCourageTokens =
+    openReactionWindow?.layer === 0 && activeRound ? await getMyCourageTokens(supabase, activeRound.id) : [];
 
   // Brewmageddon (issue #440): what the caller still owes it, and who else the
   // Compelled Cast step is holding rolling for. Only a closed Layer-0 round
@@ -533,6 +538,7 @@ export default async function HomePage() {
           pendingPlayers={reactionWindowPendingPlayers}
           skipVote={reactionSkipVote}
           compelled={myCompelledCast?.castingTime === "R"}
+          courageTokens={myCourageTokens}
         />
       ) : null}
 
