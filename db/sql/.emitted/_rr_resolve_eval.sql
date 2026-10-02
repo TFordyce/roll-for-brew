@@ -350,6 +350,8 @@ begin
         select id, effect_kind, effect_params, parent_cast_id, reaction_window_id
           from public.spell_casts
          where card_instance_id = v_inv.source_group
+           -- issue #439: a Courage Token spend isn't part of the card's group
+           and not coalesce(cast_inputs ? 'courage_token_cast_id', false)
          order by seq
       loop
         if v_src_row.effect_kind in ('contested_negate', 'redirect') then

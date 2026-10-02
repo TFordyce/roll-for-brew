@@ -62,13 +62,14 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     // migration 0139) — Tea Cosy (#434, migration 0141) — Marked for Brew
     // (#436, migration 0143) — Stale Biscuit (#437, migration 0145) — and
     // Liquid Courage (#439, migration 0147) — are since implemented and
-    // un-benched, so 1.
-    expect(new Set(BENCHED_SPELL_CARDS).size).toBe(1);
+    // un-benched, and Kettle Crash (#285, migration 0076) was never re-benched,
+    // so the bench is empty.
+    expect(BENCHED_SPELL_CARDS).toEqual([]);
 
     const documented = new Set<string>(BENCHED_SPELL_CARDS);
     const benched = await benchedCardNames();
 
-    expect(benched.length).toBeGreaterThan(0);
+    expect(benched).toEqual([]);
     for (const name of benched) {
       expect(documented.has(name)).toBe(true);
     }
@@ -88,7 +89,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: non-working cards benched from th
     );
     const total = Object.values(byLocation).reduce((a, b) => a + b, 0);
     expect(total).toBe(71);
-    expect(byLocation.benched ?? 0).toBeGreaterThan(0);
+    // Every card is live (issue #439 un-benched the last one).
+    expect(byLocation.benched ?? 0).toBe(0);
     expect(byLocation.in_deck ?? 0).toBeGreaterThan(0);
   });
 

@@ -16,6 +16,9 @@ import type { SkipVoteState } from "@/lib/game/skipVote";
 
 const initialCastState: SpellCastActionState = { status: "idle" };
 
+/** A single die reads as the table says it: "1d6" → "d6". */
+const dieLabel = (dice: string) => dice.replace(/^1d/, "d");
+
 /**
  * The reaction window's ribbon banner (issue #68): a bottom bar over the
  * already-revealed dice screen (RoundReveal/TieBanner render above it, not
@@ -149,7 +152,7 @@ export function ReactionBanner({
             {courageTokens.length > 1 ? ` (${courageTokens.length} held)` : ""}?
           </span>
           <SubmitButton className="rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
-            Add {courageTokens[0]!.dice.replace(/^1d/, "d")}
+            Add {dieLabel(courageTokens[0]!.dice)}
           </SubmitButton>
           {spendState.status === "error" ? (
             <p role="alert" className="w-full font-body text-xs text-red-500">
