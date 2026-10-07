@@ -508,4 +508,109 @@ describe.skipIf(!hasAnonTestEnv)("Carried Effects (issue #472)", () => {
       .eq("player_id", caster.googleSub);
     expect(casterRows).toEqual([]);
   });
+
+  // ==========================================================================
+  // Readers, dispel and gating (issue #475)
+  // ==========================================================================
+
+  /** An open round in `roomId` with `participants`, started now. */
+  async function seedOpenRound(roomId: string, participants: string[], starter: string) {
+    const { data, error } = await admin
+      .from("rounds")
+      .insert({ room_id: roomId, started_by: starter, status: "open", started_at: new Date().toISOString() })
+      .select("id")
+      .single();
+    expect(error).toBeNull();
+    const roundId = (data as { id: string }).id;
+    cleanup.trackRound(roundId);
+    const { error: pErr } = await admin
+      .from("round_participants")
+      .insert(participants.map((player_id) => ({ round_id: roundId, player_id })));
+    expect(pErr).toBeNull();
+    return roundId;
+  }
+
+  it("the room badge reader lists a carried effect with Participation Clock rounds-left that reaches 0 as it stops being live", async () => {
+    const [caster, target] = await Promise.all([signUp("badge-caster"), signUp("badge-target")]);
+    const { day2, effectId } = await dayOneEffect({
+      caster: caster.googleSub,
+      target: target.googleSub,
+      roundsRemaining: 3,
+    });
+    await seedRound(day2, [target.googleSub], 200, target.googleSub);
+    const badges = async () => {
+      const { data, error } = await target.client.rpc("get_room_active_effects", { p_room_id: day2 });
+      expect(error).toBeNull();
+      return (data as { effect_id: string; rounds_remaining: number }[]).filter((b) => b.effect_id === effectId);
+    };
+    // Cast round counted; the room's latest round is the as-of round: 3 - 1.
+    expect((await badges()).map((b) => b.rounds_remaining)).toEqual([2]);
+    await seedRound(day2, [target.googleSub], 100, target.googleSub);
+    expect((await badges()).map((b) => b.rounds_remaining)).toEqual([1]);
+    // Cast round + 2 day-2 rounds = 3 of 3 before the latest round: gone.
+    await seedRound(day2, [target.googleSub], 50, target.googleSub);
+    expect(await badges()).toEqual([]);
+  });
+
+  it("Lesser Detox cast on day 2 lists and ends a day-1 carried effect, for every later room", async () => {
+    const [caster, target, detoxer] = await Promise.all([
+      signUp("dispel-caster"),
+      signUp("dispel-target"),
+      signUp("dispel-detoxer"),
+    ]);
+    const { day2, effectId } = await dayOneEffect({
+      caster: caster.googleSub,
+      target: target.googleSub,
+      roundsRemaining: 5,
+      card: "Cloud of Cream",
+      day2Extra: [detoxer.googleSub],
+    });
+    const open = await seedOpenRound(day2, [target.googleSub, detoxer.googleSub], target.googleSub);
+    await forceHold(admin, detoxer.googleSub, "Lesser Detox");
+
+    const { data: offered, error: offErr } = await detoxer.client.rpc("get_dispellable_active_effects", {
+      p_round_id: open,
+    });
+    expect(offErr).toBeNull();
+    expect((offered as { effect_id: string }[]).map((r) => r.effect_id)).toContain(effectId);
+
+    const { error: endErr } = await detoxer.client.rpc("end_active_effect", {
+      p_round_id: open,
+      p_effect_id: effectId,
+    });
+    expect(endErr).toBeNull();
+    expect((await liveAsOf(day2, open)).map((r) => r.id)).not.toContain(effectId);
+
+    const day3 = await seedDedicatedRoom(admin, cleanup, [target.googleSub]);
+    const d3 = await seedRound(day3, [target.googleSub], 0, target.googleSub);
+    expect(await liveAsOf(day3, d3)).toEqual([]);
+  });
+
+  it("a duration ward gates in the target's next room; a no-duration ward is not visible there", async () => {
+    const [caster, target] = await Promise.all([signUp("gate-caster"), signUp("gate-target")]);
+    const ward = { polarity: ["positive"], domain: ["roll"] };
+    const carried = await dayOneEffect({
+      caster: caster.googleSub,
+      target: target.googleSub,
+      roundsRemaining: 3,
+      effectKind: "ward",
+      effectParams: ward,
+      card: "Jinxed Biscuit",
+    });
+    const d2 = await seedRound(carried.day2, [target.googleSub], 100, target.googleSub);
+    // _rr_active_ward_gate and cast_spell_card's Bes-Tea gate read exactly
+    // this projection, so a ward live here gates in the new room.
+    expect((await liveAsOf(carried.day2, d2)).map((r) => r.id)).toEqual([carried.effectId]);
+
+    const unbounded = await dayOneEffect({
+      caster: caster.googleSub,
+      target: target.googleSub,
+      roundsRemaining: null,
+      effectKind: "ward",
+      effectParams: ward,
+      card: "Jinxed Biscuit",
+    });
+    const u2 = await seedRound(unbounded.day2, [target.googleSub], 90, target.googleSub);
+    expect(await liveAsOf(unbounded.day2, u2)).toEqual([]);
+  });
 });

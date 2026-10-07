@@ -71,7 +71,12 @@ begin
     raise exception 'end_active_effect: this effect cannot be dispelled';
   end if;
 
-  if v_target_room_id <> v_room_id then
+  if v_target_room_id <> v_room_id
+     and not exists (
+       select 1 from public._rr_active_effects_as_of(v_room_id, p_round_id) live
+        where live.id = p_effect_id
+     )
+  then
     raise exception 'end_active_effect: active effect is not in this room';
   end if;
 

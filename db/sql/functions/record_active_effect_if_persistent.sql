@@ -19,6 +19,9 @@
 -- are the recipient's participated rounds from the gift round, counted by
 -- _rr_active_effects_as_of.
 --
+-- Issue #475: ward-blocks-ward also sees a Carried Effect ward from an earlier
+-- room (read through _rr_active_effects_as_of).
+--
 -- Canonical source: this file is the source of truth for the function body.
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
 -- generated migration. See db/sql/README.md.
@@ -68,7 +71,14 @@ begin
 
     if exists (
       select 1
-        from public.spell_active_effects sae
+        from (
+          select * from public.spell_active_effects where room_id = p_room_id
+          union all
+          -- Carried Effects (#475): a duration ward cast in an earlier room
+          -- still stands on this target
+          select * from public._rr_active_effects_as_of(p_room_id, v_new_round)
+           where v_new_round is not null
+        ) sae
         left join public.spell_casts wc on wc.id = sae.source_cast_id
        where sae.room_id = p_room_id
          and sae.target_player_id = p_target_player_id

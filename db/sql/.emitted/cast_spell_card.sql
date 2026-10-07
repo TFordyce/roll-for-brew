@@ -357,7 +357,7 @@ begin
     if v_card_name = 'Bes-Tea' then
       select sae.source_cast_id, scw.name
         into v_ward_cast_id, v_ward_card_name
-        from public.spell_active_effects sae
+        from public._rr_active_effects_as_of(v_room_id, p_round_id) sae
         join public.spell_cards scw on scw.id = sae.card_id
        where sae.room_id = v_room_id
          and sae.target_player_id = v_final_target
