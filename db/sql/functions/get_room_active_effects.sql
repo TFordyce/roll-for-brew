@@ -10,6 +10,9 @@
 -- taken part in from the source cast's round -- the same count the
 -- projection's liveness test uses, so a live token never badges below 1.
 --
+-- Issue #472: a duration row badges its Participation Clock rounds left (the
+-- target's participated rounds, across rooms), like the projection's test.
+--
 -- Body from migration 0084 plus the participated-rounds branch; grants as
 -- 0084.
 --
@@ -69,7 +72,8 @@ begin
              when sae.rounds_remaining is null then null
              else greatest(
                sae.rounds_remaining
-               - public._rr_effect_rounds_elapsed(p_room_id, sr.started_at, v_latest_started_at),
+               - public._rr_participated_rounds_elapsed(
+                   p_room_id, sae.target_player_id, sr.started_at, v_latest_started_at),
                0
              )::integer
            end as rounds_remaining

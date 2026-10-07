@@ -120,17 +120,18 @@ describe.skipIf(!hasAnonTestEnv)("draw hooks and participated rounds (#435)", ()
         status: "cancelled",
         participantIds: [target!, other!],
       });
-      // Another room's round -- out of scope.
+      // Another room's round -- counted: the Participation Clock runs across
+      // rooms of the same kind (#472).
       await seedRound({ roomId: otherRoomId, startedBy: other!, startedAt: at(5), participantIds: [target!] });
       // r6: target takes part again.
       const r6 = await seedRound({ roomId, startedBy: other!, startedAt: at(6), participantIds: [target!, other!] });
 
-      // Unbounded as-of: r1, r2, r6.
-      expect(await participatedElapsed(roomId, target!, r1.startedAt, null)).toBe(3);
-      // As-of bound is strict, like _rr_effect_rounds_elapsed: r6 excluded.
-      expect(await participatedElapsed(roomId, target!, r1.startedAt, r6.startedAt)).toBe(2);
-      // Source bound is inclusive: from r2 -> r2, r6.
-      expect(await participatedElapsed(roomId, target!, r2.startedAt, null)).toBe(2);
+      // Unbounded as-of: r1, r2, the other room's round, r6.
+      expect(await participatedElapsed(roomId, target!, r1.startedAt, null)).toBe(4);
+      // As-of bound is strict: r6 excluded.
+      expect(await participatedElapsed(roomId, target!, r1.startedAt, r6.startedAt)).toBe(3);
+      // Source bound is inclusive: from r2 -> r2, the other room's round, r6.
+      expect(await participatedElapsed(roomId, target!, r2.startedAt, null)).toBe(3);
       // The player who took part in every resolved round counts all four.
       expect(await participatedElapsed(roomId, other!, r1.startedAt, null)).toBe(4);
     });

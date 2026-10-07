@@ -432,8 +432,10 @@ describe.skipIf(!hasAnonTestEnv)("ward × modifier-transfer interaction (issue #
 
     // A bounded ward: seedActiveEffect stands it up in its own prior resolved
     // round, so rounds_remaining 2 leaves it live through round 1 (the seed
-    // round counts as one elapsed) and expired by round 2.
-    const { castId: wardCast } = await seedActiveEffect(admin, cleanup, {
+    // round counts as one elapsed -- the victim takes part in it, since the
+    // Participation Clock, #472, ticks on the target's participated rounds)
+    // and expired by round 2.
+    const { castId: wardCast, roundId: wardRound } = await seedActiveEffect(admin, cleanup, {
       roomId: caster.roomId,
       targetPlayerId: victim.googleSub,
       casterId: victim.googleSub,
@@ -443,6 +445,10 @@ describe.skipIf(!hasAnonTestEnv)("ward × modifier-transfer interaction (issue #
       roundsRemaining: 2,
     });
     expect(wardCast).toBeTruthy();
+    const { error: wardPartErr } = await admin
+      .from("round_participants")
+      .insert({ round_id: wardRound, player_id: victim.googleSub });
+    expect(wardPartErr).toBeNull();
 
     // Round 1 — cast Bitter Leech; the tick is warded off.
     const r1 = await startRound(caster, [victim]);

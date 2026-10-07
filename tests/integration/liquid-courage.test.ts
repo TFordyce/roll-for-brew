@@ -437,13 +437,21 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
     expect(await unspent(roundId, recipient.googleSub)).toEqual([]);
   });
 
-  it("dies at day end: the next day's room has no token", async () => {
+  // The card says "once in the next 3 rounds", with no day limit (issue #472,
+  // Carried Effects): the token follows the recipient into the next day's room
+  // and its window keeps counting there.
+  it("carries into the next day's room until the recipient has taken part in 3 rounds", async () => {
     const { giver, recipient } = await gift("day-end");
     const tomorrow = await seedDedicatedRoom(admin, cleanup, [giver.googleSub, recipient.googleSub]);
-    const roundId = await seedPastRound(tomorrow, [giver.googleSub, recipient.googleSub], 10);
-    await admin.from("rounds").update({ status: "closed", resolved_at: null }).eq("id", roundId);
+    const first = await seedPastRound(tomorrow, [giver.googleSub, recipient.googleSub], 10);
+    // Gift round + nothing yet in tomorrow's room: 1 of 3 used.
+    expect(await unspent(first, recipient.googleSub)).toHaveLength(1);
 
-    expect(await unspent(roundId, recipient.googleSub)).toEqual([]);
+    // Gift round + 2 tomorrow rounds = 3 of 3: spent as of the next round.
+    const second = await seedPastRound(tomorrow, [giver.googleSub, recipient.googleSub], 5);
+    const third = await seedPastRound(tomorrow, [giver.googleSub, recipient.googleSub], 1);
+    expect(await unspent(second, recipient.googleSub)).toHaveLength(1);
+    expect(await unspent(third, recipient.googleSub)).toEqual([]);
   });
 
   // ==========================================================================
