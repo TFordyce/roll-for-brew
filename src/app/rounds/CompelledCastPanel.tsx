@@ -22,6 +22,7 @@ export function CompelledCastPanel({
   selfPlayerId,
   dispellableEffects,
   heistTargetIds,
+  castNotice = null,
 }: {
   roundId: string;
   compelled: CompelledCast | null;
@@ -34,6 +35,8 @@ export function CompelledCastPanel({
   dispellableEffects: DispellableEffect[];
   /** Issue #438: Tea Heist's picker roster, for a compelled Heist holder. */
   heistTargetIds: string[];
+  /** Issue #470: shown in the cast form (Last Drip's fall-through). */
+  castNotice?: string | null;
 }) {
   if (!compelled && waitingOnNames.length === 0) return null;
 
@@ -60,6 +63,7 @@ export function CompelledCastPanel({
                   selfPlayerId={selfPlayerId}
                   heistTargetIds={heistTargetIds}
                   compelled
+                  castNotice={castNotice}
                 />
               )
             ) : null}

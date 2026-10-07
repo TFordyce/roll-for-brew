@@ -72,7 +72,6 @@ set search_path = public
 as $$
 declare
   v_room_id uuid;
-  v_started_at timestamptz;
   v_cups_made integer;
 
   v_steps jsonb := '[]'::jsonb;
@@ -111,7 +110,9 @@ declare
   v_target text;
   v_inert_after text;
   v_inert_extra jsonb;
-  v_prev_round uuid;
+  -- issue #470: Last Drip's pick and whoever it passed over
+  v_last_drip jsonb;
+  v_passed_over jsonb;
   v_cond_target_roll integer;
   v_cond_caster_roll integer;
   v_plain_high text;
@@ -138,7 +139,7 @@ declare
   v_debt jsonb;
   v_brewer_record jsonb := null;
 begin
-  select room_id, started_at into v_room_id, v_started_at
+  select room_id into v_room_id
     from public.rounds where id = p_round_id;
 
   -- cups_made, counted as _rr_resolve_eval counts it
@@ -333,40 +334,26 @@ begin
       v_target := null;
       v_inert_after := null;
       v_inert_extra := null;
+      v_passed_over := null;
 
       if v_row.mode = 'prev_round_highest' then
-        -- issue #426 (Last Drip): the room's most recent resolved round
-        -- before this one -> its highest layer-0 roller (ties: lowest
-        -- modifier_snapshot, then lowest player_id). Resolved even for a
-        -- pending cast, as before #451.
-        v_prev_round := null;
-        select pr.id into v_prev_round
-          from public.rounds pr
-         where pr.room_id = v_room_id
-           and pr.status = 'resolved'
-           and pr.id <> p_round_id
-           and pr.started_at < v_started_at
-         order by pr.started_at desc, pr.id
-         limit 1;
-
-        if v_prev_round is not null then
-          select r.player_id into v_target
-            from public.rolls r
-           where r.round_id = v_prev_round and r.layer = 0
-           order by r.value desc, r.modifier_snapshot asc, r.player_id asc
-           limit 1;
+        -- issue #426 (Last Drip), #470: the previous resolved round's highest
+        -- layer-0 roller who is a Participant now and not Roll-Exempt; an
+        -- absent or exempt one is passed over (_last_drip_target, the one
+        -- read of the rule). Inert only with no previous round or nobody
+        -- qualifying. Resolved even for a pending cast, as before #451.
+        v_last_drip := public._last_drip_target(p_round_id);
+        v_target := v_last_drip ->> 'target_player_id';
+        if jsonb_array_length(v_last_drip -> 'passed_over') > 0 then
+          v_passed_over := jsonb_build_object('passed_over', v_last_drip -> 'passed_over');
         end if;
 
-        if v_target is null
-           or not exists (
-             select 1 from public.round_participants rp
-              where rp.round_id = p_round_id and rp.player_id = v_target
-           ) then
+        if v_target is null then
           v_inert_after := 'no effect';
           v_inert_extra := jsonb_build_object(
             'outcome', 'no-op',
-            'override_reason', case when v_target is null
-                                    then 'no_previous_round' else 'target_absent' end);
+            'override_reason', v_last_drip ->> 'reason'
+          ) || coalesce(v_passed_over, '{}'::jsonb);
         end if;
 
       elsif v_row.picker = 'lowest_roller'
@@ -475,7 +462,7 @@ begin
         continue;
       end if;
 
-      -- the newest override that can act wins
+      -- the newest override that can act wins (v_passed_over stays with it)
       v_override := v_row;
       v_override_live := not v_row.target_pending;
       exit;
@@ -553,9 +540,13 @@ begin
           v_step_index, v_override.cast_id, v_override.card_name, v_override.caster_id,
           v_brewer_id,
           case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end,
-          -- issue #430: who made a Tea Party Revolt pick.
-          case when v_override.picked_by is not null
-               then jsonb_build_object('picked_by', v_override.picked_by) end
+          -- issue #430: who made a Tea Party Revolt pick; issue #470: who
+          -- Last Drip passed over.
+          nullif(
+            coalesce(case when v_override.picked_by is not null
+                          then jsonb_build_object('picked_by', v_override.picked_by) end, '{}'::jsonb)
+            || coalesce(v_passed_over, '{}'::jsonb),
+            '{}'::jsonb)
         ));
         v_step_index := v_step_index + 1;
       end if;

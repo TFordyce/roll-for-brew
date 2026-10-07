@@ -41,11 +41,13 @@ import { PendingSpellDiePanel } from "@/app/rounds/PendingSpellDiePanel";
 import { ReactionBanner } from "@/app/rounds/ReactionBanner";
 import { CompelledCastPanel } from "@/app/rounds/CompelledCastPanel";
 import { TeaPartyRevoltPanel } from "@/app/rounds/TeaPartyRevoltPanel";
+import { lastDripNotice } from "@/lib/game/lastDrip";
 import { getMyPendingSpellDraw, getMySpellCards, getSpellCardCatalog } from "@/lib/supabase/spellCards";
 import {
   type ActiveEffectBadge,
   getDispellableActiveEffects,
   getHeistTargetIds,
+  getLastDripPreview,
   getMyCompelledCast,
   getMyPendingCasts,
   getMyPendingSpellDice,
@@ -223,6 +225,14 @@ export default async function HomePage() {
       ? await getHeistTargetIds(supabase, activeRound.id)
       : [];
 
+  // Issue #470: Last Drip's cast-time notice -- who it would currently name.
+  const lastDripPreview =
+    activeRound &&
+    (activeRound.status === "open" || myCompelledCast?.castingTime === "A") &&
+    heldSpellCards.some((c) => c.location === "held" && c.cardName === "Last Drip")
+      ? await getLastDripPreview(supabase, activeRound.id)
+      : null;
+
   const activeEffects = await getRoomActiveEffects(supabase, roomId);
   const effectBadgesByPlayerId = new Map<string, ActiveEffectBadge[]>();
   for (const effect of activeEffects) {
@@ -300,6 +310,7 @@ export default async function HomePage() {
   const namesByPlayerId: Record<string, string> = Object.fromEntries(
     roster.map((entry) => [entry.playerId, entry.displayName ?? entry.email]),
   );
+  const castNotice = lastDripNotice(lastDripPreview, (id) => namesByPlayerId[id] ?? "A player");
 
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
@@ -359,6 +370,7 @@ export default async function HomePage() {
           selfPlayerId={playerId}
           dispellableEffects={dispellableEffects}
           heistTargetIds={heistTargetIds}
+          castNotice={castNotice}
         />
       ) : null}
 
@@ -388,6 +400,7 @@ export default async function HomePage() {
         roundIsOpen={activeRound?.status === "open"}
         participants={participants}
         heistTargetIds={heistTargetIds}
+        castNotice={castNotice}
         selfPlayerId={playerId}
       />
 

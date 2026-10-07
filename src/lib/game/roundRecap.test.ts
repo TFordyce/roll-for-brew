@@ -78,6 +78,7 @@ function step(overrides: Partial<ResolutionTraceStep> = {}): ResolutionTraceStep
     pickedBy: null,
     earlTransfer: null,
     rolloffOpponents: [],
+    passedOver: [],
     courageToken: false,
     ...overrides,
   };
@@ -844,6 +845,60 @@ describe("buildRoundRecap", () => {
       expect(only(lastDrip({ ...inert, overrideReason: "target_absent" })).sentence).toBe(
         "Ada played Last Drip — no effect: Ben isn't in this round",
       );
+    });
+
+    // Issue #470: an absent or exempt previous winner falls through.
+    it("falls through: names who was passed over and why, then who brews", () => {
+      expect(
+        only(lastDrip({ passedOver: [{ playerId: "cass", reason: "absent" }] })).sentence,
+      ).toBe("Ada played Last Drip — Cass isn't in this round, so it falls to Ben, who brews (no modifier gain)");
+      expect(
+        only(
+          lastDrip({
+            passedOver: [
+              { playerId: "cass", reason: "absent" },
+              { playerId: "dev", reason: "roll_exempt" },
+            ],
+          }),
+        ).sentence,
+      ).toBe(
+        "Ada played Last Drip — Cass isn't in this round and Dev is exempt from rolling, so it falls to Ben, who brews (no modifier gain)",
+      );
+    });
+
+    it("inert when nobody from the previous round qualifies", () => {
+      const s = only(
+        lastDrip({
+          ...inert,
+          targetPlayer: null,
+          overrideReason: "no_eligible_roller",
+          passedOver: [
+            { playerId: "cass", reason: "absent" },
+            { playerId: "dev", reason: "roll_exempt" },
+          ],
+        }),
+      );
+      expect(s.sentence).toBe(
+        "Ada played Last Drip — no effect: nobody from the previous round can make tea — Cass isn't in this round and Dev is exempt from rolling",
+      );
+      expect(s.statusKind).toBe("no-op");
+    });
+
+    it("reads passed_over off the raw Trace step", () => {
+      const [parsed] = parseResolutionTrace([
+        {
+          index: 0,
+          display_kind: "tea_maker_override",
+          source_cast: { cast_id: "C1", active_effect_id: null, card_name: "Last Drip", caster_player_id: "ada" },
+          target_player: "ben",
+          before: { type: "status", value: "pending" },
+          after: { type: "status", value: "brewer (no modifier gain)" },
+          outcome: "applied",
+          passed_over: [{ player_id: "cass", reason: "roll_exempt" }],
+        },
+      ]);
+      expect(parsed!.passedOver).toEqual([{ playerId: "cass", reason: "roll_exempt" }]);
+      expect(parseResolutionTrace([{ ...step(), display_kind: "flat_modifier" }])[0]!.passedOver).toEqual([]);
     });
 
     it("provisional: neither the brewer nor the inert step is shown", () => {

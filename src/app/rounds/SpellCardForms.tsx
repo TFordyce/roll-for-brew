@@ -92,6 +92,7 @@ export function CastForm({
   heistTargetIds,
   selfPlayerId,
   compelled = false,
+  castNotice = null,
 }: {
   roundId: string;
   held: HeldSpellCard;
@@ -100,6 +101,8 @@ export function CastForm({
   heistTargetIds: string[];
   selfPlayerId: string;
   compelled?: boolean;
+  /** Issue #470: a heads-up shown before confirming (Last Drip's fall-through). */
+  castNotice?: string | null;
 }) {
   const [state, formAction] = useActionState(castSpellCardAction, initialState);
   const [chosenCount, setChosenCount] = useState(0);
@@ -203,6 +206,11 @@ export function CastForm({
             className="mt-1 w-full rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 text-sm text-parchment focus:border-gilt focus:outline-none"
           />
         </label>
+      ) : null}
+      {castNotice ? (
+        <p role="status" className="mb-2 font-body text-xs text-parchment-dim">
+          {castNotice}
+        </p>
       ) : null}
       <CastErrorMessage state={state} />
       <SubmitButton className={buttonClassName} disabled={disableSubmit}>
