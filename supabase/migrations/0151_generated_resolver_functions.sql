@@ -10,14 +10,14 @@
 -- BEGIN db/sql/functions/_is_reaction_source.sql
 -- _is_reaction_source(uuid, text) -> boolean
 --
--- Issue #439: whether p_player_id has a Reaction Source (CONTEXT.md) in
+-- Issue #439: whether p_player_id has a Reaction Source (GLOSSARY.md) in
 -- p_round_id -- the one predicate behind every Reaction-eligibility read:
 -- opening and holding a window (count_eligible_reaction_holders), passing it
 -- (pass_reaction_window), the players being waited on (pending players, the
 -- Skip vote, the stall timeout: _reaction_window_waiting_on) and the caller's
 -- own `eligible` (get_open_reaction_window).
 --
--- A Reaction Source is, for a round participant:
+-- A Reaction Source is, for a round participant who is not stall-excluded:
 --   * a held Reaction-timed card (holds_usable_reaction_card, unchanged); or
 --   * a live, unspent Courage Token (_unspent_courage_tokens), but only while
 --     the round is at Layer 0 and the player has a Layer-0 roll -- the token
