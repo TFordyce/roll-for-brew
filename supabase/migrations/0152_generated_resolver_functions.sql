@@ -28,7 +28,7 @@
 -- rounds after the cast round -- the projection's window -- so the mark shows
 -- a countdown instead of reading as unbounded.
 --
--- Body from migration 0084 plus the participated-rounds branch; grants as
+-- Body from migration 0084 plus the participated-rounds branches; grants as
 -- 0084.
 --
 -- Canonical source: this file is the source of truth for the function body.

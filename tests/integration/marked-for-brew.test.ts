@@ -244,14 +244,14 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
   it("the roster badge counts down the target's participated rounds after the cast (issue #464)", async () => {
     const { caster, target, castId } = await castMark("badge");
     const room = caster.roomId;
+    const { data: mark } = await admin
+      .from("spell_active_effects")
+      .select("id")
+      .eq("source_cast_id", castId)
+      .single();
     const markBadge = async () => {
       const { data, error } = await target.client.rpc("get_room_active_effects", { p_room_id: room });
       expect(error).toBeNull();
-      const { data: mark } = await admin
-        .from("spell_active_effects")
-        .select("id")
-        .eq("source_cast_id", castId)
-        .single();
       return (data as { effect_id: string; rounds_remaining: number | null }[])
         .filter((b) => b.effect_id === mark!.id)
         .map((b) => b.rounds_remaining);
