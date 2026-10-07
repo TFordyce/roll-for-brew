@@ -243,7 +243,7 @@ The d6 that **Liquid Courage** gifts to another player (issue #384): a one-use, 
 _Avoid_: courage die, gifted reaction, token (unqualified).
 
 **Reaction Source**:
-Anything that lets a round's participant react in the reaction window: a held Reaction-timed card, or a live, unspent Courage Token (issue #384). Who can react, and who the window is still waiting on, are both defined over Reaction Sources, not over held cards alone.
+Anything that lets a round's participant react in the reaction window: a held Reaction-timed card, or a live, unspent Courage Token (issue #384). Who can react, and who the window is still waiting on, are both defined over Reaction Sources, not over held cards alone. A stall-excluded participant has no Reaction Source, whatever they hold (issue #463), so they never hold a window open.
 _Avoid_: reaction holder (implies a held card), reaction card (only one kind of source).
 
 **Compelled Cast** (Brewmageddon):
