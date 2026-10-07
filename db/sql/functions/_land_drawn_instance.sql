@@ -16,7 +16,7 @@
 -- pending keep-or-swap decision" guard.
 --
 -- Issue #437 (Stale Biscuit): before placing, the oldest live `next_draw`
--- draw_redirect mark on p_player_id fires (_claim_next_draw_mark, #471, which
+-- draw_redirect mark on p_player_id fires (_lock_next_draw_mark, #471, which
 -- defines "live" and locks the mark). Firing spends the mark for good: the
 -- source cast records cast_inputs.consumed_by_draw (the spell_draws row) and
 -- draw_redirect_outcome:
@@ -51,7 +51,7 @@ declare
   v_already_held boolean;
   v_needs_swap_decision boolean;
 begin
-  select * into v_mark from public._claim_next_draw_mark(p_player_id);
+  select * into v_mark from public._lock_next_draw_mark(p_player_id);
 
   if v_mark.source_cast_id is not null then
     v_slot := public._rr_free_hand_slot(v_mark.beneficiary_id);

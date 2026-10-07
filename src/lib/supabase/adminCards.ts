@@ -50,10 +50,13 @@ export async function getCardAssignments(supabase: SupabaseClient): Promise<Card
  */
 export type MarkChoice = "target" | "beneficiary";
 
+/** "fizzled": the beneficiary's hand was full, so the target got the card (the mark is spent either way). */
+export type DrawRedirectOutcome = "redirected" | "fizzled";
+
 export type AllocationResult = {
   recipientPlayerId: string;
-  /** Null unless the beneficiary option ran; "fizzled" means the beneficiary's hand was full and the target got the card. */
-  drawRedirectOutcome: "redirected" | "fizzled" | null;
+  /** Null unless the beneficiary option ran. */
+  drawRedirectOutcome: DrawRedirectOutcome | null;
 };
 
 /**
@@ -65,7 +68,8 @@ export type AllocationResult = {
  * card — callers should surface both as a retryable message naming the
  * conflict, not a crash. Throws "RFB57" (error.details = the beneficiary's
  * player id) when the target has a live Stale Biscuit mark and no
- * markChoice was given (0152, issue #471) — callers re-submit with one.
+ * markChoice was given (issue #471) — callers re-submit with one — and
+ * "RFB58" when "beneficiary" was chosen but the mark is no longer live.
  */
 export async function allocateSpellCard(
   supabase: SupabaseClient,
@@ -80,7 +84,7 @@ export async function allocateSpellCard(
   });
   if (error) throw error;
 
-  const [row] = (data ?? []) as { recipient_player_id: string; draw_redirect_outcome: "redirected" | "fizzled" | null }[];
+  const [row] = (data ?? []) as { recipient_player_id: string; draw_redirect_outcome: DrawRedirectOutcome | null }[];
   return { recipientPlayerId: row!.recipient_player_id, drawRedirectOutcome: row!.draw_redirect_outcome };
 }
 

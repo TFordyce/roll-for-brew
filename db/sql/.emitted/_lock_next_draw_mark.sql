@@ -1,4 +1,4 @@
--- _claim_next_draw_mark(text) -> table(beneficiary_id text, source_cast_id uuid)
+-- _lock_next_draw_mark(text) -> table(beneficiary_id text, source_cast_id uuid)
 --
 -- Issue #471: the one read of "does this player have a live Stale Biscuit
 -- mark", shared by _land_drawn_instance (a draw fires it) and
@@ -21,7 +21,7 @@
 -- Edit here and run `npm run build:migrations` -- do not hand-edit the
 -- generated migration. See db/sql/README.md.
 
-create or replace function public._claim_next_draw_mark(p_player_id text)
+create or replace function public._lock_next_draw_mark(p_player_id text)
 returns table (beneficiary_id text, source_cast_id uuid)
 language plpgsql
 set search_path = public
@@ -59,7 +59,7 @@ begin
       return;
     end if;
 
-    -- Still unspent once locked: claim it. Otherwise a concurrent caller
+    -- Still unspent once locked: return it. Otherwise a concurrent caller
     -- just spent it -- look again.
     perform 1 from public.spell_casts
      where id = v_mark.source_cast_id
@@ -75,7 +75,7 @@ begin
 end;
 $$;
 
-revoke execute on function public._claim_next_draw_mark(text) from public, anon, authenticated;
+revoke execute on function public._lock_next_draw_mark(text) from public, anon, authenticated;
 
-comment on function public._claim_next_draw_mark(text) is
+comment on function public._lock_next_draw_mark(text) is
   'Issue #471: the player''s oldest live next_draw Draw Redirect mark (Stale Biscuit) -- beneficiary + source cast, its cast row locked and unspent -- or no row. Shared by _land_drawn_instance and admin_allocate_spell_card; the caller spends it. Internal.';

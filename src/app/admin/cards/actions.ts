@@ -64,7 +64,8 @@ export async function allocateSpellCardAction(
     result = await allocateSpellCard(supabase, cardId, playerId, markChoice);
   } catch (error) {
     const code = (error as { code?: string } | null)?.code;
-    if (code === "RFB07" || code === "RFB08") {
+    // RFB58: "beneficiary" was chosen but the mark was spent since the warning.
+    if (code === "RFB07" || code === "RFB08" || code === "RFB58") {
       return { status: "error", message: rpcMessage(error) || "That assignment conflicts with an existing hold." };
     }
     if (code === "RFB57") {

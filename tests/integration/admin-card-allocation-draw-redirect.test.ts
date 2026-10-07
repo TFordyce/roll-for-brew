@@ -41,13 +41,17 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation with a live Stale Biscui
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
+  async function makeAdmin(playerId: string) {
+    const { error } = await admin.from("players").update({ is_admin: true }).eq("id", playerId);
+    expect(error).toBeNull();
+  }
+
   /** An admin, a target, and the beneficiary who has a live Stale Biscuit mark on the target. */
   async function seedMark(label: string) {
     const [allocator, target, beneficiary] = await Promise.all(
       ["admin", "target", "beneficiary"].map((role) => signUp(`aadr-${label}-${role}`)),
     );
-    const { error: adminErr } = await admin.from("players").update({ is_admin: true }).eq("id", allocator!.googleSub);
-    expect(adminErr).toBeNull();
+    await makeAdmin(allocator!.googleSub);
     const roomId = await seedDedicatedRoom(admin, cleanup, [target!.googleSub, beneficiary!.googleSub]);
     const { castId } = await seedActiveEffect(admin, cleanup, {
       roomId,
@@ -218,10 +222,47 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation with a live Stale Biscui
     });
   });
 
-  it("'beneficiary' when the target has no live mark is refused", async () => {
+  it("a fizzle onto a target already holding a card is refused (RFB08) and the mark stays live", async () => {
+    const { allocator, target, beneficiary, castId } = await seedMark("fizzle-held");
+    const pending = await forceHold(admin, beneficiary.googleSub, "Sleeping Camomile");
+    const { error: pErr } = await admin.from("spell_deck_instances").update({ location: "pending_swap" }).eq("id", pending);
+    expect(pErr).toBeNull();
+    await forceHold(admin, beneficiary.googleSub, "Steady Hand");
+    await forceHold(admin, target.googleSub, "Cloud of Cream");
+    const cardId = await cardIdFor("Fortune's Flavour");
+
+    const { error } = await allocator.client.rpc("admin_allocate_spell_card", {
+      p_card_id: cardId,
+      p_player_id: target.googleSub,
+      p_mark_choice: "beneficiary",
+    });
+
+    expect(error?.code).toBe("RFB08");
+    expect(await instanceOf(cardId)).toMatchObject({ location: "in_deck" });
+    expect(await castInputs(castId)).not.toHaveProperty("consumed_by_draw");
+  });
+
+  it("without a mark, a plain allocation is unchanged", async () => {
+    const [allocator, target] = await Promise.all([signUp("aadr-plain-admin"), signUp("aadr-plain-target")]);
+    await makeAdmin(allocator.googleSub);
+    const cardId = await cardIdFor("Bag for Life");
+
+    const { data, error } = await allocator.client.rpc("admin_allocate_spell_card", {
+      p_card_id: cardId,
+      p_player_id: target.googleSub,
+    });
+
+    expect(error).toBeNull();
+    const instance = await instanceOf(cardId);
+    expect(data as AllocationRow[]).toEqual([
+      { instance_id: instance.id, recipient_player_id: target.googleSub, draw_redirect_outcome: null },
+    ]);
+    expect(instance).toMatchObject({ location: "held", held_by_player: target.googleSub });
+  });
+
+  it("'beneficiary' when the target has no live mark is refused (RFB58)", async () => {
     const [allocator, target] = await Promise.all([signUp("aadr-nomark-admin"), signUp("aadr-nomark-target")]);
-    const { error: adminErr } = await admin.from("players").update({ is_admin: true }).eq("id", allocator.googleSub);
-    expect(adminErr).toBeNull();
+    await makeAdmin(allocator.googleSub);
     const cardId = await cardIdFor("Eternal Steep");
 
     const { error } = await allocator.client.rpc("admin_allocate_spell_card", {
@@ -230,7 +271,7 @@ describe.skipIf(!hasAnonTestEnv)("admin card allocation with a live Stale Biscui
       p_mark_choice: "beneficiary",
     });
 
-    expect(error).not.toBeNull();
+    expect(error?.code).toBe("RFB58");
     expect(await instanceOf(cardId)).toMatchObject({ location: "in_deck" });
   });
 });
