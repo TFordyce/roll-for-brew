@@ -98,6 +98,14 @@ _Avoid_: eligible player, valid target (that's spell targeting).
 The obligation the Brew IOU card leaves on its caster — the **Debtor** — once its target has actually been made Tea Maker by it: the Debtor must be Tea Maker on their next round as a Participant, and on that round nobody rolls. Stays owed across days until paid; a round where the Debtor is immune to being Tea Maker is played normally and leaves it owed.
 _Avoid_: IOU (that's the card), forced brew (that's any tea-maker override).
 
+**Carried Effect**:
+A multi-round card effect (`duration_rounds` > 0) that follows its target Participant into later rooms and days, ending only once the target has taken part in enough rounds (see **Participation Clock**), not when the day's room ends or when rounds pass without them. Cast in one room, it is applied by the resolver to the target's rolls in whichever room they next play, and can be dispelled from any of them. Only the effect carries: the target's `room_players.modifier` still starts each day at 0. Never crosses between the Test Room and a real room. Rest-of-day effects (no duration, such as The Last Cuppa or the Earl title) are not Carried Effects; they stay in their day's room.
+_Avoid_: persistent effect (in code `persist` means rest-of-day), cross-day effect, sticky effect.
+
+**Participation Clock**:
+A player's count of resolved rounds they have taken part in (a `round_participants` row), across rooms, in `rounds.started_at` order. It times every Carried Effect, Marked for Brew's window and the Courage Token's window. A round the player joined but never rolled in (a Roll Exemption, Tea Cosy or Brew Debt round) still counts; a round they sat out does not.
+_Avoid_: round clock, room clock (the old room-wide count of every resolved round).
+
 **Layer**:
 A round's roll attempt number, starting at 0 (`rounds.current_layer`, `rolls.layer`): layer 0 is the original roll, layer 1+ is a Tie-Break Reroll. Advantage/disadvantage spell effects are scoped to layer 0 only.
 _Avoid_: round (a round can span several layers), attempt, phase.
