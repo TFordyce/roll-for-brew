@@ -114,7 +114,7 @@ export async function declareInAction(formData: FormData) {
 
 /**
  * Declares the caller in after the round has already closed (issue #246,
- * the "Late Declare" glossary entry, CONTEXT.md) — only valid up to the
+ * the "Late Declare" glossary entry, GLOSSARY.md) — only valid up to the
  * round's first submitted roll (declare_in_late, 0068). Broadcasts both
  * player-declared-in, same as declareInAction, so the closed-round view
  * (RoundReveal) picks up the new participant, and spell-cast-changed, so any

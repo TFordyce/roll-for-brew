@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises Proxy
-// Roll (issue #273, CONTEXT.md's "Proxy Roll" glossary entry): admin_proxy_roll
+// Roll (issue #273, GLOSSARY.md's "Proxy Roll" glossary entry): admin_proxy_roll
 // (supabase/migrations/0071_admin_proxy_roll.sql).
 describe.skipIf(!hasAnonTestEnv)("admin_proxy_roll (Proxy Roll, issue #273)", () => {
   let admin: SupabaseClient;
