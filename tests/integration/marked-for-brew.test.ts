@@ -241,6 +241,34 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
     expect(await castInputs(castId)).toMatchObject({ consumed_by_round: roundId });
   });
 
+  it("the roster badge counts down the target's participated rounds after the cast (issue #464)", async () => {
+    const { caster, target, castId } = await castMark("badge");
+    const room = caster.roomId;
+    const markBadge = async () => {
+      const { data, error } = await target.client.rpc("get_room_active_effects", { p_room_id: room });
+      expect(error).toBeNull();
+      const { data: mark } = await admin
+        .from("spell_active_effects")
+        .select("id")
+        .eq("source_cast_id", castId)
+        .single();
+      return (data as { effect_id: string; rounds_remaining: number | null }[])
+        .filter((b) => b.effect_id === mark!.id)
+        .map((b) => b.rounds_remaining);
+    };
+
+    // The cast round does not count: the full window is left.
+    expect(await markBadge()).toEqual([5]);
+
+    // Two rounds the target took part in, one they sat out.
+    await seedPastRound(room, [caster.googleSub, target.googleSub], 100);
+    await seedPastRound(room, [caster.googleSub], 90);
+    await seedPastRound(room, [caster.googleSub, target.googleSub], 80);
+    await startRound(caster, [target]);
+
+    expect(await markBadge()).toEqual([3]);
+  });
+
   it("expires silently after the target's 5th round of taking part", async () => {
     const { caster, target, castId } = await castMark("window-6th");
     const room = caster.roomId;

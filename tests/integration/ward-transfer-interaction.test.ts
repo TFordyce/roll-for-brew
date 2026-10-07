@@ -422,6 +422,33 @@ describe.skipIf(!hasAnonTestEnv)("ward × modifier-transfer interaction (issue #
     expect((await instanceState("Bes-Tea")).held_by_player).toBeNull();
   });
 
+  it("Bes-Tea against a negated block_copy ward copies normally (issue #464)", async () => {
+    const caster = await signUp("w464-bestea-caster");
+    const target = await signUp("w464-bestea-target");
+    await setBaseModifier(target, target, 9);
+    const wardCast = await seedWard(
+      caster.roomId,
+      target.googleSub,
+      target.googleSub,
+      { polarity: ["positive", "negative"], domain: ["modifier"], block_copy: true },
+      "Bag for Life",
+    );
+    // The ward's source cast was countered: the projection drops the ward.
+    const { error: negErr } = await admin.from("spell_casts").update({ negated: true }).eq("id", wardCast);
+    expect(negErr).toBeNull();
+
+    const roundId = await startRound(caster, [target]);
+    await forceHold(admin, caster.googleSub, "Bes-Tea");
+    await caster.client.rpc("cast_spell_card", { p_round_id: roundId, p_target_player_id: target.googleSub });
+
+    const { data: rows } = await admin
+      .from("spell_casts")
+      .select("negated, effect_params")
+      .eq("round_id", roundId)
+      .eq("effect_kind", "set_modifier");
+    expect(rows).toEqual([{ negated: false, effect_params: { value: 9 } }]);
+  });
+
   // ==========================================================================
   // Bitter Leech — per-tick
   // ==========================================================================
