@@ -11,7 +11,7 @@ import {
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises Late
-// Declare (issue #246, CONTEXT.md glossary entry from #256): declare_in_late
+// Declare (issue #246, GLOSSARY.md glossary entry from #256): declare_in_late
 // and round_has_any_rolls (supabase/migrations/0068_declare_in_late.sql).
 describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", () => {
   let admin: SupabaseClient;
