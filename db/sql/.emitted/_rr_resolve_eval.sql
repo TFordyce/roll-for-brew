@@ -1884,15 +1884,24 @@ begin
       jsonb_build_object('bitter_leech_tick', true), v_bl.source_cast_id, coalesce(v_gen, 0)
     );
 
-    insert into public.spell_casts (
-      round_id, caster_id, card_instance_id, target_player_id,
-      effect_kind, effect_params, cast_inputs, source_cast_id, generation
-    )
-    values (
-      p_round_id, v_bl.beneficiary_id, v_bl.card_instance_id, v_bl.beneficiary_id,
-      'persistent_modifier_transfer', jsonb_build_object('delta', v_bl.per_round_delta),
-      jsonb_build_object('bitter_leech_tick', true), v_bl.source_cast_id, coalesce(v_gen, 0)
-    );
+    -- Issue #472: the tick runs on the TARGET's Participation Clock, so in a
+    -- later room the caster may not be playing. The gain lands only if the
+    -- caster took part in this round; otherwise it is lost while the target
+    -- still loses.
+    if exists (
+      select 1 from public.round_participants rp
+       where rp.round_id = p_round_id and rp.player_id = v_bl.beneficiary_id
+    ) then
+      insert into public.spell_casts (
+        round_id, caster_id, card_instance_id, target_player_id,
+        effect_kind, effect_params, cast_inputs, source_cast_id, generation
+      )
+      values (
+        p_round_id, v_bl.beneficiary_id, v_bl.card_instance_id, v_bl.beneficiary_id,
+        'persistent_modifier_transfer', jsonb_build_object('delta', v_bl.per_round_delta),
+        jsonb_build_object('bitter_leech_tick', true), v_bl.source_cast_id, coalesce(v_gen, 0)
+      );
+    end if;
   end loop;
 
   -- Pre-pass (issue #344): a Bitter Leech tick landing on a warded victim is

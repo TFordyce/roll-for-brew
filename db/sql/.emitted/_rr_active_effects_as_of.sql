@@ -8,9 +8,11 @@
 -- A row is live as of the given round iff ALL of:
 --   * its source cast is not negated;
 --   * its duration is not exhausted: rounds_remaining IS NULL (unbounded), OR
---     the number of resolved rounds in [source-cast's round .started_at,
---     as-of round .started_at) is < rounds_remaining
---     (_rr_effect_rounds_elapsed);
+--     the number of resolved rounds its TARGET took part in, in [source-cast's
+--     round .started_at, as-of round .started_at), is < rounds_remaining
+--     (_rr_participated_rounds_elapsed -- the Participation Clock, issue
+--     #472; it replaced the room-wide _rr_effect_rounds_elapsed, so a target
+--     who sits out rounds does not burn duration);
 --   * it has not been dispelled at or before the as-of round: no non-negated
 --     'dispel' cast whose effect_params.ended_effect_id names this row sits
 --     in a round started on/before the as-of round;
@@ -49,6 +51,19 @@
 --     ended_in_round_id is null, or names a round started after the as-of
 --     round.
 --
+-- Carried Effects (issue #472, ADR 0005 amendment): a duration effect follows
+-- its TARGET into later rooms, derived here with no row copying. A row from
+-- an EARLIER room of the same kind (Test Room never crosses to a real room)
+-- is returned for p_room_id when it carries a duration (rounds_remaining not
+-- null), its source round started before the as-of round (a later room never leaks back), and the usual live checks
+-- hold. Rows with no duration -- rest-of-day wards, the Earl title, The Last
+-- Cuppa, and the persist-marked Marked for Brew mark and Courage Token, whose
+-- windows are participated_rounds_* params rather than rounds_remaining --
+-- stay confined to their day's room; their windows still COUNT across rooms
+-- (_rr_participated_rounds_elapsed). It is returned with room_id rewritten to p_room_id so every reader's
+-- `sae.room_id = v_room_id` filter treats it as the room's own. Effects with
+-- no duration stay in their day's room.
+--
 -- An is_undispellable row (issue #428: The Last Cuppa) skips the dispel
 -- check -- no dispel cast can end it, even one that names it.
 --
@@ -81,7 +96,10 @@ as $$
   -- spell_active_effects (no select policy) and returns nothing -- the room
   -- membership gate stays with the public-facing RPCs.
   with as_of as (
-    select started_at from public.rounds where id = p_as_of_round_id
+    select r.started_at, rm.is_test
+      from public.rounds r
+      join public.rooms rm on rm.id = r.room_id
+     where r.id = p_as_of_round_id
   ),
   live as (
     select sae.*
@@ -89,14 +107,24 @@ as $$
       join public.spell_casts src on src.id = sae.source_cast_id
       join public.rounds src_round on src_round.id = src.round_id
       left join public.rounds ended_round on ended_round.id = sae.ended_in_round_id
-     where sae.room_id = p_room_id
+     where (
+         sae.room_id = p_room_id
+         or (
+           -- carried from an earlier room of the same kind (#472)
+           sae.rounds_remaining is not null
+           and src_round.started_at < (select started_at from as_of)
+           and (select is_test from public.rooms where id = sae.room_id)
+               = (select is_test from as_of)
+         )
+       )
        and coalesce(src.negated, false) = false
        and src.cast_inputs ->> 'consumed_by_round' is null
        and src.cast_inputs ->> 'consumed_by_draw' is null
        and (
          sae.rounds_remaining is null
-         or public._rr_effect_rounds_elapsed(
-              p_room_id, src_round.started_at, (select started_at from as_of)
+         or public._rr_participated_rounds_elapsed(
+              p_room_id, sae.target_player_id,
+              src_round.started_at, (select started_at from as_of)
             ) < sae.rounds_remaining
        )
        and (
@@ -105,8 +133,12 @@ as $$
               p_room_id, sae.target_player_id,
               -- the room's first round after the cast round; NULL (none yet)
               -- counts nothing
+              -- (#472: across rooms of the same kind, so a mark cast in a
+              -- room's last round starts counting in the target's next room)
               (select min(nr.started_at) from public.rounds nr
-                where nr.room_id = p_room_id and nr.started_at > src_round.started_at),
+                 join public.rooms nrm on nrm.id = nr.room_id
+                where nrm.is_test = (select is_test from as_of)
+                  and nr.started_at > src_round.started_at),
               (select started_at from as_of)
             ) < (sae.effect_params ->> 'participated_rounds_after_cast')::integer
        )
@@ -146,7 +178,10 @@ as $$
          or ended_round.started_at > (select started_at from as_of)
        )
   )
-  select l.*
+  select (jsonb_populate_record(
+            null::public.spell_active_effects,
+            to_jsonb(l) || jsonb_build_object('room_id', p_room_id)
+          )).*
     from live l
    where not (
      l.effect_kind = 'brewer_immunity'
