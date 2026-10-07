@@ -14,6 +14,12 @@
 --     adds to that roll, so a tie-break window, or a player with no roll
 --     (Roll Exemption, stall-excluded), has nothing to spend it on.
 --
+-- Issue #463: a stall-excluded participant (round_participants.excluded_at)
+-- is never a Reaction Source, whatever they hold -- they have stalled out, so
+-- counting them would hold the window open until the reaction timeout.
+-- Tie-break exclusion (round_layer_participants) needs no check: windows only
+-- open at Layer 0.
+--
 -- plpgsql, not sql: the body is not validated at create time, so the
 -- generated migration may create this before _unspent_courage_tokens.
 --
@@ -32,6 +38,7 @@ begin
   return exists (
            select 1 from public.round_participants rp
             where rp.round_id = p_round_id and rp.player_id = p_player_id
+              and rp.excluded_at is null
          )
      and (
        public.holds_usable_reaction_card(p_player_id)

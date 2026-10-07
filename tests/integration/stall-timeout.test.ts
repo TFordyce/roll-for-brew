@@ -4,6 +4,7 @@ import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
 import {
   createTestAdminClient,
   createTestCleanup,
+  forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
   stallTimeoutFuture as future,
@@ -114,6 +115,42 @@ describe.skipIf(!hasAnonTestEnv)("stall-timeout enforcement", () => {
       .eq("id", roundId)
       .single();
     expect(round).toMatchObject({ status: "resolved", brewer_id: b.googleSub, cups_made: 3 });
+  });
+
+  it("a stall-excluded Reaction-card holder doesn't hold a reaction window open (issue #463)", async () => {
+    const [a, b, c] = await Promise.all([
+      signUp("stall-react-a"),
+      signUp("stall-react-b"),
+      signUp("stall-react-c"),
+    ]);
+    await forceHold(admin, c.googleSub, "Zariel's Fall"); // Reaction
+
+    const { data: roundId } = await a.client.rpc("start_round");
+    cleanup.trackRound(roundId as string);
+    await b.client.rpc("declare_in", { p_round_id: roundId });
+    await c.client.rpc("declare_in", { p_round_id: roundId });
+    await a.client.rpc("close_round", { p_round_id: roundId });
+
+    // a and b roll; c, the only Reaction Source, stalls out.
+    await seedRoll(admin, roundId, a.googleSub, 0, 15, 0);
+    await seedRoll(admin, roundId, b.googleSub, 0, 7, 0);
+
+    const outcome = await enforceStallTimeout(a.client, roundId as string, future);
+    expect(outcome).toEqual({ action: "excluded", playerIds: [c.googleSub] });
+
+    const { data: windows } = await admin
+      .from("spell_reaction_windows")
+      .select("status")
+      .eq("round_id", roundId)
+      .eq("status", "open");
+    expect(windows).toEqual([]);
+
+    const { data: round } = await admin
+      .from("rounds")
+      .select("status, brewer_id")
+      .eq("id", roundId)
+      .single();
+    expect(round).toMatchObject({ status: "resolved", brewer_id: b.googleSub });
   });
 
   it("excludes a stalled tie-break reroller and resolves off the remaining tied players", async () => {
