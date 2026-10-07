@@ -219,6 +219,9 @@ grant execute on function public._rr_active_effects_as_of(uuid, uuid) to authent
 
 comment on function public._rr_active_effects_as_of(uuid, uuid) is
   'Issue #310: the spell_active_effects rows live as of a given round -- '
+  '(#472) duration effects are timed on the target''s Participation Clock '
+  '(participated rounds across rooms) and carried into the target''s later '
+  'rooms of the same kind, presented with room_id = p_room_id. '
   'source cast not negated, duration not exhausted (resolved-round count '
   'since the source round), not dispelled at/before the round (an '
   'is_undispellable row, #428, never is), (#435) '
