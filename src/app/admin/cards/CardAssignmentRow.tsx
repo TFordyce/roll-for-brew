@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import { MarkWarning } from "./MarkWarning";
 import { allocateSpellCardAction, unassignSpellCardAction, type AllocateSpellCardState } from "./actions";
 import type { CardAssignment } from "@/lib/supabase/adminCards";
 import type { RealPlayer } from "@/lib/supabase/players";
@@ -20,6 +21,8 @@ const TIER_LABEL: Record<CardAssignment["tier"], string> = {
  * a picker to reassign straight to someone else — so a conflict always
  * requires the admin to explicitly clear the old hold first, matching
  * admin_allocate_spell_card's own RFB07/RFB08 refusal to auto-reassign.
+ * A live Stale Biscuit mark on the chosen player (RFB57, issue #471) swaps
+ * the picker for MarkWarning's three choices.
  */
 export function CardAssignmentRow({ card, players }: { card: CardAssignment; players: RealPlayer[] }) {
   const [state, formAction, isPending] = useActionState(allocateSpellCardAction, initialState);
@@ -60,6 +63,8 @@ export function CardAssignmentRow({ card, players }: { card: CardAssignment; pla
               Unassign
             </button>
           </form>
+        ) : state.status === "mark_warning" ? (
+          <MarkWarning cardId={card.cardId} warning={state} players={players} formAction={formAction} isPending={isPending} />
         ) : (
           <form action={formAction} className="flex flex-col gap-1 sm:flex-row sm:items-center">
             <input type="hidden" name="cardId" value={card.cardId} />
@@ -89,6 +94,10 @@ export function CardAssignmentRow({ card, players }: { card: CardAssignment; pla
         )}
         {state.status === "error" ? (
           <p role="alert" className="mt-1 font-body text-xs text-red-500">
+            {state.message}
+          </p>
+        ) : state.status === "notice" ? (
+          <p role="status" className="mt-1 font-body text-xs text-amber-400">
             {state.message}
           </p>
         ) : null}

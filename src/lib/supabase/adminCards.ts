@@ -44,24 +44,44 @@ export async function getCardAssignments(supabase: SupabaseClient): Promise<Card
 }
 
 /**
+ * What the admin chose when the target has a live Stale Biscuit mark (issue
+ * #471): allocate to the target anyway (the mark stays live), or send the
+ * card where the mark sends it (the beneficiary; the mark is spent).
+ */
+export type MarkChoice = "target" | "beneficiary";
+
+export type AllocationResult = {
+  recipientPlayerId: string;
+  /** Null unless the beneficiary option ran; "fizzled" means the beneficiary's hand was full and the target got the card. */
+  drawRedirectOutcome: "redirected" | "fizzled" | null;
+};
+
+/**
  * Calls the admin_allocate_spell_card RPC: assigns a catalog card to a
  * player as "held" and records the spell_draws row (trigger =
  * 'admin_allocation') needed for the Spell Collection page to count it as
  * discovered. Throws with error.code "RFB07" if the card is already held by
  * someone else, or "RFB08" if the target player already holds a different
  * card — callers should surface both as a retryable message naming the
- * conflict, not a crash.
+ * conflict, not a crash. Throws "RFB57" (error.details = the beneficiary's
+ * player id) when the target has a live Stale Biscuit mark and no
+ * markChoice was given (0152, issue #471) — callers re-submit with one.
  */
 export async function allocateSpellCard(
   supabase: SupabaseClient,
   cardId: string,
   playerId: string,
-): Promise<void> {
-  const { error } = await supabase.rpc("admin_allocate_spell_card", {
+  markChoice?: MarkChoice,
+): Promise<AllocationResult> {
+  const { data, error } = await supabase.rpc("admin_allocate_spell_card", {
     p_card_id: cardId,
     p_player_id: playerId,
+    p_mark_choice: markChoice ?? null,
   });
   if (error) throw error;
+
+  const [row] = (data ?? []) as { recipient_player_id: string; draw_redirect_outcome: "redirected" | "fizzled" | null }[];
+  return { recipientPlayerId: row!.recipient_player_id, drawRedirectOutcome: row!.draw_redirect_outcome };
 }
 
 /**
