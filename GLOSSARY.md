@@ -231,7 +231,7 @@ The eager-shim primitive (Tier A #2, spec #302 §12, ADR 0005) behind **Brew-tal
 _Avoid_: paired swap, roll link, `roll_swap` (that's the highest↔lowest table-wide one).
 
 **Courage Token**:
-The d6 that **Liquid Courage** gifts to another player (issue #384): a one-use, player-held right to add 1d6 to their own Layer-0 roll as a Reaction. It lasts for 3 rounds the holder takes part in, counting the gift round if they took part in it, and never outlives the day. It is not a card, so no card-targeting Reaction (Tannin Tantrum, Saving Steep, Mug Mirror, Saucerer's Apprentice, Brew-merang) can target its spend. While unspent it is an ongoing Rare effect, so Greater Detox can end it. A spend in a scrapped replay attempt never happened, so the token comes back.
+The d6 that **Liquid Courage** gifts to another player (issue #384): a one-use, player-held right to add 1d6 to their own Layer-0 roll as a Reaction. It lasts for 3 rounds the holder takes part in, counting the gift round if they took part in it. The card has no day limit, so the token follows the holder into a later day's room until those 3 rounds are used (a **Carried Effect**, issue #472). It is not a card, so no card-targeting Reaction (Tannin Tantrum, Saving Steep, Mug Mirror, Saucerer's Apprentice, Brew-merang) can target its spend. While unspent it is an ongoing Rare effect, so Greater Detox can end it. A spend in a scrapped replay attempt never happened, so the token comes back.
 _Avoid_: courage die, gifted reaction, token (unqualified).
 
 **Reaction Source**:

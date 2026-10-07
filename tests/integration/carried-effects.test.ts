@@ -4,6 +4,7 @@ import {
   byTarget,
   createTestAdminClient,
   createTestCleanup,
+  forceHold,
   hasAnonTestEnv,
   roundModifierEffects,
   seedActiveEffect,
@@ -192,7 +193,7 @@ describe.skipIf(!hasAnonTestEnv)("Carried Effects (issue #472)", () => {
     expect(await liveAsOf(day2, d2)).toEqual([]);
   });
 
-  it("Marked for Brew and Courage Token (no duration) stay in their day's room, but their windows count across rooms", async () => {
+  it("Marked for Brew and the Courage Token carry on their participated-rounds windows", async () => {
     const [caster, target] = await Promise.all([signUp("win-caster"), signUp("win-target")]);
     const mark = await dayOneEffect({
       caster: caster.googleSub,
@@ -212,25 +213,180 @@ describe.skipIf(!hasAnonTestEnv)("Carried Effects (issue #472)", () => {
       roundsRemaining: null,
       roundId: mark.castRound,
     });
-    // Not carried into the next day's room.
     const a = await seedRound(mark.day2, [target.googleSub], 200, target.googleSub);
-    expect(await liveAsOf(mark.day2, a)).toEqual([]);
-
-    // The clock itself counts across rooms: day 1's cast round (inclusive) and
-    // a day-2 round are two participated rounds as of a later day-2 round.
     const b = await seedRound(mark.day2, [target.googleSub], 100, target.googleSub);
-    const { data: bRow } = await admin.from("rounds").select("started_at").eq("id", b).single();
-    const { data: castRow } = await admin.from("rounds").select("started_at").eq("id", mark.castRound).single();
-    const { data: elapsed, error } = await admin.rpc("_rr_participated_rounds_elapsed", {
-      p_room_id: mark.day2,
-      p_player_id: target.googleSub,
-      p_source_started_at: (castRow as { started_at: string }).started_at,
-      p_as_of_started_at: (bRow as { started_at: string }).started_at,
-    });
-    expect(error).toBeNull();
-    expect(elapsed).toBe(2);
-    expect(token.effectId).toBeTruthy();
+    const c = await seedRound(mark.day2, [target.googleSub], 50, target.googleSub);
+
+    // Mark: 2 participated rounds AFTER the cast round -> day-2 rounds a, b.
+    // Token: 2 participated rounds FROM the cast round -> the cast round, a.
+    const ids = async (roundId: string) => (await liveAsOf(mark.day2, roundId)).map((r) => r.id).sort();
+    expect(await ids(a)).toEqual([mark.effectId, token.effectId].sort());
+    expect(await ids(b)).toEqual([mark.effectId]);
+    expect(await ids(c)).toEqual([]);
+    // Presented as the new room's own.
+    expect((await liveAsOf(mark.day2, a)).every((r) => r.room_id === mark.day2)).toBe(true);
   });
+
+  it("a rest-of-day effect (no round count) stays in its day's room", async () => {
+    const [caster, target] = await Promise.all([signUp("rod-caster"), signUp("rod-target")]);
+    const { day2 } = await dayOneEffect({
+      caster: caster.googleSub,
+      target: target.googleSub,
+      roundsRemaining: null,
+      effectKind: "ward",
+      card: "Bag for Life",
+    });
+    const d2 = await seedRound(day2, [target.googleSub], 100, target.googleSub);
+    expect(await liveAsOf(day2, d2)).toEqual([]);
+  });
+
+  it("a Courage Token gifted on day 1 is unspent on day 2, a spend hides it, and removing the spend row (what a replay scrap does) restores it", async () => {
+    const [giver, recipient] = await Promise.all([signUp("cts-giver"), signUp("cts-recipient")]);
+    const { day2, effectId, castRound } = await dayOneEffect({
+      caster: giver.googleSub,
+      target: recipient.googleSub,
+      roundsRemaining: null,
+      effectKind: "courage_token",
+      effectParams: { persist: true, participated_rounds_from_cast: 3 },
+      card: "Liquid Courage",
+    });
+    const spendRound = await seedRound(day2, [giver.googleSub, recipient.googleSub], 100, giver.googleSub);
+    const tokens = async (roundId: string) => {
+      const { data, error } = await admin.rpc("_unspent_courage_tokens", {
+        p_round_id: roundId,
+        p_player_id: recipient.googleSub,
+      });
+      expect(error).toBeNull();
+      return (data as { effect_id: string }[]).map((t) => t.effect_id);
+    };
+    expect(await tokens(spendRound)).toEqual([effectId]);
+
+    // A spend row in the day-2 round hides the day-1 token for that round on...
+    const spendId = await seedCast(spendRound, recipient.googleSub, "Liquid Courage", {
+      effectKind: "dice_modifier",
+      targetPlayerId: recipient.googleSub,
+      castInputs: { courage_token_cast_id: await sourceCastOf(effectId) },
+    });
+    expect(await tokens(spendRound)).toEqual([]);
+
+    // ...and a Round replay deletes the scrapped attempt's spend rows, so the
+    // token is back with its window unchanged.
+    await admin.from("spell_casts").delete().eq("id", spendId);
+    expect(await tokens(spendRound)).toEqual([effectId]);
+    expect(castRound).toBeTruthy();
+  });
+
+  /** Seeds a spell_casts row directly (as round-replay.test.ts does). */
+  async function seedCast(
+    roundId: string,
+    casterId: string,
+    donorCard: string,
+    row: {
+      effectKind: string;
+      effectParams?: Record<string, unknown>;
+      targetPlayerId?: string | null;
+      castInputs?: Record<string, unknown> | null;
+    },
+  ) {
+    const instanceId = await forceHold(admin, casterId, donorCard);
+    await admin
+      .from("spell_deck_instances")
+      .update({ location: "in_deck", held_by_player: null })
+      .eq("id", instanceId);
+    const { data, error } = await admin
+      .from("spell_casts")
+      .insert({
+        round_id: roundId,
+        caster_id: casterId,
+        card_instance_id: instanceId,
+        target_player_id: row.targetPlayerId ?? null,
+        target_pending: false,
+        effect_kind: row.effectKind,
+        effect_params: row.effectParams ?? {},
+        cast_inputs: row.castInputs ?? null,
+      })
+      .select("id")
+      .single();
+    expect(error).toBeNull();
+    return (data as { id: string }).id;
+  }
+
+  it("a Round replay of a round in the new room re-applies the carried effect and counts the round once", async () => {
+    const [caster, target, other] = await Promise.all([signUp("rp-caster"), signUp("rp-target"), signUp("rp-other")]);
+    const { day2, effectId } = await dayOneEffect({
+      caster: caster.googleSub,
+      target: target.googleSub,
+      roundsRemaining: 3,
+      card: "Caffeine Crash",
+      effectKind: "set_modifier",
+      effectParams: { value: -1 },
+      day2Extra: [other.googleSub],
+    });
+
+    const { data: roundId, error } = await target.client.rpc("start_round", { p_room_id: day2 });
+    expect(error).toBeNull();
+    cleanup.trackRound(roundId as string);
+    await other.client.rpc("declare_in", { p_round_id: roundId });
+    await target.client.rpc("close_round", { p_round_id: roundId });
+    const seedRolls = async () => {
+      for (const [playerId, value] of [
+        [target.googleSub, 10],
+        [other.googleSub, 12],
+      ] as [string, number][]) {
+        const { error: rErr } = await admin.from("rolls").insert({
+          round_id: roundId,
+          player_id: playerId,
+          layer: 0,
+          value,
+          input_mode: "manual",
+          modifier_snapshot: 0,
+        });
+        expect(rErr).toBeNull();
+      }
+    };
+    await seedRolls();
+    await seedCast(roundId as string, target.googleSub, "Time for Brew", { effectKind: "round_replay" });
+    expect((await target.client.rpc("resolve_round", { p_round_id: roundId })).error).toBeNull();
+    expect(
+      (await target.client.rpc("resolve_round", { p_round_id: roundId, p_brewer_id: other.googleSub, p_cups_made: 2 }))
+        .error,
+    ).toBeNull();
+    await target.client.rpc("record_pending_round_replay", { p_round_id: roundId });
+    const { error: confErr } = await target.client.rpc("confirm_round_replay", { p_round_id: roundId });
+    expect(confErr).toBeNull();
+
+    // After the scrap the round is generation 1; the carried effect is still
+    // live as of it, once, and the clock for it is unchanged.
+    const live = await liveAsOf(day2, roundId as string);
+    expect(live.map((r) => r.id)).toEqual([effectId]);
+
+    // Replay the round through: the carried -1 applies again in generation 1.
+    await seedRolls();
+    expect((await target.client.rpc("resolve_round", { p_round_id: roundId })).error).toBeNull();
+    const effects = (await roundModifierEffects(admin, target.client, roundId as string)).data ?? [];
+    expect(byTarget(effects, target.googleSub)).toMatchObject([
+      { effect_kind: "set_modifier", effect_params: { value: -1 }, card_name: "Caffeine Crash" },
+    ]);
+
+    // The round counts once: cast round + this round = 2 of 3, so the next
+    // day-2 round is still inside the window (a double count would be 3 of 3).
+    await admin
+      .from("rounds")
+      .update({ status: "resolved", resolved_at: new Date().toISOString() })
+      .eq("id", roundId);
+    const next = await seedRound(day2, [target.googleSub], 0, target.googleSub);
+    expect((await liveAsOf(day2, next)).map((r) => r.id)).toEqual([effectId]);
+  });
+
+  async function sourceCastOf(effectId: string) {
+    const { data, error } = await admin
+      .from("spell_active_effects")
+      .select("source_cast_id")
+      .eq("id", effectId)
+      .single();
+    expect(error).toBeNull();
+    return (data as { source_cast_id: string }).source_cast_id;
+  }
 
   // --------------------------------------------------------------------------
   // Resolver-level: the card behaviour in the new room.

@@ -51,18 +51,19 @@
 --     ended_in_round_id is null, or names a round started after the as-of
 --     round.
 --
--- Carried Effects (issue #472, ADR 0005 amendment): a duration effect follows
--- its TARGET into later rooms, derived here with no row copying. A row from
--- an EARLIER room of the same kind (Test Room never crosses to a real room)
--- is returned for p_room_id when it carries a duration (rounds_remaining not
--- null), its source round started before the as-of round (a later room never leaks back), and the usual live checks
--- hold. Rows with no duration -- rest-of-day wards, the Earl title, The Last
--- Cuppa, and the persist-marked Marked for Brew mark and Courage Token, whose
--- windows are participated_rounds_* params rather than rounds_remaining --
--- stay confined to their day's room; their windows still COUNT across rooms
--- (_rr_participated_rounds_elapsed). It is returned with room_id rewritten to p_room_id so every reader's
--- `sae.room_id = v_room_id` filter treats it as the room's own. Effects with
--- no duration stay in their day's room.
+-- Carried Effects (issue #472, ADR 0005 amendment): an effect with a round
+-- count follows its TARGET into later rooms, derived here with no row
+-- copying. A row from an EARLIER room of the same kind (Test Room never
+-- crosses to a real room) is returned for p_room_id when it carries a round
+-- count -- a duration (rounds_remaining not null) or a participated-rounds
+-- window (participated_rounds_after_cast: Marked for Brew's mark;
+-- participated_rounds_from_cast: Liquid Courage's Courage Token) -- its source
+-- round started before the as-of round (a later room never leaks back), and
+-- the usual live checks hold. Rows with no round count -- rest-of-day wards,
+-- the Earl title, The Last Cuppa, Stale Biscuit's next-draw mark -- stay
+-- confined to their day's room. It is returned with room_id rewritten to
+-- p_room_id so every reader's `sae.room_id = v_room_id` filter treats it as
+-- the room's own.
 --
 -- An is_undispellable row (issue #428: The Last Cuppa) skips the dispel
 -- check -- no dispel cast can end it, even one that names it.
@@ -110,8 +111,14 @@ as $$
      where (
          sae.room_id = p_room_id
          or (
-           -- carried from an earlier room of the same kind (#472)
-           sae.rounds_remaining is not null
+           -- carried from an earlier room of the same kind (#472): a round
+           -- count of any shape -- a duration, or a participated-rounds
+           -- window (Marked for Brew's mark, Liquid Courage's token)
+           (
+             sae.rounds_remaining is not null
+             or sae.effect_params ->> 'participated_rounds_after_cast' is not null
+             or sae.effect_params ->> 'participated_rounds_from_cast' is not null
+           )
            and src_round.started_at < (select started_at from as_of)
            and (select is_test from public.rooms where id = sae.room_id)
                = (select is_test from as_of)
