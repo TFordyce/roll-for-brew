@@ -1,0 +1,189 @@
+{
+  "scenario": "4b-pre-bitter-leech-tick-synthesis",
+  "roster": {
+    "p-leech-caster": "leech-caster",
+    "p-leech-victim": "leech-victim"
+  },
+  "as_of_round_id": "00000000-0000-4000-8000-000000000002",
+  "snapshot": {
+    "room_id": "00000000-0000-4000-8000-000000000001",
+    "db_now": "2026-01-01T00:00:09.000000+00:00",
+    "rooms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "is_test": false
+      }
+    ],
+    "rounds": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-leech-caster",
+        "status": "closed",
+        "started_at": "2026-01-01T00:00:00.000000+00:00",
+        "resolved_at": null,
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": "2026-01-01T00:00:02.000000+00:00",
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-leech-caster",
+        "status": "resolved",
+        "started_at": "2026-01-01T00:00:06.000000+00:00",
+        "resolved_at": "2026-01-01T00:00:05.000000+00:00",
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": null,
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      }
+    ],
+    "round_participants": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-leech-caster",
+        "declared_at": "2026-01-01T00:00:00.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-leech-victim",
+        "declared_at": "2026-01-01T00:00:01.000000+00:00",
+        "excluded_at": null
+      }
+    ],
+    "round_layer_participants": [],
+    "rolls": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-leech-caster",
+        "layer": 0,
+        "value": 10,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:03.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-leech-victim",
+        "layer": 0,
+        "value": 11,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:04.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      }
+    ],
+    "spell_casts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "caster_id": "p-leech-caster",
+        "card_instance_id": "00000000-0000-4000-8000-000000000005",
+        "target_player_id": "p-leech-victim",
+        "target_pending": false,
+        "effect_kind": "persistent_modifier_transfer",
+        "effect_params": {
+          "per_round_delta": 1
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:07.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 1,
+        "target_role": null,
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      }
+    ],
+    "active_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "target_player_id": "p-leech-victim",
+        "caster_id": "p-leech-caster",
+        "source_cast_id": "00000000-0000-4000-8000-000000000004",
+        "card_id": "00000000-0000-4000-8000-000000000007",
+        "effect_kind": "persistent_modifier_transfer",
+        "effect_params": {
+          "per_round_delta": 1
+        },
+        "rounds_remaining": 3,
+        "created_at": "2026-01-01T00:00:08.000000+00:00",
+        "is_undispellable": false,
+        "ended_in_round_id": null
+      }
+    ],
+    "deck_instances": [
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "card_id": "00000000-0000-4000-8000-000000000007",
+        "location": "in_deck",
+        "held_by_player": null
+      }
+    ],
+    "spell_cards": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "name": "Bitter Leech",
+        "casting_time": "A",
+        "target": "OPPONENT",
+        "tier": "rare",
+        "effect_text": "For the next 3 rounds, a target loses 1 modifier at the start of each round and you gain it.",
+        "duration_rounds": 3,
+        "polarity": null,
+        "edition": "4th"
+      }
+    ],
+    "spell_card_effects": [],
+    "room_players": [
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-leech-caster",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-leech-victim",
+        "modifier": 0
+      }
+    ],
+    "modifier_adjustments": []
+  },
+  "expected": {
+    "live_effect_ids": [
+      "00000000-0000-4000-8000-000000000006"
+    ]
+  }
+}

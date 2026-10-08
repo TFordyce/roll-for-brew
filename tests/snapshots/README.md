@@ -94,3 +94,14 @@ scenario that provokes it, refresh the goldens.
 `phasesWitnessedBy()` recognises Phase `0b` via a `copy` / `spell_seize`
 `display_kind` or an `invocation`/`invocation_kind` marker; if the resolver
 renames those, update the map in `framework.ts` alongside it.
+
+## Input fixtures (issue #537, spec #533)
+
+`tests/snapshots/inputs/<scenario>.input.json` is the state each golden resolved from, in the C# `RoundSnapshot`
+wire shape, plus `expected.live_effect_ids` (what SQL `_rr_active_effects_as_of` returned for the seeded round).
+The C# rules tests load these instead of a database. They are NOT goldens: they live in a subfolder so
+`tests/snapshots/*.json` globs still mean goldens only.
+
+Regenerate (needs a local Supabase stack, never the shared one): `EMIT_INPUT_FIXTURES=1 npx vitest run
+tests/integration/trace-snapshot.test.ts`. Output is deterministic (`inputFixture.ts` normalises ids, player ids,
+timestamps and `seq`; see its header), so a clean regeneration produces no diff. A normal run emits nothing.

@@ -1,0 +1,230 @@
+{
+  "scenario": "4c-lowest-gains-highest-modifier",
+  "roster": {
+    "p-highroll": "highroll",
+    "p-lowest": "lowest",
+    "p-mid": "mid"
+  },
+  "as_of_round_id": "00000000-0000-4000-8000-000000000002",
+  "snapshot": {
+    "room_id": "00000000-0000-4000-8000-000000000001",
+    "db_now": "2026-01-01T00:00:09.000000+00:00",
+    "rooms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "is_test": false
+      }
+    ],
+    "rounds": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-lowest",
+        "status": "closed",
+        "started_at": "2026-01-01T00:00:00.000000+00:00",
+        "resolved_at": null,
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": "2026-01-01T00:00:03.000000+00:00",
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      }
+    ],
+    "round_participants": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-highroll",
+        "declared_at": "2026-01-01T00:00:01.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-lowest",
+        "declared_at": "2026-01-01T00:00:00.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-mid",
+        "declared_at": "2026-01-01T00:00:02.000000+00:00",
+        "excluded_at": null
+      }
+    ],
+    "round_layer_participants": [],
+    "rolls": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-highroll",
+        "layer": 0,
+        "value": 18,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:05.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-lowest",
+        "layer": 0,
+        "value": 2,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:04.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-mid",
+        "layer": 0,
+        "value": 3,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:06.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      }
+    ],
+    "spell_casts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-highroll",
+        "card_instance_id": "00000000-0000-4000-8000-000000000004",
+        "target_player_id": "p-highroll",
+        "target_pending": false,
+        "effect_kind": "flat_modifier",
+        "effect_params": {
+          "delta": 5
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:07.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 1,
+        "target_role": null,
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-mid",
+        "card_instance_id": "00000000-0000-4000-8000-000000000006",
+        "target_player_id": null,
+        "target_pending": false,
+        "effect_kind": "lowest_gains_highest_modifier",
+        "effect_params": {},
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:08.000000+00:00",
+        "reaction_window_id": "00000000-0000-4000-8000-000000000007",
+        "negated": false,
+        "seq": 2,
+        "target_role": null,
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      }
+    ],
+    "active_effects": [],
+    "deck_instances": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "card_id": "00000000-0000-4000-8000-000000000008",
+        "location": "in_deck",
+        "held_by_player": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "location": "in_deck",
+        "held_by_player": null
+      }
+    ],
+    "spell_cards": [
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "name": "Brewer's Blessing",
+        "casting_time": "A",
+        "target": "PLAYER",
+        "tier": "common",
+        "effect_text": "Target player adds +5 to their roll this round.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "name": "Broken Biscuit",
+        "casting_time": "R",
+        "target": "TABLE",
+        "tier": "rare",
+        "effect_text": "The lowest roller adds the highest modifier currently on the table to their roll this round.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      }
+    ],
+    "spell_card_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "card_id": "00000000-0000-4000-8000-000000000008",
+        "target_role": "TARGET",
+        "effect_kind": "flat_modifier",
+        "effect_params": {
+          "delta": 5
+        },
+        "ordinal": 0
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "target_role": "TABLE",
+        "effect_kind": "lowest_gains_highest_modifier",
+        "effect_params": {},
+        "ordinal": 0
+      }
+    ],
+    "room_players": [
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-highroll",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-lowest",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-mid",
+        "modifier": 0
+      }
+    ],
+    "modifier_adjustments": []
+  },
+  "expected": {
+    "live_effect_ids": []
+  }
+}
