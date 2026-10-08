@@ -9,6 +9,9 @@ type OrderResponse =
 type RatingIdResponse =
   paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
 
+type AdjustmentIdResponse =
+  paths["/modifier-adjustments"]["post"]["responses"][200]["content"]["application/json"];
+
 /**
  * Thin fetch wrapper over the C# API (api/, spec #533). Types come from the committed
  * `schema.d.ts` (regenerate with `npm run gen:api`; CI fails on drift). Sends the Supabase
@@ -23,6 +26,9 @@ export interface ApiClient {
   submitOrder(roundId: string, drinkType: string): Promise<void>;
   getMyOrderForRound(roundId: string): Promise<OrderResponse>;
   getMyMostRecentOrder(): Promise<OrderResponse>;
+  logModifierAdjustment(targetPlayerId: string, delta: number, reason: string): Promise<AdjustmentIdResponse>;
+  deleteModifierAdjustment(adjustmentId: string): Promise<void>;
+  adminDeleteModifierAdjustment(adjustmentId: string, reason: string): Promise<void>;
 }
 
 export function createApiClient(
@@ -68,6 +74,14 @@ export function createApiClient(
     },
     getMyOrderForRound: (roundId) => get<OrderResponse>(`/rounds/${roundId}/order`),
     getMyMostRecentOrder: () => get<OrderResponse>("/orders/latest"),
+    logModifierAdjustment: async (targetPlayerId, delta, reason) =>
+      (await (await call("POST", "/modifier-adjustments", { targetPlayerId, delta, reason })).json()) as AdjustmentIdResponse,
+    deleteModifierAdjustment: async (adjustmentId) => {
+      await call("DELETE", `/modifier-adjustments/${adjustmentId}`);
+    },
+    adminDeleteModifierAdjustment: async (adjustmentId, reason) => {
+      await call("POST", `/modifier-adjustments/${adjustmentId}/admin-delete`, { reason });
+    },
   };
 }
 

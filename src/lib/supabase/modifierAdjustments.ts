@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 import { unwrapJoinedPlayer } from "./playerRow";
 
 export type ModifierAdjustment = {
@@ -26,7 +28,12 @@ export async function logModifierAdjustment(
   targetPlayerId: string,
   delta: number,
   reason: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<string> {
+  // Flagged cutover (#567): the global port_flags row "logModifierAdjustment" switches this to the C# API.
+  if (await isPortEnabled(supabase, "logModifierAdjustment")) {
+    return (await api().logModifierAdjustment(targetPlayerId, delta, reason)).id;
+  }
   const { data, error } = await supabase.rpc("log_modifier_adjustment", {
     p_target_player_id: targetPlayerId,
     p_delta: delta,
@@ -40,7 +47,15 @@ export async function logModifierAdjustment(
  * Undoes the caller's own most-recent adjustment within its 5 minute
  * window (delete_modifier_adjustment, 0052), reversing the modifier bump.
  */
-export async function deleteModifierAdjustment(supabase: SupabaseClient, adjustmentId: string): Promise<void> {
+export async function deleteModifierAdjustment(
+  supabase: SupabaseClient,
+  adjustmentId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<void> {
+  if (await isPortEnabled(supabase, "deleteModifierAdjustment")) {
+    await api().deleteModifierAdjustment(adjustmentId);
+    return;
+  }
   const { error } = await supabase.rpc("delete_modifier_adjustment", { p_adjustment_id: adjustmentId });
   if (error) throw error;
 }
@@ -114,7 +129,12 @@ export async function adminDeleteModifierAdjustment(
   supabase: SupabaseClient,
   adjustmentId: string,
   reason: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<void> {
+  if (await isPortEnabled(supabase, "adminDeleteModifierAdjustment")) {
+    await api().adminDeleteModifierAdjustment(adjustmentId, reason);
+    return;
+  }
   const { error } = await supabase.rpc("admin_delete_modifier_adjustment", {
     p_adjustment_id: adjustmentId,
     p_reason: reason,

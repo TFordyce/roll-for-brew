@@ -6,6 +6,7 @@ using RollForBrew.Api.Data;
 using RollForBrew.Api.Health;
 using RollForBrew.Api.Orders;
 using RollForBrew.Api.Problems;
+using RollForBrew.Api.ModifierAdjustments;
 using RollForBrew.Api.Ratings;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,6 +42,7 @@ app.MapHealth();
 app.MapActingAs();
 app.MapRatings();
 app.MapOrders();
+app.MapModifierAdjustments();
 app.Run();
 
 public partial class Program;
