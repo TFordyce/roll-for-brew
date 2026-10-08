@@ -42,6 +42,6 @@ public sealed record SpellCardRow(
 
 public sealed record SpellCardEffectRow(Guid Id, Guid CardId, string TargetRole, string EffectKind, JsonElement EffectParams, int Ordinal);
 
-public sealed record RoomPlayerRow(Guid RoomId, string PlayerId, int Modifier, DateTimeOffset CreatedAt);
+public sealed record RoomPlayerRow(Guid RoomId, string PlayerId, int Modifier);
 
 public sealed record ModifierAdjustmentRow(Guid Id, Guid RoomId, string TargetPlayerId, string ActorPlayerId, int Delta, string Reason, DateTimeOffset CreatedAt);

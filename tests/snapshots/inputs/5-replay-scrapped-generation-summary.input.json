@@ -1,0 +1,277 @@
+{
+  "scenario": "5-replay-scrapped-generation-summary",
+  "roster": {
+    "p-buffed": "buffed",
+    "p-plain": "plain"
+  },
+  "as_of_round_id": "00000000-0000-4000-8000-000000000002",
+  "snapshot": {
+    "room_id": "00000000-0000-4000-8000-000000000001",
+    "db_now": "2026-01-01T00:00:08.000000+00:00",
+    "rooms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "is_test": false
+      }
+    ],
+    "rounds": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-buffed",
+        "status": "closed",
+        "started_at": "2026-01-01T00:00:00.000000+00:00",
+        "resolved_at": null,
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": "2026-01-01T00:00:04.000000+00:00",
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 1,
+        "resolution_trace": null,
+        "scrapped_generations": [
+          {
+            "rolls": [
+              {
+                "layer": 0,
+                "value": 5,
+                "player_id": "p-buffed",
+                "discarded_value": null,
+                "entered_by_admin": false,
+                "modifier_snapshot": 0
+              },
+              {
+                "layer": 0,
+                "value": 12,
+                "player_id": "p-plain",
+                "discarded_value": null,
+                "entered_by_admin": false,
+                "modifier_snapshot": 0
+              }
+            ],
+            "players": [
+              {
+                "nat": null,
+                "roll": 5,
+                "total": 8,
+                "composed": 3,
+                "snapshot": 0,
+                "player_id": "p-buffed",
+                "dice_reduced": false
+              },
+              {
+                "nat": null,
+                "roll": 12,
+                "total": 12,
+                "composed": 0,
+                "snapshot": 0,
+                "player_id": "p-plain",
+                "dice_reduced": false
+              }
+            ],
+            "brewer_id": "p-buffed",
+            "cups_made": 2,
+            "generation": 0,
+            "resolved_at": "2026-01-01T00:00:03.000000+00:00",
+            "resolution_trace": [
+              {
+                "after": {
+                  "type": "modifier",
+                  "value": 3
+                },
+                "index": 0,
+                "before": {
+                  "type": "modifier",
+                  "value": 0
+                },
+                "outcome": "applied",
+                "source_cast": {
+                  "cast_id": "00000000-0000-4000-8000-000000000003",
+                  "card_name": "Lucky Sip",
+                  "active_effect_id": null,
+                  "caster_player_id": "p-plain"
+                },
+                "display_kind": "flat_modifier",
+                "target_player": "p-buffed"
+              }
+            ],
+            "layer_participants": [],
+            "brewer_modifier_gain": 2
+          }
+        ],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      }
+    ],
+    "round_participants": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-buffed",
+        "declared_at": "2026-01-01T00:00:00.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-plain",
+        "declared_at": "2026-01-01T00:00:01.000000+00:00",
+        "excluded_at": null
+      }
+    ],
+    "round_layer_participants": [],
+    "rolls": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-buffed",
+        "layer": 0,
+        "value": 9,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:05.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-plain",
+        "layer": 0,
+        "value": 11,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:06.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      }
+    ],
+    "spell_casts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-buffed",
+        "card_instance_id": "00000000-0000-4000-8000-000000000005",
+        "target_player_id": null,
+        "target_pending": false,
+        "effect_kind": "round_replay",
+        "effect_params": {},
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:02.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 1,
+        "target_role": null,
+        "cast_inputs": {
+          "scrapped": true
+        },
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-plain",
+        "card_instance_id": "00000000-0000-4000-8000-000000000007",
+        "target_player_id": "p-buffed",
+        "target_pending": false,
+        "effect_kind": "flat_modifier",
+        "effect_params": {
+          "delta": 6
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:07.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 2,
+        "target_role": null,
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 1,
+        "source_cast_id": null
+      }
+    ],
+    "active_effects": [],
+    "deck_instances": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "card_id": "00000000-0000-4000-8000-000000000008",
+        "location": "in_deck",
+        "held_by_player": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "location": "in_deck",
+        "held_by_player": null
+      }
+    ],
+    "spell_cards": [
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "name": "Lucky Sip",
+        "casting_time": "A",
+        "target": "SELF",
+        "tier": "common",
+        "effect_text": "Add +3 to your roll this round.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "name": "Time for Brew",
+        "casting_time": "R",
+        "target": "TABLE",
+        "tier": "epic",
+        "effect_text": "At the end of this round, after the tea-maker is announced, you may scrap the result. The round is replayed entirely — new rolls, new cards may be played.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      }
+    ],
+    "spell_card_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "card_id": "00000000-0000-4000-8000-000000000008",
+        "target_role": "CASTER",
+        "effect_kind": "flat_modifier",
+        "effect_params": {
+          "delta": 3
+        },
+        "ordinal": 0
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "target_role": "TABLE",
+        "effect_kind": "round_replay",
+        "effect_params": {},
+        "ordinal": 0
+      }
+    ],
+    "room_players": [
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-buffed",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-plain",
+        "modifier": 0
+      }
+    ],
+    "modifier_adjustments": []
+  },
+  "expected": {
+    "live_effect_ids": []
+  }
+}
