@@ -14,7 +14,7 @@ export type AllocateSpellCardState =
   | { status: "notice"; message: string };
 
 /**
- * The RPC's own raise-exception text (0047 / 0152) is already the
+ * The RPC's own raise-exception text (0047 / admin_allocate_spell_card.sql) is already the
  * user-facing message, prefixed with "admin_allocate_spell_card: " — strip
  * that prefix rather than hand-writing a second copy of it here.
  */
