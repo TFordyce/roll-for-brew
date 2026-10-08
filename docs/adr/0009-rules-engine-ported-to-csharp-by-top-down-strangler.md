@@ -3,6 +3,7 @@
 ## Status
 
 accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/TFordyce/roll-for-brew/issues/476)): [Decide the strangler seam and slice order](https://github.com/TFordyce/roll-for-brew/issues/484), [Decide the end state of rules logic in Postgres](https://github.com/TFordyce/roll-for-brew/issues/492), [Decide how much new SQL feature work is allowed during the port](https://github.com/TFordyce/roll-for-brew/issues/479).
+**Amended 2026-10-08:** Acting As (`get_acting_as` / `set_acting_as`) ports to EF endpoints and `current_player_id` stays SQL only until its last SQL caller is gone, matching [Decide Supabase JWT auth and Acting As in the API](https://github.com/TFordyce/roll-for-brew/issues/481), [Decide the strangler seam and slice order](https://github.com/TFordyce/roll-for-brew/issues/484), [Decide the C# data access layer and batching](https://github.com/TFordyce/roll-for-brew/issues/491) and ADR 0013. The end-state decision had wrongly grouped them with the Auth-flow hooks.
 **Supersedes ADR 0006** once port slice 8 reaches exit 4 (its SQL is deleted). Until then 0006 governs the functions still in `db/sql`.
 
 ## Decision
@@ -20,7 +21,9 @@ The plpgsql rules engine (about 180 functions, 15k lines) moves to an ASP.NET Co
 
 **End state: zero rules logic in Postgres.** If a function needs the rules glossary to explain a decision it makes, it belongs in C#. Row locks and batched reads become inline SQL in the API's data module, not stored functions. These stay on purpose:
 
-- **Identity plumbing** (`check_whitelist_before_user_created`, `enforce_whitelist_on_access_token`, `on_auth_user_upsert_player`, `current_player_id`, `get_acting_as` / `set_acting_as`) stays plpgsql, because it runs inside Supabase Auth's flow while the API may be scaled to zero.
+- **Auth-flow identity plumbing** (`check_whitelist_before_user_created`, `enforce_whitelist_on_access_token`, `on_auth_user_upsert_player`) stays plpgsql, because it runs inside Supabase Auth's flow while the API may be scaled to zero.
+
+Acting As is app-called, not Auth-flow, so it ports like any other entry point. `get_acting_as` and `set_acting_as` become EF Core endpoints over the `admin_acting_as` Filler table (`get_acting_as` in slice 0, `set_acting_as` in a Filler slice). `current_player_id` stays SQL only while SQL callers remain. Ported endpoints call it through the claims bridge (ADR 0013), and it is replaced by a C# actor resolver, with a parity test for the Test-Room-only admin rule, once its last SQL caller is gone.
 - **Data-shape constraints** stay (`check`, `unique`, FK). Game-rule invariants do not.
 - **`stats_*` views and `round_menu`** stay as read-only projections of stored outcomes.
 
