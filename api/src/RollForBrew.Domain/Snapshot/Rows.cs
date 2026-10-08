@@ -6,7 +6,8 @@ namespace RollForBrew.Domain.Snapshot;
 // the same JSON whether Postgres (to_jsonb) or the TS fixture emitter produced it. Only columns the rules
 // engine reads are modelled; unknown columns are ignored on read.
 
-public sealed record RoomRow(Guid Id, bool IsTest);
+/// <summary>Version is rooms.version (0159); absent in pre-0159 fixtures, so it defaults to 0.</summary>
+public sealed record RoomRow(Guid Id, bool IsTest, long Version = 0);
 
 public sealed record RoundRow(
     Guid Id, Guid RoomId, string StartedBy, string Status, DateTimeOffset StartedAt,
