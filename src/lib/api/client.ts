@@ -4,6 +4,9 @@ import type { paths } from "./schema";
 type ActingAsResponse =
   paths["/acting-as"]["get"]["responses"][200]["content"]["application/json"];
 
+type RatingIdResponse =
+  paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
+
 /**
  * Thin fetch wrapper over the C# API (api/, spec #533). Types come from the committed
  * `schema.d.ts` (regenerate with `npm run gen:api`; CI fails on drift). Sends the Supabase
@@ -11,6 +14,10 @@ type ActingAsResponse =
  */
 export interface ApiClient {
   getActingAs(): Promise<ActingAsResponse>;
+  submitBrewRating(roundId: string, score: number): Promise<RatingIdResponse>;
+  withdrawBrewRating(roundId: string): Promise<void>;
+  rateSpellCard(cardId: string, score: number): Promise<RatingIdResponse>;
+  withdrawSpellCardRating(cardId: string): Promise<void>;
 }
 
 export function createApiClient(
@@ -18,19 +25,40 @@ export function createApiClient(
   getToken: () => Promise<string | null>,
   fetchImpl: typeof fetch = fetch,
 ): ApiClient {
-  async function get<T>(path: string): Promise<T> {
+  async function call(method: string, path: string, body?: unknown): Promise<Response> {
     const token = await getToken();
     if (!token) throw new Error("API call needs a signed-in session");
     const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}${path}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) {
       const problem = await res.json().catch(() => null);
       throw new Error(`API ${path} failed: ${res.status} ${problem?.code ?? problem?.title ?? ""}`.trim());
     }
-    return (await res.json()) as T;
+    return res;
   }
-  return { getActingAs: () => get<ActingAsResponse>("/acting-as") };
+  async function get<T>(path: string): Promise<T> {
+    return (await (await call("GET", path)).json()) as T;
+  }
+  return {
+    getActingAs: () => get<ActingAsResponse>("/acting-as"),
+    submitBrewRating: async (roundId, score) =>
+      (await (await call("PUT", `/brew-ratings/${roundId}`, { score })).json()) as RatingIdResponse,
+    withdrawBrewRating: async (roundId) => {
+      await call("DELETE", `/brew-ratings/${roundId}`);
+    },
+    rateSpellCard: async (cardId, score) =>
+      (await (await call("PUT", `/spell-card-ratings/${cardId}`, { score })).json()) as RatingIdResponse,
+    withdrawSpellCardRating: async (cardId) => {
+      await call("DELETE", `/spell-card-ratings/${cardId}`);
+    },
+  };
 }
 
 /** The app's API client, authenticated with the given Supabase client's session. */
