@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 import { unwrapJoinedPlayer } from "./playerRow";
 
 export type RateableRound = {
@@ -88,7 +90,10 @@ export async function submitBrewRating(
   supabase: SupabaseClient,
   roundId: string,
   score: number,
+  api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<string> {
+  // Flagged cutover (#566): the global port_flags row "submitBrewRating" switches this to the C# API.
+  if (await isPortEnabled(supabase, "submitBrewRating")) return (await api().submitBrewRating(roundId, score)).id;
   const { data, error } = await supabase.rpc("submit_brew_rating", {
     p_round_id: roundId,
     p_score: score,
@@ -101,7 +106,15 @@ export async function submitBrewRating(
  * Withdraws the caller's own rating for a round (withdraw_brew_rating,
  * 0058) — a no-op if none exists.
  */
-export async function withdrawBrewRating(supabase: SupabaseClient, roundId: string): Promise<void> {
+export async function withdrawBrewRating(
+  supabase: SupabaseClient,
+  roundId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<void> {
+  if (await isPortEnabled(supabase, "withdrawBrewRating")) {
+    await api().withdrawBrewRating(roundId);
+    return;
+  }
   const { error } = await supabase.rpc("withdraw_brew_rating", { p_round_id: roundId });
   if (error) throw error;
 }
