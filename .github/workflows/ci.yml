@@ -75,9 +75,27 @@ jobs:
       - run: npm test
       - run: npm run verify:migrations
 
+  contract:
+    needs: changes
+    if: needs.changes.outputs.api == 'true' || needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: api/global.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run gen:api
+      - name: API contract has not drifted
+        run: git diff --exit-code -- api/openapi src/lib/api/schema.d.ts
+
   ci-ok:
     if: always()
-    needs: [changes, dotnet, ts]
+    needs: [changes, dotnet, ts, contract]
     runs-on: ubuntu-latest
     steps:
       - name: Every needed job succeeded or was skipped
