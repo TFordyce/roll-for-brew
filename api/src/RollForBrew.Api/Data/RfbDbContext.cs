@@ -13,6 +13,7 @@ public sealed class RfbDbContext(DbContextOptions<RfbDbContext> options) : DbCon
     protected override void OnModelCreating(ModelBuilder b)
     {
         RollForBrew.Api.Ratings.RatingsModel.Configure(b);
+        RollForBrew.Api.ModifierAdjustments.ModAdjModel.Configure(b);
         b.Entity<AdminActingAs>(e =>
         {
             e.ToTable("admin_acting_as", "public", t => t.ExcludeFromMigrations());

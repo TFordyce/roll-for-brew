@@ -7,6 +7,9 @@ type ActingAsResponse =
 type RatingIdResponse =
   paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
 
+type AdjustmentIdResponse =
+  paths["/modifier-adjustments"]["post"]["responses"][200]["content"]["application/json"];
+
 /**
  * Thin fetch wrapper over the C# API (api/, spec #533). Types come from the committed
  * `schema.d.ts` (regenerate with `npm run gen:api`; CI fails on drift). Sends the Supabase
@@ -18,6 +21,9 @@ export interface ApiClient {
   withdrawBrewRating(roundId: string): Promise<void>;
   rateSpellCard(cardId: string, score: number): Promise<RatingIdResponse>;
   withdrawSpellCardRating(cardId: string): Promise<void>;
+  logModifierAdjustment(targetPlayerId: string, delta: number, reason: string): Promise<AdjustmentIdResponse>;
+  deleteModifierAdjustment(adjustmentId: string): Promise<void>;
+  adminDeleteModifierAdjustment(adjustmentId: string, reason: string): Promise<void>;
 }
 
 export function createApiClient(
@@ -57,6 +63,14 @@ export function createApiClient(
       (await (await call("PUT", `/spell-card-ratings/${cardId}`, { score })).json()) as RatingIdResponse,
     withdrawSpellCardRating: async (cardId) => {
       await call("DELETE", `/spell-card-ratings/${cardId}`);
+    },
+    logModifierAdjustment: async (targetPlayerId, delta, reason) =>
+      (await (await call("POST", "/modifier-adjustments", { targetPlayerId, delta, reason })).json()) as AdjustmentIdResponse,
+    deleteModifierAdjustment: async (adjustmentId) => {
+      await call("DELETE", `/modifier-adjustments/${adjustmentId}`);
+    },
+    adminDeleteModifierAdjustment: async (adjustmentId, reason) => {
+      await call("POST", `/modifier-adjustments/${adjustmentId}/admin-delete`, { reason });
     },
   };
 }
