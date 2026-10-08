@@ -8,6 +8,7 @@ import type {
 import type { CompletedLayer, ForfeitReason, OverrideNoopReason, ResolutionTraceStep } from "@/lib/supabase/rolls";
 import { classifyRollCalculation } from "@/lib/game/rollCalculation";
 import { joinNames } from "@/lib/game/displayName";
+import { passedOverClause } from "@/lib/game/lastDrip";
 
 /**
  * One tie-break reroll level under a player's layer-0 row (issue #220). Layers
@@ -274,6 +275,9 @@ const FORFEIT_REASON_TEXT: Record<ForfeitReason, string> = {
 // Issue #426: why a tea_maker_override step did nothing (`override_reason`).
 const OVERRIDE_NOOP_TEXT: Record<OverrideNoopReason, (target: string) => string> = {
   no_previous_round: () => "there's no previous round",
+  // #470: the passed-over clause follows (sentenceFor).
+  no_eligible_roller: () => "nobody from the previous round can make tea",
+  // Traces stored before #470, when an absent previous winner was inert.
   target_absent: (t) => `${t} isn't in this round`,
   // #427: normally read via failedOverrideCondition, which names the rolls.
   condition_not_met: () => "its condition wasn't met",
@@ -426,7 +430,18 @@ function fmt(value: number | string | null): string {
  */
 function sentenceFor(
   step: ResolutionTraceStep,
-  names: { t: string; c: string; k: string; compelled: string[]; compelledBy: string; pickedBy: string | null; newEarl: string; rolloffOpponents: string[] },
+  names: {
+    t: string;
+    c: string;
+    k: string;
+    compelled: string[];
+    compelledBy: string;
+    pickedBy: string | null;
+    newEarl: string;
+    rolloffOpponents: string[];
+    /** Issue #470: Last Drip's passed-over clause ("" when none). */
+    passedOver: string;
+  },
 ): string {
   const { t, c, k } = names;
   const played = k ? `${c} played ${k}` : c;
@@ -564,12 +579,19 @@ function sentenceFor(
             : "";
         return `${played} on ${t} — condition not met${rolls}, so it doesn't pick the brewer`;
       }
-      // Issue #426: an inert Last Drip says why it did nothing.
-      if (step.overrideReason) return `${played} — no effect: ${OVERRIDE_NOOP_TEXT[step.overrideReason](t)}`;
+      // Issue #426: an inert Last Drip says why it did nothing; #470: and
+      // who it passed over.
+      if (step.overrideReason) {
+        const why = OVERRIDE_NOOP_TEXT[step.overrideReason](t);
+        return `${played} — no effect: ${why}${names.passedOver ? ` — ${names.passedOver}` : ""}`;
+      }
       // Issue #430: Tea Party Revolt names who picked.
       if (names.pickedBy) return `${played} — ${names.pickedBy}, the lowest roller, picks ${t} to brew`;
       const noGain = String(step.after.value ?? "").includes("no modifier");
-      return `${played} — ${t} brews${noGain ? " (no modifier gain)" : ""}`;
+      const brews = `brews${noGain ? " (no modifier gain)" : ""}`;
+      // Issue #470: Last Drip fell through an absent or exempt previous winner.
+      if (names.passedOver) return `${played} — ${names.passedOver}, so it falls to ${t}, who ${brews}`;
+      return `${played} — ${t} ${brews}`;
     }
     case "compel_cast":
       // Issue #440: Brewmageddon names its compelled set, or did nothing.
@@ -863,6 +885,7 @@ export function buildRoundRecap({
           pickedBy: step.pickedBy ? displayName(step.pickedBy) : null,
           newEarl: step.earlTransfer ? displayName(step.earlTransfer.newEarlPlayerId) : "",
           rolloffOpponents: step.rolloffOpponents.map(displayName),
+          passedOver: passedOverClause(step.passedOver, displayName),
         });
         return {
           phase: phaseForStep(step, castById),

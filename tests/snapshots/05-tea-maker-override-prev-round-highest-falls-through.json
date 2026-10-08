@@ -1,24 +1,24 @@
 {
-  "scenario": "05-tea-maker-override-prev-round-highest-inert",
+  "scenario": "05-tea-maker-override-prev-round-highest-falls-through",
   "outcome": "brewer",
   "layer": 0,
-  "brewer": "low",
-  "brewerSource": "default",
+  "brewer": "caster",
+  "brewerSource": "tea_maker_override:prev_round_highest",
   "tiedPlayers": [],
   "cupsMade": 2,
-  "noModifierGain": false,
+  "noModifierGain": true,
   "trace": [
     {
       "after": {
         "type": "status",
-        "value": "no effect"
+        "value": "brewer (no modifier gain)"
       },
       "index": 0,
       "before": {
         "type": "status",
         "value": "pending"
       },
-      "outcome": "no-op",
+      "outcome": "applied",
       "passed_over": [
         {
           "reason": "absent",
@@ -32,8 +32,7 @@
         "caster_player_id": "P:caster"
       },
       "display_kind": "tea_maker_override",
-      "target_player": null,
-      "override_reason": "no_eligible_roller"
+      "target_player": "P:caster"
     }
   ],
   "players": [

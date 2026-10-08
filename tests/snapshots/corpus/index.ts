@@ -136,9 +136,9 @@ export const CORPUS: Scenario[] = [
     },
   },
   {
-    name: "05-tea-maker-override-prev-round-highest-inert",
+    name: "05-tea-maker-override-prev-round-highest-falls-through",
     phases: ["5"],
-    note: "Last Drip (#426): the previous winner isn't in this round, so a no-op step with override_reason target_absent, and the default pick stands.",
+    note: "Last Drip (#470): the previous winner isn't in this round, so it falls through to the next-highest previous roller (passed_over names the absent winner), with no modifier gain.",
     async seed(ctx) {
       const p1 = await ctx.signUp("caster");
       const p2 = await ctx.signUp("low");
@@ -149,6 +149,28 @@ export const CORPUS: Scenario[] = [
         { playerId: p1.googleSub, value: 4 },
         { playerId: absent.googleSub, value: 19 },
       ]);
+      const roundId = await ctx.openAndCloseRound(p1, [p2], roomId);
+      await ctx.seedRoll(roundId, p1.googleSub, 12);
+      await ctx.seedRoll(roundId, p2.googleSub, 3);
+      await ctx.seedCast(roundId, p1.googleSub, "Last Drip", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "prev_round_highest", modifier_gain: 0 },
+        targetPlayerId: null,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-tea-maker-override-prev-round-highest-inert",
+    phases: ["5"],
+    note: "Last Drip (#470): nobody from the previous round is in this round, so a no-op step with override_reason no_eligible_roller and passed_over, and the default pick stands.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("low");
+      const absent = await ctx.signUp("absent");
+      // absent: the only previous-round roller, not in this one.
+      const roomId = await ctx.seedDedicatedRoom([p1, p2, absent]);
+      await ctx.seedPastRound(roomId, [{ playerId: absent.googleSub, value: 19 }]);
       const roundId = await ctx.openAndCloseRound(p1, [p2], roomId);
       await ctx.seedRoll(roundId, p1.googleSub, 12);
       await ctx.seedRoll(roundId, p2.googleSub, 3);

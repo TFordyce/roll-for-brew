@@ -38,6 +38,7 @@ export function HeldCardThumbnail({
   participants,
   heistTargetIds,
   selfPlayerId,
+  castNotice = null,
 }: {
   heldCards: HeldSpellCard[];
   dispellableEffects: DispellableEffect[];
@@ -47,6 +48,8 @@ export function HeldCardThumbnail({
   /** Issue #438: other participants holding a card — Tea Heist's picker roster. */
   heistTargetIds: string[];
   selfPlayerId: string;
+  /** Issue #470: shown in the cast form before confirming (Last Drip). */
+  castNotice?: string | null;
 }) {
   const held = heldCards.find((c) => c.location === "held");
   const [open, setOpen] = useState(false);
@@ -138,6 +141,7 @@ export function HeldCardThumbnail({
                     participants={participants}
                     heistTargetIds={heistTargetIds}
                     selfPlayerId={selfPlayerId}
+                    castNotice={castNotice}
                   />
                 )}
                 <button

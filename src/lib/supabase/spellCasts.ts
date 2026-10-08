@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { type LastDripPreview, type RawLastDripPassedOver, parseLastDripPassedOver } from "@/lib/supabase/rolls";
 
 export type PendingCast = {
   castId: string;
@@ -198,6 +199,27 @@ export async function getHeistTargetIds(supabase: SupabaseClient, roundId: strin
   const { data, error } = await supabase.rpc("get_heist_targets", { p_round_id: roundId });
   if (error) throw error;
   return (data ?? []) as string[];
+}
+
+/**
+ * Issue #470: who Last Drip would name if the round resolved now
+ * (get_last_drip_preview, over the resolver's own _last_drip_target). null
+ * unless the caller is holding Last Drip.
+ */
+export async function getLastDripPreview(supabase: SupabaseClient, roundId: string): Promise<LastDripPreview | null> {
+  const { data, error } = await supabase.rpc("get_last_drip_preview", { p_round_id: roundId });
+  if (error) throw error;
+  if (!data) return null;
+  const raw = data as {
+    target_player_id: string | null;
+    reason: LastDripPreview["reason"];
+    passed_over: RawLastDripPassedOver[];
+  };
+  return {
+    targetPlayerId: raw.target_player_id,
+    reason: raw.reason,
+    passedOver: parseLastDripPassedOver(raw.passed_over),
+  };
 }
 
 /**

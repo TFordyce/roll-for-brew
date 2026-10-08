@@ -16,9 +16,11 @@ import {
 // They gain no modifier from this tea-making." A tea_maker_override with mode
 // `prev_round_highest` and modifier_gain 0 at tier 2 of the ladder: the
 // previous resolved round's highest layer-0 roller in the room brews (ties:
-// lowest modifier_snapshot, then lowest player id). Inert, with a no-op Trace
-// step and a reason, when there's no previous resolved round or that player
-// isn't a Participant this round.
+// lowest modifier_snapshot, then lowest player id). Issue #470: a previous
+// winner who isn't a Participant this round, or is Roll-Exempt, is passed
+// over for the next-highest previous-round roller. Inert, with a no-op Trace
+// step and a reason, only when there's no previous resolved round or nobody
+// in its roll list qualifies.
 describe.skipIf(!hasAnonTestEnv)("Last Drip: previous round's highest roller brews (#426)", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
@@ -38,6 +40,7 @@ describe.skipIf(!hasAnonTestEnv)("Last Drip: previous round's highest roller bre
     outcome: string;
     after: { type: string; value: string | number | null };
     override_reason?: string;
+    passed_over?: { player_id: string; reason: string }[];
     source_cast: { card_name: string | null };
   };
 
@@ -311,12 +314,79 @@ describe.skipIf(!hasAnonTestEnv)("Last Drip: previous round's highest roller bre
     expect(await roundRow(roundId)).toMatchObject({ brewer_id: other.googleSub, brewer_modifier_gain: 2 });
   });
 
-  it("does nothing when the previous winner isn't taking part this round", async () => {
-    const [caster, absent, other] = await players("ab-caster", "ab-absent", "ab-other");
+  // Issue #470: an absent or Roll-Exempt previous winner no longer makes the
+  // card inert -- it falls through to the next-highest previous-round roller.
+  it("falls through an absent previous winner to the next-highest previous roller, with no gain", async () => {
+    const [caster, absent, second, low] = await players("ab-caster", "ab-absent", "ab-second", "ab-low");
     await seedPastRound(admin, cleanup, caster.roomId, [
       { playerId: caster.googleSub, value: 5 },
       { playerId: absent.googleSub, value: 19 },
-      { playerId: other.googleSub, value: 6 },
+      { playerId: second.googleSub, value: 12 },
+      { playerId: low.googleSub, value: 3 },
+    ]);
+
+    const roundId = await openRound(caster, [second, low]);
+    await castLastDrip(caster, roundId);
+    await closeRound(caster, roundId);
+    await seedRoll(roundId, caster, 15);
+    await seedRoll(roundId, second, 14);
+    await seedRoll(roundId, low, 4);
+
+    const out = await resolve(caster, roundId);
+    expect(out).toMatchObject({
+      brewer_id: second.googleSub,
+      brewer_source: "tea_maker_override:prev_round_highest",
+      modifier_gain: 0,
+    });
+    expect(overrideSteps(out)).toEqual([
+      expect.objectContaining({
+        target_player: second.googleSub,
+        outcome: "applied",
+        after: { type: "status", value: "brewer (no modifier gain)" },
+        passed_over: [{ player_id: absent.googleSub, reason: "absent" }],
+      }),
+    ]);
+  });
+
+  it("falls through a Roll-Exempt previous winner the same way", async () => {
+    const [caster, exempt, second, low] = await players("ex-caster", "ex-exempt", "ex-second", "ex-low");
+    await seedPastRound(admin, cleanup, caster.roomId, [
+      { playerId: caster.googleSub, value: 5 },
+      { playerId: exempt.googleSub, value: 19 },
+      { playerId: second.googleSub, value: 12 },
+      { playerId: low.googleSub, value: 3 },
+    ]);
+
+    const roundId = await openRound(caster, [exempt, second, low]);
+    await castLastDrip(caster, roundId);
+    await forceHold(admin, exempt.googleSub, "Tea Cosy");
+    const { error } = await exempt.client.rpc("cast_spell_card", { p_round_id: roundId });
+    expect(error).toBeNull();
+    await closeRound(caster, roundId);
+    await seedRoll(roundId, caster, 15);
+    await seedRoll(roundId, second, 14);
+    await seedRoll(roundId, low, 4);
+
+    const out = await resolve(caster, roundId);
+    expect(out).toMatchObject({
+      brewer_id: second.googleSub,
+      brewer_source: "tea_maker_override:prev_round_highest",
+      modifier_gain: 0,
+    });
+    expect(overrideSteps(out)).toEqual([
+      expect.objectContaining({
+        target_player: second.googleSub,
+        outcome: "applied",
+        passed_over: [{ player_id: exempt.googleSub, reason: "roll_exempt" }],
+      }),
+    ]);
+  });
+
+  it("is inert only when nobody in the previous round's roll list qualifies", async () => {
+    const [caster, gone1, gone2, other] = await players("nq-caster", "nq-gone1", "nq-gone2", "nq-other");
+    await seedPastRound(admin, cleanup, caster.roomId, [
+      { playerId: gone1.googleSub, value: 19 },
+      { playerId: gone2.googleSub, value: 7 },
     ]);
 
     const roundId = await openRound(caster, [other]);
@@ -329,12 +399,98 @@ describe.skipIf(!hasAnonTestEnv)("Last Drip: previous round's highest roller bre
     expect(out).toMatchObject({ brewer_id: other.googleSub, brewer_source: "default", modifier_gain: null });
     expect(overrideSteps(out)).toEqual([
       expect.objectContaining({
-        target_player: absent.googleSub,
+        target_player: null,
         outcome: "no-op",
         after: { type: "status", value: "no effect" },
-        override_reason: "target_absent",
+        override_reason: "no_eligible_roller",
+        passed_over: [
+          { player_id: gone1.googleSub, reason: "absent" },
+          { player_id: gone2.googleSub, reason: "absent" },
+        ],
       }),
     ]);
+  });
+
+  it("an immune fall-through target is still handled by Brewer Immunity: the default pick stands", async () => {
+    const [caster, absent, immune, low] = await players("im-caster", "im-absent", "im-immune", "im-low");
+    await seedPastRound(admin, cleanup, caster.roomId, [
+      { playerId: absent.googleSub, value: 19 },
+      { playerId: immune.googleSub, value: 12 },
+      { playerId: caster.googleSub, value: 5 },
+    ]);
+
+    const roundId = await openRound(caster, [immune, low]);
+    await castLastDrip(caster, roundId);
+    await closeRound(caster, roundId);
+    await seedActiveEffect(admin, cleanup, {
+      roomId: caster.roomId,
+      targetPlayerId: immune.googleSub,
+      casterId: immune.googleSub,
+      cardName: "The Last Cuppa",
+      effectKind: "brewer_immunity",
+      effectParams: { mode: "last_cuppa", persist: true, override_proof: true },
+      roundsRemaining: null,
+    });
+    await seedRoll(roundId, caster, 15);
+    await seedRoll(roundId, immune, 14);
+    await seedRoll(roundId, low, 4);
+
+    const out = await resolve(caster, roundId);
+    expect(out).toMatchObject({ brewer_id: low.googleSub, brewer_source: "default" });
+    expect(out.trace.some((s) => s.display_kind === "brewer_immunity" && s.target_player === immune.googleSub)).toBe(true);
+  });
+
+  // Issue #470: the cast-time notice reads _last_drip_target for the open round.
+  describe("get_last_drip_preview", () => {
+    async function preview(p: Player, roundId: string) {
+      const { data, error } = await p.client.rpc("get_last_drip_preview", { p_round_id: roundId });
+      expect(error).toBeNull();
+      return data as { target_player_id: string | null; reason: string | null; passed_over: unknown[] } | null;
+    }
+
+    it("names the substitute, and who was passed over, while the previous winner is currently exempt", async () => {
+      const [caster, exempt, second] = await players("pv-caster", "pv-exempt", "pv-second");
+      await seedPastRound(admin, cleanup, caster.roomId, [
+        { playerId: exempt.googleSub, value: 19 },
+        { playerId: second.googleSub, value: 12 },
+        { playerId: caster.googleSub, value: 5 },
+      ]);
+      const roundId = await openRound(caster, [exempt, second]);
+      await forceHold(admin, exempt.googleSub, "Tea Cosy");
+      const { error } = await exempt.client.rpc("cast_spell_card", { p_round_id: roundId });
+      expect(error).toBeNull();
+      await forceHold(admin, caster.googleSub, "Last Drip");
+
+      expect(await preview(caster, roundId)).toEqual({
+        target_player_id: second.googleSub,
+        reason: null,
+        passed_over: [{ player_id: exempt.googleSub, reason: "roll_exempt" }],
+      });
+    });
+
+    it("names the previous winner plainly when they qualify", async () => {
+      const [caster, winner] = await players("pq-caster", "pq-winner");
+      await seedPastRound(admin, cleanup, caster.roomId, [
+        { playerId: winner.googleSub, value: 19 },
+        { playerId: caster.googleSub, value: 5 },
+      ]);
+      const roundId = await openRound(caster, [winner]);
+      await forceHold(admin, caster.googleSub, "Last Drip");
+
+      expect(await preview(caster, roundId)).toEqual({
+        target_player_id: winner.googleSub,
+        reason: null,
+        passed_over: [],
+      });
+    });
+
+    it("is null for a player not holding Last Drip", async () => {
+      const [caster, other] = await players("pn-caster", "pn-other");
+      const roundId = await openRound(caster, [other]);
+      await forceHold(admin, caster.googleSub, "Last Drip");
+
+      expect(await preview(other, roundId)).toBeNull();
+    });
   });
 
   it("a later override beats it (last cast wins)", async () => {
