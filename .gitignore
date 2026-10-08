@@ -16,4 +16,3 @@ bin/
 obj/
 TestResults/
 api/schema-version.txt
-.gcp-setup.env
