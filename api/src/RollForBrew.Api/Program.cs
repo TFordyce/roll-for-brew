@@ -22,6 +22,7 @@ var corsOrigins = (builder.Configuration["CORS_ORIGINS"] ?? "")
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.SetIsOriginAllowed(origin => CorsOrigins.IsAllowed(origin, corsOrigins)).AllowAnyHeader().AllowAnyMethod()));
 
+builder.Services.AddOpenApi();
 builder.Services.AddSupabaseJwt(builder.Configuration);
 builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
     RoomStore.BuildDataSource(sp.GetRequiredService<IConfiguration>().GetConnectionString("Postgres")
