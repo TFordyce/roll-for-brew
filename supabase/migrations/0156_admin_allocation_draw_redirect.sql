@@ -24,4 +24,8 @@
 -- here; the new definition is canonical source in
 -- db/sql/functions/admin_allocate_spell_card.sql (generated into the next
 -- generated migration), per db/sql/README.md's "moves on its next change".
+--
+-- Renumbered 0153 -> 0156 (#571): it collided with 0153_generated_resolver_functions
+-- (#499). It now runs AFTER generated 0154, which creates the new 3-arg
+-- function; the old 2-arg signature is a distinct overload, so this drop is safe.
 drop function public.admin_allocate_spell_card(uuid, text);
