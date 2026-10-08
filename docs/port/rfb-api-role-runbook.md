@@ -1,10 +1,10 @@
 # rfb_api role runbook (ticket #535)
 
-Human-only steps for the API's database login. The role itself is created by migration `0155_rfb_api_role.sql`; the password is never in git. Replace `PROJECT_REF` and `PROJECT_ID`. Record results on issue #535.
+Human-only steps for the API's database login. The role itself is created by migration `0157_rfb_api_role.sql`; the password is never in git. Replace `PROJECT_REF` and `PROJECT_ID`. Record results on issue #535.
 
 The grant list is in ADR 0013 (amended by spec #533): `BYPASSRLS`, DML on `public`, `EXECUTE` on still-bridged functions (`current_player_id`), its own `statement_timeout`; no `auth` or `realtime` usage, no `authenticated` membership, no DDL.
 
-## 1. Set the password (once, after 0155 is live on hosted)
+## 1. Set the password (once, after 0157 is live on hosted)
 
 - [ ] Confirm the migration is applied: `select rolname, rolbypassrls, rolcanlogin, rolconfig from pg_roles where rolname = 'rfb_api';` (expect `t`, `t`, `{statement_timeout=15s}`).
 - [ ] Generate a password (>= 32 chars, URL-safe). In the SQL editor: `alter role rfb_api password '<new>';`
@@ -30,5 +30,5 @@ Background: on #532 Supavisor appeared to keep accepting a dropped role's old pa
 
 ## 4. Hand-off checks after deploy
 
-- [ ] `GET /health/ready` is 200 on Cloud Run (schema gate sees 0155).
+- [ ] `GET /health/ready` is 200 on Cloud Run (schema gate sees 0157).
 - [ ] `GET /acting-as` with a real signed-in admin's access token returns `{"actingAsPlayerId": null}` (or the pointer), and 401 problem+json with no token.
