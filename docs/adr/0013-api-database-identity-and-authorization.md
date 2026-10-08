@@ -8,12 +8,12 @@ accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/T
 
 - **Identity stays Supabase Auth.** The API validates the Supabase JWT itself (issuer, audience, expiry), via JWKS with keys cached. If the project still signs with legacy HS256, either migrate it to asymmetric keys first or configure the shared secret. The design is the same either way.
 - **The API's database identity is a dedicated `rfb_api` login role.** It connects through the Supavisor transaction pooler (6543) as `rfb_api.<project-ref>`. The role has:
-  - `BYPASSRLS`;
+  - `BYPASSRLS`, its own `statement_timeout`, and no DDL;
   - DML on `public`, plus default privileges on objects `postgres` creates;
-  - `usage on schema realtime` and `insert on realtime.messages`;
-  - `grant authenticated to rfb_api`, for `current_player_id` execute and `auth` schema usage;
-  - its own `statement_timeout`;
-  - no DDL, and no writes to `auth`.
+  - `EXECUTE` on each still-bridged SQL function, `current_player_id` first. The repo revokes PUBLIC execute, so DML alone fails. Each grant is revoked as its function is ported away;
+  - `EXECUTE` on the broadcast wrapper (a `postgres`-owned `security definer` function, see ADR 0011);
+  - **no** usage on the `auth` or `realtime` schemas and **no** `authenticated` membership. `postgres` cannot grant those on hosted (verified on #532). The API reads `sub` from the validated JWT and reaches `auth.*` only through `security definer` functions; it cannot call `realtime.send` directly;
+  - no writes to `auth`.
 
   A migration creates it. The password is set by hand on hosted and kept in GCP Secret Manager, never in git.
 - **Claims bridge.** Every transaction runs `set_config('request.jwt.claims', <validated claims>, true)`, so `auth.uid()` and `current_player_id()` keep working for SQL bridges and unported RPCs. The API does **not** `set local role authenticated`: its own SQL must see the whole room. Ported endpoints call SQL `current_player_id` for Acting As until the last SQL caller is gone.
@@ -36,5 +36,5 @@ accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/T
 ## Consequences
 
 - Through the strangler, unported RPCs still run as `authenticated` from the browser, so their RLS and grants stay live until their slice.
-- `realtime.send` as `rfb_api` must be proven on hosted in slice 0, along with the pooler login and the `BYPASSRLS` grant.
+- The pooler login and `BYPASSRLS` were proven on hosted on #532, and the broadcast wrapper replaces any direct `realtime.send`. Password rotation through Supavisor must be tested before it is relied on (`docs/port/rfb-api-role-runbook.md`).
 - Moving identity to Entra would be a separate effort, outside the port.

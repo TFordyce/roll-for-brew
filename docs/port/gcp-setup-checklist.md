@@ -17,7 +17,7 @@ Human-only steps. Do them in order, then record the results on issue #534. Regio
 
 ## 3. Database role and secret
 
-- [ ] The `rfb_api` role does not exist yet (migration lands in #535). Until then, use any working pooler connection string for the first deploy test, then replace it.
+- [ ] The `rfb_api` role is created by migration 0155 (#535); set its password per `rfb-api-role-runbook.md`. Before that is live, use any working pooler connection string for the first deploy test, then replace it.
 - [ ] Build the connection string for the Supavisor transaction pooler (port 6543), user `rfb_api.PROJECT_REF`, with `Max Auto Prepare=0;No Reset On Close=true;Multiplexing=false;Maximum Pool Size=5` (Npgsql keyword form: `Host=...;Port=6543;Database=postgres;Username=rfb_api.PROJECT_REF;Password=...;SSL Mode=Require;...`).
 - [ ] `gcloud secrets create rfb-api-postgres-connection-string --replication-policy=automatic --project PROJECT_ID`, then add the value as a version (`gcloud secrets versions add ... --data-file=-`).
 
