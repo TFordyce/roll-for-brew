@@ -11,3 +11,8 @@ supabase/.branches/
 .claude/launch.json
 .claude/
 .vercel/
+# .NET
+bin/
+obj/
+TestResults/
+api/schema-version.txt
