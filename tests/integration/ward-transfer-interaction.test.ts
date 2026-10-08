@@ -422,6 +422,57 @@ describe.skipIf(!hasAnonTestEnv)("ward × modifier-transfer interaction (issue #
     expect((await instanceState("Bes-Tea")).held_by_player).toBeNull();
   });
 
+  it.each(["negated", "dispelled"] as const)(
+    "Bes-Tea against a %s block_copy ward copies normally (issue #464)",
+    async (ended) => {
+      const caster = await signUp(`w464-bestea-${ended}-caster`);
+      const target = await signUp(`w464-bestea-${ended}-target`);
+      await setBaseModifier(target, target, 9);
+      const wardCast = await seedWard(
+        caster.roomId,
+        target.googleSub,
+        target.googleSub,
+        { polarity: ["positive", "negative"], domain: ["modifier"], block_copy: true },
+        "Bag for Life",
+      );
+      if (ended === "negated") {
+        // The ward's source cast was countered.
+        const { error } = await admin.from("spell_casts").update({ negated: true }).eq("id", wardCast);
+        expect(error).toBeNull();
+      } else {
+        // A dispel cast in the ward's round names it.
+        const { data: ward } = await admin
+          .from("spell_active_effects")
+          .select("id, spell_casts!inner(round_id)")
+          .eq("source_cast_id", wardCast)
+          .single();
+        const instanceId = await forceHold(admin, caster.googleSub, "Greater Detox");
+        await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", instanceId);
+        const { error } = await admin.from("spell_casts").insert({
+          round_id: (ward!.spell_casts as unknown as { round_id: string }).round_id,
+          caster_id: caster.googleSub,
+          card_instance_id: instanceId,
+          target_player_id: target.googleSub,
+          target_pending: false,
+          effect_kind: "dispel",
+          effect_params: { ended_effect_id: ward!.id },
+        });
+        expect(error).toBeNull();
+      }
+
+      const roundId = await startRound(caster, [target]);
+      await forceHold(admin, caster.googleSub, "Bes-Tea");
+      await caster.client.rpc("cast_spell_card", { p_round_id: roundId, p_target_player_id: target.googleSub });
+
+      const { data: rows } = await admin
+        .from("spell_casts")
+        .select("negated, effect_params")
+        .eq("round_id", roundId)
+        .eq("effect_kind", "set_modifier");
+      expect(rows).toEqual([{ negated: false, effect_params: { value: 9 } }]);
+    },
+  );
+
   // ==========================================================================
   // Bitter Leech — per-tick
   // ==========================================================================

@@ -13,7 +13,12 @@
 -- Issue #472: a duration row badges its Participation Clock rounds left (the
 -- target's participated rounds, across rooms), like the projection's test.
 --
--- Body from migration 0084 plus the participated-rounds branch; grants as
+-- Issue #464: a row whose effect_params carries participated_rounds_after_cast
+-- = n (Marked for Brew's mark) badges n minus the target's participated
+-- rounds after the cast round -- the projection's window -- so the mark shows
+-- a countdown instead of reading as unbounded.
+--
+-- Body from migration 0084 plus the participated-rounds branches; grants as
 -- 0084.
 --
 -- Canonical source: this file is the source of truth for the function body.
@@ -69,6 +74,21 @@ begin
                      p_room_id, sae.target_player_id, sr.started_at, v_latest_started_at),
                  0
                )::integer
+             when sae.effect_params ->> 'participated_rounds_after_cast' is not null then
+               -- issue #464 (Marked for Brew): counted from the first round
+               -- after the cast round, in any room of the same kind -- the
+               -- projection's window start
+               greatest(
+                 (sae.effect_params ->> 'participated_rounds_after_cast')::integer
+                 - public._rr_participated_rounds_elapsed(
+                     p_room_id, sae.target_player_id,
+                     (select min(nr.started_at) from public.rounds nr
+                        join public.rooms nrm on nrm.id = nr.room_id
+                       where nrm.is_test = (select is_test from public.rooms where id = p_room_id)
+                         and nr.started_at > sr.started_at),
+                     v_latest_started_at),
+                 0
+               )::integer
              when sae.rounds_remaining is null then null
              else greatest(
                sae.rounds_remaining
@@ -92,4 +112,6 @@ comment on function public.get_room_active_effects(uuid) is
   '_rr_active_effects_as_of at the room''s latest round; the rounds_remaining '
   'output is DERIVED (immutable snapshot minus resolved rounds since the '
   'source cast, floored at 0), NULL for an unbounded ward. (#439) A '
-  'participated_rounds_from_cast row badges its participated rounds left.';
+  'participated_rounds_from_cast row badges its participated rounds left; '
+  '(#464) so does a participated_rounds_after_cast row (Marked for Brew), '
+  'counted after the cast round.';
