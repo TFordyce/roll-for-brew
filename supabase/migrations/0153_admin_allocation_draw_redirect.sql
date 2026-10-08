@@ -1,0 +1,27 @@
+-- Issue #471: admin card allocation vs a live Stale Biscuit mark.
+--
+-- An admin allocation is not a draw, so by default it bypasses a live
+-- `next_draw` Draw Redirect mark ("Mark a target. The very next card they
+-- would draw goes to you instead.") -- but never silently. While the target
+-- has a live mark (_lock_next_draw_mark), a plain allocation is refused with
+-- RFB57, the beneficiary's name in the message and their player id in the
+-- error detail, and the admin re-submits with p_mark_choice:
+--   * 'target'      -- allocate to the target anyway; the mark stays live.
+--   * 'beneficiary' -- the card goes where the mark sends it, exactly as a
+--     draw would (_land_drawn_instance, #437): into the beneficiary's free
+--     hand slot ('held', or 'pending_swap' for a keep-or-swap choice), and
+--     the mark is spent (cast_inputs.consumed_by_draw = the spell_draws row,
+--     draw_redirect_outcome = 'redirected'). If the beneficiary's hand is
+--     full the redirect fizzles as it does for a draw: the mark is spent
+--     ('fizzled') and the target gets the card.
+-- Cancelling is not re-submitting. Without a live mark nothing changes, and
+-- 'beneficiary' with no live mark (spent since the warning) is refused
+-- rather than quietly allocating to the target.
+--
+-- Returns who actually received the card and the redirect outcome (null
+-- unless the beneficiary option ran), so the tool can say when it fizzled.
+-- The return shape changes, so the old 2-arg function (0047) is dropped
+-- here; the new definition is canonical source in
+-- db/sql/functions/admin_allocate_spell_card.sql (generated into the next
+-- generated migration), per db/sql/README.md's "moves on its next change".
+drop function public.admin_allocate_spell_card(uuid, text);
