@@ -2,8 +2,7 @@
 
 ## Status
 
-accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/TFordyce/roll-for-brew/issues/476)): [Decide the strangler seam and slice order](https://github.com/TFordyce/roll-for-brew/issues/484), [Decide the end state of rules logic in Postgres](https://github.com/TFordyce/roll-for-brew/issues/492), [Decide how much new SQL feature work is allowed during the port](https://github.com/TFordyce/roll-for-brew/issues/479). Spec: [`docs/port/spec.md`](../port/spec.md).
-
+accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/TFordyce/roll-for-brew/issues/476)): [Decide the strangler seam and slice order](https://github.com/TFordyce/roll-for-brew/issues/484), [Decide the end state of rules logic in Postgres](https://github.com/TFordyce/roll-for-brew/issues/492), [Decide how much new SQL feature work is allowed during the port](https://github.com/TFordyce/roll-for-brew/issues/479).
 **Supersedes ADR 0006** once port slice 8 reaches exit 4 (its SQL is deleted). Until then 0006 governs the functions still in `db/sql`.
 
 ## Decision

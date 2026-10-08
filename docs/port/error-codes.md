@@ -1,6 +1,6 @@
 # RFBnn → problem code mapping
 
-Part of the [C# port spec](spec.md). The error model comes from [Decide the API contract and TypeScript client](https://github.com/TFordyce/roll-for-brew/issues/485).
+Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issues/476)). The error model comes from [Decide the API contract and TypeScript client](https://github.com/TFordyce/roll-for-brew/issues/485).
 
 - **Response shape.** The API returns RFC 9457 `application/problem+json` with a stable `code` extension member (the name below). `title` is a fixed human sentence. `detail` may carry the `%`-filled specifics.
 - **SQL-raised errors.** While a function is still SQL, `RoomStore` translates a SQL-raised `RFBnn` (`PostgresException.SqlState`) into the same problem. Raw SQLSTATE never leaks.
