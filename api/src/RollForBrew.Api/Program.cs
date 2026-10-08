@@ -5,6 +5,7 @@ using RollForBrew.Api.Auth;
 using RollForBrew.Api.Data;
 using RollForBrew.Api.Health;
 using RollForBrew.Api.Problems;
+using RollForBrew.Api.RoomView;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -37,6 +38,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealth();
 app.MapActingAs();
+app.MapRoomView();
 app.Run();
 
 public partial class Program;

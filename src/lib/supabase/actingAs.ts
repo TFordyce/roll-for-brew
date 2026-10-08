@@ -10,7 +10,7 @@ import { isPortEnabled } from "@/lib/api/portFlags";
  */
 export async function getActingAsPlayerId(
   supabase: SupabaseClient,
-  api: () => ApiClient = () => apiClientFor(supabase),
+  api: () => Pick<ApiClient, "getActingAs"> = () => apiClientFor(supabase),
 ): Promise<string | null> {
   // Flagged cutover (#536): the global port_flags row "getActingAs" switches this read to the C# API.
   if (await isPortEnabled(supabase, "getActingAs")) {

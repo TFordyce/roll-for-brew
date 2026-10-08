@@ -9,8 +9,13 @@ type ActingAsResponse =
  * `schema.d.ts` (regenerate with `npm run gen:api`; CI fails on drift). Sends the Supabase
  * session JWT as Bearer. Add one method per ported endpoint here.
  */
+export type RoomViewResponse =
+  paths["/rooms/{roomId}/view"]["get"]["responses"][200]["content"]["application/json"];
+
 export interface ApiClient {
   getActingAs(): Promise<ActingAsResponse>;
+  /** GET /rooms/{id}/view (slice 1b): the per-viewer screen model. Sent with cache: no-store. */
+  getRoomView(roomId: string): Promise<RoomViewResponse>;
 }
 
 export function createApiClient(
@@ -23,6 +28,7 @@ export function createApiClient(
     if (!token) throw new Error("API call needs a signed-in session");
     const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}${path}`, {
       headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      cache: "no-store",
     });
     if (!res.ok) {
       const problem = await res.json().catch(() => null);
@@ -30,7 +36,10 @@ export function createApiClient(
     }
     return (await res.json()) as T;
   }
-  return { getActingAs: () => get<ActingAsResponse>("/acting-as") };
+  return {
+    getActingAs: () => get<ActingAsResponse>("/acting-as"),
+    getRoomView: (roomId) => get<RoomViewResponse>(`/rooms/${encodeURIComponent(roomId)}/view`),
+  };
 }
 
 /** The app's API client, authenticated with the given Supabase client's session. */

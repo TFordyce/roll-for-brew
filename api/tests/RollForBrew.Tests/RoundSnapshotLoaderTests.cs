@@ -107,7 +107,8 @@ public class RoundSnapshotLoaderTests : IAsyncLifetime
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
             ActivityStopped = a =>
             {
-                if (a.GetTagItem("db.query.text") is string q) commands.Add(q);
+                // The listener is process-wide: only count this test class's own database.
+                if (a.GetTagItem("db.query.text") is string q && Equals(a.GetTagItem("db.namespace"), _db.Name)) commands.Add(q);
             },
         };
         ActivitySource.AddActivityListener(listener);

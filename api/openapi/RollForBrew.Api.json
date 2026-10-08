@@ -48,6 +48,37 @@
           }
         }
       }
+    },
+    "/rooms/{roomId}/view": {
+      "get": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "getRoomView",
+        "parameters": [
+          {
+            "name": "roomId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RoomViewResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -63,6 +94,1284 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "ActiveRoundView": {
+        "required": [
+          "roundId",
+          "startedBy",
+          "status",
+          "startedAt",
+          "closedAt",
+          "currentLayer",
+          "isTiePhase",
+          "participants",
+          "tiedParticipants",
+          "rolledPlayerIds"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "startedBy": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "closedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "currentLayer": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isTiePhase": {
+            "type": "boolean"
+          },
+          "participants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParticipantView"
+            }
+          },
+          "tiedParticipants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TiedParticipantView"
+            }
+          },
+          "rolledPlayerIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "CompelledCastRow": {
+        "required": [
+          "castingTime",
+          "cardName",
+          "brewmageddonCasterId"
+        ],
+        "type": "object",
+        "properties": {
+          "castingTime": {
+            "type": "string"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "brewmageddonCasterId": {
+            "type": "string"
+          }
+        }
+      },
+      "CompelledCastView": {
+        "required": [
+          "mine",
+          "roundId",
+          "waitingOnOthers",
+          "stepEndedAt"
+        ],
+        "type": "object",
+        "properties": {
+          "mine": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CompelledCastRow"
+              }
+            ]
+          },
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "waitingOnOthers": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stepEndedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "CourageTokenRow": {
+        "required": [
+          "effectId",
+          "giverPlayerId",
+          "giverDisplayName",
+          "dice"
+        ],
+        "type": "object",
+        "properties": {
+          "effectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "giverPlayerId": {
+            "type": "string"
+          },
+          "giverDisplayName": {
+            "type": "string"
+          },
+          "dice": {
+            "type": "string"
+          }
+        }
+      },
+      "DispellableRow": {
+        "required": [
+          "effectId",
+          "targetPlayerId",
+          "targetDisplayName",
+          "cardName",
+          "tier"
+        ],
+        "type": "object",
+        "properties": {
+          "effectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "targetPlayerId": {
+            "type": "string"
+          },
+          "targetDisplayName": {
+            "type": "string"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          }
+        }
+      },
+      "EffectBadge": {
+        "required": [
+          "effectId",
+          "cardName",
+          "tier",
+          "polarity",
+          "roundsRemaining"
+        ],
+        "type": "object",
+        "properties": {
+          "effectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "polarity": {
+            "type": "string"
+          },
+          "roundsRemaining": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "HeldCard": {
+        "required": [
+          "instanceId",
+          "location",
+          "cardName",
+          "castingTime",
+          "target",
+          "tier",
+          "effectText",
+          "effectKind",
+          "edition"
+        ],
+        "type": "object",
+        "properties": {
+          "instanceId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "location": {
+            "type": "string"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "castingTime": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          },
+          "effectText": {
+            "type": "string"
+          },
+          "effectKind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "edition": {
+            "type": "string"
+          }
+        }
+      },
+      "HistoryEntry": {
+        "required": [
+          "roundId",
+          "resolvedAt",
+          "cupsMade",
+          "brewerId",
+          "brewerName"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "resolvedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "cupsMade": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "brewerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "brewerName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LastDripPreviewRow": {
+        "required": [
+          "targetPlayerId",
+          "reason",
+          "passedOver"
+        ],
+        "type": "object",
+        "properties": {
+          "targetPlayerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "passedOver": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PassedOverRow"
+            }
+          }
+        }
+      },
+      "MenuEntryView": {
+        "required": [
+          "playerId",
+          "drinkType",
+          "milk",
+          "sugar",
+          "decaf",
+          "noPreferenceSet"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "drinkType": {
+            "type": "string"
+          },
+          "milk": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sugar": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "decaf": {
+            "type": "boolean"
+          },
+          "noPreferenceSet": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Panels": {
+        "required": [
+          "brewRating",
+          "menu",
+          "spellDrawChoice",
+          "roundReplayPrompt",
+          "pendingSpellDie",
+          "compelledCast",
+          "teaPartyRevolt",
+          "spellCards",
+          "tieBanner",
+          "roundReveal",
+          "lateDeclare",
+          "whosIn",
+          "rollInput",
+          "reactionBanner",
+          "idleRoom"
+        ],
+        "type": "object",
+        "properties": {
+          "brewRating": {
+            "type": "boolean"
+          },
+          "menu": {
+            "type": "boolean"
+          },
+          "spellDrawChoice": {
+            "type": "boolean"
+          },
+          "roundReplayPrompt": {
+            "type": "boolean"
+          },
+          "pendingSpellDie": {
+            "type": "boolean"
+          },
+          "compelledCast": {
+            "type": "boolean"
+          },
+          "teaPartyRevolt": {
+            "type": "boolean"
+          },
+          "spellCards": {
+            "type": "boolean"
+          },
+          "tieBanner": {
+            "type": "boolean"
+          },
+          "roundReveal": {
+            "type": "boolean"
+          },
+          "lateDeclare": {
+            "type": "boolean"
+          },
+          "whosIn": {
+            "type": "boolean"
+          },
+          "rollInput": {
+            "type": "boolean"
+          },
+          "reactionBanner": {
+            "type": "boolean"
+          },
+          "idleRoom": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ParticipantView": {
+        "required": [
+          "playerId",
+          "displayName",
+          "email",
+          "avatarUrl",
+          "modifier",
+          "declaredAt",
+          "excludedAt",
+          "hasRolled"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "avatarUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "modifier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "declaredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "excludedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "hasRolled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PassedOverRow": {
+        "required": [
+          "playerId",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "PendingCastRow": {
+        "required": [
+          "castId",
+          "cardName",
+          "target"
+        ],
+        "type": "object",
+        "properties": {
+          "castId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        }
+      },
+      "PendingDieRow": {
+        "required": [
+          "castId",
+          "cardName",
+          "dice"
+        ],
+        "type": "object",
+        "properties": {
+          "castId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "dice": {
+            "type": "string"
+          }
+        }
+      },
+      "PendingPlayerRow": {
+        "required": [
+          "playerId",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          }
+        }
+      },
+      "PendingReplayView": {
+        "required": [
+          "roundId",
+          "casterId",
+          "casterDisplayName",
+          "isCaster",
+          "createdAt"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "casterId": {
+            "type": "string"
+          },
+          "casterDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "isCaster": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PendingSpellDrawView": {
+        "required": [
+          "roundId",
+          "trigger",
+          "otherCount",
+          "catalogNames"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "trigger": {
+            "type": "string"
+          },
+          "otherCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "catalogNames": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RateableRoundView": {
+        "required": [
+          "roundId",
+          "brewerDisplayName",
+          "brewerEmail",
+          "resolvedAt",
+          "myScore"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "brewerDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "brewerEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "myScore": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ReactionStackRow": {
+        "required": [
+          "castId",
+          "cardName",
+          "casterId",
+          "casterName",
+          "targetStamp",
+          "negated",
+          "parentCastId",
+          "seq"
+        ],
+        "type": "object",
+        "properties": {
+          "castId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cardName": {
+            "type": "string"
+          },
+          "casterId": {
+            "type": "string"
+          },
+          "casterName": {
+            "type": "string"
+          },
+          "targetStamp": {
+            "type": "string"
+          },
+          "negated": {
+            "type": "boolean"
+          },
+          "parentCastId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "seq": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ReactionView": {
+        "required": [
+          "windowId",
+          "layer",
+          "pollRound",
+          "eligible",
+          "alreadyPassed",
+          "stack",
+          "pendingPlayers",
+          "skipVote",
+          "courageTokens",
+          "compelled"
+        ],
+        "type": "object",
+        "properties": {
+          "windowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "layer": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "pollRound": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "eligible": {
+            "type": "boolean"
+          },
+          "alreadyPassed": {
+            "type": "boolean"
+          },
+          "stack": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionStackRow"
+            }
+          },
+          "pendingPlayers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingPlayerRow"
+            }
+          },
+          "skipVote": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SkipVoteRow"
+              }
+            ]
+          },
+          "courageTokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CourageTokenRow"
+            }
+          },
+          "compelled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "RoomPart": {
+        "required": [
+          "roomId",
+          "isTest",
+          "roster",
+          "activeRound",
+          "history",
+          "nextStallDeadline",
+          "dbNow"
+        ],
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "isTest": {
+            "type": "boolean"
+          },
+          "roster": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RosterEntry"
+            }
+          },
+          "activeRound": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ActiveRoundView"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoryEntry"
+            }
+          },
+          "nextStallDeadline": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "dbNow": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RoomViewResponse": {
+        "required": [
+          "version",
+          "room",
+          "viewer"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "room": {
+            "$ref": "#/components/schemas/RoomPart"
+          },
+          "viewer": {
+            "$ref": "#/components/schemas/ViewerPart"
+          }
+        }
+      },
+      "RosterEntry": {
+        "required": [
+          "playerId",
+          "displayName",
+          "email",
+          "avatarUrl",
+          "modifier",
+          "isTest",
+          "effectBadges"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "avatarUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "modifier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isTest": {
+            "type": "boolean"
+          },
+          "effectBadges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EffectBadge"
+            }
+          }
+        }
+      },
+      "SkipVoteRow": {
+        "required": [
+          "pollRoundStartedAt",
+          "votes",
+          "threshold",
+          "hasVoted",
+          "canVote",
+          "waitedOn"
+        ],
+        "type": "object",
+        "properties": {
+          "pollRoundStartedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "votes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "threshold": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "hasVoted": {
+            "type": "boolean"
+          },
+          "canVote": {
+            "type": "boolean"
+          },
+          "waitedOn": {
+            "type": "boolean"
+          }
+        }
+      },
+      "TiedParticipantView": {
+        "required": [
+          "playerId",
+          "displayName",
+          "email",
+          "avatarUrl",
+          "modifier",
+          "excludedAt",
+          "hasRolled"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "avatarUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "modifier": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "excludedAt": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "hasRolled": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ViewerPart": {
+        "required": [
+          "playerId",
+          "hasDeclared",
+          "isStarter",
+          "canDeclare",
+          "canWithdraw",
+          "canClose",
+          "needMoreToClose",
+          "canDeclareLate",
+          "canStartRound",
+          "isTied",
+          "ownRoll",
+          "layerZeroOwnRoll",
+          "isExpectedToRoll",
+          "isPlayersTurnToRoll",
+          "needsRollInput",
+          "rollInputMode",
+          "orderRoundId",
+          "myOrderForRound",
+          "myMostRecentOrder",
+          "orderCue",
+          "menu",
+          "menuParticipants",
+          "rateableRound",
+          "heldCards",
+          "heldReactionCard",
+          "pendingSpellDraw",
+          "pendingCasts",
+          "pendingSpellDice",
+          "spellDieRollInputMode",
+          "compelledCast",
+          "teaPartyRevoltPickerId",
+          "dispellableEffects",
+          "heistTargetIds",
+          "lastDripPreview",
+          "reaction",
+          "pendingRoundReplay",
+          "panels"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "hasDeclared": {
+            "type": "boolean"
+          },
+          "isStarter": {
+            "type": "boolean"
+          },
+          "canDeclare": {
+            "type": "boolean"
+          },
+          "canWithdraw": {
+            "type": "boolean"
+          },
+          "canClose": {
+            "type": "boolean"
+          },
+          "needMoreToClose": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "canDeclareLate": {
+            "type": "boolean"
+          },
+          "canStartRound": {
+            "type": "boolean"
+          },
+          "isTied": {
+            "type": "boolean"
+          },
+          "ownRoll": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "layerZeroOwnRoll": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "isExpectedToRoll": {
+            "type": "boolean"
+          },
+          "isPlayersTurnToRoll": {
+            "type": "boolean"
+          },
+          "needsRollInput": {
+            "type": "boolean"
+          },
+          "rollInputMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "orderRoundId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          },
+          "myOrderForRound": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "myMostRecentOrder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "orderCue": {
+            "type": "boolean"
+          },
+          "menu": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MenuEntryView"
+            }
+          },
+          "menuParticipants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ParticipantView"
+            }
+          },
+          "rateableRound": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RateableRoundView"
+              }
+            ]
+          },
+          "heldCards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HeldCard"
+            }
+          },
+          "heldReactionCard": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HeldCard"
+              }
+            ]
+          },
+          "pendingSpellDraw": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PendingSpellDrawView"
+              }
+            ]
+          },
+          "pendingCasts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingCastRow"
+            }
+          },
+          "pendingSpellDice": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingDieRow"
+            }
+          },
+          "spellDieRollInputMode": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "compelledCast": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CompelledCastView"
+              }
+            ]
+          },
+          "teaPartyRevoltPickerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "dispellableEffects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DispellableRow"
+            }
+          },
+          "heistTargetIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lastDripPreview": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/LastDripPreviewRow"
+              }
+            ]
+          },
+          "reaction": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReactionView"
+              }
+            ]
+          },
+          "pendingRoundReplay": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PendingReplayView"
+              }
+            ]
+          },
+          "panels": {
+            "$ref": "#/components/schemas/Panels"
           }
         }
       }
