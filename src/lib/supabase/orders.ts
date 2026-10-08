@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 
 export type DrinkType = "tea" | "coffee";
 
@@ -13,7 +15,11 @@ export async function getMyOrderForRound(
   supabase: SupabaseClient,
   roundId: string,
   playerId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<DrinkType | null> {
+  if (await isPortEnabled(supabase, "getMyOrderForRound")) {
+    return ((await api().getMyOrderForRound(roundId)).drinkType as DrinkType | null | undefined) ?? null;
+  }
   const { data, error } = await supabase
     .from("orders")
     .select("drink_type")
@@ -36,7 +42,11 @@ export async function getMyOrderForRound(
 export async function getMyMostRecentOrder(
   supabase: SupabaseClient,
   playerId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<DrinkType | null> {
+  if (await isPortEnabled(supabase, "getMyMostRecentOrder")) {
+    return ((await api().getMyMostRecentOrder()).drinkType as DrinkType | null | undefined) ?? null;
+  }
   const { data, error } = await supabase
     .from("orders")
     .select("drink_type")
@@ -98,7 +108,14 @@ export async function submitOrder(
   supabase: SupabaseClient,
   roundId: string,
   drinkType: DrinkType,
+  api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<void> {
+  // Flagged cutover (#565): the global port_flags row "submitOrder" sends the write to the C# API,
+  // which enforces the Order Window. Off (default) keeps the SQL submit_order RPC.
+  if (await isPortEnabled(supabase, "submitOrder")) {
+    await api().submitOrder(roundId, drinkType);
+    return;
+  }
   const { error } = await supabase.rpc("submit_order", {
     p_round_id: roundId,
     p_drink_type: drinkType,

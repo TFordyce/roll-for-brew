@@ -34,3 +34,10 @@ update public.port_flags set enabled = false where slice = 'getActingAs' and roo
 ```
 
 Per-room scoping works by inserting `(slice, room_id)` rows (a room row overrides the global one); no wrapper passes a room id yet.
+
+## Orders slice flags (#565, human step, not run by the agent)
+
+Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows; wrappers have no room id).
+Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /orders/latest`. Same precondition and
+rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
+The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
