@@ -86,12 +86,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rounds/{roundId}/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMyOrderForRound"];
+        put: operations["submitOrder"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getMyMostRecentOrder"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ActingAsResponse: {
             actingAsPlayerId: null | string;
+        };
+        OrderResponse: {
+            drinkType: null | string;
+        };
+        SubmitOrderRequest: {
+            drinkType: null | string;
         };
     };
     responses: never;
@@ -118,6 +156,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ActingAsResponse"];
+                };
+            };
+        };
+    };
+    getMyOrderForRound: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+        };
+    };
+    submitOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitOrderRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getMyMostRecentOrder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderResponse"];
                 };
             };
         };

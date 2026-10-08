@@ -3,6 +3,8 @@ import type { paths } from "./schema";
 
 type ActingAsResponse =
   paths["/acting-as"]["get"]["responses"][200]["content"]["application/json"];
+type OrderResponse =
+  paths["/rounds/{roundId}/order"]["get"]["responses"][200]["content"]["application/json"];
 
 /**
  * Thin fetch wrapper over the C# API (api/, spec #533). Types come from the committed
@@ -11,6 +13,9 @@ type ActingAsResponse =
  */
 export interface ApiClient {
   getActingAs(): Promise<ActingAsResponse>;
+  submitOrder(roundId: string, drinkType: string): Promise<void>;
+  getMyOrderForRound(roundId: string): Promise<OrderResponse>;
+  getMyMostRecentOrder(): Promise<OrderResponse>;
 }
 
 export function createApiClient(
@@ -18,19 +23,35 @@ export function createApiClient(
   getToken: () => Promise<string | null>,
   fetchImpl: typeof fetch = fetch,
 ): ApiClient {
-  async function get<T>(path: string): Promise<T> {
+  async function call(method: string, path: string, body?: unknown): Promise<Response> {
     const token = await getToken();
     if (!token) throw new Error("API call needs a signed-in session");
     const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}${path}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (!res.ok) {
       const problem = await res.json().catch(() => null);
       throw new Error(`API ${path} failed: ${res.status} ${problem?.code ?? problem?.title ?? ""}`.trim());
     }
-    return (await res.json()) as T;
+    return res;
   }
-  return { getActingAs: () => get<ActingAsResponse>("/acting-as") };
+  async function get<T>(path: string): Promise<T> {
+    return (await (await call("GET", path)).json()) as T;
+  }
+  return {
+    getActingAs: () => get<ActingAsResponse>("/acting-as"),
+    submitOrder: async (roundId, drinkType) => {
+      await call("PUT", `/rounds/${roundId}/order`, { drinkType });
+    },
+    getMyOrderForRound: (roundId) => get<OrderResponse>(`/rounds/${roundId}/order`),
+    getMyMostRecentOrder: () => get<OrderResponse>("/orders/latest"),
+  };
 }
 
 /** The app's API client, authenticated with the given Supabase client's session. */

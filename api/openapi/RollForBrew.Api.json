@@ -48,6 +48,89 @@
           }
         }
       }
+    },
+    "/rounds/{roundId}/order": {
+      "put": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "submitOrder",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitOrderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "getMyOrderForRound",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/latest": {
+      "get": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "getMyMostRecentOrder",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -59,6 +142,34 @@
         "type": "object",
         "properties": {
           "actingAsPlayerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "OrderResponse": {
+        "required": [
+          "drinkType"
+        ],
+        "type": "object",
+        "properties": {
+          "drinkType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SubmitOrderRequest": {
+        "required": [
+          "drinkType"
+        ],
+        "type": "object",
+        "properties": {
+          "drinkType": {
             "type": [
               "null",
               "string"
