@@ -14,7 +14,9 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTestAdminClient, createTestCleanup, hasAnonTestEnv } from "./setup";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { CORPUS } from "../snapshots/corpus";
+import { captureInputFixture } from "../snapshots/corpus/inputFixture";
 import {
   composedFoldViolations,
   makeContext,
@@ -76,6 +78,15 @@ describe.skipIf(!hasAnonTestEnv)("issue #366 — resolve_round Trace-snapshot co
     const ctx = makeContext(admin, cleanup);
 
     const { roundId, resolveWith } = await scenario.seed(ctx);
+
+    // Issue #537: EMIT_INPUT_FIXTURES=1 writes the state this scenario resolves from (the C# RoundSnapshot
+    // wire shape) to tests/snapshots/inputs/. Captured before any resolver write cache exists. Goldens are
+    // untouched; normal runs do not emit.
+    if (process.env.EMIT_INPUT_FIXTURES) {
+      const fixture = await captureInputFixture(admin, scenario.name, roundId, ctx.roster);
+      mkdirSync("tests/snapshots/inputs", { recursive: true });
+      writeFileSync(`tests/snapshots/inputs/${scenario.name}.input.json`, JSON.stringify(fixture, null, 2) + "\n");
+    }
 
     // Issue #409 (ADR 0007): the Provisional Recap. With layer 0 complete and
     // the round still live, get_round_recap dry-runs the resolver — and a
