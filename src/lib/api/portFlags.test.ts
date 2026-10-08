@@ -49,7 +49,7 @@ describe("createApiClient", () => {
 });
 
 describe("getActingAsPlayerId flag branches", () => {
-  const api = { getActingAs: vi.fn(async () => ({ actingAsPlayerId: "api-player" as string | null })) } as unknown as ApiClient;
+  const api = { getActingAs: vi.fn(async () => ({ actingAsPlayerId: "api-player" as string | null })) } as unknown as ApiClient; // partial fake: tests only touch getActingAs
   it("uses .rpc when the flag is off", async () => {
     const { supabase, rpc } = fake([]);
     expect(await getActingAsPlayerId(supabase, () => api)).toBe("rpc-player");

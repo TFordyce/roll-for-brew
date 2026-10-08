@@ -3,6 +3,8 @@ import type { paths } from "./schema";
 
 type ActingAsResponse =
   paths["/acting-as"]["get"]["responses"][200]["content"]["application/json"];
+type OrderResponse =
+  paths["/rounds/{roundId}/order"]["get"]["responses"][200]["content"]["application/json"];
 
 type RatingIdResponse =
   paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
@@ -18,6 +20,9 @@ export interface ApiClient {
   withdrawBrewRating(roundId: string): Promise<void>;
   rateSpellCard(cardId: string, score: number): Promise<RatingIdResponse>;
   withdrawSpellCardRating(cardId: string): Promise<void>;
+  submitOrder(roundId: string, drinkType: string): Promise<void>;
+  getMyOrderForRound(roundId: string): Promise<OrderResponse>;
+  getMyMostRecentOrder(): Promise<OrderResponse>;
 }
 
 export function createApiClient(
@@ -58,6 +63,11 @@ export function createApiClient(
     withdrawSpellCardRating: async (cardId) => {
       await call("DELETE", `/spell-card-ratings/${cardId}`);
     },
+    submitOrder: async (roundId, drinkType) => {
+      await call("PUT", `/rounds/${roundId}/order`, { drinkType });
+    },
+    getMyOrderForRound: (roundId) => get<OrderResponse>(`/rounds/${roundId}/order`),
+    getMyMostRecentOrder: () => get<OrderResponse>("/orders/latest"),
   };
 }
 

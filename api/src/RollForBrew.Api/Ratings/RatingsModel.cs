@@ -37,6 +37,7 @@ public static class RatingsModel
             e.Property(x => x.RoomId).HasColumnName("room_id");
             e.Property(x => x.Status).HasColumnName("status");
             e.Property(x => x.ResolvedAt).HasColumnName("resolved_at");
+            e.Property(x => x.StartedAt).HasColumnName("started_at");
             e.Property(x => x.BrewerId).HasColumnName("brewer_id");
         });
         b.Entity<RatingParticipant>(e =>
@@ -103,6 +104,7 @@ public sealed class RatingRound
     public Guid RoomId { get; set; }
     public string Status { get; set; } = "";
     public DateTime? ResolvedAt { get; set; }
+    public DateTime StartedAt { get; set; } // also read by Orders (Order Window)
     public string? BrewerId { get; set; }
 }
 

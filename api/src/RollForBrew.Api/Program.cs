@@ -4,6 +4,7 @@ using RollForBrew.Api.ActingAs;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Data;
 using RollForBrew.Api.Health;
+using RollForBrew.Api.Orders;
 using RollForBrew.Api.Problems;
 using RollForBrew.Api.Ratings;
 
@@ -39,6 +40,7 @@ app.UseAuthorization();
 app.MapHealth();
 app.MapActingAs();
 app.MapRatings();
+app.MapOrders();
 app.Run();
 
 public partial class Program;

@@ -6,13 +6,14 @@ namespace RollForBrew.Api.Data;
 /// EF Core model for the Filler tables (ADR 0012). Tables stay owned by the hand-written SQL migrations
 /// until the consolidation slice, so every mapped entity is excluded from EF migrations.
 /// </summary>
-public sealed class RfbDbContext(DbContextOptions<RfbDbContext> options) : DbContext(options)
+public sealed partial class RfbDbContext(DbContextOptions<RfbDbContext> options) : DbContext(options)
 {
     public DbSet<AdminActingAs> AdminActingAs => Set<AdminActingAs>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
         RollForBrew.Api.Ratings.RatingsModel.Configure(b);
+        ConfigureOrders(b);
         b.Entity<AdminActingAs>(e =>
         {
             e.ToTable("admin_acting_as", "public", t => t.ExcludeFromMigrations());
