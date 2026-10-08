@@ -4,6 +4,8 @@
 
 accepted — 2026-09-29. Decided in an /improve-codebase-architecture review (candidate #2) and the grilling that followed it.
 
+**To be superseded by [ADR 0010](0010-round-resolution-is-pure-evaluate-then-commit.md)** when C# port slice 2b cuts over. The round-row lock and "exactly one resolution" carry over into C# `AdvanceRound`.
+
 ## Decision
 
 Moving a round forward once a Layer's rolls are in used to be coordinated from TypeScript. There were three functions (`resolveCompletedLayerIfAny`, `finalizeReactionWindow`, `applyLayerOutcome`) and about ten call sites, and each call site picked which one to run next. Every step was a separate RPC. The rules "never finalize while the reaction window is open" and "never open a second window" lived only in the callers. The code for "the window closed, so finalize" was written five times, each copy reading a different "closed" signal. Stall recovery went round the whole thing and called `applyLayerOutcome` directly.

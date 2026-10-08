@@ -4,6 +4,8 @@
 
 accepted — 2026-09-10. Decided by the resolver-source map wayfinder ([#350](https://github.com/TFordyce/roll-for-brew/issues/350)): a grilling + domain-modeling session on 2026-09-04 (map decisions 1–15), charted as slices S1–S4 ([#366](https://github.com/TFordyce/roll-for-brew/issues/366), [#367](https://github.com/TFordyce/roll-for-brew/issues/367), [#368](https://github.com/TFordyce/roll-for-brew/issues/368), [#369](https://github.com/TFordyce/roll-for-brew/issues/369)). Recorded via session https://claude.ai/code/session_01DYJf1XocHL4rGbGy89MLi5.
 
+**To be superseded by [ADR 0009](0009-rules-engine-ported-to-csharp-by-top-down-strangler.md)** when C# port slice 8 reaches exit 4. Until then this flow stays live and shrinks per slice: each slice's SQL-deletion step removes its functions from `db/sql/functions/` and emits the `drop function` in that slice's generated migration.
+
 Leaves **ADR 0005** (resolver *semantics* — the deterministic resolver over the Cast Log) untouched. This decision is about *authoring*: where the stored-function source of truth lives and how it reaches the database.
 
 ## Decision
