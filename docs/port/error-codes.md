@@ -78,3 +78,5 @@ Generated 2026-10-08 from `supabase/migrations` + `db/sql/functions` (scan: ever
 | RFB54 | `rolling_held_for_compelled_casts` | 409 | admin_proxy_roll | rolling is held until every compelled cast is in |
 | RFB55 | `compelled_cast_required` | 422 | cast_spell_card, pass_reaction_window | a compelled cast must name its target now / Brewmageddon compels you to play |
 | RFB56 | `no_courage_token_play` | 422 | spend_courage_token | no roll this round to add to / no Courage Token to spend |
+| RFB57 | `stale_biscuit_choice_required` | 409 | admin_allocate_spell_card | the target has a live Stale Biscuit mark; choose where the card lands (detail = beneficiary id) |
+| RFB58 | `stale_biscuit_mark_gone` | 409 | admin_allocate_spell_card | the Stale Biscuit mark is no longer live |

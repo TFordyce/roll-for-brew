@@ -1,5 +1,10 @@
 using RollForBrew.Api;
+using Npgsql;
+using RollForBrew.Api.ActingAs;
+using RollForBrew.Api.Auth;
+using RollForBrew.Api.Data;
 using RollForBrew.Api.Health;
+using RollForBrew.Api.Problems;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -17,9 +22,20 @@ var corsOrigins = (builder.Configuration["CORS_ORIGINS"] ?? "")
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.SetIsOriginAllowed(origin => CorsOrigins.IsAllowed(origin, corsOrigins)).AllowAnyHeader().AllowAnyMethod()));
 
+builder.Services.AddSupabaseJwt(builder.Configuration);
+builder.Services.AddSingleton<NpgsqlDataSource>(sp =>
+    RoomStore.BuildDataSource(sp.GetRequiredService<IConfiguration>().GetConnectionString("Postgres")
+        ?? throw new InvalidOperationException("ConnectionStrings:Postgres not set")));
+builder.Services.AddSingleton<RoomStore>();
+
 var app = builder.Build();
+app.UseProblemHandling();
+app.UseStatusCodeProblems();
 app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
 app.MapHealth();
+app.MapActingAs();
 app.Run();
 
 public partial class Program;

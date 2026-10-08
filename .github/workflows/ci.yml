@@ -42,7 +42,7 @@ jobs:
           fi
           echo "$files"
           # api job: C# code, plus migrations (Testcontainers/schema tests will use them) and this workflow
-          if echo "$files" | grep -qE '^(api/|supabase/migrations/|db/|\.github/workflows/ci\.yml)|^\.$|api/ '; then echo "api=true" >> "$GITHUB_OUTPUT"; else echo "api=false" >> "$GITHUB_OUTPUT"; fi
+          if echo "$files" | grep -qE '^(api/|supabase/migrations/|db/|docs/port/error-codes\.md|\.github/workflows/ci\.yml)|^\.$|api/ '; then echo "api=true" >> "$GITHUB_OUTPUT"; else echo "api=false" >> "$GITHUB_OUTPUT"; fi
           # ts job: anything that is not purely api/ or docs
           if echo "$files" | grep -vE '^(api/|docs/|.*\.md$)' | grep -q .; then echo "ts=true" >> "$GITHUB_OUTPUT"; else echo "ts=false" >> "$GITHUB_OUTPUT"; fi
 

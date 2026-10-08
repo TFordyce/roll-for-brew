@@ -5,7 +5,7 @@ public static class HealthEndpoints
     public static IEndpointRouteBuilder MapHealth(this IEndpointRouteBuilder app)
     {
         // Liveness: process is up. No dependencies.
-        app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+        app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
         // Startup probe: schema gate. Open when no gate is configured (local dev, tests).
         app.MapGet("/health/ready", async (IConfiguration cfg, ILogger<SchemaGateMarker> log, CancellationToken ct) =>
@@ -28,7 +28,7 @@ public static class HealthEndpoints
                 log.LogWarning(e, "Schema gate check failed");
                 return Results.Json(new { status = "unavailable", expected }, statusCode: 503);
             }
-        });
+        }).AllowAnonymous();
         return app;
     }
 }
