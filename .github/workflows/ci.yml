@@ -1,0 +1,86 @@
+name: ci
+
+# One path-filtered workflow. `ci-ok` is the single required check on master: it passes when
+# every job that ran succeeded, and trivially when nothing relevant changed (docs-only PRs).
+# No secrets are used here. Deploys happen in GCP Cloud Build / Vercel / Supabase, not Actions.
+# Lint is intentionally absent: `npm run lint` is broken (ESLint 9, no eslint.config.*).
+# Add a `lint` step to the `ts` job when that is fixed.
+
+on:
+  pull_request:
+  push:
+    branches: [master, "port/**"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ steps.f.outputs.api }}
+      ts: ${{ steps.f.outputs.ts }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: f
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          else
+            base="${{ github.event.before }}"
+          fi
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ] || ! git cat-file -e "$base" 2>/dev/null; then
+            files="api/ src/ ."   # unknown base: run everything
+          else
+            files="$(git diff --name-only "$base" "${{ github.sha }}")"
+          fi
+          echo "$files"
+          # api job: C# code, plus migrations (Testcontainers/schema tests will use them) and this workflow
+          if echo "$files" | grep -qE '^(api/|supabase/migrations/|db/|\.github/workflows/ci\.yml)|^\.$|api/ '; then echo "api=true" >> "$GITHUB_OUTPUT"; else echo "api=false" >> "$GITHUB_OUTPUT"; fi
+          # ts job: anything that is not purely api/ or docs
+          if echo "$files" | grep -vE '^(api/|docs/|.*\.md$)' | grep -q .; then echo "ts=true" >> "$GITHUB_OUTPUT"; else echo "ts=false" >> "$GITHUB_OUTPUT"; fi
+
+  dotnet:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: api/global.json
+      - run: dotnet build api/RollForBrew.sln -c Release
+      - run: dotnet test api/RollForBrew.sln -c Release --no-build
+
+  ts:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run verify:migrations
+
+  ci-ok:
+    if: always()
+    needs: [changes, dotnet, ts]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Every needed job succeeded or was skipped
+        run: |
+          echo '${{ toJSON(needs) }}'
+          if echo '${{ join(needs.*.result, ' ') }}' | grep -qE 'failure|cancelled'; then exit 1; fi
