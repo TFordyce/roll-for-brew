@@ -14,6 +14,7 @@ public sealed partial class RfbDbContext(DbContextOptions<RfbDbContext> options)
     {
         RollForBrew.Api.Ratings.RatingsModel.Configure(b);
         ConfigureOrders(b);
+        ConfigureRoomEntry(b);
         b.Entity<AdminActingAs>(e =>
         {
             e.ToTable("admin_acting_as", "public", t => t.ExcludeFromMigrations());

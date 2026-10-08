@@ -6,6 +6,9 @@ type ActingAsResponse =
 type OrderResponse =
   paths["/rounds/{roundId}/order"]["get"]["responses"][200]["content"]["application/json"];
 
+type EnterRoomResponse =
+  paths["/rooms/today/entry"]["post"]["responses"][200]["content"]["application/json"];
+
 type RatingIdResponse =
   paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
 
@@ -23,6 +26,8 @@ export interface ApiClient {
   submitOrder(roundId: string, drinkType: string): Promise<void>;
   getMyOrderForRound(roundId: string): Promise<OrderResponse>;
   getMyMostRecentOrder(): Promise<OrderResponse>;
+  enterTodaysRoom(): Promise<EnterRoomResponse>;
+  setActingAs(targetPlayerId: string | null): Promise<void>;
 }
 
 export function createApiClient(
@@ -68,6 +73,10 @@ export function createApiClient(
     },
     getMyOrderForRound: (roundId) => get<OrderResponse>(`/rounds/${roundId}/order`),
     getMyMostRecentOrder: () => get<OrderResponse>("/orders/latest"),
+    enterTodaysRoom: async () => (await (await call("POST", "/rooms/today/entry")).json()) as EnterRoomResponse,
+    setActingAs: async (targetPlayerId) => {
+      await call("PUT", "/acting-as", { targetPlayerId });
+    },
   };
 }
 

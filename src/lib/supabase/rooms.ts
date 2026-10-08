@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 import { unwrapJoinedPlayer } from "./playerRow";
 import { getRealPlayers, type RealPlayer } from "./players";
 
@@ -16,7 +18,14 @@ export type RosterEntry = {
  * which idempotently creates/finds today's room (Europe/London) and the
  * caller's room_players row within it, and returns the room's id.
  */
-export async function enterTodaysRoom(supabase: SupabaseClient): Promise<string> {
+export async function enterTodaysRoom(
+  supabase: SupabaseClient,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<string> {
+  // Flagged cutover (#568): global port_flags row "enterTodaysRoom" (no room id exists before entry).
+  if (await isPortEnabled(supabase, "enterTodaysRoom")) {
+    return (await api().enterTodaysRoom()).roomId;
+  }
   const { data, error } = await supabase.rpc("enter_todays_room");
   if (error) throw error;
   return data as string;

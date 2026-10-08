@@ -78,7 +78,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getActingAs"];
-        put?: never;
+        put: operations["setActingAs"];
         post?: never;
         delete?: never;
         options?: never;
@@ -182,12 +182,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/today/entry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enterTodaysRoom"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ActingAsResponse: {
             actingAsPlayerId: null | string;
+        };
+        EnterRoomResponse: {
+            /** Format: uuid */
+            roomId: string;
         };
         MyRatingResponse: {
             /** Format: int32 */
@@ -203,6 +223,9 @@ export interface components {
         ScoreRequest: {
             /** Format: int32 */
             score: null | number | string;
+        };
+        SetActingAsRequest: {
+            targetPlayerId: null | string;
         };
         SubmitOrderRequest: {
             drinkType: null | string;
@@ -233,6 +256,28 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ActingAsResponse"];
                 };
+            };
+        };
+    };
+    setActingAs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetActingAsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -434,6 +479,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OrderResponse"];
+                };
+            };
+        };
+    };
+    enterTodaysRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnterRoomResponse"];
                 };
             };
         };

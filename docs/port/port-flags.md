@@ -41,3 +41,11 @@ Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows;
 Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /orders/latest`. Same precondition and
 rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
+
+## Room entry and Acting As flags (#568, human step, not run by the agent)
+
+Slices `enterTodaysRoom` (`POST /rooms/today/entry`) and `setActingAs` (`PUT /acting-as`), global rows only (no room id
+exists before entry). Same precondition and rollback shape as `getActingAs`. `set_acting_as` stays admin-only; the
+Test-Room-only override stays in `current_player_id` (SQL, bridged; ADR 0009 amendment). New problem codes (not RFBnn):
+`admin_required_set_acting_as` (403), `acting_as_target_not_found` (404). The SQL `enter_todays_room`/`set_acting_as`
+and their grants stay until a 5-play-day soak; retirement is a separate human-gated step. `current_player_id` stays.

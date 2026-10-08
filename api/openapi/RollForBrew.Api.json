@@ -47,6 +47,27 @@
             }
           }
         }
+      },
+      "put": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "setActingAs",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetActingAsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "No Content"
+          }
+        }
       }
     },
     "/brew-ratings/{roundId}": {
@@ -319,6 +340,26 @@
           }
         }
       }
+    },
+    "/rooms/today/entry": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "enterTodaysRoom",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnterRoomResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -334,6 +375,18 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "EnterRoomResponse": {
+        "required": [
+          "roomId"
+        ],
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },
@@ -394,6 +447,20 @@
               "string"
             ],
             "format": "int32"
+          }
+        }
+      },
+      "SetActingAsRequest": {
+        "required": [
+          "targetPlayerId"
+        ],
+        "type": "object",
+        "properties": {
+          "targetPlayerId": {
+            "type": [
+              "null",
+              "string"
+            ]
           }
         }
       },

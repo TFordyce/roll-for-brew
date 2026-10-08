@@ -27,7 +27,16 @@ export async function getActingAsPlayerId(
  * id). Admin-only server-side — a non-admin caller is rejected by the RPC
  * itself, not just hidden from the UI.
  */
-export async function setActingAs(supabase: SupabaseClient, targetPlayerId: string): Promise<void> {
+export async function setActingAs(
+  supabase: SupabaseClient,
+  targetPlayerId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<void> {
+  // Flagged cutover (#568): global port_flags row "setActingAs". Admin-only and Test-Room-only rules are enforced server-side either way.
+  if (await isPortEnabled(supabase, "setActingAs")) {
+    await api().setActingAs(targetPlayerId);
+    return;
+  }
   const { error } = await supabase.rpc("set_acting_as", { p_target_player_id: targetPlayerId });
   if (error) throw error;
 }
