@@ -25,7 +25,7 @@ public static class ActingAsEndpoints
                     .SingleOrDefaultAsync(ct);
             }, ct);
             return Results.Ok(new ActingAsResponse(pointer));
-        });
+        }).Produces<ActingAsResponse>().WithName("getActingAs"); // named for the generated TS client (api/openapi/)
         return app;
     }
 }
