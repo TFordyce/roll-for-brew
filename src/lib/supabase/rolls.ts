@@ -263,7 +263,7 @@ export type ResolutionTraceStep = {
    * `no_eligible_roller`), in roll-list order, and why each was passed over.
    * Empty on every other step.
    */
-  passedOver: { playerId: string; reason: LastDripPassedOverReason }[];
+  passedOver: LastDripPassedOver[];
   /**
    * Issue #439: a `dice_modifier` step that is a spent Courage Token (Liquid
    * Courage) rather than a cast card. false on every other step.
@@ -289,6 +289,23 @@ export type ForfeitReason = "no_legal_target" | "stall" | "excluded" | "vote" | 
 
 /** Issue #470: why Last Drip passed over a previous-round roller (_last_drip_target). */
 export type LastDripPassedOverReason = "absent" | "roll_exempt";
+
+/** Issue #470: one previous-round roller Last Drip passed over, and why. */
+export type LastDripPassedOver = { playerId: string; reason: LastDripPassedOverReason };
+
+/** Issue #470: _last_drip_target's `passed_over`, as the Trace and get_last_drip_preview carry it. */
+export type RawLastDripPassedOver = { player_id: string; reason: LastDripPassedOverReason };
+
+export function parseLastDripPassedOver(raw: RawLastDripPassedOver[] | null | undefined): LastDripPassedOver[] {
+  return (raw ?? []).map((p) => ({ playerId: p.player_id, reason: p.reason }));
+}
+
+/** Issue #470: _last_drip_target's answer, as get_last_drip_preview returns it. */
+export type LastDripPreview = {
+  targetPlayerId: string | null;
+  reason: "no_previous_round" | "no_eligible_roller" | null;
+  passedOver: LastDripPassedOver[];
+};
 
 /** Issue #438: a fizzled Tea Heist's reason (_rr_heist_outcomes). */
 export type HeistFizzleReason = "victim_played_first" | "thief_hand_full";
@@ -381,7 +398,7 @@ type RawTraceStep = {
   rolloff_opponent_ids?: string[] | null;
   // Issue #470: a Last Drip step's passed-over previous-round rollers.
   // Absent on every other step.
-  passed_over?: { player_id: string; reason: LastDripPassedOverReason }[] | null;
+  passed_over?: RawLastDripPassedOver[] | null;
   // Issue #439: a spent Courage Token's dice_modifier step. Absent on every
   // other step.
   courage_token?: boolean;
@@ -450,7 +467,7 @@ function toTraceStep(raw: RawTraceStep): ResolutionTraceStep {
       ? { newEarlPlayerId: raw.new_earl_player_id, forcingCardName: raw.forcing_card_name ?? null }
       : null,
     rolloffOpponents: raw.rolloff_opponent_ids ?? [],
-    passedOver: (raw.passed_over ?? []).map((p) => ({ playerId: p.player_id, reason: p.reason })),
+    passedOver: parseLastDripPassedOver(raw.passed_over),
     courageToken: raw.courage_token ?? false,
   };
 }

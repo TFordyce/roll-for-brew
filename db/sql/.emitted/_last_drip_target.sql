@@ -39,6 +39,7 @@ declare
   v_room_id uuid;
   v_started_at timestamptz;
   v_prev_round uuid;
+  v_exempt text[];
   v_row record;
   v_passed jsonb := '[]'::jsonb;
 begin
@@ -59,16 +60,15 @@ begin
       'target_player_id', null, 'reason', 'no_previous_round', 'passed_over', v_passed);
   end if;
 
+  v_exempt := array(select ex.player_id from public._rr_roll_exemptions(p_round_id) ex);
+
   for v_row in
     select r.player_id,
            not exists (
              select 1 from public.round_participants rp
               where rp.round_id = p_round_id and rp.player_id = r.player_id
            ) as absent,
-           exists (
-             select 1 from public._rr_roll_exemptions(p_round_id) ex
-              where ex.player_id = r.player_id
-           ) as exempt
+           r.player_id = any (v_exempt) as exempt
       from public.rolls r
      where r.round_id = v_prev_round and r.layer = 0
      order by r.value desc, r.modifier_snapshot asc, r.player_id asc

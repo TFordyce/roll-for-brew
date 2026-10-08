@@ -42,6 +42,14 @@ describe("lastDripNotice (issue #470)", () => {
     );
   });
 
+  it("warns that the card would do nothing when the previous round has no rollers to pass over", () => {
+    expect(
+      lastDripNotice({ targetPlayerId: null, reason: "no_eligible_roller", passedOver: [] }, displayName),
+    ).toBe(
+      "Nobody from the previous round can currently make tea: Last Drip would do nothing. This can change if someone declares in or plays a card later this round.",
+    );
+  });
+
   it("warns when there's no previous round", () => {
     expect(
       lastDripNotice({ targetPlayerId: null, reason: "no_previous_round", passedOver: [] }, displayName),

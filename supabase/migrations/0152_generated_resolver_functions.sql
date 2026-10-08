@@ -51,6 +51,7 @@ declare
   v_room_id uuid;
   v_started_at timestamptz;
   v_prev_round uuid;
+  v_exempt text[];
   v_row record;
   v_passed jsonb := '[]'::jsonb;
 begin
@@ -71,16 +72,15 @@ begin
       'target_player_id', null, 'reason', 'no_previous_round', 'passed_over', v_passed);
   end if;
 
+  v_exempt := array(select ex.player_id from public._rr_roll_exemptions(p_round_id) ex);
+
   for v_row in
     select r.player_id,
            not exists (
              select 1 from public.round_participants rp
               where rp.round_id = p_round_id and rp.player_id = r.player_id
            ) as absent,
-           exists (
-             select 1 from public._rr_roll_exemptions(p_round_id) ex
-              where ex.player_id = r.player_id
-           ) as exempt
+           r.player_id = any (v_exempt) as exempt
       from public.rolls r
      where r.round_id = v_prev_round and r.layer = 0
      order by r.value desc, r.modifier_snapshot asc, r.player_id asc
@@ -648,13 +648,11 @@ begin
           v_step_index, v_override.cast_id, v_override.card_name, v_override.caster_id,
           v_brewer_id,
           case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end,
-          -- issue #430: who made a Tea Party Revolt pick; issue #470: who
-          -- Last Drip passed over.
-          nullif(
-            coalesce(case when v_override.picked_by is not null
-                          then jsonb_build_object('picked_by', v_override.picked_by) end, '{}'::jsonb)
-            || coalesce(v_passed_over, '{}'::jsonb),
-            '{}'::jsonb)
+          -- issue #430: who made a Tea Party Revolt pick.
+          case when v_override.picked_by is not null
+               then jsonb_build_object('picked_by', v_override.picked_by)
+               -- issue #470: who Last Drip passed over.
+               else v_passed_over end
         ));
         v_step_index := v_step_index + 1;
       end if;

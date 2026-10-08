@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { LastDripPreview } from "@/lib/game/lastDrip";
-import type { LastDripPassedOverReason } from "@/lib/supabase/rolls";
+import { type LastDripPreview, type RawLastDripPassedOver, parseLastDripPassedOver } from "@/lib/supabase/rolls";
 
 export type PendingCast = {
   castId: string;
@@ -214,12 +213,12 @@ export async function getLastDripPreview(supabase: SupabaseClient, roundId: stri
   const raw = data as {
     target_player_id: string | null;
     reason: LastDripPreview["reason"];
-    passed_over: { player_id: string; reason: LastDripPassedOverReason }[];
+    passed_over: RawLastDripPassedOver[];
   };
   return {
     targetPlayerId: raw.target_player_id,
     reason: raw.reason,
-    passedOver: raw.passed_over.map((p) => ({ playerId: p.player_id, reason: p.reason })),
+    passedOver: parseLastDripPassedOver(raw.passed_over),
   };
 }
 

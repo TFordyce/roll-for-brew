@@ -540,13 +540,11 @@ begin
           v_step_index, v_override.cast_id, v_override.card_name, v_override.caster_id,
           v_brewer_id,
           case when v_modifier_gain = 0 then 'brewer (no modifier gain)' else 'brewer' end,
-          -- issue #430: who made a Tea Party Revolt pick; issue #470: who
-          -- Last Drip passed over.
-          nullif(
-            coalesce(case when v_override.picked_by is not null
-                          then jsonb_build_object('picked_by', v_override.picked_by) end, '{}'::jsonb)
-            || coalesce(v_passed_over, '{}'::jsonb),
-            '{}'::jsonb)
+          -- issue #430: who made a Tea Party Revolt pick.
+          case when v_override.picked_by is not null
+               then jsonb_build_object('picked_by', v_override.picked_by)
+               -- issue #470: who Last Drip passed over.
+               else v_passed_over end
         ));
         v_step_index := v_step_index + 1;
       end if;
