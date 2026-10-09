@@ -38,7 +38,6 @@ public class RoundSnapshotLoaderTests : IAsyncLifetime
     private const string Effect = "00000000-0000-4000-8000-0000000000f1";
     private const string Unrelated = "00000000-0000-4000-8000-0000000000f2";
 
-    /// <summary>Room B (today) with a carried 3-round effect cast in Room A (earlier day); an unrelated third room stays out.</summary>
     private async Task Seed()
     {
         await _db.Execute($$"""
@@ -73,12 +72,12 @@ public class RoundSnapshotLoaderTests : IAsyncLifetime
         var snap = await _store.Read(Caller, s => s.Load(Guid.Parse(RoomB)));
 
         Assert.Equal(Guid.Parse(RoomB), snap.RoomId);
-        Assert.Equal(2, snap.Rounds.Count);                          // today's + the earlier-room round g-snap took part in
+        Assert.Equal(2, snap.Rounds.Count);
         Assert.DoesNotContain(snap.Rounds, r => r.Id == Guid.Parse("00000000-0000-4000-8000-0000000000e3"));
         Assert.Equal(2, snap.Rooms.Count);
         Assert.Single(snap.RoomPlayers);
         Assert.Equal(Guid.Parse(Cast), Assert.Single(snap.SpellCasts).Id);
-        Assert.Equal(Guid.Parse(Effect), Assert.Single(snap.ActiveEffects).Id);   // carried (has a round count); the uncounted one stays home
+        Assert.Equal(Guid.Parse(Effect), Assert.Single(snap.ActiveEffects).Id);
         Assert.Single(snap.DeckInstances);
         Assert.NotEmpty(snap.SpellCards);
         Assert.NotEmpty(snap.SpellCardEffects);
@@ -107,7 +106,6 @@ public class RoundSnapshotLoaderTests : IAsyncLifetime
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
             ActivityStopped = a =>
             {
-                // Only this test's database: the listener is process-wide and other classes run in parallel.
                 if (a.GetTagItem("db.query.text") is string q && Equals(a.GetTagItem("db.namespace"), _db.Name)) commands.Add(q);
             },
         };

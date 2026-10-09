@@ -3,8 +3,6 @@ using RollForBrew.Api.Orders;
 
 namespace RollForBrew.Api.Data;
 
-// Filler mappings live in one partial file per slice to keep parallel slices merge-clean.
-// Each slice adds its own DbSets + `Configure<Slice>(ModelBuilder)` here-style and one call line in OnModelCreating.
 public sealed partial class RfbDbContext
 {
     public DbSet<Order> Orders => Set<Order>();

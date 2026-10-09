@@ -3,7 +3,6 @@ using Microsoft.IdentityModel.Tokens;
 
 namespace RollForBrew.Api.Auth;
 
-/// <summary>Supplies the project's signing keys. Production: cached JWKS over HTTP. Tests: a fixed set.</summary>
 public interface IJwksSource
 {
     JsonWebKeySet GetKeys();
@@ -20,11 +19,10 @@ public sealed class HttpJwksSource : IJwksSource
             jwksUrl, new JwksRetriever(), new HttpDocumentRetriever(http ?? new HttpClient()) { RequireHttps = true })
         {
             AutomaticRefreshInterval = TimeSpan.FromHours(1),
-            RefreshInterval = TimeSpan.FromMinutes(1), // floor between forced refreshes on an unknown kid
+            RefreshInterval = TimeSpan.FromMinutes(1),
         };
     }
 
-    // Cached after the first fetch; only the first request per instance (and a refresh) waits on the network.
     public JsonWebKeySet GetKeys() => _manager.GetConfigurationAsync(CancellationToken.None).GetAwaiter().GetResult();
 
     public void RequestRefresh() => _manager.RequestRefresh();

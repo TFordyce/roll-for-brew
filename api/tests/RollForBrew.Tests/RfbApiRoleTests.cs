@@ -3,7 +3,6 @@ using RollForBrew.Tests.Harness;
 
 namespace RollForBrew.Tests;
 
-/// <summary>Pins the rfb_api grant list from spec #533 (amends ADR 0013) against the real migration.</summary>
 public class RfbApiRoleTests : IAsyncLifetime
 {
     private TestDatabase _db = null!;
@@ -43,7 +42,6 @@ public class RfbApiRoleTests : IAsyncLifetime
     {
         Assert.True(await Flag("select has_table_privilege('rfb_api', 'public.admin_acting_as', 'select,insert,update,delete')"));
         Assert.True(await Flag("select has_function_privilege('rfb_api', 'public.current_player_id(uuid, uuid)', 'execute')"));
-        // get_acting_as is not bridged by the API: it reads the table through EF.
         Assert.False(await Flag("select has_function_privilege('rfb_api', 'public.get_acting_as()', 'execute')"));
     }
 

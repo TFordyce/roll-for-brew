@@ -5,13 +5,11 @@ using System.Text.Json.Nodes;
 
 namespace RollForBrew.Domain.Resolver;
 
-/// <summary>Who caused a Trace step. Every part is nullable (a ward, a tick, a frozen roll have no cast).</summary>
 public sealed record SourceCast(Guid? CastId, Guid? ActiveEffectId, string? CardName, string? CasterPlayerId)
 {
     public static readonly SourceCast None = new(null, null, null, null);
 }
 
-/// <summary>A before/after cell. <see cref="Type"/> is modifier|roll|status|target; Value is decimal, string or null.</summary>
 public sealed record TraceValue(string Type, object? Value)
 {
     public static TraceValue Modifier(decimal? v) => new("modifier", v);
@@ -22,13 +20,6 @@ public sealed record TraceValue(string Type, object? Value)
     internal bool SameAs(TraceValue o) => Type == o.Type && TraceJson.ValueEquals(Value, o.Value);
 }
 
-/// <summary>
-/// One Resolution Trace step. The fixed keys are typed; <see cref="Extras"/> carries the kind-specific top-level
-/// keys (die, sign, ward_cast_id, would_be_after, redirected_to_cast_id, rest_of_day, op, condition ...) exactly as
-/// SQL's <c>_rr_trace_step(...) || p_extra</c>: extras win on a key collision (e.g. an explicit "outcome").
-/// Extra values may be string, bool, int/long/decimal, Guid, null, JsonElement, or lists / string-keyed
-/// dictionaries of those. Serialised key order is jsonb's (length, then bytewise) - see <see cref="TraceJson"/>.
-/// </summary>
 public sealed record TraceStep(
     int Index,
     string DisplayKind,
@@ -38,7 +29,6 @@ public sealed record TraceStep(
     TraceValue After,
     IReadOnlyDictionary<string, object?> Extras)
 {
-    /// <summary>"no-op" when before equals after, else "applied"; an extras "outcome" overrides it.</summary>
     public string Outcome =>
         Extras.TryGetValue("outcome", out var o) && o is string s ? s : Before.SameAs(After) ? "no-op" : "applied";
 
@@ -51,21 +41,14 @@ public sealed record TraceStep(
             extras.Length == 0 ? NoExtras : extras.ToDictionary(e => e.Key, e => e.Value));
 }
 
-/// <summary>
-/// Trace/Summary to the frozen jsonb wire shape (ADR 0010: byte-for-byte). Two things differ from
-/// System.Text.Json defaults and are deliberate: object keys follow Postgres jsonb order (shorter key first,
-/// then bytewise), and the writer emits what JSON.stringify(x, null, 2) emits (literal non-ASCII and &lt; &gt; &amp;,
-/// no trailing zeros on numbers) so TS-parsed goldens compare equal.
-/// </summary>
 public static class TraceJson
 {
-    /// <summary>Postgres jsonb object key order: byte length first, then memcmp (UTF-8 ordinal).</summary>
     public static readonly IComparer<string> KeyOrder = Comparer<string>.Create((a, b) =>
     {
         var la = Encoding.UTF8.GetByteCount(a);
         var lb = Encoding.UTF8.GetByteCount(b);
         if (la != lb) return la.CompareTo(lb);
-        return string.CompareOrdinal(a, b); // UTF-16 ordinal == UTF-8 bytewise except for surrogate pairs; ids are ASCII
+        return string.CompareOrdinal(a, b);
     });
 
     public static JsonArray ToNode(IEnumerable<TraceStep> trace) => new([.. trace.Select(ToNode)]);
@@ -101,7 +84,6 @@ public static class TraceJson
     private static JsonObject Obj(params (string, object?)[] fields) =>
         (JsonObject)Convert(fields.ToDictionary(f => f.Item1, f => f.Item2))!;
 
-    /// <summary>Converts a plain object graph to a JsonNode tree with every object's keys in jsonb order.</summary>
     public static JsonNode? Convert(object? v) => v switch
     {
         null => null,
@@ -146,7 +128,6 @@ public static class TraceJson
         _ => System.Convert.ToDecimal(a, CultureInfo.InvariantCulture) == System.Convert.ToDecimal(b, CultureInfo.InvariantCulture),
     };
 
-    /// <summary>JSON.stringify(node, null, 2) (no trailing newline). Preserves the node's key order.</summary>
     public static string Pretty(JsonNode? node)
     {
         var sb = new StringBuilder();
@@ -209,7 +190,6 @@ public static class TraceJson
         }
     }
 
-    /// <summary>A number as JS prints it: no exponent, no trailing zeros (jsonb 1.0 and 1 both read back as 1).</summary>
     public static string Number(decimal d) => (d / 1.0000000000000000000000000000m).ToString(CultureInfo.InvariantCulture);
 
     private static void WriteString(StringBuilder sb, string s)

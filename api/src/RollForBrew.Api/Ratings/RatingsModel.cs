@@ -2,10 +2,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace RollForBrew.Api.Ratings;
 
-/// <summary>
-/// EF mapping for the rating tables (#566) plus the read-only slices of the tables the rating rules consult.
-/// Tables stay owned by the hand-written SQL migrations (0058, 0073), so all are excluded from EF migrations.
-/// </summary>
 public static class RatingsModel
 {
     public static void Configure(ModelBuilder b)
@@ -97,14 +93,13 @@ public sealed class SpellCardRating
     public int Score { get; set; }
 }
 
-// Read-only views of other tables, named for their use here so they cannot clash with other slices' entities.
 public sealed class RatingRound
 {
     public Guid Id { get; set; }
     public Guid RoomId { get; set; }
     public string Status { get; set; } = "";
     public DateTime? ResolvedAt { get; set; }
-    public DateTime StartedAt { get; set; } // also read by Orders (Order Window)
+    public DateTime StartedAt { get; set; }
     public string? BrewerId { get; set; }
 }
 

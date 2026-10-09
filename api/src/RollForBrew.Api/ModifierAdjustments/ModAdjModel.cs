@@ -2,10 +2,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace RollForBrew.Api.ModifierAdjustments;
 
-/// <summary>
-/// EF mapping for modifier_adjustments and its admin deletion audit (#567), plus read/modify slices of the
-/// tables the rules consult. All tables stay owned by hand-written SQL migrations (0052, 0056).
-/// </summary>
 public static class ModAdjModel
 {
     public static void Configure(ModelBuilder b)

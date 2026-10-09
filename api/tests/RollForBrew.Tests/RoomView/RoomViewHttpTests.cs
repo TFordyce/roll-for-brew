@@ -5,7 +5,6 @@ using RollForBrew.Tests.Harness;
 
 namespace RollForBrew.Tests.RoomView;
 
-/// <summary>Seam 3: GET /rooms/{id}/view over the real API and a real schema, as the rfb_api role.</summary>
 public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
 {
     private static int _n;
@@ -133,7 +132,6 @@ public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(new[] { ann.PlayerId, bob.PlayerId }.Order(),
             body.GetProperty("room").GetProperty("activeRound").GetProperty("rolledPlayerIds").EnumerateArray().Select(x => x.GetString()).Order());
         Assert.DoesNotContain("19", System.Text.RegularExpressions.Regex.Matches(text, @"(?<![\w-])19(?![\w-])").Select(m => m.Value));
-        // Their numbers must not appear as a bare JSON number anywhere in the document.
         Assert.False(Leaves(body).Contains(19), "bob's roll leaked into ann's view");
     }
 
@@ -251,7 +249,7 @@ public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(4, rate.GetProperty("myScore").GetInt32());
         Assert.False(Leaves(asAnn).Contains(1) && asAnn.GetProperty("viewer").GetRawText().Contains("\"myScore\":1"));
 
-        var (_, asCat) = await View(cat, room); // the brewer cannot rate their own round
+        var (_, asCat) = await View(cat, room);
         Assert.Equal(JsonValueKind.Null, asCat.GetProperty("viewer").GetProperty("rateableRound").ValueKind);
 
         var history = asAnn.GetProperty("room").GetProperty("history");
@@ -270,7 +268,6 @@ public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
         await Join(testRoom, other);
         await api.Db.Execute($"insert into public.admin_acting_as (admin_player_id, acting_as_player_id) values ('{admin.PlayerId}', '{target.PlayerId}')");
 
-        // The client tries every channel it has to be someone else; none of it is read.
         var req = new HttpRequestMessage(HttpMethod.Get, $"/rooms/{testRoom}/view?viewer={other.PlayerId}&playerId={other.PlayerId}&actingAs={other.PlayerId}");
         req.Headers.Authorization = new("Bearer", api.Token(admin));
         req.Headers.Add("X-Acting-As", other.PlayerId);
@@ -279,7 +276,6 @@ public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
         var body = await res.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(target.PlayerId, body.GetProperty("viewer").GetProperty("playerId").GetString());
 
-        // A normal room is not affected by the pointer.
         var room = await NewRoom();
         await Join(room, admin);
         var (_, real) = await View(admin, room);
@@ -315,7 +311,6 @@ public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal("coffee", asBob.GetProperty("viewer").GetProperty("myOrderForRound").GetString());
         Assert.False(asBob.GetProperty("viewer").GetProperty("orderCue").GetBoolean());
 
-        // A pending Round Replay decision rides along for everyone; only the caster is flagged.
         await api.Db.Execute($"update public.rounds set status = 'resolved', resolved_at = now(), brewer_id = '{bob.PlayerId}', cups_made = 2 where id = '{round}'");
         await api.Db.Execute($"insert into public.pending_round_replay (round_id, room_id, caster_id) values ('{round}', '{room}', '{ann.PlayerId}')");
         var (_, replay) = await View(ann, room);

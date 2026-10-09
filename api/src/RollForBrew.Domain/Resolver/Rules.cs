@@ -3,23 +3,19 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Domain.Resolver;
 
-/// <summary>One row of SQL _rr_cast_log_resolution: a contested_negate / redirect cast and what it did.</summary>
 internal sealed record ClrRow(
     Guid CounterCastId, string CounterKind, long CounterSeq, bool CounterNegated, bool CounterSucceeded,
     bool CounterBackfired, int? CounterDcD20, int? CounterDc, string CounterCaster, Guid VictimGroup,
     Guid VictimCastId, string? VictimOrigTarget, string VictimCaster, string? RedirectTo);
 
-/// <summary>One row of SQL _rr_invocation_resolution: a Saucerer's Apprentice copy or Brew-merang seize.</summary>
 internal sealed record Invocation(
     Guid CastId, string Kind, long Seq, string Caster, bool Negated, Guid? SourceParentCastId, Guid? SourceGroup,
     string? SourceCaster, bool SourceBroken, Guid? WardCastId, string? WardCardName);
 
 internal static class Rules
 {
-    /// <summary>_rr_tier_default_dc: common 2 / rare 5 / otherwise 10.</summary>
     public static int TierDefaultDc(string tier) => tier switch { "common" => 2, "rare" => 5, _ => 10 };
 
-    // ------------------------------------------------------------------ _rr_cast_log_resolution
     private sealed class Counter
     {
         public required WorkingCast Cast; public required string Kind; public required Guid TargetGroup;
@@ -47,8 +43,6 @@ internal static class Rules
         }
         if (counters.Count == 0) return [];
 
-        // Counter-of-counter to any depth: a counter is negated by a later, successful, un-negated contested_negate
-        // aimed at its own card group. Iterated to a fixpoint, in place, exactly like the SQL passes.
         for (var pass = 1; pass <= 2 * counters.Count + 2; pass++)
         {
             var changed = false;
@@ -67,12 +61,6 @@ internal static class Rules
             c.Kind == "redirect" && !c.IsNegated ? c.VictimCaster : null)).ToList();
     }
 
-    // ------------------------------------------------------------------ _rr_roll_exemptions
-    /// <summary>
-    /// Participants who skip their layer-0 roll. The SQL also asks whether a layer-0 Reaction Window is closed
-    /// before honouring a successful counter; the snapshot carries no windows, and Evaluate only runs at
-    /// finalize (windows closed), so a window is treated as closed. See docs/port/evaluate-pipeline.md.
-    /// </summary>
     public static List<(string Player, Guid CastId, string CardName)> RollExemptions(EvalContext ctx, List<ClrRow> clr)
     {
         var participants = ctx.S.RoundParticipants.Where(p => p.RoundId == ctx.RoundId).Select(p => p.PlayerId).ToHashSet();
@@ -92,7 +80,6 @@ internal static class Rules
         return result;
     }
 
-    // ------------------------------------------------------------------ _rr_invocation_resolution
     private sealed class InvEntry
     {
         public required string RowKind; public required WorkingCast Cast; public required Guid OwnGroup;
@@ -158,8 +145,6 @@ internal static class Rules
         return result;
     }
 
-    // ------------------------------------------------------------------ wards (migration 0082)
-    /// <summary>_rr_incoming_polarity</summary>
     public static string IncomingPolarity(string kind, decimal? delta, decimal? multiplier, decimal? setValue, decimal? baseValue) => kind switch
     {
         "flat_modifier" or "dice_modifier" or "roll_swap" => delta > 0 ? "positive" : delta < 0 ? "negative" : "neutral",
@@ -171,18 +156,15 @@ internal static class Rules
         _ => "neutral",
     };
 
-    /// <summary>_rr_el_polarity: polarity of a Phase 4a element against the target's round-start modifier.</summary>
     public static string ElPolarity(ModEffect el, decimal baseValue) =>
         IncomingPolarity(el.Kind, el.Flat, el.Mult, el.Set, baseValue);
 
-    /// <summary>_rr_ward_hit: first ward on the target that blocks (domain, polarity) and is earlier-seq than the effect.</summary>
     public static Ward? WardHit(EvalContext ctx, string target, string domain, string polarity, long? beforeSeq) =>
         !ctx.WardMap.TryGetValue(target, out var wards) ? null
         : wards.FirstOrDefault(w =>
             polarity != "neutral" && w.Domain.ContainsString(domain) && w.Polarity.ContainsString(polarity)
             && (w.WardSeq is null || beforeSeq is null || w.WardSeq < beforeSeq));
 
-    // ------------------------------------------------------------------ _rr_compose_modifier
     public static decimal Compose(decimal baseValue, IEnumerable<ModEffect> effects)
     {
         decimal? set = null; long setOrd = 0; var haveSet = false;
@@ -196,8 +178,6 @@ internal static class Rules
         return set ?? baseValue * mult + flat;
     }
 
-    // ------------------------------------------------------------------ _rr_pick_lowest
-    /// <summary>The lowest-roller pool, ordinal by player id. Natural 1s (not dice-reduced) lose first, ties broken by modifier; an all-20 table compares modifiers only.</summary>
     public static List<string> PickLowest(IReadOnlyList<string> players, IReadOnlyList<int> rolls, IReadOnlyList<decimal> modifier, IReadOnlyList<bool>? diceReduced)
     {
         bool Reduced(int i) => diceReduced is not null && i < diceReduced.Count && diceReduced[i];

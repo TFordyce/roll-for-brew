@@ -4,15 +4,6 @@ using Xunit.Abstractions;
 
 namespace RollForBrew.Tests;
 
-/// <summary>
-/// The parity oracle for Evaluate (ADR 0010, spec #533 "Testing Decisions"): each input fixture is loaded, run through
-/// Evaluate, rendered with the golden writer and compared byte-for-byte with the committed golden. Goldens are never
-/// rewritten from here; a mismatch means the C# is wrong.
-///
-/// Scenarios whose phases are not ported yet are listed by name in <see cref="PendingGoldens"/>. They are counted,
-/// they must still FAIL to match (so a finished port can't hide behind the list), and the list is asserted exactly,
-/// so each of #543-#545 deletes its scenarios from it and the set shrinks to zero.
-/// </summary>
 public class GoldenEvaluateTests(ITestOutputHelper output)
 {
     public static IEnumerable<object[]> Scenarios() => GoldenFixture.AllNames().Select(n => new object[] { n });

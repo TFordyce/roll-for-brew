@@ -4,13 +4,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Tests;
 
-/// <summary>
-/// Golden-driven liveness (#537). "In scope" = every corpus scenario that has an input fixture
-/// (tests/snapshots/inputs/*.input.json, emitted by the TS runner from the state each golden resolved from).
-/// For each, the C# port of _rr_active_effects_as_of, run in memory over the fixture, must produce byte-for-byte
-/// the live-effect id list that SQL returned for the same round (the oracle stored in the fixture). Evaluate
-/// output (Trace / Summary vs the goldens themselves) comes with #542; this slice never reads or writes a golden.
-/// </summary>
 public class GoldenLivenessTests
 {
     private static string SnapshotsDir()
@@ -29,7 +22,6 @@ public class GoldenLivenessTests
             .Order(StringComparer.Ordinal)
             .Select(n => new object[] { n });
 
-    /// <summary>Same shape as JSON.stringify(ids, null, 2) + "\n" so the comparison is on bytes, not parsed values.</summary>
     private static string Canonical(IEnumerable<Guid> ids)
     {
         var list = ids.Select(i => i.ToString()).Order(StringComparer.Ordinal).ToList();

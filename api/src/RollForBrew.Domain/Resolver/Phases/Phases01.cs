@@ -4,11 +4,6 @@ using System.Text.Json;
 
 namespace RollForBrew.Domain.Resolver.Phases;
 
-/// <summary>
-/// One stage of the Evaluate pipeline. A phase reads and writes only the <see cref="EvalContext"/> working
-/// copy (never the snapshot, which is immutable) and appends Trace steps through <c>ctx.Emit</c>.
-/// The id is the phase's name in docs/port/evaluate-pipeline.md and in the pinned order test.
-/// </summary>
 internal abstract class EvalPhase
 {
     public abstract string Id { get; }
@@ -17,7 +12,6 @@ internal abstract class EvalPhase
     protected static SourceCast Src(WorkingCast c, string? cardName) => new(c.Id, null, cardName, c.CasterId);
 }
 
-/// <summary>Loads the layer-0 rollers into the parallel working arrays (SQL "Layer 0" load loop).</summary>
 internal sealed class LoadRollersPhase : EvalPhase
 {
     public override string Id => "load-rollers";
@@ -36,7 +30,6 @@ internal sealed class LoadRollersPhase : EvalPhase
     }
 }
 
-/// <summary>Issue #351: one roll_frozen step per carried-over roller on a replayed round. No-op on generation 0.</summary>
 internal sealed class RollFrozenPhase : EvalPhase
 {
     public override string Id => "roll-frozen";
@@ -51,7 +44,6 @@ internal sealed class RollFrozenPhase : EvalPhase
     }
 }
 
-/// <summary>Issue #433: one roll_exemption step per Participant who skipped their layer-0 roll.</summary>
 internal sealed class RollExemptionPhase : EvalPhase
 {
     public override string Id => "roll-exemption";
@@ -64,11 +56,6 @@ internal sealed class RollExemptionPhase : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 0a (issue #316): materialise Saucerer's Apprentice copies as concrete casts, before Phase 1, so a
-/// copied contested_negate flows through the counter machinery. Idempotent per (source cast, generation).
-/// Synthesised rows get deterministic ids so an evaluation is reproducible.
-/// </summary>
 internal sealed class Phase0aMaterialiseCopies : EvalPhase
 {
     public override string Id => "0a";
@@ -113,10 +100,6 @@ internal sealed class Phase0aMaterialiseCopies : EvalPhase
         new(MD5.HashData(Encoding.UTF8.GetBytes($"rfb-copy:{invocation}:{source}:{gen}")));
 }
 
-/// <summary>
-/// Phase 1 (issues #307/#308/#439): Cast-Log resolution. Derives which casts are negated or redirected from the
-/// recorded counters and emits the contested_negate / redirect steps and one step per negated card group.
-/// </summary>
 internal sealed class Phase1CastLogResolution : EvalPhase
 {
     public override string Id => "1";
@@ -160,7 +143,6 @@ internal sealed class Phase1CastLogResolution : EvalPhase
                 }
             }
 
-            // One step per negated card group, on its first cast (distinct on card_instance_id order by instance, seq).
             foreach (var g in ctx.Casts.Where(c => ctx.NegatedGroups.Contains(c.CardInstanceId) && !c.IsCourageSpend)
                          .GroupBy(c => c.CardInstanceId).OrderBy(g => g.Key, Jb.UuidOrder))
             {
@@ -171,14 +153,12 @@ internal sealed class Phase1CastLogResolution : EvalPhase
             }
         }
 
-        // Issue #439: a Courage Token spend is void exactly when its gift cast is negated.
         foreach (var sp in ctx.Casts.Where(c => c.IsCourageSpend))
             if (sp.CastInputs.GuidOf("courage_token_cast_id") is { } gid && ctx.AllCasts.TryGetValue(gid, out var gift))
                 sp.Negated = gift.Negated;
     }
 }
 
-/// <summary>Pre-pass (issue #344): ward-blocked modifier transfers and snapshots re-assert group negation and emit one warded step each.</summary>
 internal sealed class WardBlockedPrepass : EvalPhase
 {
     public override string Id => "1-ward-blocked-prepass";
@@ -200,7 +180,6 @@ internal sealed class WardBlockedPrepass : EvalPhase
     }
 }
 
-/// <summary>Pre-pass (issue #440): Brewmageddon explainer steps (compel_cast, forfeit). They move nothing.</summary>
 internal sealed class BrewmageddonPrepass : EvalPhase
 {
     public override string Id => "1-brewmageddon-prepass";
@@ -227,7 +206,6 @@ internal sealed class BrewmageddonPrepass : EvalPhase
     }
 }
 
-/// <summary>Phase 0b (issue #316): seize retarget and the copy / seize outcome step. Runs after Phase 1, which clears negation round-wide.</summary>
 internal sealed class Phase0bInvocationOutcomes : EvalPhase
 {
     private static readonly HashSet<string> RollKinds = ["advantage", "disadvantage", "forced_reroll", "roll_flip", "roll_swap", "roll_pair_transform"];
@@ -266,7 +244,6 @@ internal sealed class Phase0bInvocationOutcomes : EvalPhase
                 continue;
             }
 
-            // live seize: retarget the seized group to its own caster
             var group = ctx.Casts.Where(c => c.CardInstanceId == inv.SourceGroup && !c.IsCourageSpend).ToList();
             if (!ctx.Casts.Any(c => c.CardInstanceId == inv.SourceGroup && c.SeizedByCastId == inv.CastId))
             {
@@ -298,7 +275,6 @@ internal sealed class Phase0bInvocationOutcomes : EvalPhase
     }
 }
 
-/// <summary>Phase 2 (issue #309): ward projection. Builds the per-target ward map the modifier phases and Phase 5 consult.</summary>
 internal sealed class Phase2WardProjection : EvalPhase
 {
     public override string Id => "2";

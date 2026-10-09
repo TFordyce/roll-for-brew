@@ -1,9 +1,5 @@
 namespace RollForBrew.Tests.Harness;
 
-/// <summary>
-/// Supabase-only pieces the repo migrations assume, stubbed so plain Postgres can run them: the API roles,
-/// auth.users and auth.uid(). realtime is intentionally absent: rfb_api must never need it (ADR 0013).
-/// </summary>
 public static class SupabaseStubs
 {
     public const string Sql = """

@@ -11,7 +11,6 @@ public static class RatingEndpoints
 
     public static IEndpointRouteBuilder MapRatings(this IEndpointRouteBuilder app)
     {
-        // Operation names match the TS wrappers (docs/port/port-flags.md).
         app.MapPut("/brew-ratings/{roundId:guid}", async (HttpContext http, RoomStore store, Guid roundId, ScoreRequest body, CancellationToken ct) =>
             Results.Ok(new RatingIdResponse(await store.Filler(http.GetCaller(),
                 s => RatingRules.SubmitBrewRating(s, roundId, body.Score, ct), ct))))

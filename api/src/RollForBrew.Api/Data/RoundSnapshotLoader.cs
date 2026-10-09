@@ -3,11 +3,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Api.Data;
 
-/// <summary>
-/// Loads a Room's RoundSnapshot in ONE statement (one round trip): a CTE chain bounds the cross-room data to
-/// the Room's Participants and returns a single jsonb document built with to_jsonb, which is the
-/// snapshot's wire shape. See <see cref="RoundSnapshot"/> for the bounds.
-/// </summary>
 public static class RoundSnapshotLoader
 {
     public static async Task<RoundSnapshot> Load(this StoreSession session, Guid roomId, CancellationToken ct = default)

@@ -6,11 +6,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Api.Data;
 
-/// <summary>
-/// Loads everything GET /rooms/{id}/view needs, in three statements on one read-only transaction:
-/// the RoundSnapshot (also carries rooms.version), the viewer/room extras (direct table reads), and the
-/// read bridges (still-SQL functions called as the effective player; docs/port/room-view-bridges.md).
-/// </summary>
 public static class RoomViewLoader
 {
     public static async Task<RoomViewInput?> LoadView(this StoreSession session, Guid roomId, CancellationToken ct = default)
@@ -19,7 +14,6 @@ public static class RoomViewLoader
         var room = snapshot.Rooms.SingleOrDefault(r => r.Id == roomId);
         if (room is null) return null;
 
-        // The effective player: Acting As is resolved here, by SQL, from the validated JWT. Never client-supplied.
         var viewer = await session.CurrentPlayerId(roomId: roomId, ct: ct);
 
         var active = snapshot.Rounds.SingleOrDefault(r => r.RoomId == roomId && (r.Status == "open" || r.Status == "closed"));
@@ -45,7 +39,6 @@ public static class RoomViewLoader
         return JsonSerializer.Deserialize<T>(json, RoundSnapshot.Json) ?? throw new InvalidDataException("empty view read");
     }
 
-    /// <summary>Direct table / view reads. Each is the equivalent of one wrapper in src/lib/supabase today.</summary>
     private const string Extras = """
         with room_rounds as (select id, brewer_id from public.rounds where room_id = @room),
         order_round as (
@@ -99,11 +92,6 @@ public static class RoomViewLoader
         )::text
         """;
 
-    /// <summary>
-    /// The read bridges. Each call runs the SQL function as the effective player (claims GUC), so hands,
-    /// pending draws and eligibility are scoped to the viewer inside SQL. Round-scoped bridges are skipped
-    /// with no active round; closed-only ones are skipped for an open round.
-    /// </summary>
     private const string Bridges = """
         select jsonb_build_object(
           'held_cards', coalesce((select jsonb_agg(to_jsonb(t)) from public.get_my_spell_cards(@room) t), '[]'),

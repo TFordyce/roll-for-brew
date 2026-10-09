@@ -2,8 +2,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Domain.RoomView;
 
-// Everything the projection reads that the RoundSnapshot does not hold. All JSON-parsed with
-// RoundSnapshot.Json (snake_case), so the loader hands SQL rows through unchanged.
 
 public sealed record PlayerInfo(string Id, string? DisplayName, string? Email, string? AvatarUrl, bool IsTest);
 
@@ -13,7 +11,6 @@ public sealed record RateableRoundRow(Guid RoundId, string? BrewerDisplayName, s
 
 public sealed record PendingReplayRow(Guid RoundId, string CasterId, DateTimeOffset CreatedAt);
 
-/// <summary>Direct table / view reads for the viewer and the Room (not in the snapshot, not bridged SQL functions).</summary>
 public sealed record ViewExtras(
     IReadOnlyList<PlayerInfo> Players,
     string? MyOrderForRound,
@@ -23,7 +20,6 @@ public sealed record ViewExtras(
     string? RollInputMode,
     PendingReplayRow? PendingReplay);
 
-// ---- Read bridges: still-SQL read functions, called as the effective player (docs/port/room-view-bridges.md). ----
 
 public sealed record HeldCard(Guid InstanceId, string Location, string CardName, string CastingTime, string Target,
     string Tier, string EffectText, string? EffectKind, string Edition);
@@ -44,7 +40,6 @@ public sealed record SkipVoteRow(DateTimeOffset PollRoundStartedAt, int Votes, i
 public sealed record CourageTokenRow(Guid EffectId, string GiverPlayerId, string GiverDisplayName, string Dice);
 public sealed record EffectBadgeRow(Guid EffectId, string TargetPlayerId, string CardName, string Tier, string? Polarity, int? RoundsRemaining);
 
-/// <summary>Results of the read bridges. Every list is empty / null when the function had nothing to say.</summary>
 public sealed record ViewerReads(
     IReadOnlyList<HeldCard> HeldCards,
     PendingSpellDrawRow? PendingSpellDraw,

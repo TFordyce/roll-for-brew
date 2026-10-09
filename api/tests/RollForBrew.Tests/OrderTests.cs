@@ -16,7 +16,7 @@ public class OrderWindowTests
     [InlineData("tea", "cancelled", false, OrderVerdict.RoundNotOpen)]
     [InlineData("tea", null, false, OrderVerdict.RoundNotOpen)]
     [InlineData("juice", "open", false, OrderVerdict.DrinkTypeInvalid)]
-    [InlineData(null, null, false, OrderVerdict.DrinkTypeInvalid)] // drink type is checked first
+    [InlineData(null, null, false, OrderVerdict.DrinkTypeInvalid)]
     public void Check(string? drink, string? status, bool later, OrderVerdict expected) =>
         Assert.Equal(expected, OrderWindow.Check(drink, status, later));
 }
@@ -101,11 +101,9 @@ public class OrderHttpTests(ApiHost api) : IClassFixture<ApiHost>
         var first = await Round(room, u.PlayerId, "resolved", 30);
         Assert.Equal(HttpStatusCode.NoContent, (await Put(c, first, "tea")).StatusCode);
 
-        // A later round that is merely open does not close the window.
         var second = await Round(room, u.PlayerId, "open", 10);
         Assert.Equal(HttpStatusCode.NoContent, (await Put(c, first, "coffee")).StatusCode);
 
-        // Once the later round resolves it does (RFB30); the later round itself is still orderable.
         await api.Db.Execute($"update public.rounds set status = 'resolved', resolved_at = now() where id = '{second}'");
         var res = await Put(c, first, "tea");
         Assert.Equal(HttpStatusCode.Conflict, res.StatusCode);
@@ -135,7 +133,6 @@ public class OrderHttpTests(ApiHost api) : IClassFixture<ApiHost>
     [Fact]
     public async Task Matches_SQL_submit_order_outcome()
     {
-        // Parity with the SQL path on the same inputs: the SQL function writes the same row shape.
         var (u, c, room) = await Setup("g-ord-7");
         var round = await Round(room, u.PlayerId, "open", 5);
         await Put(c, round, "tea");
