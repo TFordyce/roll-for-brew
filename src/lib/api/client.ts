@@ -17,6 +17,9 @@ type AdjustmentIdResponse =
  * `schema.d.ts` (regenerate with `npm run gen:api`; CI fails on drift). Sends the Supabase
  * session JWT as Bearer. Add one method per ported endpoint here.
  */
+export type RoomViewResponse =
+  paths["/rooms/{roomId}/view"]["get"]["responses"][200]["content"]["application/json"];
+
 export interface ApiClient {
   getActingAs(): Promise<ActingAsResponse>;
   submitBrewRating(roundId: string, score: number): Promise<RatingIdResponse>;
@@ -29,6 +32,8 @@ export interface ApiClient {
   logModifierAdjustment(targetPlayerId: string, delta: number, reason: string): Promise<AdjustmentIdResponse>;
   deleteModifierAdjustment(adjustmentId: string): Promise<void>;
   adminDeleteModifierAdjustment(adjustmentId: string, reason: string): Promise<void>;
+  /** GET /rooms/{id}/view (slice 1b): the per-viewer screen model. Sent with cache: no-store. */
+  getRoomView(roomId: string): Promise<RoomViewResponse>;
 }
 
 export function createApiClient(
@@ -47,6 +52,7 @@ export function createApiClient(
         ...(body === undefined ? {} : { "Content-Type": "application/json" }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      cache: "no-store",
     });
     if (!res.ok) {
       const problem = await res.json().catch(() => null);
@@ -82,6 +88,7 @@ export function createApiClient(
     adminDeleteModifierAdjustment: async (adjustmentId, reason) => {
       await call("POST", `/modifier-adjustments/${adjustmentId}/admin-delete`, { reason });
     },
+    getRoomView: (roomId) => get<RoomViewResponse>(`/rooms/${encodeURIComponent(roomId)}/view`),
   };
 }
 
