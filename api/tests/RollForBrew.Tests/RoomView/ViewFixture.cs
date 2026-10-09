@@ -4,7 +4,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Tests.RoomView;
 
-/// <summary>Builds an in-memory RoundSnapshot + extras + bridge results for one Room and one viewer.</summary>
 public sealed class ViewFixture
 {
     public static readonly Guid RoomId = Guid.Parse("00000000-0000-4000-8000-000000000a01");

@@ -7,13 +7,6 @@ using RollForBrew.Api.Data;
 
 namespace RollForBrew.Tests;
 
-/// <summary>
-/// CI gate for ADR 0012 (the `ef-model` job runs these). While every Filler table is owned by the
-/// hand-written supabase/migrations, each mapped entity is ExcludeFromMigrations, so EF must have nothing
-/// to script. The day an entity drops that flag (an additive Filler change), the scripted SQL becomes
-/// non-empty and this test fails until the script is committed as the next numbered supabase/migrations file
-/// and this test is taught to compare against it.
-/// </summary>
 [Trait("Category", "EfModel")]
 public class EfModelTests
 {

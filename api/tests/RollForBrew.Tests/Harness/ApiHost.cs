@@ -8,11 +8,6 @@ using RollForBrew.Api.Auth;
 
 namespace RollForBrew.Tests.Harness;
 
-/// <summary>
-/// Seam 3 harness: the real API in-process, against a per-class database as the rfb_api role, with a
-/// local ES256 key standing in for the project's JWKS. Use as an xUnit class fixture.
-/// Mint tokens with <see cref="Token"/>; use <see cref="Foreign"/> to mint with an unknown key.
-/// </summary>
 public sealed class ApiHost : IAsyncLifetime
 {
     public const string Issuer = "https://test-project.supabase.co/auth/v1";
@@ -47,7 +42,6 @@ public sealed class ApiHost : IAsyncLifetime
     public string Token(TestUser user, TimeSpan? lifetime = null, string audience = "authenticated", string issuer = Issuer) =>
         Mint(Key, user, lifetime ?? TimeSpan.FromMinutes(5), audience, issuer);
 
-    /// <summary>Signed by a key that is not in the JWKS.</summary>
     public string Foreign(TestUser user) =>
         Mint(new ECDsaSecurityKey(_foreignEcdsa) { KeyId = "test-key" }, user, TimeSpan.FromMinutes(5), "authenticated", Issuer);
 
@@ -59,7 +53,6 @@ public sealed class ApiHost : IAsyncLifetime
         {
             Issuer = issuer,
             Audience = audience,
-            // Past expiry needs NotBefore earlier still.
             NotBefore = expires < now ? expires - TimeSpan.FromMinutes(5) : now,
             IssuedAt = expires < now ? expires - TimeSpan.FromMinutes(5) : now,
             Expires = expires,

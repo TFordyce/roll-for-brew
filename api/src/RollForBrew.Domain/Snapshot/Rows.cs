@@ -2,11 +2,7 @@ using System.Text.Json;
 
 namespace RollForBrew.Domain.Snapshot;
 
-// Row shapes of the RoundSnapshot. Property names map to the snake_case column names, so a snapshot is
-// the same JSON whether Postgres (to_jsonb) or the TS fixture emitter produced it. Only columns the rules
-// engine reads are modelled; unknown columns are ignored on read.
 
-/// <summary>Version is rooms.version (0160); absent in pre-0160 fixtures, so it defaults to 0.</summary>
 public sealed record RoomRow(Guid Id, bool IsTest, long Version = 0);
 
 public sealed record RoundRow(

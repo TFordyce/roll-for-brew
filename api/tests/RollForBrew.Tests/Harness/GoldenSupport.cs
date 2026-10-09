@@ -7,7 +7,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Tests.Harness;
 
-/// <summary>One scenario's input fixture (tests/snapshots/inputs/*.input.json) and its golden path.</summary>
 public sealed record GoldenFixture(string Name, RoundSnapshot Snapshot, Guid RoundId, IReadOnlyDictionary<string, string> Roster)
 {
     public static string SnapshotsDir()
@@ -37,18 +36,11 @@ public sealed record GoldenFixture(string Name, RoundSnapshot Snapshot, Guid Rou
     public string GoldenText() => File.ReadAllText(Path.Combine(SnapshotsDir(), Name + ".json"));
 }
 
-/// <summary>A die roller for goldens: every die shows the same face. The two Calami-Tea scenarios redact the die.</summary>
 public sealed class ConstantDieRoller(int face = 1) : IDieRoller
 {
     public int Roll(int sides) => Math.Min(face, sides);
 }
 
-/// <summary>
-/// C# port of the TS golden writer (tests/snapshots/corpus/framework.ts: normaliseTrace, normaliseSummary,
-/// normaliseScrappedGenerations, snapshotDocument), so the C# Resolution renders to the very text the goldens hold:
-/// players become P:label, cast / effect ids become cast#N / fx#N by first appearance in the trace, other
-/// uuids uuid#N, RNG values "&lt;rng&gt;"; output is JSON.stringify(doc, null, 2) + "\n".
-/// </summary>
 public static partial class GoldenWriter
 {
     [GeneratedRegex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", RegexOptions.IgnoreCase)]

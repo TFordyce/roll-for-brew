@@ -4,10 +4,8 @@ public static class HealthEndpoints
 {
     public static IEndpointRouteBuilder MapHealth(this IEndpointRouteBuilder app)
     {
-        // Liveness: process is up. No dependencies.
         app.MapGet("/health", () => Results.Ok(new { status = "ok" })).AllowAnonymous();
 
-        // Startup probe: schema gate. Open when no gate is configured (local dev, tests).
         app.MapGet("/health/ready", async (IConfiguration cfg, ILogger<SchemaGateMarker> log, CancellationToken ct) =>
         {
             var file = cfg["SCHEMA_VERSION"];

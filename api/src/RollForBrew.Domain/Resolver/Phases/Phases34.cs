@@ -2,11 +2,6 @@ using System.Text.Json;
 
 namespace RollForBrew.Domain.Resolver.Phases;
 
-/// <summary>
-/// Phase 3-pre (issue #289): Calami-Tea per-round dice tick synthesis - the only place Evaluate rolls a die.
-/// NOT PORTED: owned by #543. Throws only when a live per_round_dice_tick effect targets a roller, i.e. when
-/// the snapshot actually needs it. #543 replaces the guard with the synthesis (ctx.Dice, existing-tick skip).
-/// </summary>
 internal sealed class Phase3PreDiceTick : EvalPhase
 {
     public override string Id => "3-pre";
@@ -17,12 +12,6 @@ internal sealed class Phase3PreDiceTick : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 3 (issues #306-#319): roll-input accounting. Walks each roller's recorded roll_transform entries (the
-/// eager shim's before/after pairs) in (order, seq) and emits one step each, chaining a running roll.
-/// Ported: the generic walk (warded, negated, dice_tick, advantage / reroll / flip / swap / pair / fixed, conditional
-/// advantage) and the backfire re-application. NOT PORTED (#543): persistent advantage (Prophe-Tea).
-/// </summary>
 internal sealed class Phase3RollInputs : EvalPhase
 {
     private static readonly HashSet<string> Kinds =
@@ -81,7 +70,6 @@ internal sealed class Phase3RollInputs : EvalPhase
                 ctx.Emit(kind, Src(row.Cast, row.CardName), pid, TraceValue.Roll(before), TraceValue.Roll(after), extras);
             }
 
-            // Issue #308: a backfired counter re-applies the victim group's eager transforms once more onto the reactor.
             if (ctx.HasCounters)
             {
                 foreach (var bf in ctx.ClrRows.Where(r => r.CounterBackfired && r.CounterCaster == pid).OrderBy(r => r.CounterSeq))

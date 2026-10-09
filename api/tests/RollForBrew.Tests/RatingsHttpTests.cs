@@ -13,7 +13,6 @@ public class RatingsHttpTests(ApiHost api) : IClassFixture<ApiHost>
 
     private async Task<TestUser> User(string tag) => await api.Db.AddUser($"{tag}-{Interlocked.Increment(ref _seq)}");
 
-    /// <summary>A room with one resolved round; brewer plus two non-brewer participants.</summary>
     private async Task<Scene> Resolved(int dayOffset = 0, bool testRoom = false)
     {
         var n = Interlocked.Increment(ref _seq);
@@ -176,7 +175,6 @@ public class RatingsHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Null(await Mine(s.Brewer, $"/brew-ratings/{s.Round}/mine"));
         Assert.Null(await Mine(s.Other, $"/brew-ratings/{s.Round}/mine"));
 
-        // Nothing in the request can name another rater.
         var c = api.Client(api.Token(s.Brewer));
         c.DefaultRequestHeaders.Add("X-Rater-Player-Id", s.Rater.PlayerId);
         var res = await c.GetAsync($"/brew-ratings/{s.Round}/mine?raterPlayerId={s.Rater.PlayerId}");
@@ -185,7 +183,6 @@ public class RatingsHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(JsonValueKind.Null, JsonDocument.Parse(body).RootElement.GetProperty("score").ValueKind);
     }
 
-    // ---- Spell card ratings ----
 
     private async Task<(Guid Card, TestUser Caster, TestUser Stranger)> CastCard(bool negated = false, bool testRoom = false, string status = "resolved")
     {
@@ -251,10 +248,8 @@ public class RatingsHttpTests(ApiHost api) : IClassFixture<ApiHost>
     {
         var (card, caster, stranger) = await CastCard();
         await RateCard(caster, card, 5);
-        // Losing the qualifying cast must not trap the rating.
         await api.Db.Execute("delete from public.spell_casts");
 
-        // Another player's withdraw cannot touch it.
         Assert.Equal(HttpStatusCode.NoContent, (await api.Client(api.Token(stranger)).DeleteAsync($"/spell-card-ratings/{card}")).StatusCode);
         Assert.Equal(5, await Mine(caster, $"/spell-card-ratings/{card}/mine"));
 

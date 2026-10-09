@@ -4,7 +4,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Tests;
 
-/// <summary>Hand-built snapshots against the _rr_active_effects_as_of rules. Golden-driven coverage is in GoldenLivenessTests.</summary>
 public class ActiveEffectsTests
 {
     private static readonly DateTimeOffset T0 = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
@@ -85,11 +84,11 @@ public class ActiveEffectsTests
         var w = new World();
         var src = w.Round(0, "resolved", null, "t");
         var e = w.Effect(w.Cast(src), remaining: 3);
-        w.Round(10, "resolved", null, "other");      // target sat out: does not tick
-        w.Round(20, "resolved", null, "t");          // ticks (2 with the source round)
+        w.Round(10, "resolved", null, "other");
+        w.Round(20, "resolved", null, "t");
         var asOf = w.Round(30, "open", null, "t");
         Assert.Equal([e.Id], w.Live(asOf).Select(x => x.Id));
-        w.Round(25, "resolved", null, "t");          // ticks (3) -> exhausted
+        w.Round(25, "resolved", null, "t");
         Assert.Empty(w.Live(asOf));
     }
 
@@ -100,11 +99,11 @@ public class ActiveEffectsTests
         var src = w.Round(0, "resolved", null, "t");
         w.Effect(w.Cast(src), remaining: 1);
         var asOfSame = w.Round(5, "open", null, "t");
-        Assert.Empty(w.Live(asOfSame)); // source round resolved and counted -> 1 >= 1
+        Assert.Empty(w.Live(asOfSame));
         var w2 = new World();
         var open = w2.Round(0, "open", null, "t");
         w2.Effect(w2.Cast(open), remaining: 1);
-        Assert.Single(w2.Live(w2.Round(5, "open", null, "t"))); // unresolved rounds do not tick
+        Assert.Single(w2.Live(w2.Round(5, "open", null, "t")));
     }
 
     [Fact]
@@ -119,7 +118,7 @@ public class ActiveEffectsTests
         w.Cast(r2, "dispel", $$"""{"ended_effect_id":"{{u.Id}}"}""");
         var r3 = w.Round(20);
         Assert.Equal([u.Id], w.Live(r3).Select(x => x.Id));
-        Assert.Equal([e.Id, u.Id], w.Live(r1).Select(x => x.Id).Order().ToArray()); // a historical read still sees it
+        Assert.Equal([e.Id, u.Id], w.Live(r1).Select(x => x.Id).Order().ToArray());
     }
 
     [Fact]
@@ -178,8 +177,8 @@ public class ActiveEffectsTests
         Assert.Equal([e.Id], w.Live(r1).Select(x => x.Id));
         var r2 = w.Round(10, "resolved", null, "t");
         var r3 = w.Round(20, "open", null, "t");
-        Assert.Equal([e.Id], w.Live(r2).Select(x => x.Id)); // r2 itself not yet counted
-        Assert.Empty(w.Live(r3));                            // r2 resolved with t in it
+        Assert.Equal([e.Id], w.Live(r2).Select(x => x.Id));
+        Assert.Empty(w.Live(r3));
     }
 
     [Fact]
@@ -198,11 +197,11 @@ public class ActiveEffectsTests
         var earlier = w.OtherRoom();
         var src = w.Round(0, "resolved", earlier, "t");
         var e = w.Effect(w.Cast(src), room: earlier, remaining: 3);
-        var rest = w.Effect(w.Cast(src), room: earlier); // no round count: stays in its day's room
+        var rest = w.Effect(w.Cast(src), room: earlier);
         var now = w.Round(100, "open", null, "t");
         var live = w.Live(now);
         Assert.Equal([e.Id], live.Select(x => x.Id));
-        Assert.All(live, x => Assert.Equal(w.Room, x.RoomId)); // rewritten to the asking room
+        Assert.All(live, x => Assert.Equal(w.Room, x.RoomId));
         Assert.Contains(rest.Id, w.Live(src, earlier).Select(x => x.Id));
     }
 
@@ -232,7 +231,6 @@ public class ActiveEffectsTests
         var newer = w.Effect(w.Cast(r2), kind: "brewer_immunity", ep: """{"mode":"earl"}""", createdMinute: 2);
         var r3 = w.Round(20);
         Assert.Equal([newer.Id], w.Live(r3).Select(x => x.Id));
-        // a title cast after the as-of round does not displace the older one in a historical read
         Assert.Equal(new[] { old.Id, newer.Id }.Order(), w.Live(r1).Select(x => x.Id).Order());
         var nc = w.Casts.First(c => c.Id == newer.SourceCastId);
         w.Casts[w.Casts.IndexOf(nc)] = nc with { Negated = true };

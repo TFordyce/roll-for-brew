@@ -1,6 +1,5 @@
 namespace RollForBrew.Api.Problems;
 
-/// <summary>HTTP status class for a named problem code (docs/port/error-codes.md).</summary>
 public enum ProblemClass
 {
     State = 409,
@@ -12,10 +11,6 @@ public enum ProblemClass
 
 public sealed record ProblemInfo(string SqlState, string Code, ProblemClass Class, string Title);
 
-/// <summary>
-/// RFBnn to named problem code. Mirrors docs/port/error-codes.md (a test fails on drift).
-/// Ported code may add new named codes; it never reuses or renumbers an RFBnn.
-/// </summary>
 public static class ProblemCatalog
 {
     private static readonly ProblemInfo[] Rows =
