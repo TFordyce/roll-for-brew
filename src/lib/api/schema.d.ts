@@ -230,12 +230,44 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rooms/{roomId}/view": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["getRoomView"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         ActingAsResponse: {
             actingAsPlayerId: null | string;
+        };
+        ActiveRoundView: {
+            /** Format: uuid */
+            roundId: string;
+            startedBy: string;
+            status: string;
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            closedAt: null | string;
+            /** Format: int32 */
+            currentLayer: number | string;
+            isTiePhase: boolean;
+            participants: components["schemas"]["ParticipantView"][];
+            tiedParticipants: components["schemas"]["TiedParticipantView"][];
+            rolledPlayerIds: string[];
         };
         AdjustmentIdResponse: {
             /** Format: uuid */
@@ -244,11 +276,83 @@ export interface components {
         AdminDeleteRequest: {
             reason: null | string;
         };
+        CompelledCastRow: {
+            castingTime: string;
+            cardName: string;
+            brewmageddonCasterId: string;
+        };
+        CompelledCastView: {
+            mine: null | components["schemas"]["CompelledCastRow"];
+            /** Format: uuid */
+            roundId: string;
+            waitingOnOthers: string[];
+            /** Format: date-time */
+            stepEndedAt: null | string;
+        };
+        CourageTokenRow: {
+            /** Format: uuid */
+            effectId: string;
+            giverPlayerId: string;
+            giverDisplayName: string;
+            dice: string;
+        };
+        DispellableRow: {
+            /** Format: uuid */
+            effectId: string;
+            targetPlayerId: string;
+            targetDisplayName: string;
+            cardName: string;
+            tier: string;
+        };
+        EffectBadge: {
+            /** Format: uuid */
+            effectId: string;
+            cardName: string;
+            tier: string;
+            polarity: string;
+            /** Format: int32 */
+            roundsRemaining: null | number | string;
+        };
+        HeldCard: {
+            /** Format: uuid */
+            instanceId: string;
+            location: string;
+            cardName: string;
+            castingTime: string;
+            target: string;
+            tier: string;
+            effectText: string;
+            effectKind: null | string;
+            edition: string;
+        };
+        HistoryEntry: {
+            /** Format: uuid */
+            roundId: string;
+            /** Format: date-time */
+            resolvedAt: null | string;
+            /** Format: int32 */
+            cupsMade: null | number | string;
+            brewerId: null | string;
+            brewerName: null | string;
+        };
+        LastDripPreviewRow: {
+            targetPlayerId: null | string;
+            reason: null | string;
+            passedOver: null | components["schemas"]["PassedOverRow"][];
+        };
         LogRequest: {
             targetPlayerId: string;
             /** Format: int32 */
             delta: number | string;
             reason: null | string;
+        };
+        MenuEntryView: {
+            playerId: string;
+            drinkType: string;
+            milk: null | string;
+            sugar: null | string;
+            decaf: boolean;
+            noPreferenceSet: boolean;
         };
         MyRatingResponse: {
             /** Format: int32 */
@@ -257,16 +361,214 @@ export interface components {
         OrderResponse: {
             drinkType: null | string;
         };
+        Panels: {
+            brewRating: boolean;
+            menu: boolean;
+            spellDrawChoice: boolean;
+            roundReplayPrompt: boolean;
+            pendingSpellDie: boolean;
+            compelledCast: boolean;
+            teaPartyRevolt: boolean;
+            spellCards: boolean;
+            tieBanner: boolean;
+            roundReveal: boolean;
+            lateDeclare: boolean;
+            whosIn: boolean;
+            rollInput: boolean;
+            reactionBanner: boolean;
+            idleRoom: boolean;
+        };
+        ParticipantView: {
+            playerId: string;
+            displayName: null | string;
+            email: null | string;
+            avatarUrl: null | string;
+            /** Format: int32 */
+            modifier: number | string;
+            /** Format: date-time */
+            declaredAt: string;
+            /** Format: date-time */
+            excludedAt: null | string;
+            hasRolled: boolean;
+        };
+        PassedOverRow: {
+            playerId: string;
+            reason: string;
+        };
+        PendingCastRow: {
+            /** Format: uuid */
+            castId: string;
+            cardName: string;
+            target: string;
+        };
+        PendingDieRow: {
+            /** Format: uuid */
+            castId: string;
+            cardName: string;
+            dice: string;
+        };
+        PendingPlayerRow: {
+            playerId: string;
+            displayName: string;
+        };
+        PendingReplayView: {
+            /** Format: uuid */
+            roundId: string;
+            casterId: string;
+            casterDisplayName: null | string;
+            isCaster: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        PendingSpellDrawView: {
+            /** Format: uuid */
+            roundId: string;
+            trigger: string;
+            /** Format: int32 */
+            otherCount: number | string;
+            catalogNames: string[];
+        };
+        RateableRoundView: {
+            /** Format: uuid */
+            roundId: string;
+            brewerDisplayName: null | string;
+            brewerEmail: null | string;
+            /** Format: date-time */
+            resolvedAt: string;
+            /** Format: int32 */
+            myScore: null | number | string;
+        };
         RatingIdResponse: {
             /** Format: uuid */
             id: string;
+        };
+        ReactionStackRow: {
+            /** Format: uuid */
+            castId: string;
+            cardName: string;
+            casterId: string;
+            casterName: string;
+            targetStamp: string;
+            negated: boolean;
+            /** Format: uuid */
+            parentCastId: null | string;
+            /** Format: int64 */
+            seq: number | string;
+        };
+        ReactionView: {
+            /** Format: uuid */
+            windowId: string;
+            /** Format: int32 */
+            layer: number | string;
+            /** Format: int32 */
+            pollRound: number | string;
+            eligible: boolean;
+            alreadyPassed: boolean;
+            stack: components["schemas"]["ReactionStackRow"][];
+            pendingPlayers: components["schemas"]["PendingPlayerRow"][];
+            skipVote: null | components["schemas"]["SkipVoteRow"];
+            courageTokens: components["schemas"]["CourageTokenRow"][];
+            compelled: boolean;
+        };
+        RoomPart: {
+            /** Format: uuid */
+            roomId: string;
+            isTest: boolean;
+            roster: components["schemas"]["RosterEntry"][];
+            activeRound: null | components["schemas"]["ActiveRoundView"];
+            history: components["schemas"]["HistoryEntry"][];
+            /** Format: date-time */
+            nextStallDeadline: null | string;
+            /** Format: date-time */
+            dbNow: string;
+        };
+        RoomViewResponse: {
+            /** Format: int64 */
+            version: number | string;
+            room: components["schemas"]["RoomPart"];
+            viewer: components["schemas"]["ViewerPart"];
+        };
+        RosterEntry: {
+            playerId: string;
+            displayName: null | string;
+            email: null | string;
+            avatarUrl: null | string;
+            /** Format: int32 */
+            modifier: number | string;
+            isTest: boolean;
+            effectBadges: components["schemas"]["EffectBadge"][];
         };
         ScoreRequest: {
             /** Format: int32 */
             score: null | number | string;
         };
+        SkipVoteRow: {
+            /** Format: date-time */
+            pollRoundStartedAt: string;
+            /** Format: int32 */
+            votes: number | string;
+            /** Format: int32 */
+            threshold: number | string;
+            hasVoted: boolean;
+            canVote: boolean;
+            waitedOn: boolean;
+        };
         SubmitOrderRequest: {
             drinkType: null | string;
+        };
+        TiedParticipantView: {
+            playerId: string;
+            displayName: null | string;
+            email: null | string;
+            avatarUrl: null | string;
+            /** Format: int32 */
+            modifier: number | string;
+            /** Format: date-time */
+            excludedAt: null | string;
+            hasRolled: boolean;
+        };
+        ViewerPart: {
+            playerId: string;
+            hasDeclared: boolean;
+            isStarter: boolean;
+            canDeclare: boolean;
+            canWithdraw: boolean;
+            canClose: boolean;
+            /** Format: int32 */
+            needMoreToClose: number | string;
+            canDeclareLate: boolean;
+            canStartRound: boolean;
+            isTied: boolean;
+            /** Format: int32 */
+            ownRoll: null | number | string;
+            /** Format: int32 */
+            layerZeroOwnRoll: null | number | string;
+            isExpectedToRoll: boolean;
+            isPlayersTurnToRoll: boolean;
+            needsRollInput: boolean;
+            rollInputMode: null | string;
+            /** Format: uuid */
+            orderRoundId: null | string;
+            myOrderForRound: null | string;
+            myMostRecentOrder: null | string;
+            orderCue: boolean;
+            menu: components["schemas"]["MenuEntryView"][];
+            menuParticipants: components["schemas"]["ParticipantView"][];
+            rateableRound: null | components["schemas"]["RateableRoundView"];
+            heldCards: components["schemas"]["HeldCard"][];
+            heldReactionCard: null | components["schemas"]["HeldCard"];
+            pendingSpellDraw: null | components["schemas"]["PendingSpellDrawView"];
+            pendingCasts: components["schemas"]["PendingCastRow"][];
+            pendingSpellDice: components["schemas"]["PendingDieRow"][];
+            spellDieRollInputMode: null | string;
+            compelledCast: null | components["schemas"]["CompelledCastView"];
+            teaPartyRevoltPickerId: null | string;
+            dispellableEffects: components["schemas"]["DispellableRow"][];
+            heistTargetIds: string[];
+            lastDripPreview: null | components["schemas"]["LastDripPreviewRow"];
+            reaction: null | components["schemas"]["ReactionView"];
+            pendingRoundReplay: null | components["schemas"]["PendingReplayView"];
+            panels: components["schemas"]["Panels"];
         };
     };
     responses: never;
@@ -564,6 +866,28 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    getRoomView: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roomId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RoomViewResponse"];
+                };
             };
         };
     };
