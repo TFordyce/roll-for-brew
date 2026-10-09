@@ -67,7 +67,7 @@ export function ReactionBanner({
   const [spendState, spendFormAction] = useActionState(spendCourageTokenAction, initialCastState);
 
   useRoomChannel(roomId, roundId, {
-    "reaction-window-changed": () => refresh(),
+    "room-changed": () => refresh(),
     "round-revealed": () => refresh(),
     "layer-tied": () => refresh(),
   });

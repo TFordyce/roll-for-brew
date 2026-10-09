@@ -9,7 +9,7 @@ import { skipVoteView, type SkipVoteState } from "@/lib/game/skipVote";
  * The reaction banner's Skip vote (issue #411): the "Skip waiting" control
  * for a voter, the count for a spectator, or the "pass or react now" notice
  * for a player being waited on (see skipVoteView). Re-renders itself when the
- * 30-second grace period ends; every vote broadcasts reaction-window-changed,
+ * 30-second grace period ends; every vote broadcasts room-changed,
  * which refreshes the counts.
  */
 export function SkipVote({ roundId, state }: { roundId: string; state: SkipVoteState }) {

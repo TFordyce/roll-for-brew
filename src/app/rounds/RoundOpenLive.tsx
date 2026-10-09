@@ -15,10 +15,7 @@ export function RoundOpenLive({ roomId, roundId }: { roomId: string; roundId: st
   const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "round-closed": () => refresh(),
-    "round-cancelled": () => refresh(),
-    "player-declared-in": () => refresh(),
-    "player-withdrew": () => refresh(),
+    "room-changed": () => refresh(),
   });
 
   return null;

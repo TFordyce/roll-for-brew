@@ -6,32 +6,14 @@ import {
   roomChannelName,
   type LayerRollsRevealedPayload,
   type LayerTiedPayload,
-  type OrderChangedPayload,
-  type PlayerDeclaredInPayload,
-  type PlayerWithdrewPayload,
-  type ReactionWindowChangedPayload,
   type RoomChangedPayload,
-  type RoundCancelledPayload,
-  type RoundClosedPayload,
-  type RoundReplayChangedPayload,
   type RoundRevealedPayload,
-  type RoundStartedPayload,
-  type SpellCastChangedPayload,
 } from "@/lib/supabase/realtime";
 
 type RoomBroadcastPayloadMap = {
   "round-revealed": RoundRevealedPayload;
   "layer-tied": LayerTiedPayload;
-  "round-cancelled": RoundCancelledPayload;
-  "round-closed": RoundClosedPayload;
   "layer-rolls-revealed": LayerRollsRevealedPayload;
-  "reaction-window-changed": ReactionWindowChangedPayload;
-  "player-declared-in": PlayerDeclaredInPayload;
-  "player-withdrew": PlayerWithdrewPayload;
-  "round-started": RoundStartedPayload;
-  "spell-cast-changed": SpellCastChangedPayload;
-  "order-changed": OrderChangedPayload;
-  "round-replay-changed": RoundReplayChangedPayload;
   "room-changed": RoomChangedPayload;
 };
 
@@ -81,7 +63,8 @@ export function subscribeToRoomChannel<T extends SubscribableChannel>(
     if (!handler) continue;
     channel.on("broadcast", { event }, ({ payload }) => {
       const typedPayload = payload as { roundId: string };
-      if (roundId !== null && typedPayload.roundId !== roundId) return;
+      // room-changed names a room, not a round, so it is never round-filtered.
+      if (event !== "room-changed" && roundId !== null && typedPayload.roundId !== roundId) return;
       handler(typedPayload);
     });
   }

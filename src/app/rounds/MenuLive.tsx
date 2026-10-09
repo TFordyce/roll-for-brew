@@ -14,7 +14,7 @@ export function MenuLive({ roomId, roundId }: { roomId: string; roundId: string 
   const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "order-changed": () => refresh(),
+    "room-changed": () => refresh(),
   });
 
   return null;

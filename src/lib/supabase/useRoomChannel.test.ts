@@ -56,14 +56,29 @@ describe("subscribeToRoomChannel", () => {
 
   it("passes every event through unfiltered when roundId is null", () => {
     const { supabase, getListener } = fakeSupabase();
-    const onStarted = vi.fn();
+    const onTied = vi.fn();
 
     subscribeToRoomChannel(supabase, "room-1", null, {
-      "round-started": onStarted,
+      "layer-tied": onTied,
     });
 
-    getListener("round-started")({ payload: { roundId: "round-1" } });
-    expect(onStarted).toHaveBeenCalledTimes(1);
+    getListener("layer-tied")({ payload: { roundId: "round-1", layer: 1, tiedPlayerIds: [] } });
+    expect(onTied).toHaveBeenCalledTimes(1);
+  });
+
+  it("never round-filters room-changed: it names a room, not a round", () => {
+    const { supabase, getListener } = fakeSupabase();
+    const onChanged = vi.fn();
+
+    subscribeToRoomChannel(supabase, "room-1", "round-1", {
+      "room-changed": onChanged,
+    });
+
+    getListener("room-changed")({ payload: { version: 7 } });
+    getListener("room-changed")({ payload: {} });
+    getListener("room-changed")({ payload: { roundId: "round-2" } });
+
+    expect(onChanged).toHaveBeenCalledTimes(3);
   });
 
   it("subscribes the channel and removes it on cleanup", () => {

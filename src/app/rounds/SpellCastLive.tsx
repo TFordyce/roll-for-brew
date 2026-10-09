@@ -16,7 +16,7 @@ export function SpellCastLive({ roomId, roundId }: { roomId: string; roundId: st
   const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "spell-cast-changed": () => refresh(),
+    "room-changed": () => refresh(),
   });
 
   return null;

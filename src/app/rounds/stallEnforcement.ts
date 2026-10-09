@@ -14,7 +14,7 @@ import {
   resolveStalledPendingSpellDice,
   resolveStalledRevoltPicks,
 } from "@/lib/supabase/stall";
-import { broadcastRoundCancelled, broadcastSpellCastChanged } from "@/lib/supabase/realtime";
+import { broadcastRoomChanged } from "@/lib/supabase/realtime";
 import { advanceRound } from "@/app/rounds/advanceRound";
 import {
   closeReactionWindow,
@@ -108,7 +108,7 @@ export async function enforceStallTimeout(
   if (round.status === "open") {
     if (!hasStalled(round.startedAt, nowDate)) return { action: "none" };
     await cancelRound(supabase, roundId);
-    await broadcastRoundCancelled(supabase, round.roomId, { roundId });
+    await broadcastRoomChanged(supabase, round.roomId);
     return { action: "cancelled" };
   }
 
@@ -122,7 +122,7 @@ export async function enforceStallTimeout(
     if (step.waitingOn.length > 0) {
       if (!round.closedAt || !hasStalled(round.closedAt, nowDate)) return { action: "none" };
       const playerIds = await forfeitStalledCompelledCasts(supabase, roundId);
-      await broadcastSpellCastChanged(supabase, round.roomId, { roundId });
+      await broadcastRoomChanged(supabase, round.roomId);
       await advanceRound(supabase, roundId, "stallCleared");
       return { action: "compelledCastsForfeited", playerIds };
     }
@@ -220,7 +220,7 @@ export async function enforceStallTimeout(
     const participants = await getRoundParticipants(supabase, roundId);
     if (participants.filter((p) => p.excludedAt === null).length < 2) {
       await cancelRound(supabase, roundId);
-      await broadcastRoundCancelled(supabase, round.roomId, { roundId });
+      await broadcastRoomChanged(supabase, round.roomId);
       return { action: "cancelled" };
     }
   }

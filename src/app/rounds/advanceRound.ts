@@ -9,9 +9,8 @@ import {
 import {
   broadcastLayerRollsRevealed,
   broadcastLayerTied,
-  broadcastRoundReplayChanged,
+  broadcastRoomChanged,
   broadcastRoundRevealed,
-  broadcastSpellCastChanged,
 } from "@/lib/supabase/realtime";
 
 /**
@@ -58,8 +57,7 @@ export type AdvanceRoundDeps = {
   broadcastLayerRollsRevealed: typeof broadcastLayerRollsRevealed;
   broadcastRoundRevealed: typeof broadcastRoundRevealed;
   broadcastLayerTied: typeof broadcastLayerTied;
-  broadcastRoundReplayChanged: typeof broadcastRoundReplayChanged;
-  broadcastSpellCastChanged: typeof broadcastSpellCastChanged;
+  broadcastRoomChanged: typeof broadcastRoomChanged;
 };
 
 const defaultDeps: AdvanceRoundDeps = {
@@ -69,8 +67,7 @@ const defaultDeps: AdvanceRoundDeps = {
   broadcastLayerRollsRevealed,
   broadcastRoundRevealed,
   broadcastLayerTied,
-  broadcastRoundReplayChanged,
-  broadcastSpellCastChanged,
+  broadcastRoomChanged,
 };
 
 /**
@@ -78,10 +75,10 @@ const defaultDeps: AdvanceRoundDeps = {
  * broadcasts it and revalidates, and raises the event here. This runs the
  * database step the event allows and sends every broadcast the outcome causes
  * — layer rolls revealed when this call first found the Layer complete, then
- * round revealed (plus round replay changed when a replay is now pending) for
+ * round revealed (plus room changed when a replay is now pending) for
  * a brewer, layer tied for a tie, nothing for a noop or a window left open —
- * except a Layer held for a Tea Party Revolt pick (issue #430), which sends a
- * spell-cast change so the lowest roller's page shows the pick prompt.
+ * except a Layer held for a Tea Party Revolt pick (issue #430), which sends
+ * room-changed so the lowest roller's page shows the pick prompt.
  * Anyone may raise an event, spectators included: nothing here checks who the
  * caller is.
  */
@@ -106,7 +103,7 @@ export async function advanceRound(
     await broadcastFinalization(supabase, roomId, roundId, finalization, deps);
   }
   if (awaitingRevoltPick) {
-    await deps.broadcastSpellCastChanged(supabase, roomId, { roundId });
+    await deps.broadcastRoomChanged(supabase, roomId);
   }
 
   return outcome;
@@ -148,7 +145,7 @@ async function broadcastFinalization(
       rolls: finalization.rolls,
     });
     if (finalization.replayPending) {
-      await deps.broadcastRoundReplayChanged(supabase, roomId, { roundId });
+      await deps.broadcastRoomChanged(supabase, roomId);
     }
   } else {
     await deps.broadcastLayerTied(supabase, roomId, {

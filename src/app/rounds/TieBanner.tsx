@@ -45,7 +45,9 @@ export type TiedParticipant = {
  * still needs a fresh server fetch, which RoundReveal's own layer-tied
  * handler already triggers (both components share the same room channel);
  * this banner just remounts itself with the next layer's fresh props once
- * that refresh lands (page.tsx keys it by currentLayer).
+ * that refresh lands (page.tsx keys it by currentLayer). A cancelled round
+ * arrives as room-changed, which RoundReveal also refreshes on; the refreshed
+ * server tree no longer has a round, so this banner unmounts with it.
  */
 export function TieBanner({
   roomId,
@@ -66,7 +68,6 @@ export function TieBanner({
 
   useRoomChannel(roomId, roundId, {
     "round-revealed": () => setResolved(true),
-    "round-cancelled": () => setResolved(true),
   });
 
   if (resolved) return null;
