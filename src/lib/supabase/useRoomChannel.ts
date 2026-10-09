@@ -10,6 +10,7 @@ import {
   type PlayerDeclaredInPayload,
   type PlayerWithdrewPayload,
   type ReactionWindowChangedPayload,
+  type RoomChangedPayload,
   type RoundCancelledPayload,
   type RoundClosedPayload,
   type RoundReplayChangedPayload,
@@ -31,22 +32,23 @@ type RoomBroadcastPayloadMap = {
   "spell-cast-changed": SpellCastChangedPayload;
   "order-changed": OrderChangedPayload;
   "round-replay-changed": RoundReplayChangedPayload;
+  "room-changed": RoomChangedPayload;
 };
 
 export type RoomChannelEventHandlers = {
   [K in keyof RoomBroadcastPayloadMap]?: (payload: RoomBroadcastPayloadMap[K]) => void;
 };
 
-type SubscribableChannel = {
+export type SubscribableChannel = {
   on: (
     type: "broadcast",
     filter: { event: string },
     callback: (message: { payload: unknown }) => void,
   ) => SubscribableChannel;
-  subscribe: () => unknown;
+  subscribe: (callback?: (status: string) => void) => unknown;
 };
 
-type ChannelClient<T extends SubscribableChannel = SubscribableChannel> = {
+export type ChannelClient<T extends SubscribableChannel = SubscribableChannel> = {
   channel: (name: string) => T;
   removeChannel: (channel: T) => unknown;
 };
@@ -60,12 +62,17 @@ type ChannelClient<T extends SubscribableChannel = SubscribableChannel> = {
  * roundId is nullable for the idle "no active round yet" view (issue #98):
  * that view has no roundId to filter on, so a null roundId skips the filter
  * and every event on the room's channel is passed straight through.
+ *
+ * onSubscribed runs each time the channel reaches SUBSCRIBED -- the first
+ * subscribe and every reconnect -- so a caller can resync for events missed
+ * while it was down.
  */
 export function subscribeToRoomChannel<T extends SubscribableChannel>(
   supabase: ChannelClient<T>,
   roomId: string,
   roundId: string | null,
   handlers: RoomChannelEventHandlers,
+  onSubscribed?: () => void,
 ): () => void {
   const channel = supabase.channel(roomChannelName(roomId));
 
@@ -79,7 +86,9 @@ export function subscribeToRoomChannel<T extends SubscribableChannel>(
     });
   }
 
-  channel.subscribe();
+  channel.subscribe((status) => {
+    if (status === "SUBSCRIBED") onSubscribed?.();
+  });
 
   return () => {
     supabase.removeChannel(channel);

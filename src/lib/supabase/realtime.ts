@@ -66,6 +66,14 @@ export type RoundReplayChangedPayload = {
 };
 
 /**
+ * The C# API's one-size broadcast (spec #533): the room's `version` after a write. No producer
+ * yet (API writes land in later slices); the room-view store already listens for it.
+ */
+export type RoomChangedPayload = {
+  version: number;
+};
+
+/**
  * Broadcasts the simultaneous-reveal event to every device subscribed to
  * the room's Realtime channel, once resolve_round has committed. Uses
  * supabase-js's REST-based broadcast send (httpSend), so the server action

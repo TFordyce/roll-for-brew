@@ -46,6 +46,9 @@ import { PlayerTile } from "@/app/_components/PlayerTile";
 import { ActingAsSwitcher, type ActingAsOption } from "@/app/admin/test-room/ActingAsSwitcher";
 import { EndTestSessionButton } from "@/app/admin/test-room/EndTestSessionButton";
 import { RollForOthers, type PendingRoller } from "@/app/admin/test-room/RollForOthers";
+import { RoomViewProvider } from "@/lib/room/RoomViewProvider";
+import { loadInitialRoomView } from "@/lib/room/loadInitialRoomView";
+import { RoomScreen } from "@/app/rounds/RoomScreen";
 
 /**
  * The Test Room (issue #101 / ADR 0002): a real, persistent room row, guarded
@@ -91,6 +94,61 @@ export default async function TestRoomPage() {
           No Test Room has been seeded yet — run the admin/test-room migration first.
         </p>
       </main>
+    );
+  }
+
+  // Flagged room (port_flags `room_view`, spec #533 slice 1c): a shell around one client-held room
+  // view. The API resolves Acting As itself, so the effective player comes back in the view.
+  const initialView = await loadInitialRoomView(supabase, roomId);
+  if (initialView) {
+    const { data: viewRealPlayer } = await supabase
+      .from("players")
+      .select("display_name, email")
+      .eq("id", realPlayerId)
+      .maybeSingle();
+    const viewOptions: ActingAsOption[] = [
+      {
+        playerId: realPlayerId,
+        displayName: viewRealPlayer?.display_name ?? null,
+        email: viewRealPlayer?.email ?? user.email ?? "",
+        isSelf: true,
+      },
+      ...initialView.room.roster.map((entry) => ({
+        playerId: entry.playerId,
+        displayName: entry.displayName,
+        email: entry.email ?? "",
+        isSelf: false,
+      })),
+    ];
+    return (
+      <RoomViewProvider roomId={roomId} initialView={initialView}>
+        <RoomScreen
+          variant="testRoom"
+          top={
+            <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
+              Test Room
+            </h1>
+          }
+          afterTopPanels={
+            <section className="w-full max-w-md">
+              <ActingAsSwitcher options={viewOptions} currentPlayerId={initialView.viewer.playerId} />
+            </section>
+          }
+          bottom={
+            <>
+              <section className="w-full max-w-md">
+                <EndTestSessionButton />
+              </section>
+
+              <div className="rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
+                <Link href="/" className="text-tavern-panel underline hover:text-ember">
+                  Back
+                </Link>
+              </div>
+            </>
+          }
+        />
+      </RoomViewProvider>
     );
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { firstNameOrFallback } from "@/lib/game/displayName";
 import { SubmitButton } from "@/app/_components/SubmitButton";
@@ -33,12 +33,12 @@ export function RoundReplayPrompt({
   isCaster: boolean;
   casterDisplayName: string | null;
 }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "round-replay-changed": () => router.refresh(),
-    "round-closed": () => router.refresh(),
-    "round-cancelled": () => router.refresh(),
+    "round-replay-changed": () => refresh(),
+    "round-closed": () => refresh(),
+    "round-cancelled": () => refresh(),
   });
 
   if (!isCaster) {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 
 /**
@@ -13,10 +13,10 @@ import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
  * the same way RoundOpenLive/RoomIdleLive do for their own phases.
  */
 export function SpellCastLive({ roomId, roundId }: { roomId: string; roundId: string }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "spell-cast-changed": () => router.refresh(),
+    "spell-cast-changed": () => refresh(),
   });
 
   return null;

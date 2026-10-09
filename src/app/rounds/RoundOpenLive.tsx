@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 
 /**
@@ -12,13 +12,13 @@ import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
  * component tree so the page picks up the round's new status.
  */
 export function RoundOpenLive({ roomId, roundId }: { roomId: string; roundId: string }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "round-closed": () => router.refresh(),
-    "round-cancelled": () => router.refresh(),
-    "player-declared-in": () => router.refresh(),
-    "player-withdrew": () => router.refresh(),
+    "round-closed": () => refresh(),
+    "round-cancelled": () => refresh(),
+    "player-declared-in": () => refresh(),
+    "player-withdrew": () => refresh(),
   });
 
   return null;
