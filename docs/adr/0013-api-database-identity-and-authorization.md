@@ -12,6 +12,7 @@ accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/T
   - DML on `public`, plus default privileges on objects `postgres` creates;
   - `EXECUTE` on each still-bridged SQL function, `current_player_id` first. The repo revokes PUBLIC execute, so DML alone fails. Each grant is revoked as its function is ported away;
   - `EXECUTE` on the broadcast wrapper (a `postgres`-owned `security definer` function, see ADR 0011);
+  - read-only `USAGE` on `supabase_migrations` and `SELECT` on `schema_migrations`, for the deploy-ordering schema gate (`/health/ready`). `postgres` can grant these; verified on the first hosted deploy (#534);
   - **no** usage on the `auth` or `realtime` schemas and **no** `authenticated` membership. `postgres` cannot grant those on hosted (verified on #532). The API reads `sub` from the validated JWT and reaches `auth.*` only through `security definer` functions; it cannot call `realtime.send` directly;
   - no writes to `auth`.
 
