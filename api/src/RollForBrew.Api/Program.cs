@@ -4,7 +4,10 @@ using RollForBrew.Api.ActingAs;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Data;
 using RollForBrew.Api.Health;
+using RollForBrew.Api.Orders;
 using RollForBrew.Api.Problems;
+using RollForBrew.Api.ModifierAdjustments;
+using RollForBrew.Api.Ratings;
 using RollForBrew.Api.RoomView;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -38,6 +41,9 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.MapHealth();
 app.MapActingAs();
+app.MapRatings();
+app.MapOrders();
+app.MapModifierAdjustments();
 app.MapRoomView();
 app.Run();
 

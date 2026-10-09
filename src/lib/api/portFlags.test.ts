@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isPortEnabled } from "./portFlags";
-import { createApiClient } from "./client";
+import { createApiClient, type ApiClient } from "./client";
 import { getActingAsPlayerId } from "../supabase/actingAs";
 
 type Row = { room_id: string | null; enabled: boolean };
@@ -49,7 +49,7 @@ describe("createApiClient", () => {
 });
 
 describe("getActingAsPlayerId flag branches", () => {
-  const api = { getActingAs: vi.fn(async () => ({ actingAsPlayerId: "api-player" as string | null })) };
+  const api = { getActingAs: vi.fn(async () => ({ actingAsPlayerId: "api-player" as string | null })) } as unknown as ApiClient; // partial fake: tests only touch getActingAs
   it("uses .rpc when the flag is off", async () => {
     const { supabase, rpc } = fake([]);
     expect(await getActingAsPlayerId(supabase, () => api)).toBe("rpc-player");

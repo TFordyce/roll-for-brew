@@ -3,6 +3,14 @@ import type { paths } from "./schema";
 
 type ActingAsResponse =
   paths["/acting-as"]["get"]["responses"][200]["content"]["application/json"];
+type OrderResponse =
+  paths["/rounds/{roundId}/order"]["get"]["responses"][200]["content"]["application/json"];
+
+type RatingIdResponse =
+  paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
+
+type AdjustmentIdResponse =
+  paths["/modifier-adjustments"]["post"]["responses"][200]["content"]["application/json"];
 
 /**
  * Thin fetch wrapper over the C# API (api/, spec #533). Types come from the committed
@@ -14,6 +22,16 @@ export type RoomViewResponse =
 
 export interface ApiClient {
   getActingAs(): Promise<ActingAsResponse>;
+  submitBrewRating(roundId: string, score: number): Promise<RatingIdResponse>;
+  withdrawBrewRating(roundId: string): Promise<void>;
+  rateSpellCard(cardId: string, score: number): Promise<RatingIdResponse>;
+  withdrawSpellCardRating(cardId: string): Promise<void>;
+  submitOrder(roundId: string, drinkType: string): Promise<void>;
+  getMyOrderForRound(roundId: string): Promise<OrderResponse>;
+  getMyMostRecentOrder(): Promise<OrderResponse>;
+  logModifierAdjustment(targetPlayerId: string, delta: number, reason: string): Promise<AdjustmentIdResponse>;
+  deleteModifierAdjustment(adjustmentId: string): Promise<void>;
+  adminDeleteModifierAdjustment(adjustmentId: string, reason: string): Promise<void>;
   /** GET /rooms/{id}/view (slice 1b): the per-viewer screen model. Sent with cache: no-store. */
   getRoomView(roomId: string): Promise<RoomViewResponse>;
 }
@@ -23,21 +41,53 @@ export function createApiClient(
   getToken: () => Promise<string | null>,
   fetchImpl: typeof fetch = fetch,
 ): ApiClient {
-  async function get<T>(path: string): Promise<T> {
+  async function call(method: string, path: string, body?: unknown): Promise<Response> {
     const token = await getToken();
     if (!token) throw new Error("API call needs a signed-in session");
     const res = await fetchImpl(`${baseUrl.replace(/\/+$/, "")}${path}`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: "application/json",
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       cache: "no-store",
     });
     if (!res.ok) {
       const problem = await res.json().catch(() => null);
       throw new Error(`API ${path} failed: ${res.status} ${problem?.code ?? problem?.title ?? ""}`.trim());
     }
-    return (await res.json()) as T;
+    return res;
+  }
+  async function get<T>(path: string): Promise<T> {
+    return (await (await call("GET", path)).json()) as T;
   }
   return {
     getActingAs: () => get<ActingAsResponse>("/acting-as"),
+    submitBrewRating: async (roundId, score) =>
+      (await (await call("PUT", `/brew-ratings/${roundId}`, { score })).json()) as RatingIdResponse,
+    withdrawBrewRating: async (roundId) => {
+      await call("DELETE", `/brew-ratings/${roundId}`);
+    },
+    rateSpellCard: async (cardId, score) =>
+      (await (await call("PUT", `/spell-card-ratings/${cardId}`, { score })).json()) as RatingIdResponse,
+    withdrawSpellCardRating: async (cardId) => {
+      await call("DELETE", `/spell-card-ratings/${cardId}`);
+    },
+    submitOrder: async (roundId, drinkType) => {
+      await call("PUT", `/rounds/${roundId}/order`, { drinkType });
+    },
+    getMyOrderForRound: (roundId) => get<OrderResponse>(`/rounds/${roundId}/order`),
+    getMyMostRecentOrder: () => get<OrderResponse>("/orders/latest"),
+    logModifierAdjustment: async (targetPlayerId, delta, reason) =>
+      (await (await call("POST", "/modifier-adjustments", { targetPlayerId, delta, reason })).json()) as AdjustmentIdResponse,
+    deleteModifierAdjustment: async (adjustmentId) => {
+      await call("DELETE", `/modifier-adjustments/${adjustmentId}`);
+    },
+    adminDeleteModifierAdjustment: async (adjustmentId, reason) => {
+      await call("POST", `/modifier-adjustments/${adjustmentId}/admin-delete`, { reason });
+    },
     getRoomView: (roomId) => get<RoomViewResponse>(`/rooms/${encodeURIComponent(roomId)}/view`),
   };
 }

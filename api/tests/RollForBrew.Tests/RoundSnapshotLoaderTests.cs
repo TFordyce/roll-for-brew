@@ -107,7 +107,7 @@ public class RoundSnapshotLoaderTests : IAsyncLifetime
             Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllDataAndRecorded,
             ActivityStopped = a =>
             {
-                // The listener is process-wide: only count this test class's own database.
+                // Only this test's database: the listener is process-wide and other classes run in parallel.
                 if (a.GetTagItem("db.query.text") is string q && Equals(a.GetTagItem("db.namespace"), _db.Name)) commands.Add(q);
             },
         };

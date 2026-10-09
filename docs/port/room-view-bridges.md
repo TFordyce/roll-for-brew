@@ -1,10 +1,10 @@
 # Room view read bridges (slice 1b, #538)
 
-`GET /rooms/{roomId}/view` returns `{ version, room, viewer }` for the **effective player** (Acting As resolved by SQL `current_player_id(null, room)` from the validated JWT; nothing in the request can name another player). It is `Cache-Control: no-store`. This file is the bridge list the ticket asks for (the issue itself cannot be edited by the implementing agent). Keep it current: **revoke the `rfb_api` EXECUTE grant (migration `0159_rooms_version.sql` grants them) and delete the row as each function is ported to C#.**
+`GET /rooms/{roomId}/view` returns `{ version, room, viewer }` for the **effective player** (Acting As resolved by SQL `current_player_id(null, room)` from the validated JWT; nothing in the request can name another player). It is `Cache-Control: no-store`. This file is the bridge list the ticket asks for (the issue itself cannot be edited by the implementing agent). Keep it current: **revoke the `rfb_api` EXECUTE grant (migration `0160_rooms_version.sql` grants them) and delete the row as each function is ported to C#.**
 
 ## How the view is built (three statements, one READ ONLY transaction)
 
-1. `RoundSnapshot` (slice 0c). Also carries `rooms.version` (added by `0159`), so version and state come from one statement.
+1. `RoundSnapshot` (slice 0c). Also carries `rooms.version` (added by `0160`), so version and state come from one statement.
 2. **Extras**: direct table / view reads that are not in the snapshot (`orders`, `round_menu`, `brew_ratings`, `player_settings`, `pending_round_replay`, `players`).
 3. **Bridges**: the SQL read functions below, called as the viewer (claims GUC), so hands, pending draws and eligibility stay scoped to the viewer inside SQL.
 

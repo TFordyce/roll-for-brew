@@ -93,9 +93,22 @@ jobs:
       - name: API contract has not drifted
         run: git diff --exit-code -- api/openapi src/lib/api/schema.d.ts
 
+  # ADR 0012: EF's scripted DDL must match what is committed in supabase/migrations. Today every mapped
+  # table is ExcludeFromMigrations, so EF must script nothing (api/tests/.../EfModelTests.cs).
+  ef-model:
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: api/global.json
+      - run: dotnet test api/RollForBrew.sln -c Release --filter "Category=EfModel"
+
   ci-ok:
     if: always()
-    needs: [changes, dotnet, ts, contract]
+    needs: [changes, dotnet, ts, contract, ef-model]
     runs-on: ubuntu-latest
     steps:
       - name: Every needed job succeeded or was skipped
