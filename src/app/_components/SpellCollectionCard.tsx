@@ -3,14 +3,6 @@
 import type { SpellCollectionCard as SpellCollectionCardData } from "@/lib/supabase/spellCards";
 import { cardTileView, TIER_BORDER, TIER_LABEL } from "@/lib/spellCollection";
 
-/**
- * One grid tile — discovered cards show full-color art, name, tier badge,
- * and a ×N draw-count badge; undiscovered cards dim the art and drop the
- * draw-count badge, keeping the effect a surprise (issue #134 acceptance
- * criteria). The discovered/dimming/badge decisions themselves live in
- * `cardTileView` (lib/spellCollection.ts) so they're unit-tested without
- * rendering.
- */
 export function SpellCollectionCard({ card, onTap }: { card: SpellCollectionCardData; onTap: () => void }) {
   const view = cardTileView(card);
   return (

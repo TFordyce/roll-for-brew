@@ -13,15 +13,6 @@ const STATUS_LABEL: Record<AdminRoundListing["status"], string> = {
   cancelled: "Cancelled",
 };
 
-/**
- * One row of the /admin/rounds cleanup tool (issue #189). Collapsed by
- * default to a single Delete button so the table stays scannable; clicking
- * it reveals a required reason field and an explicit Confirm — two motions,
- * not one click, since this is an irreversible hard delete. The reason isn't
- * decorative: admin_delete_round (0055) logs it to admin_round_deletions
- * before dropping the round row, since that row won't exist afterward to
- * attach the reason to.
- */
 export function DeleteRoundRow({ round }: { round: AdminRoundListing }) {
   const [state, formAction, isPending] = useActionState(deleteRoundAction, initialState);
   const [confirming, setConfirming] = useState(false);

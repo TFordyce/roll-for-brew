@@ -50,21 +50,6 @@ import { RoomViewProvider } from "@/lib/room/RoomViewProvider";
 import { loadInitialRoomView } from "@/lib/room/loadInitialRoomView";
 import { RoomScreen } from "@/app/rounds/RoomScreen";
 
-/**
- * The Test Room (issue #101 / ADR 0002): a real, persistent room row, guarded
- * by canAccessTestRoom so it can only ever be reached by a flagged admin
- * with Admin Mode on — anyone else, or that same admin with the cookie off,
- * is redirected home rather than shown an error, since this route simply
- * doesn't exist for them.
- *
- * Everything below the switcher mirrors src/app/page.tsx's data-fetching and
- * round-flow rendering exactly (issue #102) — same components, same flow —
- * scoped to the Test Room's id and to `playerId`, the currently Acting As
- * identity (the admin's own real id, until they pick a Test Player). That
- * resolution is read-only convenience for this page's rendering; the actual
- * security boundary is enforced server-side by current_player_id() on every
- * mutating action these forms submit.
- */
 export default async function TestRoomPage() {
   const supabase = await createClient();
   const current = await getCurrentPlayer(supabase);
@@ -97,8 +82,6 @@ export default async function TestRoomPage() {
     );
   }
 
-  // Flagged room (port_flags `room_view`, spec #533 slice 1c): a shell around one client-held room
-  // view. The API resolves Acting As itself, so the effective player comes back in the view.
   const initialView = await loadInitialRoomView(supabase, roomId);
   if (initialView) {
     const { data: viewRealPlayer } = await supabase
@@ -188,16 +171,11 @@ export default async function TestRoomPage() {
   const isStarter = activeRound?.startedBy === playerId;
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
 
-  // Order (issue #226, part of #223) — mirrors page.tsx's own fetch exactly,
-  // including orderRoundId's fallback to getMyOrderableRound once
-  // activeRound goes null (the Order Window stays open through 'resolved',
-  // past where getActiveRound stops returning the round).
   const orderRoundId = activeRound ? activeRound.id : await getMyOrderableRound(supabase, roomId);
   const myOrderForRound = orderRoundId ? await getMyOrderForRound(supabase, orderRoundId, playerId) : null;
   const myMostRecentOrder =
     orderRoundId && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
 
-  // Menu (issue #227, part of #223) — mirrors page.tsx's own fetch exactly.
   const menuEntries = orderRoundId ? await getRoundMenu(supabase, orderRoundId) : [];
   const menuParticipants = activeRound
     ? participants
@@ -230,7 +208,6 @@ export default async function TestRoomPage() {
       ? await getDispellableActiveEffects(supabase, activeRound.id)
       : [];
 
-  // Issue #438: Tea Heist's picker lists only players holding a card.
   const heistTargetIds =
     activeRound &&
     activeRound.status === "open" &&
@@ -255,10 +232,6 @@ export default async function TestRoomPage() {
       : [];
   const isTied = tiedParticipants.some((p) => p.playerId === playerId);
 
-  // The caller's own roll for whichever layer is *current* right now (0, or
-  // a live reroll) — feeds isPlayersTurnToRoll/rollInputMode/needsRollInput
-  // below regardless of phase, and doubles as TieBanner/TieRollModal's
-  // ownRoll during a tie.
   const currentLayerOwnRoll = !activeRound
     ? null
     : isTiePhase
@@ -269,14 +242,6 @@ export default async function TestRoomPage() {
         ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
         : null;
 
-  // RoundReveal's own ownRoll is always specifically layer 0's — issue #220
-  // piece 4 keeps RoundReveal mounted through the tie phase too (not just
-  // after it), so unlike currentLayerOwnRoll above this can't track
-  // whichever layer happens to be current; RoundReveal shows layer 0's row
-  // as its primary row no matter how many reroll layers came after it.
-  // Outside a tie, "the current layer" already *is* layer 0, so
-  // currentLayerOwnRoll above is already the answer — only an actual tie
-  // phase needs its own extra fetch.
   const layerZeroOwnRoll = !isTiePhase
     ? currentLayerOwnRoll
     : activeRound?.status === "closed" && hasDeclared
@@ -291,13 +256,6 @@ export default async function TestRoomPage() {
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
-  /**
-   * Everyone still expected to roll the round's current layer, other than
-   * whoever the admin is currently Acting As (that identity already has its
-   * own RollInputPicker rendered above) — the roster this page's "Roll For"
-   * panel (issue #102 follow-up) lets the admin fill in or randomly roll for,
-   * without switching Acting As once per person.
-   */
   const nameByPlayerId = new Map(switcherOptions.map((option) => [option.playerId, option]));
   let pendingRollers: PendingRoller[] = [];
   if (activeRound && activeRound.status === "closed") {
@@ -313,8 +271,6 @@ export default async function TestRoomPage() {
       });
   }
 
-  // Only fetched when there's actually someone to roll for — the "force
-  // crit card" picker (RollForOthers) is the only consumer.
   const inDeckCards = pendingRollers.length > 0 ? await getInDeckSpellCards(supabase, roomId) : [];
 
   return (
@@ -454,9 +410,6 @@ export default async function TestRoomPage() {
         </section>
       ) : null}
 
-      {/* Mirrors page.tsx: decoupled from activeRound's own section, so it
-          still shows during the tail of the Order Window after a round has
-          resolved and activeRound has gone null. */}
       {orderRoundId ? (
         <section className="w-full max-w-md">
           <MenuLive roomId={roomId} roundId={orderRoundId} />

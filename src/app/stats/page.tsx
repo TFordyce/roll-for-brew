@@ -23,16 +23,10 @@ import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { RankRow } from "@/app/_components/RankRow";
 import { WindowToggle } from "@/app/_components/WindowToggle";
 
-// Matches ModifierAdjustmentList's (Settings) own formatTime convention.
 function formatAdjustmentTime(createdAt: string): string {
   return new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/**
- * One divider-separated leaderboard inside the Leaderboards `CardFrame`
- * (issue #79) — a heading plus its `RankRow` list, or the shared empty
- * state when a leaderboard has no entries yet.
- */
 function LeaderboardSection({
   title,
   children,
@@ -252,9 +246,6 @@ export default async function StatsPage({
                   <p className="pl-10 text-xs text-parchment-dim">
                     Brewer: {round.brewerDisplayName ?? round.brewerEmail}
                     {round.backfilled ? (
-                      // Same visual as Proxy Roll's own badge below (issue #274's
-                      // "same visual manually/admin-entered flag as Proxy Roll"),
-                      // just worded for "the whole round", not one roll.
                       <span
                         className="ml-2 rounded-sm border border-gilt-dark px-1 font-display text-[9px] uppercase tracking-widest text-parchment-dim"
                         title="This entire round was bulk-recorded after the fact by an admin"

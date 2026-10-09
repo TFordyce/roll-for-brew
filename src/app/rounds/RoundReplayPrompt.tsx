@@ -6,22 +6,6 @@ import { firstNameOrFallback } from "@/lib/game/displayName";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 import { confirmRoundReplayAction, declineRoundReplayAction } from "@/app/rounds/actions";
 
-/**
- * The Round Replay decision surface — Time for Brew (issue #315, spec #302
- * §11). A surviving Time for Brew resolves and announces its round normally,
- * then this appears:
- *
- *  - the caster gets a blocking modal (matching TieRollModal's shape) — scrap
- *    the round and replay from a clean slate, or keep the announced result;
- *  - everyone else gets a non-blocking banner naming who the table is waiting
- *    on, since start_round is locked for the whole room until the decision is
- *    made (or the existing 5-minute closed-round stall timer auto-declines it).
- *
- * page.tsx only mounts this while get_room_pending_round_replay returns a row,
- * so there is no "nothing pending" state to render. The realtime listener
- * refreshes the server tree when the decision is confirmed / declined /
- * auto-declined on another device, or when the generation-1 round opens.
- */
 export function RoundReplayPrompt({
   roomId,
   roundId,

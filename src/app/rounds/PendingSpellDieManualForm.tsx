@@ -7,12 +7,6 @@ import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
 
 const initialState: SpellCastActionState = { status: "idle" };
 
-/**
- * Client half of ManualSpellDieForm (SpellDieForms.tsx) — resolving a
- * Pending Spell Die's manual entry (issue #252) needs useActionState for
- * its inline typed error (a value outside the card's dice range), the same
- * reason SpellDrawChoicePanel's own manual-entry form is a client component.
- */
 export function PendingSpellDieManualForm({
   roundId,
   castId,

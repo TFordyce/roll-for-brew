@@ -9,21 +9,6 @@ import { getActiveRound, roundHasAnyRolls } from "@/lib/supabase/rounds";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { ProxyRollForm } from "./ProxyRollForm";
 
-/**
- * `/admin/proxy-roll` (issue #273, the "Proxy Roll" glossary entry): lets
- * an admin fold a player who's physically at the table but hasn't opened
- * the app today into today's genuinely live round, entering the value they
- * read out loud on their behalf. Gated the same way as /admin/rounds,
- * /admin/adjustments, /admin/cards — canAccessTestRoom (is_admin + the
- * Admin Mode cookie) — but real-room-scoped, not Test-Room-only like
- * submit_roll_as/submit_manual_roll_as (0029) it extends the pattern from.
- *
- * The eligible window mirrors admin_proxy_roll's own guard exactly: today's
- * room needs an active round that's either still open, or closed with no
- * rolls submitted for it yet. Once any roll lands, the window (and this
- * page's form) is gone — the RPC itself is the enforcement; this is just
- * matching UI so an admin isn't shown a form that will fail.
- */
 export default async function AdminProxyRollPage() {
   const supabase = await createClient();
   const current = await getCurrentPlayer(supabase);

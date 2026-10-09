@@ -13,32 +13,6 @@ import {
   broadcastRoundRevealed,
 } from "@/lib/supabase/realtime";
 
-/**
- * What just happened, from the caller's side (ADR 0008). An event names its
- * trigger only — never a claim about state — and decides which database entry
- * point may run; the locked read in SQL decides whether anything happens.
- *
- * - `reactionWindowChanged`: a pass, a Reaction cast, or a card swap. It may
- *   only finalize, never open a window.
- * - `layerRolled`: a roll landed — the player's own, a manual entry, a Proxy
- *   Roll, or a Test Room roll-as.
- * - `pendingDieResolved`: a Pending Spell Die was given its value.
- * - `deferredTargetSet`: a deferred spell-cast target was named.
- * - `revoltPickMade`: the lowest roller named who makes tea for a Tea Party
- *   Revolt (issue #430).
- * - `stallCleared`: stall enforcement cleared a blockage (excluded a
- *   non-roller, auto-resolved a Pending Spell Die, abandoned a Deferred
- *   Forced-Reroll Target or a Tea Party Revolt pick, or closed a stranded
- *   window).
- * - `roundClosed`: the round starter closed declarations (issue #432). A
- *   debt round has nobody to roll, so it resolves here; so does a round where
- *   every participant has a Roll Exemption (issue #433), which first opens
- *   its Reaction Window.
- * - `lateDeclared`: a player joined after close (issue #432). A Debtor's Late
- *   Declare before anyone has rolled makes it a debt round, resolved here.
- *
- * Every event except `reactionWindowChanged` routes through advance_layer.
- */
 export type AdvanceRoundEvent =
   | "reactionWindowChanged"
   | "layerRolled"
@@ -49,7 +23,6 @@ export type AdvanceRoundEvent =
   | "roundClosed"
   | "lateDeclared";
 
-/** The module's one injectable seam: its database entry points plus the broadcasts advancing can cause. */
 export type AdvanceRoundDeps = {
   advanceLayer: typeof advanceLayer;
   finalizeLayer: typeof finalizeLayer;
@@ -70,18 +43,6 @@ const defaultDeps: AdvanceRoundDeps = {
   broadcastRoomChanged,
 };
 
-/**
- * The Round-advancement module (ADR 0008): a caller does its own write,
- * broadcasts it and revalidates, and raises the event here. This runs the
- * database step the event allows and sends every broadcast the outcome causes
- * — layer rolls revealed when this call first found the Layer complete, then
- * round revealed (plus room changed when a replay is now pending) for
- * a brewer, layer tied for a tie, nothing for a noop or a window left open —
- * except a Layer held for a Tea Party Revolt pick (issue #430), which sends
- * room-changed so the lowest roller's page shows the pick prompt.
- * Anyone may raise an event, spectators included: nothing here checks who the
- * caller is.
- */
 export async function advanceRound(
   supabase: SupabaseClient,
   roundId: string,

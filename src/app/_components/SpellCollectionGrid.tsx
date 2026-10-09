@@ -8,20 +8,11 @@ import { CardInspectModal } from "@/app/_components/CardInspectModal";
 import { TiltCardArt } from "@/app/_components/TiltCardArt";
 import { SpellCardRatingRow } from "@/app/_components/SpellCardRatingRow";
 
-/**
- * The dense Balatro-joker-style card grid + tap-to-inspect modal (issue
- * #134, part of the Spell Collection page spec #130) — the reviewed
- * prototype's Variant A layout (branch worktree-spell-collection-prototype,
- * commit 99bec1f) rebuilt on the real `get_player_spell_collection` data and
- * the shared `CardFrame`/gold-border visual language instead of prototype-
- * only chrome.
- */
 export function SpellCollectionGrid({
   cards,
   ownCollection,
 }: {
   cards: SpellCollectionCardData[];
-  /** True only on the viewer's own collection — gates the spell-card rating row (issue #300). */
   ownCollection: boolean;
 }) {
   const [tierFilter, setTierFilter] = useState<Tier>("common");
@@ -84,9 +75,6 @@ export function SpellCollectionGrid({
             </p>
           )}
           {ownCollection ? (
-            // key by card so switching which card is inspected remounts the
-            // row fresh — its committed-score state is seeded from props
-            // once per mount (issue #300).
             <SpellCardRatingRow
               key={inspecting.cardId}
               cardId={inspecting.cardId}

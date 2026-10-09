@@ -5,7 +5,6 @@ function view(version: number, marker = `v${version}`): RoomView {
   return { version, room: { roomId: "room-1", marker }, viewer: { playerId: "p1" } } as unknown as RoomView;
 }
 
-/** A fetchView whose every call is a promise the test settles by hand, in any order. */
 function manualFetch() {
   const pending: { resolve: (v: RoomView) => void; reject: (e: unknown) => void }[] = [];
   const fetchView = vi.fn(
@@ -112,15 +111,13 @@ describe("createRoomViewStore", () => {
   });
 
   describe("ordering", () => {
-    // Two requests in flight at once: the coalescing rules never allow this from refetch(), so the
-    // older one is a stale response arriving after a newer one only via the server-seed path.
     it("drops a response from an older request that lands after a newer one was applied", async () => {
       const { fetchView, pending } = manualFetch();
       const store = createRoomViewStore({ initialView: view(1), fetchView });
 
-      store.refetch(); // request A
-      store.applyServerView(view(3)); // newer sequence: a server render that finished after A started
-      pending[0]!.resolve(view(5)); // A's response arrives late
+      store.refetch();
+      store.applyServerView(view(3));
+      pending[0]!.resolve(view(5));
       await flush();
 
       expect(store.getSnapshot()).toEqual(view(3));

@@ -11,25 +11,6 @@ import { MAX_TILT_DEG, TiltCardArt } from "@/app/_components/TiltCardArt";
 
 type ArmedAction = { kind: "dispel" | "cast"; roundId: string };
 
-/**
- * The docked held-card widget (issue #266's split of the old `SpellCardPanel`
- * "Your Spell Card" block): a mini card tile fixed bottom-right, tilting
- * toward the pointer, that opens a modal for the full art/text and — once
- * "Arm"ed — the existing Cast/Dispel form underneath. Renders nothing when
- * there's no held card, mirroring `SpellCardPanel`'s old gate.
- *
- * Reuses `cardTileView`/`TIER_BORDER` (lib/spellCollection.ts) for the
- * art/border treatment rather than inventing a second rendering path, and
- * the modal overlay pattern from `SpellCollectionGrid`'s inspect modal.
- *
- * Arm/disarm: closing the modal or reopening it does *not* by itself clear
- * an armed card — the glowing border on the collapsed thumbnail exists
- * precisely so a "loaded" card stays visibly primed while you're doing
- * something else. The only ways to clear it are an explicit Disarm inside
- * the modal, or actually casting the card (which moves it out of `held` on
- * the next server round-trip, so the `instanceId` effect below resets the
- * local state along with it).
- */
 export function HeldCardThumbnail({
   heldCards,
   dispellableEffects,
@@ -45,10 +26,8 @@ export function HeldCardThumbnail({
   roundId: string | null;
   roundIsOpen: boolean;
   participants: RoundParticipant[];
-  /** Issue #438: other participants holding a card — Tea Heist's picker roster. */
   heistTargetIds: string[];
   selfPlayerId: string;
-  /** Issue #470: shown in the cast form before confirming (Last Drip). */
   castNotice?: string | null;
 }) {
   const held = heldCards.find((c) => c.location === "held");
@@ -61,8 +40,6 @@ export function HeldCardThumbnail({
     canTiltRef.current = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
   }, []);
 
-  // A different held card (a new draw, or this one just got spent) starts
-  // fresh — armed/open state from the previous card shouldn't leak forward.
   useEffect(() => {
     setArmed(false);
     setOpen(false);

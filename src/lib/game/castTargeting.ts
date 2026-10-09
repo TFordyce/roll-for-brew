@@ -1,48 +1,18 @@
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 
-/**
- * Which target control `CastForm` renders for a held Action card, at cast time.
- *
- * Most OPPONENT / PLAYER cards arm with no target and get their target filled
- * in once declare-in closes and the roster is final (the `target_pending`
- * flow — `setSpellCastTargetAction`). The effect-application rebuild's by-name
- * cards (issue #302 and its slices) instead need an *explicit* target at cast
- * time: their `cast_spell_card` branch raises `RFB46` when none is given, with
- * no deferred path. Issue #360 wires the pre-roll pickers for those cards.
- *
- * These two sets mirror the by-name branches in `cast_spell_card`
- * (supabase/migrations/0096_chosen_pair_roll_transform.sql for the #318 cards,
- * plus #342/#343's Bes-Tea / Tea Leaf / Spillage / Chai-nge of Heart and
- * #438's Tea Heist). Keep
- * them in sync when another by-name OPPONENT/PLAYER special-case is added.
- */
 
-/** By-name cards that need a single explicit non-caster target chosen at cast. */
 export const AT_CAST_TARGET_CARDS: ReadonlySet<string> = new Set([
-  // #318 — chosen-pair roll transform (caster + target both in the pair)
   "Steaming Mug Bond",
   "Tea for Two",
-  // #343 — round-scoped modifier snapshot cards (steal / copy a modifier)
   "Bes-Tea",
   "Tea Leaf",
   "Spillage",
-  // #342 — durable persistent-modifier transfer
   "Chai-nge of Heart",
-  // #438 — the cast pins the victim's held card
   "Tea Heist",
 ]);
 
-/**
- * At-cast cards whose target must be holding a card (`cast_spell_card` raises
- * RFB53 otherwise). Their picker lists only the players `get_heist_targets`
- * returns.
- */
 const CARD_HOLDER_TARGET_CARDS: ReadonlySet<string> = new Set(["Tea Heist"]);
 
-/**
- * The at-cast single-target picker's options: every other participant, or —
- * for Tea Heist — only those holding a card (`cardHolderIds`).
- */
 export function atCastTargetOptions<P extends { playerId: string }>(
   cardName: string,
   otherParticipants: P[],
@@ -52,34 +22,21 @@ export function atCastTargetOptions<P extends { playerId: string }>(
   return otherParticipants.filter((p) => cardHolderIds.includes(p.playerId));
 }
 
-/**
- * By-name cards that need exactly two *other* players (never the caster)
- * chosen at cast — their own bespoke picker, submitted as `chosenPlayerIds`.
- */
 export const TWO_OTHER_PLAYER_CARDS: ReadonlySet<string> = new Set([
-  // #318 — Stir the Pot swaps two other players' rolls
   "Stir the Pot",
 ]);
 
 export type CastTargetMode =
-  /** No picker — SELF / TABLE / WILD / CARD. */
   | "none"
-  /** OPPONENT / PLAYER card armed now, target chosen after declare-in closes. */
   | "deferred-target"
-  /** OPPONENT / PLAYER by-name card: single non-caster target select, now. */
   | "at-cast-target"
-  /** Exactly two other players, chosen now (Stir the Pot). */
   | "two-other-players"
-  /** The blanket CHOSEN_PLAYERS checkbox picker. */
   | "chosen-players"
-  /** The declare-a-number (1–20) tea-maker input. */
   | "declared-number";
 
 type HeldForTargeting = Pick<HeldSpellCard, "cardName" | "target" | "effectKind">;
 
 export function castTargetMode(held: HeldForTargeting): CastTargetMode {
-  // The by-name pickers only apply to the OPPONENT / PLAYER stamps those cards
-  // actually carry — a name match alone never overrides a SELF / TABLE stamp.
   const singleOtherStamp = held.target === "OPPONENT" || held.target === "PLAYER";
   if (singleOtherStamp && TWO_OTHER_PLAYER_CARDS.has(held.cardName)) return "two-other-players";
   if (singleOtherStamp && AT_CAST_TARGET_CARDS.has(held.cardName)) return "at-cast-target";
@@ -89,14 +46,6 @@ export function castTargetMode(held: HeldForTargeting): CastTargetMode {
   return "none";
 }
 
-/**
- * The target control for a Compelled Cast (issue #440): the same as
- * `castTargetMode`, except that nothing defers — every participant is known
- * in the Compelled Cast step, and `cast_spell_card` refuses a compelled cast
- * with no target (RFB55). A deferred OPPONENT / PLAYER card and a WILD card
- * (naming its possible tea-maker) get the single-target select instead.
- * `includeSelf` says whether the caster may pick themselves.
- */
 export function compelledCastTargetMode(held: HeldForTargeting): {
   mode: CastTargetMode;
   includeSelf: boolean;

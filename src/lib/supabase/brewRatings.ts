@@ -8,29 +8,9 @@ export type RateableRound = {
   brewerDisplayName: string | null;
   brewerEmail: string;
   resolvedAt: string;
-  /** The caller's own committed score for this round, or null if not yet rated. */
   myScore: number | null;
 };
 
-/**
- * The single round (if any) the caller can rate right now (issue #211, part
- * of #208) — drives the rating tab's three states (hidden / pending-dot /
- * already-rated) in place of the prototype's manual state buttons. Mirrors
- * submit_brew_rating's (0058) own eligibility rules rather than calling a
- * dedicated RPC, since every table involved (rounds, round_participants,
- * brew_ratings) is already readable by the caller under existing RLS:
- *
- *   1. Find the caller's most-recent resolved round as a non-brewer
- *      participant — "most recent round only", no backlog (RFB26's rule).
- *   2. If a newer round in that round's room has since resolved, the Rating
- *      Window has closed (RFB27's rule) — nothing to rate, return null.
- *   3. Otherwise it's rateable — look up the caller's own existing rating
- *      (brew_ratings' RLS only ever returns the caller's own row) to decide
- *      pending vs. already-rated.
- *
- * Returns null when there is nothing eligible to rate at all — the tab
- * renders nothing in that case, per the "no dead-end message" decision.
- */
 export async function getMyRateableRound(
   supabase: SupabaseClient,
   playerId: string,
@@ -82,17 +62,12 @@ export async function getMyRateableRound(
   };
 }
 
-/**
- * Submits or edits (upsert-on-conflict) the caller's own rating of a round's
- * brewer (submit_brew_rating, 0058). Returns the rating row's id.
- */
 export async function submitBrewRating(
   supabase: SupabaseClient,
   roundId: string,
   score: number,
   api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<string> {
-  // Flagged cutover (#566): the global port_flags row "submitBrewRating" switches this to the C# API.
   if (await isPortEnabled(supabase, "submitBrewRating")) return (await api().submitBrewRating(roundId, score)).id;
   const { data, error } = await supabase.rpc("submit_brew_rating", {
     p_round_id: roundId,
@@ -102,10 +77,6 @@ export async function submitBrewRating(
   return data as string;
 }
 
-/**
- * Withdraws the caller's own rating for a round (withdraw_brew_rating,
- * 0058) — a no-op if none exists.
- */
 export async function withdrawBrewRating(
   supabase: SupabaseClient,
   roundId: string,

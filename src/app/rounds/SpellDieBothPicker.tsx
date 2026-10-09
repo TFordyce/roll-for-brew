@@ -3,11 +3,6 @@
 import { useState } from "react";
 import { InAppSpellDieForm, ManualSpellDieForm } from "@/app/rounds/SpellDieForms";
 
-/**
- * The roll_input_mode = 'both' experience for a Pending Spell Die (issue
- * #252) — mirrors RollBothPicker.tsx exactly, one level down: a fresh
- * in-app/manual choice each time, not persisted.
- */
 export function SpellDieBothPicker({ roundId, castId, dice }: { roundId: string; castId: string; dice: string }) {
   const [choice, setChoice] = useState<"unset" | "in_app" | "manual">("unset");
 

@@ -1,13 +1,5 @@
 import { type DieShape } from "@/lib/game/dieShape";
 
-/**
- * Decorative die-shape icons for RollCalculation's rich mode (issue #167).
- * Geometry and gotchas copied verbatim from the validated prototype
- * (worktree-prototype-roll-calc-ui, commit 95bda4f, inlined into issue
- * #160's description) — see that issue for how the icosahedron vertices
- * were derived. DieShape itself lives in lib/game/dieShape.ts, not here —
- * parseDieShape needs to stay unit-testable without React/DOM.
- */
 export type { DieShape };
 
 const DIE_VIEWBOX: Record<DieShape, string> = {
@@ -47,14 +39,6 @@ const ICOSAHEDRON_EDGES: [number, number][] = [
 function DieOutline({ shape }: { shape: DieShape }) {
   if (shape === "d4") return <polygon points="12,3 21,20 3,20" />;
   if (shape === "d6") return <rect x="4" y="4" width="16" height="16" rx="1.5" />;
-  // d20: a mathematically-derived icosahedron wireframe, not a circle or an
-  // arbitrary planar-graph SVG. Gotcha already hit once: no
-  // vector-effect="non-scaling-stroke" on these <line>s — it pins the
-  // stroke to a fixed absolute pixel width regardless of how far the
-  // 100x100 viewBox is squeezed down to icon size, which fuses all 30 edges
-  // into filled blobs at small sizes. Left at default strokeLinecap (butt)
-  // too, so edges meet in sharp points rather than piling into rounded dots
-  // at each of the 12 vertices.
   return (
     <g stroke="currentColor" strokeWidth="1.5" fill="none">
       {ICOSAHEDRON_EDGES.map(([a, b], i) => {
@@ -66,13 +50,6 @@ function DieOutline({ shape }: { shape: DieShape }) {
   );
 }
 
-/**
- * A die outline with its value layered on top. `className` sizes the icon
- * (e.g. `h-5 w-5`) — the SVG itself just fills its container via the
- * viewBox. The d4's number needs a slight downward nudge: the triangle's
- * visual middle (its incenter, for points "12,3 21,20 3,20") sits below the
- * box's naive geometric center because the apex eats space at the top.
- */
 export function DieIcon({ shape, value, className = "h-5 w-5" }: { shape: DieShape; value: number; className?: string }) {
   return (
     <span className={`relative inline-flex shrink-0 items-center justify-center text-parchment-dim ${className}`}>

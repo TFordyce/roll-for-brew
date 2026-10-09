@@ -1,11 +1,5 @@
 import { endTestSessionAction } from "@/app/admin/test-room/actions";
 
-/**
- * Clears the Test Room's accumulated rounds/rolls/casts/effects, zeroes
- * every Test Player's accumulated modifier, and resets Acting As back to the
- * admin (issue #102), leaving the room and its seeded roster ready for next
- * time.
- */
 export function EndTestSessionButton() {
   return (
     <form action={endTestSessionAction}>

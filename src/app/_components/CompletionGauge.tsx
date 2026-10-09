@@ -1,11 +1,5 @@
 "use client";
 
-/**
- * Circular "kettle gauge" completion indicator, promoted from the reviewed
- * Spell Collection prototype (ticket #124, branch
- * worktree-spell-collection-prototype commit 99bec1f) into a shared
- * component for the real page (issue #134, part of spec #130).
- */
 export function CompletionGauge({ discovered, total }: { discovered: number; total: number }) {
   const pct = total > 0 ? discovered / total : 0;
   const radius = 26;

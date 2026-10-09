@@ -14,7 +14,6 @@ import {
   type ResolutionTraceStep,
 } from "@/lib/supabase/rolls";
 
-// --- fixture helpers ---------------------------------------------------
 
 const NAMES: Record<string, string> = {
   ada: "Ada",
@@ -105,7 +104,6 @@ beforeEach(() => {
   stepIndex = 0;
 });
 
-// --- tests -----------------------------------------------------------
 
 describe("buildRoundRecap", () => {
   it("zero-cast round: no content, no chrome", () => {
@@ -178,24 +176,17 @@ describe("buildRoundRecap", () => {
       cast({ castId: "C7", cardName: "Second Wind", casterPlayerId: "cass", targetPlayerId: "cass", phase: "reaction", effectKind: "flat_modifier" }),
     ];
     const trace: ResolutionTraceStep[] = [
-      // reaction-phase cast-log resolution comes first in resolution order
       step({ displayKind: "contested_negate", sourceCast: { castId: "C4", activeEffectId: null, cardName: "Counterspell", casterPlayerId: "dev" }, targetPlayer: "cass", before: { type: "status", value: "cast" }, after: { type: "status", value: "negated target" }, contest: { d20: 14, dc: 5 } }),
       step({ displayKind: "redirect", sourceCast: { castId: "C5", activeEffectId: null, cardName: "Mirror", casterPlayerId: "ada" }, targetPlayer: "dev", before: { type: "target", value: "cass" }, after: { type: "target", value: "dev" } }),
-      // preroll modifier composition
       step({ displayKind: "flat_modifier", sourceCast: { castId: "C1", activeEffectId: null, cardName: "Steady Hand", casterPlayerId: "ada" }, targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 2 } }),
       step({ displayKind: "flat_modifier", sourceCast: { castId: "C2", activeEffectId: null, cardName: "Bitter Brew", casterPlayerId: "ben" }, targetPlayer: "cass", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: -3 } }),
-      // reaction modifier
       step({ displayKind: "lowest_gains_highest_modifier", sourceCast: { castId: "C6", activeEffectId: null, cardName: "Broken Biscuit", casterPlayerId: "ben" }, targetPlayer: "ben", before: { type: "modifier", value: 2 }, after: { type: "modifier", value: 6 } }),
       step({ displayKind: "flat_modifier", sourceCast: { castId: "C7", activeEffectId: null, cardName: "Second Wind", casterPlayerId: "cass" }, targetPlayer: "cass", before: { type: "modifier", value: -3 }, after: { type: "modifier", value: -1 } }),
-      // outcome
       step({ displayKind: "tea_maker_override", sourceCast: { castId: null, activeEffectId: null, cardName: "Barista's Call", casterPlayerId: "dev" }, targetPlayer: "ada", before: { type: "status", value: "pending" }, after: { type: "status", value: "brewer" } }),
     ];
 
     const model = buildRoundRecap({ data: data({ casts, trace }), displayName });
 
-    // Phase headers follow resolution order, inserted on every phase change —
-    // so "Reaction window" recurs after the pre-roll modifiers (Broken Biscuit
-    // / Second Wind resolve back in the reaction window).
     expect(model.phases.map((p) => p.label)).toEqual([
       "Reaction window",
       "Before the roll",
@@ -208,13 +199,11 @@ describe("buildRoundRecap", () => {
       ["lowest_gains_highest_modifier", "flat_modifier"],
       ["tea_maker_override"],
     ]);
-    // numbered 1..7 in resolution (Trace) order, never re-sorted into buckets
     expect(model.phases.flatMap((p) => p.steps).map((s) => s.displayIndex)).toEqual([
       "1", "2", "3", "4", "5", "6", "7",
     ]);
     expect(model.castStrip).toHaveLength(7);
     expect(model.showReorderCaption).toBe(true);
-    // every caster can find their own cast
     expect(new Set(model.castStrip.map((c) => c.casterName))).toEqual(
       new Set(["Ada", "Ben", "Cass", "Dev"]),
     );
@@ -399,8 +388,6 @@ describe("buildRoundRecap", () => {
         immunity: { tier, skippedCardName },
       });
     }
-    // A cast-less round renders no steps (buildRoundRecap's empty exit), so
-    // each fixture carries the round's Last Cuppa cast.
     const only = (trace: ResolutionTraceStep[]) => {
       const casts = [cast({ castId: "C0", cardName: "The Last Cuppa", casterPlayerId: "ada", effectKind: "brewer_immunity" })];
       const model = buildRoundRecap({ data: data({ casts, trace }), displayName });
@@ -847,7 +834,6 @@ describe("buildRoundRecap", () => {
       );
     });
 
-    // Issue #470: an absent or exempt previous winner falls through.
     it("falls through: names who was passed over and why, then who brews", () => {
       expect(
         only(lastDrip({ passedOver: [{ playerId: "cass", reason: "absent" }] })).sentence,
@@ -1092,7 +1078,7 @@ describe("buildRoundRecap", () => {
             sourceCast: { castId: "C1", activeEffectId: null, cardName: "Calami-Tea", casterPlayerId: "ada" },
             targetPlayer: "cass",
             before: { type: "roll", value: 3 },
-            after: { type: "roll", value: 1 }, // floored: 3 - 4 -> 1, delta only 2
+            after: { type: "roll", value: 1 },
             outcome: "applied",
             diceTick: { die: 4, rolled: 4 },
           }),
@@ -1116,8 +1102,6 @@ describe("buildRoundRecap", () => {
     expect(model.showReorderCaption).toBe(false);
     const steps = model.phases.flatMap((p) => p.steps);
     expect(steps.every((s) => s.pending && s.displayIndex === "·" && s.beforeAfter === null)).toBe(true);
-    // Cast order (by seq) is preserved across phases — a reaction cast armed
-    // before a later pre-roll cast still renders before it.
     expect(steps.map((s) => s.sentence)).toEqual([
       "Ada played Steady Hand on Ada",
       "Dev played Counterspell on Cass",
@@ -1140,15 +1124,11 @@ describe("buildRoundRecap", () => {
     const liveModel = buildRoundRecap({ data: data({ resolved: false, casts, trace: [] }), displayName });
     expect(liveModel.phases.flatMap((p) => p.steps).map((s) => s.castId)).toEqual(["C1", "C2"]);
 
-    // Resolution order puts the reaction-phase counter first.
     const trace: ResolutionTraceStep[] = [
       step({ displayKind: "contested_negate", sourceCast: { castId: "C2", activeEffectId: null, cardName: "Counterspell", casterPlayerId: "dev" }, targetPlayer: "ada", before: { type: "status", value: "cast" }, after: { type: "status", value: "no effect" }, outcome: "no-op" }),
       step({ displayKind: "flat_modifier", sourceCast: { castId: "C1", activeEffectId: null, cardName: "Slow Pour", casterPlayerId: "ada" }, targetPlayer: "ada", before: { type: "modifier", value: 1 }, after: { type: "modifier", value: 3 } }),
     ];
     const resolvedModel = buildRoundRecap({ data: data({ resolved: true, casts, trace }), displayName });
-    // Resolution order runs the reaction-phase counter first, then the
-    // pre-roll modifier — the step list and its numbering follow the Trace,
-    // and the phase header flips with it.
     expect(resolvedModel.phases.map((p) => p.label)).toEqual(["Reaction window", "Before the roll"]);
     expect(resolvedModel.phases.flatMap((p) => p.steps).map((s) => s.castId)).toEqual(["C2", "C1"]);
     expect(resolvedModel.phases.flatMap((p) => p.steps).map((s) => s.displayIndex)).toEqual(["1", "2"]);
@@ -1181,9 +1161,7 @@ describe("buildRoundRecap", () => {
         after: { type: "modifier", value: 4 },
       }),
     ];
-    // Without the flag, a cast-less resolved round is "no content".
     expect(buildRoundRecap({ data: data({ casts: [], trace }), displayName }).hasContent).toBe(false);
-    // With it, the step rows render and the strip is simply absent.
     const model = buildRoundRecap({ data: data({ casts: [], trace }), displayName, traceOnly: true });
     expect(model.hasContent).toBe(true);
     expect(model.castStrip).toEqual([]);
@@ -1198,7 +1176,6 @@ describe("buildRoundRecap", () => {
   });
 });
 
-// --- buildScrappedGenerationRecap (issue #352) ------------------------
 
 function layer(over: Partial<CompletedLayer> & { layer: number }): CompletedLayer {
   return {
@@ -1290,8 +1267,6 @@ describe("buildScrappedGenerationRecap", () => {
     );
     expect(model.wentToTieBreak).toBe(true);
     expect(model.recap.endedInTieBreak).toBe(true);
-    // ada 10+2 ties ben 12+0 at layer 0, and again at layer 1 (same fixture),
-    // so each row carries one reroll level, still tied.
     expect(model.firstAttemptRolls.map((r) => r.rerollChain.map((c) => c.layer))).toEqual([[1], [1]]);
   });
 
@@ -1332,7 +1307,7 @@ describe("buildScrappedGenerationRecap", () => {
         ],
       }),
       displayName,
-      ["ada", "ben"], // cass late-declared in gen 0 only
+      ["ada", "ben"],
     );
     expect(model.firstAttemptRolls.map((r) => r.playerId)).toEqual(["ada", "ben", "cass"]);
     expect(model.firstAttemptRolls[2]!.row.enteredByAdmin).toBe(true);
@@ -1367,7 +1342,6 @@ describe("buildScrappedGenerationRecap", () => {
   });
 });
 
-// --- Per-player roll rows (issue #407) ----------------------------------
 
 function summary(playerId: string, over: Partial<ResolutionSummaryEntry> = {}): ResolutionSummaryEntry {
   const roll = over.roll ?? 10;
@@ -1390,8 +1364,6 @@ describe("buildRoundRecap rows", () => {
   it("total, composed and nat come from the Resolution Summary, not recomputed", () => {
     const model = buildRoundRecap({
       data: data({
-        // A summary that disagrees with roll + snapshot on purpose: the row
-        // must show the resolver's numbers.
         summary: [summary("ada", { roll: 7, snapshot: 1, composed: 4, total: 11 }), summary("ben", { roll: 1, nat: "nat1", total: 3, composed: 2 })],
         layers: layer0(lr("ada", 7, 1), lr("ben", 1, 2)),
       }),
@@ -1463,7 +1435,6 @@ describe("buildRoundRecap rows", () => {
         summary: [summary("ada"), summary("ben")],
         layers: layer0(lr("ada", 10), lr("ben", 10)),
         trace: [
-          // a redirect moved a cast aimed at ada onto ben
           step({
             displayKind: "redirect",
             sourceCast: { castId: "C7", activeEffectId: null, cardName: "Mug Swap", casterPlayerId: "ada" },
@@ -1471,7 +1442,6 @@ describe("buildRoundRecap rows", () => {
             before: { type: "target", value: "ada" },
             after: { type: "target", value: "ben" },
           }),
-          // a negated victim step on ada
           step({
             displayKind: "flat_modifier",
             sourceCast: { castId: null, activeEffectId: null, cardName: "Bad Brew", casterPlayerId: "cass" },
@@ -1480,7 +1450,6 @@ describe("buildRoundRecap rows", () => {
             after: { type: "status", value: "negated" },
             negated: true,
           }),
-          // a ward blocked a flat modifier on ben
           step({
             displayKind: "warded",
             targetPlayer: "ben",
@@ -1499,8 +1468,6 @@ describe("buildRoundRecap rows", () => {
       ["Bad Brew", "negated"],
     ]);
     const ben = model.rows.find((r) => r.playerId === "ben")!;
-    // the redirect step itself lands on ben as a status step, not a term; the
-    // redirected effect's own modifier step would be ben's applied term.
     expect(ben.terms.map((t) => [t.cardName, t.struck, t.delta])).toEqual([["Lucky Sip", "warded", null]]);
   });
 
@@ -1597,7 +1564,6 @@ describe("buildRoundRecap rows", () => {
         layers: layer0(lr("ada", 10)),
         trace: [
           step({ targetPlayer: "ada", before: { type: "modifier", value: 0 }, after: { type: "modifier", value: 3 } }),
-          // the dry run's brewer pick — must not be announced while provisional
           step({
             displayKind: "tea_maker_override",
             targetPlayer: "ada",
@@ -1630,7 +1596,6 @@ describe("buildRoundRecap rows", () => {
   });
 });
 
-// --- Reroll Chain (issue #406) ------------------------------------------
 
 function lr(playerId: string, value: number, modifierSnapshot = 0) {
   return { playerId, value, modifierSnapshot, discardedValue: null, enteredByAdmin: false };
@@ -1659,8 +1624,6 @@ describe("buildRerollChain", () => {
   });
 
   it("spell-created tie: roll-time sums differ, but next-layer membership says they tied", () => {
-    // ada 10+0 vs ben 12+0 never tie on roll-time modifiers; a spell made the
-    // composed totals equal, and the resolver sent both to layer 1.
     const layers: CompletedLayer[] = [
       { layer: 0, rolls: [lr("ada", 10), lr("ben", 12), lr("cass", 18)] },
       { layer: 1, rolls: [lr("ada", 5), lr("ben", 14)] },
@@ -1695,10 +1658,6 @@ describe("buildRerollChain", () => {
     ]);
   });
 
-  // ADR 0007: tie-break layers have no spell logic and no summary, so their
-  // nat standing stays a TS rule — pinned here to _rr_pick_lowest's 3-argument
-  // form (no dice-reduced exemption at layer > 0): a 1 is a natural 1 and a 20
-  // a natural 20 regardless of modifier, and the badge shows the bare roll.
   it("tie-layer nat-1 / nat-20 follow the resolver's 3-argument lowest-pick rule", () => {
     const layers: CompletedLayer[] = [
       { layer: 0, rolls: [lr("ada", 7, 2), lr("ben", 7, 2)] },

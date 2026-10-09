@@ -2,38 +2,6 @@ import type { RollInputMode } from "@/lib/supabase/playerSettings";
 import { joinNames } from "@/lib/game/displayName";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 
-/**
- * The tie-break reroll roll-in prompt (issue #220, piece 3) — replaces
- * TieBanner's previous inline `RollInputPicker` placement with a modal that
- * only the tied player still needing to roll this layer ever sees. A
- * spectator, or the other tied player, never mounts this at all — TieBanner
- * only renders it under its own existing `isTied` check, same as the
- * inline form it replaces. Matches the validated prototype's interaction
- * model (prototypes/roll-calc-tiebreak-modal-reveal.html on branch
- * worktree-prototype-tiebreak-modal-reveal, cited in issue #220).
- *
- * Two states, both driven purely by `ownRoll` — the caller's own roll for
- * the round's *current* layer (src/lib/supabase/rolls.ts's getOwnRoll,
- * readable via the "roller can read their own row" RLS policy the instant
- * *this* player submits, independent of whether the other tied player has):
- *
- *   - `ownRoll === null` — hasn't rolled yet: "Tied!" + the roll input.
- *   - `ownRoll !== null` — has rolled, but the layer hasn't moved on (the
- *     other tied player(s) haven't rolled yet — a tie is a comparison
- *     between rolls, not a fact about just one of them, so nothing can
- *     resolve until everyone's in): a "Rolled! Waiting…" state instead of
- *     a fresh prompt, so this player never sees the form again for a level
- *     they've already submitted.
- *
- * This "Rolled! Waiting…" state deliberately stays a modal rather than
- * dropping back to TieBanner's plain inline text (as the pre-#220 code did)
- * — the prototype's own reference implementation keeps this player in the
- * modal too, just switching its content, and issue #220 decision 1's "every
- * other device ... sees no modal" names *the other* tied player and
- * spectators, not this player once they've submitted. It's only "the other
- * tied player" whose device drops the modal here — never your own, whether
- * you're still rolling or already waiting on them.
- */
 export function TieRollModal({
   roundId,
   ownRoll,

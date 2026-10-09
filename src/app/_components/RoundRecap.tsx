@@ -3,15 +3,6 @@
 import { useState } from "react";
 import type { CastChip, CastState, RecapStep, RoundRecapModel } from "@/lib/game/roundRecap";
 
-/**
- * The Round Recap — "the Ledger" (issue #314). Renders the pure model from
- * buildRoundRecap: a tap-to-filter cast strip on top, then a flat,
- * phase-grouped list of step rows in resolution order. Owns no wording — every
- * sentence comes from the model.
- *
- * The DOM id `recap-player-<playerId>` on the first step touching a player is
- * the scroll target for RoundReveal's per-tile calc rows (scrollToRecapPlayer).
- */
 
 export function scrollToRecapPlayer(playerId: string) {
   const el = document.getElementById(`recap-player-${playerId}`);
@@ -112,11 +103,6 @@ export function RoundRecap({
   anchored = true,
 }: {
   model: RoundRecapModel;
-  /**
-   * Emit the `recap-player-<id>` scroll anchors (issue #314). Off for a
-   * generation-0 disclosure Recap (issue #352), which shares the page with the
-   * canonical generation-1 Recap and must not duplicate its element ids.
-   */
   anchored?: boolean;
 }) {
   const [activeCast, setActiveCast] = useState<string | null>(null);
@@ -125,10 +111,6 @@ export function RoundRecap({
 
   const toggle = (castId: string) => setActiveCast((cur) => (cur === castId ? null : castId));
 
-  // The first rendered step involving a given player — as target or as
-  // caster — carries that player's scroll anchor (RoundReveal's calc rows
-  // call scrollToRecapPlayer). A row can only carry one id; ties go to the
-  // target.
   const anchoredPlayers = new Set<string>();
   function anchorFor(step: RecapStep): string | undefined {
     if (!anchored) return undefined;
@@ -146,8 +128,6 @@ export function RoundRecap({
       <div className="mb-2 flex items-center justify-between gap-2">
         <h3 className="font-display text-xs uppercase tracking-widest text-gilt-bright">Round Recap</h3>
         {model.provisional ? (
-          // Issue #409: the Provisional Recap — the resolver's dry run over
-          // the casts so far; reactions can still change it.
           <span className="font-body text-[11px] italic text-parchment-dim">so far — reactions pending</span>
         ) : null}
       </div>
@@ -167,8 +147,6 @@ export function RoundRecap({
           );
           if (visible.length === 0) return null;
           return (
-            // The same label can recur (the resolver revisits the reaction
-            // window), so the key is position-based, not the label.
             <div key={`${groupIndex}-${group.label}`} className="py-1.5">
               <p className="font-display text-[10px] uppercase tracking-widest text-parchment-dim">
                 {group.label}

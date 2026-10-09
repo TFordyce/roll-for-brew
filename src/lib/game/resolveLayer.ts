@@ -24,10 +24,6 @@ function lowestBy(entries: LayerEntry[], value: (e: LayerEntry) => number): Laye
   return entries.filter((e) => value(e) === lowest);
 }
 
-/**
- * Resolves one layer of a round: the brewer, or the tied subset that must
- * reroll in the next layer. Nat-1/nat-20 precedence per the office game's rules.
- */
 export function resolveLayer(entries: LayerEntry[]): LayerResult {
   if (entries.length === 0) {
     throw new Error("resolveLayer requires at least one entry");

@@ -24,33 +24,12 @@ export type DispellableEffect = {
   tier: "common" | "rare" | "epic";
 };
 
-/**
- * A dice_modifier spell cast still awaiting its value (issue #252) — the
- * caller's own outstanding roll from a card like Six Sugars/Cold Tea/Slipped
- * Spoon, cast but not yet resolved by resolvePendingSpellDieInApp/Manual.
- * `dice` is the card's raw spec (e.g. "1d6"), used to size the roll picker.
- */
 export type PendingSpellDie = {
   castId: string;
   cardName: string;
   dice: string;
 };
 
-/**
- * Calls the cast_spell_card RPC (supabase/migrations/0019_spell_casts_pre_roll.sql,
- * grew chosenPlayerIds/declaredNumber in 0033 for CHOSEN_PLAYERS/Inscribed
- * Saucer): casts the caller's currently-held Action card during a round's
- * declare-in window. targetPlayerId is omitted (or null) to arm an OPPONENT/
- * PLAYER card before the participant roster is final — set_spell_cast_target
- * fills it in later. chosenPlayerIds is required for a CHOSEN_PLAYERS card
- * (Calami-Tea) — up to the card's max_targets, validated against the round's
- * roster immediately (no deferral, unlike OPPONENT/PLAYER). declaredNumber is
- * required for a declared_number_tea_maker card (Inscribed Saucer), 1-20.
- * TABLE/WILD cards need neither. invokedCardName is required for Genie in the
- * Teapot (#316, migration 0093): the non-Epic Action card it names, whose sole
- * edition instance must be in_deck; the named instance is never moved. Returns
- * the new cast's id.
- */
 export async function castSpellCard(
   supabase: SupabaseClient,
   roundId: string,
@@ -58,7 +37,6 @@ export async function castSpellCard(
     targetPlayerId?: string;
     chosenPlayerIds?: string[];
     declaredNumber?: number;
-    /** Genie in the Teapot (#316): the non-Epic Action card it names. */
     invokedCardName?: string;
   } = {},
 ): Promise<string> {
@@ -73,11 +51,6 @@ export async function castSpellCard(
   return data as string;
 }
 
-/**
- * Calls the set_spell_cast_target RPC: fills in the deferred target for a
- * cast that was armed before declare-in closed. Only valid once the round
- * has closed (roster final) and only for the cast's own caster.
- */
 export async function setSpellCastTarget(
   supabase: SupabaseClient,
   castId: string,
@@ -90,12 +63,6 @@ export async function setSpellCastTarget(
   if (error) throw error;
 }
 
-/**
- * Calls the set_tea_party_revolt_target RPC (0131, issue #430): records who
- * makes tea for a Tea Party Revolt. Only the lowest layer-0 roller may call
- * it (a tie goes to the smallest player id), once every expected roller has
- * rolled; the server checks both.
- */
 export async function setTeaPartyRevoltTarget(
   supabase: SupabaseClient,
   roundId: string,
@@ -108,23 +75,12 @@ export async function setTeaPartyRevoltTarget(
   if (error) throw error;
 }
 
-/**
- * Calls the get_tea_party_revolt_picker RPC (0131, issue #430): the player a
- * Tea Party Revolt pick is waiting on — the lowest layer-0 roller, once
- * everyone has rolled — or null when no pick is outstanding.
- */
 export async function getTeaPartyRevoltPicker(supabase: SupabaseClient, roundId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("get_tea_party_revolt_picker", { p_round_id: roundId });
   if (error) throw error;
   return (data as string | null) ?? null;
 }
 
-/**
- * Calls the get_my_pending_casts RPC: the caller's own casts still awaiting
- * a target for this round (user story 23) — an armed OPPONENT/PLAYER card
- * cast before declare-in closed, once the roster is final and it's time to
- * show the target picker.
- */
 export async function getMyPendingCasts(
   supabase: SupabaseClient,
   roundId: string,
@@ -137,19 +93,12 @@ export async function getMyPendingCasts(
   );
 }
 
-/** The caller's outstanding Compelled Cast (issue #440): the card Brewmageddon obliges them to play. */
 export type CompelledCast = {
-  /** "A": cast it now, in the Compelled Cast step. "R": cast it in the Layer-0 Reaction Window. */
   castingTime: "A" | "R";
   cardName: string;
   brewmageddonCasterId: string;
 };
 
-/**
- * Calls the get_my_compelled_cast RPC (0119, issue #440): what, if anything,
- * Brewmageddon still obliges the caller to play this round. null once they
- * have cast it, forfeited it, or been released (Brewmageddon countered).
- */
 export async function getMyCompelledCast(supabase: SupabaseClient, roundId: string): Promise<CompelledCast | null> {
   const { data, error } = await supabase.rpc("get_my_compelled_cast", { p_round_id: roundId });
   if (error) throw error;
@@ -159,13 +108,6 @@ export async function getMyCompelledCast(supabase: SupabaseClient, roundId: stri
     : null;
 }
 
-/**
- * Calls the get_room_active_effects RPC: every currently-active persistent
- * effect (spell_active_effects, 0020) in the room, for the roster's
- * stackable effect badge (red for negative/gold for positive, issue #69).
- * Visible to any room member — badges aren't a per-player secret the way a
- * held card's identity is.
- */
 export async function getRoomActiveEffects(
   supabase: SupabaseClient,
   roomId: string,
@@ -190,22 +132,12 @@ export async function getRoomActiveEffects(
   }));
 }
 
-/**
- * Calls the get_heist_targets RPC (issue #438): the round's other
- * participants holding a card — Tea Heist's picker roster. Empty unless the
- * caller is holding Tea Heist, so it reveals card-holders to no one else.
- */
 export async function getHeistTargetIds(supabase: SupabaseClient, roundId: string): Promise<string[]> {
   const { data, error } = await supabase.rpc("get_heist_targets", { p_round_id: roundId });
   if (error) throw error;
   return (data ?? []) as string[];
 }
 
-/**
- * Issue #470: who Last Drip would name if the round resolved now
- * (get_last_drip_preview, over the resolver's own _last_drip_target). null
- * unless the caller is holding Last Drip.
- */
 export async function getLastDripPreview(supabase: SupabaseClient, roundId: string): Promise<LastDripPreview | null> {
   const { data, error } = await supabase.rpc("get_last_drip_preview", { p_round_id: roundId });
   if (error) throw error;
@@ -222,12 +154,6 @@ export async function getLastDripPreview(supabase: SupabaseClient, roundId: stri
   };
 }
 
-/**
- * Calls the get_dispellable_active_effects RPC: the active effects the
- * caller's currently-held card (a Lesser-Detox-style dispel card) can end
- * early, scoped to the round's room and to the tiers the held card's text
- * allows. Empty if the caller isn't holding a dispel-kind card.
- */
 export async function getDispellableActiveEffects(
   supabase: SupabaseClient,
   roundId: string,
@@ -252,11 +178,6 @@ export async function getDispellableActiveEffects(
   }));
 }
 
-/**
- * Calls the end_active_effect RPC: ends another player's active effect
- * early using the caller's currently-held dispel-kind card (Lesser Detox),
- * consuming that card the same way cast_spell_card does.
- */
 export async function endActiveEffect(
   supabase: SupabaseClient,
   roundId: string,
@@ -269,15 +190,6 @@ export async function endActiveEffect(
   if (error) throw error;
 }
 
-/**
- * Calls the get_my_pending_spell_dice RPC (0069, issue #252): the caller's
- * own dice_modifier casts for this round still awaiting a value — drives
- * PendingSpellDiePanel.tsx, the same "own outstanding thing to resolve"
- * shape as getMyPendingCasts above (a deferred OPPONENT/PLAYER target)
- * rather than a global lookup, since this must resolve before *this*
- * round's own layer can reach Layer finalization (the completeness hold,
- * _layer_is_complete).
- */
 export async function getMyPendingSpellDice(
   supabase: SupabaseClient,
   roundId: string,
@@ -292,11 +204,6 @@ export async function getMyPendingSpellDice(
   }));
 }
 
-/**
- * Calls resolve_pending_spell_die_in_app: the app rolls the die
- * server-side and resolves the cast in one step (issue #252), mirroring
- * submitRoll. Returns the raw rolled value (pre-sign) for display.
- */
 export async function resolvePendingSpellDieInApp(
   supabase: SupabaseClient,
   castId: string,
@@ -306,13 +213,6 @@ export async function resolvePendingSpellDieInApp(
   return data as number;
 }
 
-/**
- * Calls resolve_pending_spell_die_manual: resolves the cast with a
- * physically-rolled value the player types in (issue #252), mirroring
- * submitManualRoll. The value is trusted client input, range-checked
- * against the card's own dice spec by resolve_pending_spell_die_manual
- * itself.
- */
 export async function resolvePendingSpellDieManual(
   supabase: SupabaseClient,
   castId: string,

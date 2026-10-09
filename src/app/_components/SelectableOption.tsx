@@ -1,12 +1,5 @@
 import type { ReactNode } from "react";
 
-/**
- * Radio-backed selectable row for the tabletop design system (issue #64/#80)
- * — native input visually hidden (kept for a11y/form semantics), label
- * styled as a bordered tavern row that picks up a gilt-bright border and
- * ember tint when checked. Sibling to CardFrame for screens that need a
- * pick-one-of-several control (Settings' roll-input-mode today).
- */
 export function SelectableOption({
   name,
   value,

@@ -1,7 +1,6 @@
 import { submitManualRollAction, submitRollAction } from "@/app/rounds/actions";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 
-/** The in-app (server-generated) roll form — shared by the in_app_only branch and RollBothPicker's 'both' choice. */
 export function InAppRollForm({ roundId }: { roundId: string }) {
   return (
     <form action={submitRollAction} className="mt-3">
@@ -13,7 +12,6 @@ export function InAppRollForm({ roundId }: { roundId: string }) {
   );
 }
 
-/** The manual-entry roll form — shared by the manual_only branch and RollBothPicker's 'both' choice. */
 export function ManualRollForm({ roundId }: { roundId: string }) {
   return (
     <form action={submitManualRollAction} className="mt-3 flex items-center gap-2">

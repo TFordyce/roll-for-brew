@@ -8,16 +8,6 @@ import { isStaleRoundError } from "@/app/rounds/roundActionHelpers";
 
 export type AdminProxyRollState = { status: "idle" } | { status: "error"; message: string };
 
-/**
- * Submits a Proxy Roll (issue #273): an admin entering a value on a
- * physically-present-but-not-logged-in player's behalf, folding them into
- * the live round as a full participant. admin_proxy_roll
- * (0071_admin_proxy_roll.sql) does the fold-in (implicit room_players row +
- * round_participants row) and inserts the roll itself; from here it's the
- * same "did that complete the layer" follow-up submitManualRollAction takes
- * (src/app/rounds/actions.ts) — opening the reaction window or resolving
- * the round if this was the last outstanding roll.
- */
 export async function adminProxyRollAction(
   _prevState: AdminProxyRollState,
   formData: FormData,
@@ -45,12 +35,6 @@ export async function adminProxyRollAction(
       revalidatePath("/admin/proxy-roll");
       return { status: "idle" };
     }
-    // Same "strip the RPC's own function_name: prefix, capitalize, period"
-    // handling deleteRoundAction (src/app/admin/rounds/actions.ts) and
-    // allocateSpellCardAction (src/app/admin/cards/actions.ts) already
-    // model for this admin-tool family — admin_proxy_roll has no dedicated
-    // error codes of its own beyond RFB32 (handled above), so everything
-    // left over is a plain precondition failure, not a race.
     const rawMessage = (error as { message?: string } | null)?.message?.replace(/^[a-z_]+:\s*/, "");
     return {
       status: "error",

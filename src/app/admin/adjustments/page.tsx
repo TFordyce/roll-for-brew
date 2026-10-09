@@ -8,14 +8,6 @@ import { listRecentModifierAdjustments } from "@/lib/supabase/modifierAdjustment
 import { CardFrame } from "@/app/_components/CardFrame";
 import { DeleteAdjustmentRow } from "@/app/admin/adjustments/DeleteAdjustmentRow";
 
-/**
- * `/admin/adjustments` (issue #191): lets an admin delete any modifier
- * adjustment, unrestricted by the actor/most-recent/5-minute limits the
- * self-serve undo (delete_modifier_adjustment, 0052) enforces -- e.g. an
- * adjustment logged by someone else, or noticed well after the fact. Gated
- * the same way as /admin/rounds and /admin/cards -- canAccessTestRoom
- * (is_admin + the Admin Mode cookie).
- */
 export default async function AdminAdjustmentsPage() {
   const supabase = await createClient();
   const current = await getCurrentPlayer(supabase);

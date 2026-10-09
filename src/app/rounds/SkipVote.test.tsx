@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SkipVoteState } from "@/lib/game/skipVote";
 
-// The server actions and the realtime/router hooks need a Next request and a
-// Supabase client; the banner's render only needs their identities.
 vi.mock("@/app/rounds/actions", () => ({
   voteSkipReactionWindowAction: vi.fn(),
   passReactionWindowAction: vi.fn(),
