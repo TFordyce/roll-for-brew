@@ -72,6 +72,9 @@ import { PlayerTile } from "@/app/_components/PlayerTile";
 import { SignOutBadge } from "@/app/_components/SignOutBadge";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 import { BrewRatingPanel } from "@/app/_components/BrewRatingPanel";
+import { RoomViewProvider } from "@/lib/room/RoomViewProvider";
+import { loadInitialRoomView } from "@/lib/room/loadInitialRoomView";
+import { RoomScreen } from "@/app/rounds/RoomScreen";
 
 export default async function HomePage() {
   const supabase = await createClient();
@@ -94,6 +97,43 @@ export default async function HomePage() {
   const showAdminMenu = canAccessTestRoom({ isAdmin, adminModeEnabled });
 
   const roomId = await enterTodaysRoom(supabase);
+
+  // Flagged room (port_flags `room_view`, spec #533 slice 1c): the page is a shell around one
+  // client-held room view; everything below this block is the legacy render.
+  const initialView = await loadInitialRoomView(supabase, roomId);
+  if (initialView) {
+    const signOutName = player?.display_name ?? player?.email ?? user.email ?? "";
+    return (
+      <RoomViewProvider roomId={roomId} initialView={initialView}>
+        <RoomScreen
+          variant="home"
+          raterInitials={initialsFrom(player?.display_name ?? null, player?.email ?? user.email ?? "")}
+          top={
+            <>
+              <ParallaxBackdrop playerId={playerId} />
+              <SignOutBadge name={signOutName} showAdminMenu={showAdminMenu} />
+            </>
+          }
+          afterTopPanels={
+            <>
+              <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
+                Roll for Brew
+              </h1>
+              <Nav active="room" />
+            </>
+          }
+          bottom={
+            <div className="rounded-md bg-parchment/90 px-4 py-2 font-display text-xs uppercase tracking-widest">
+              <Link href="/settings" className="text-tavern-panel underline hover:text-ember">
+                Settings
+              </Link>
+            </div>
+          }
+        />
+      </RoomViewProvider>
+    );
+  }
+
   const roster = await getRoomRoster(supabase, roomId);
 
   // Round Replay — Time for Brew (issue #315, spec §11). While a scrap/keep

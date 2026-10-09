@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { castReactionSpellCardAction, passReactionWindowAction, spendCourageTokenAction } from "@/app/rounds/actions";
 import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
@@ -62,14 +62,14 @@ export function ReactionBanner({
   compelled?: boolean;
   courageTokens?: CourageToken[];
 }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
   const [castState, castFormAction] = useActionState(castReactionSpellCardAction, initialCastState);
   const [spendState, spendFormAction] = useActionState(spendCourageTokenAction, initialCastState);
 
   useRoomChannel(roomId, roundId, {
-    "reaction-window-changed": () => router.refresh(),
-    "round-revealed": () => router.refresh(),
-    "layer-tied": () => router.refresh(),
+    "reaction-window-changed": () => refresh(),
+    "round-revealed": () => refresh(),
+    "layer-tied": () => refresh(),
   });
 
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 
 /**
@@ -11,10 +11,10 @@ import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
  * RoundOpenLive/SpellCastLive do for their own concerns.
  */
 export function MenuLive({ roomId, roundId }: { roomId: string; roundId: string }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "order-changed": () => router.refresh(),
+    "order-changed": () => refresh(),
   });
 
   return null;

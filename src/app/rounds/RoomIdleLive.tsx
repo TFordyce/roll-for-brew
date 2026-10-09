@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 
 /**
@@ -12,10 +12,10 @@ import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
  * the page picks up the newly-started round.
  */
 export function RoomIdleLive({ roomId }: { roomId: string }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, null, {
-    "round-started": () => router.refresh(),
+    "round-started": () => refresh(),
   });
 
   return null;

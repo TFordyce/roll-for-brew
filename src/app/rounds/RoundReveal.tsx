@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { createClient } from "@/lib/supabase/client";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
@@ -93,6 +93,8 @@ export function RoundReveal({
   selfPlayerId,
   ownRoll,
   hasOpenReactionWindow,
+  onRevealed,
+  onResultsDone,
 }: {
   roomId: string;
   roundId: string;
@@ -106,8 +108,15 @@ export function RoundReveal({
   // the banner is mounted it owns every subsequent refresh for that same
   // event itself, so this stays a no-op rather than double-refreshing.
   hasOpenReactionWindow: boolean;
+  // Room view (spec #533, slice 1c): the view drops a round the moment it
+  // resolves, which would unmount this component before anyone has seen the
+  // result. RoomScreen passes these to keep it mounted -- onRevealed when the
+  // brewer is decided, onResultsDone when the results screen is finished with.
+  // Unset on the legacy page, where the 5-minute timer just refreshes.
+  onRevealed?: () => void;
+  onResultsDone?: () => void;
 }) {
-  const router = useRouter();
+  const refresh = useRoomRefresh();
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
   const [showKettleModal, setShowKettleModal] = useState(false);
@@ -134,7 +143,7 @@ export function RoundReveal({
 
   function startResultsTimeout() {
     clearResultsTimeout();
-    resultsTimeoutRef.current = setTimeout(() => router.refresh(), RESULTS_TIMEOUT_MS);
+    resultsTimeoutRef.current = setTimeout(() => (onResultsDone ?? refresh)(), RESULTS_TIMEOUT_MS);
   }
 
   useEffect(() => {
@@ -183,14 +192,15 @@ export function RoundReveal({
       if (payload.layer === 0) setRolls(payload.rolls);
       bumpRecap();
       setBrewerId(payload.brewerId);
+      onRevealed?.();
       if (payload.brewerId === selfPlayerId) {
         setShowKettleModal(true);
       } else {
         startResultsTimeout();
       }
     },
-    "layer-tied": () => router.refresh(),
-    "round-cancelled": () => router.refresh(),
+    "layer-tied": () => refresh(),
+    "round-cancelled": () => refresh(),
     // Issue #246 (Late Declare): unlike ordinary declare-in, which only ever
     // happens while RoundOpenLive (not this component) is mounted, a Late
     // Declare adds a participant *after* the round has closed — the phase
@@ -198,7 +208,7 @@ export function RoundReveal({
     // its server action's revalidation) would ever see the new roster;
     // everyone else's closed-round view would stay stale until their next
     // unrelated refresh.
-    "player-declared-in": () => router.refresh(),
+    "player-declared-in": () => refresh(),
     // Issue #245: this component is the only thing mounted for the round's
     // closed/reveal/tie phase ahead of a reaction window ever opening — the
     // banner itself (ReactionBanner.tsx, rendered by page.tsx only once the
@@ -212,7 +222,7 @@ export function RoundReveal({
     // Issue #409: a reaction cast or a pass also moves the Provisional Recap.
     "reaction-window-changed": () => {
       bumpRecap();
-      if (!hasOpenReactionWindow) router.refresh();
+      if (!hasOpenReactionWindow) refresh();
     },
     // Issue #409: a pre-roll cast / target, or a Pending Spell Die's value,
     // changes what the resolver would say — refresh the Provisional Recap.
@@ -222,7 +232,7 @@ export function RoundReveal({
     // is what's mounted at announce time — refresh so the server re-render
     // swaps in the blocking prompt / "waiting on X" banner (and, on
     // confirm/decline, swaps it back out).
-    "round-replay-changed": () => router.refresh(),
+    "round-replay-changed": () => refresh(),
   });
 
   function dismissKettleModal() {
