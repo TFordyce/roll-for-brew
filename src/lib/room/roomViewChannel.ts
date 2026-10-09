@@ -22,6 +22,11 @@ const LEGACY_EVENTS = [
   "round-replay-changed",
 ] as const satisfies readonly (keyof RoomChannelEventHandlers)[];
 
+// A broadcast event added to useRoomChannel but not listed above would silently never refetch.
+type UnlistedEvent = Exclude<keyof RoomChannelEventHandlers, (typeof LEGACY_EVENTS)[number] | "room-changed">;
+const _everyEventListed: [UnlistedEvent] extends [never] ? true : never = true;
+void _everyEventListed;
+
 /**
  * The room view's single channel listener: hears every legacy event name plus the API's
  * `room-changed { version }`, unfiltered by round, and refetches. Coalescing lives in the store, so

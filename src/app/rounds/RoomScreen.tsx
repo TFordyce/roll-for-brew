@@ -10,7 +10,7 @@ import type { DrinkType } from "@/lib/supabase/orders";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
 import type { ReactionStackEntry } from "@/lib/supabase/reactionWindow";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
-import type { ActiveEffectBadge, DispellableEffect, PendingCast } from "@/lib/supabase/spellCasts";
+import type { ActiveEffectBadge, CompelledCast, DispellableEffect, PendingCast } from "@/lib/supabase/spellCasts";
 import type { LastDripPreview } from "@/lib/supabase/rolls";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
 import {
@@ -228,7 +228,7 @@ export function RoomScreen({
       {active && viewer.panels.compelledCast ? (
         <CompelledCastPanel
           roundId={active.roundId}
-          compelled={(compelled?.mine ?? null) as React.ComponentProps<typeof CompelledCastPanel>["compelled"]}
+          compelled={(compelled?.mine ?? null) as CompelledCast | null}
           held={heldCards.find((c) => c.location === "held") ?? null}
           brewmageddonCasterName={compelled?.mine ? nameOf(compelled.mine.brewmageddonCasterId) : ""}
           waitingOnNames={(compelled?.waitingOnOthers ?? [])
