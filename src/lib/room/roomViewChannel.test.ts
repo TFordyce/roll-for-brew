@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { subscribeRoomViewStore } from "./roomViewChannel";
+import { createRoomViewStore, type RoomView } from "./roomViewStore";
 
 type BroadcastListener = (message: { payload: unknown }) => void;
 type SubscribeStatus = "SUBSCRIBED" | "CHANNEL_ERROR" | "TIMED_OUT" | "CLOSED";
@@ -34,13 +35,13 @@ function fakeStore() {
   return { refetch: vi.fn() };
 }
 
-// The twelve events the eight *Live components listened for, written out independently of the code.
-const OLD_EVENTS = [
-  "round-revealed",
-  "layer-tied",
+// The animation events that survive the room-changed vocabulary (ADR 0011), written out independently of the code.
+const ANIMATION_EVENTS = ["round-revealed", "layer-tied", "layer-rolls-revealed"];
+
+// The nine refetch-only events room-changed replaced; no sender emits them any more.
+const RETIRED_EVENTS = [
   "round-cancelled",
   "round-closed",
-  "layer-rolls-revealed",
   "reaction-window-changed",
   "player-declared-in",
   "player-withdrew",
@@ -51,15 +52,16 @@ const OLD_EVENTS = [
 ];
 
 describe("subscribeRoomViewStore", () => {
-  it("listens on the room's channel for the old event names and room-changed, with no round filter", () => {
+  it("listens on the room's channel for room-changed and the three animation events, with no round filter", () => {
     const { supabase, listeners } = fakeSupabase();
     subscribeRoomViewStore(supabase, "room-1", fakeStore(), { onResubscribe: () => {} });
 
     expect(supabase.channel).toHaveBeenCalledWith("room:room-1");
-    expect([...Object.keys(listeners)].sort()).toEqual([...OLD_EVENTS, "room-changed"].sort());
+    expect([...Object.keys(listeners)].sort()).toEqual([...ANIMATION_EVENTS, "room-changed"].sort());
+    for (const retired of RETIRED_EVENTS) expect(listeners).not.toHaveProperty(retired);
   });
 
-  it.each(OLD_EVENTS)("refetches on %s, whichever round it names", (event) => {
+  it.each(ANIMATION_EVENTS)("refetches on %s, whichever round it names", (event) => {
     const { supabase, emit } = fakeSupabase();
     const store = fakeStore();
     subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
@@ -101,5 +103,18 @@ describe("subscribeRoomViewStore", () => {
     unsubscribe();
 
     expect(supabase.removeChannel).toHaveBeenCalledWith(channel);
+  });
+
+  it("applies a versionless room-changed's refetch: the store's request-sequence rule covers unported writers", async () => {
+    const view = (version: number, marker: string) => ({ version, marker }) as unknown as RoomView;
+    const fetchView = vi.fn(async () => view(5, "after-unported-write"));
+    const store = createRoomViewStore({ initialView: view(5, "before"), fetchView });
+    const { supabase, emit } = fakeSupabase();
+    subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
+
+    // An unported SQL path wrote without bumping rooms.version, so the view comes back at the same version.
+    emit("room-changed", {});
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ marker: "after-unported-write" }));
+    expect(fetchView).toHaveBeenCalledTimes(1);
   });
 });

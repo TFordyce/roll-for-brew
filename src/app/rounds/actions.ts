@@ -12,16 +12,7 @@ import {
 import { submitManualRoll, submitRoll } from "@/lib/supabase/rolls";
 import { advanceRound } from "@/app/rounds/advanceRound";
 import { confirmRoundReplay, declineRoundReplay } from "@/lib/supabase/roundReplay";
-import {
-  broadcastOrderChanged,
-  broadcastPlayerDeclaredIn,
-  broadcastPlayerWithdrew,
-  broadcastReactionWindowChanged,
-  broadcastRoundClosed,
-  broadcastRoundReplayChanged,
-  broadcastRoundStarted,
-  broadcastSpellCastChanged,
-} from "@/lib/supabase/realtime";
+import { broadcastRoomChanged } from "@/lib/supabase/realtime";
 import {
   drawPendingSpellCard,
   drawPendingSpellCardManual,
@@ -86,7 +77,7 @@ export async function startRoundAction(formData: FormData) {
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoundStarted(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -107,7 +98,7 @@ export async function declareInAction(formData: FormData) {
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -115,9 +106,9 @@ export async function declareInAction(formData: FormData) {
 /**
  * Declares the caller in after the round has already closed (issue #246,
  * the "Late Declare" glossary entry, GLOSSARY.md) — only valid up to the
- * round's first submitted roll (declare_in_late, 0068). Broadcasts both
- * player-declared-in, same as declareInAction, so the closed-round view
- * (RoundReveal) picks up the new participant, and spell-cast-changed, so any
+ * round's first submitted roll (declare_in_late, 0068). Broadcasts
+ * room-changed, same as declareInAction, so the closed-round view
+ * (RoundReveal) picks up the new participant and any
  * still-deferred (null-target) Action-card cast becomes targetable at them
  * without a manual reload.
  */
@@ -137,8 +128,7 @@ export async function declareInLateAction(formData: FormData) {
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastPlayerDeclaredIn(supabase, roomId, { roundId });
-  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
   // Issue #432: a Debtor declaring in late (nobody has rolled yet) turns the
   // round into a debt round, which resolves now.
   await advanceRound(supabase, roundId, "lateDeclared");
@@ -163,7 +153,7 @@ export async function withdrawDeclarationAction(formData: FormData) {
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastPlayerWithdrew(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -178,7 +168,7 @@ export async function closeRoundAction(formData: FormData) {
   await closeRound(supabase, roundId);
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoundClosed(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
   // Issue #432 / #433: a debt round, or one where every participant has a
   // Roll Exemption, has nobody to roll, so it advances at close.
   await advanceRound(supabase, roundId, "roundClosed");
@@ -266,8 +256,8 @@ export async function resolvePendingSpellDieInAppAction(formData: FormData) {
   }
   await advanceRound(supabase, roundId, "pendingDieResolved");
   // Issue #409: the die's value moves every device's Provisional Recap; it
-  // lives in the Cast Log, so it rides spell-cast-changed.
-  await broadcastSpellCastChanged(supabase, await getRoundRoomId(supabase, roundId), { roundId });
+  // lives in the Cast Log, so it rides room-changed.
+  await broadcastRoomChanged(supabase, await getRoundRoomId(supabase, roundId));
 
   revalidateRoundSurfaces();
 }
@@ -308,8 +298,8 @@ export async function resolvePendingSpellDieManualAction(
   }
   await advanceRound(supabase, roundId, "pendingDieResolved");
   // Issue #409: the die's value moves every device's Provisional Recap; it
-  // lives in the Cast Log, so it rides spell-cast-changed.
-  await broadcastSpellCastChanged(supabase, await getRoundRoomId(supabase, roundId), { roundId });
+  // lives in the Cast Log, so it rides room-changed.
+  await broadcastRoomChanged(supabase, await getRoundRoomId(supabase, roundId));
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -340,7 +330,7 @@ export async function resolveCardSwapAction(formData: FormData) {
   if (closedRoundId) {
     await advanceRound(supabase, closedRoundId, "reactionWindowChanged");
     if (roomId) {
-      await broadcastReactionWindowChanged(supabase, roomId, { roundId: closedRoundId });
+      await broadcastRoomChanged(supabase, roomId);
     }
   }
 
@@ -420,7 +410,7 @@ export async function drawPendingSpellCardManualAction(
  * Casts the caller's held Action card for the given round's declare-in
  * window (issue #67). targetPlayerId is omitted to arm an OPPONENT/PLAYER
  * card before the participant roster is final; setSpellCastTargetAction
- * fills it in once declare-in closes. Broadcasts spell-cast-changed (issue
+ * fills it in once declare-in closes. Broadcasts room-changed (issue
  * #205) so other players — who may now be targeted, or see a new active
  * effect — pick it up without a manual reload.
  */
@@ -452,7 +442,7 @@ export async function castSpellCardAction(
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -461,7 +451,7 @@ export async function castSpellCardAction(
 /**
  * Fills in the deferred target for a card armed before declare-in closed
  * (issue #67, user story 23) — only valid once the round has closed and the
- * roster is final. Broadcasts spell-cast-changed (issue #205) since this
+ * roster is final. Broadcasts room-changed (issue #205) since this
  * changes the caster/target/advantage data other players see in RoundReveal
  * (PR #176).
  */
@@ -496,7 +486,7 @@ export async function setSpellCastTargetAction(
   await advanceRound(supabase, roundId, "deferredTargetSet");
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -506,7 +496,7 @@ export async function setSpellCastTargetAction(
  * Records the Tea Party Revolt pick (issue #430): the lowest roller names who
  * makes tea. Layer 0 was held for the pick, so this raises revoltPickMade —
  * advance_layer then opens the reaction window (or finalizes, when nobody can
- * react). Broadcasts spell-cast-changed so every page drops the prompt.
+ * react). Broadcasts room-changed so every page drops the prompt.
  */
 export async function setTeaPartyRevoltTargetAction(
   _prevState: SpellCastActionState,
@@ -531,7 +521,7 @@ export async function setTeaPartyRevoltTargetAction(
   await advanceRound(supabase, roundId, "revoltPickMade");
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -541,7 +531,7 @@ export async function setTeaPartyRevoltTargetAction(
  * Ends another player's active effect early using the caller's currently-
  * held dispel-kind card (Lesser Detox, issue #69) — targets an active
  * effect id rather than a player, so it's a separate action from
- * castSpellCardAction. Broadcasts spell-cast-changed (issue #205) so the
+ * castSpellCardAction. Broadcasts room-changed (issue #205) so the
  * dispelled player sees their effect end without a manual reload.
  */
 export async function endActiveEffectAction(
@@ -566,7 +556,7 @@ export async function endActiveEffectAction(
   }
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastSpellCastChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -576,7 +566,7 @@ export async function endActiveEffectAction(
  * Casts the caller's held Reaction card into the round's currently-open
  * reaction window (issue #68) — either reacting to the roll outcome itself
  * (targetCastId omitted) or to another cast on the stack (CARD-target
- * cards). Broadcasts reaction-window-changed so every other device's ribbon
+ * cards). Broadcasts room-changed so every other device's ribbon
  * banner (ReactionBanner.tsx) re-fetches the reopened poll immediately,
  * rather than waiting for its own next unrelated refresh.
  *
@@ -611,7 +601,7 @@ export async function castReactionSpellCardAction(
   await advanceRound(supabase, roundId, "reactionWindowChanged");
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -644,7 +634,7 @@ export async function spendCourageTokenAction(
   await advanceRound(supabase, roundId, "reactionWindowChanged");
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
   return { status: "idle" };
@@ -677,7 +667,7 @@ export async function passReactionWindowAction(formData: FormData) {
   await advanceRound(supabase, roundId, "reactionWindowChanged");
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -711,7 +701,7 @@ export async function voteSkipReactionWindowAction(formData: FormData) {
   await advanceRound(supabase, roundId, "reactionWindowChanged");
 
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastReactionWindowChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -736,7 +726,7 @@ export async function notifyOrderChangedAction(formData: FormData) {
 
   const supabase = await createClient();
   const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastOrderChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -745,8 +735,8 @@ export async function notifyOrderChangedAction(formData: FormData) {
  * The Time for Brew caster scraps the just-announced round (issue #315, spec
  * §11). confirm_round_replay runs _rr_scrap_round — the round is backed out
  * to a freshly-closed generation-1 round awaiting rolls — then this broadcasts
- * round-closed (every device re-enters the roll phase) and
- * round-replay-changed (the blocking prompt clears).
+ * room-changed (every device re-enters the roll phase and the blocking prompt
+ * clears).
  */
 export async function confirmRoundReplayAction(formData: FormData) {
   const roundId = formData.get("roundId");
@@ -757,8 +747,7 @@ export async function confirmRoundReplayAction(formData: FormData) {
   const supabase = await createClient();
   const roomId = await getRoundRoomId(supabase, roundId);
   await confirmRoundReplay(supabase, roundId);
-  await broadcastRoundReplayChanged(supabase, roomId, { roundId });
-  await broadcastRoundClosed(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -777,7 +766,7 @@ export async function declineRoundReplayAction(formData: FormData) {
   const supabase = await createClient();
   const roomId = await getRoundRoomId(supabase, roundId);
   await declineRoundReplay(supabase, roundId);
-  await broadcastRoundReplayChanged(supabase, roomId, { roundId });
+  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }

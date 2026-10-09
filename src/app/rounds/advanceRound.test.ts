@@ -18,8 +18,7 @@ function fakeDeps(outcome: LayerOutcome): AdvanceRoundDeps {
     broadcastLayerRollsRevealed: vi.fn(async () => {}),
     broadcastRoundRevealed: vi.fn(async () => {}),
     broadcastLayerTied: vi.fn(async () => {}),
-    broadcastRoundReplayChanged: vi.fn(async () => {}),
-    broadcastSpellCastChanged: vi.fn(async () => {}),
+    broadcastRoomChanged: vi.fn(async () => {}),
   };
 }
 
@@ -87,7 +86,7 @@ describe("advanceRound", () => {
       cupsMade: 2,
       rolls: brewer.rolls,
     });
-    expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
+    expect(deps.broadcastRoomChanged).not.toHaveBeenCalled();
     expect(deps.broadcastLayerTied).not.toHaveBeenCalled();
     expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
   });
@@ -111,13 +110,13 @@ describe("advanceRound", () => {
     expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
   });
 
-  it("a brewer outcome with a pending Round Replay also broadcasts the replay change", async () => {
+  it("a brewer outcome with a pending Round Replay also broadcasts room-changed, so the replay prompt appears", async () => {
     const deps = fakeDeps({ ...brewer, replayPending: true });
 
     await advanceRound(supabase, "round-1", "reactionWindowChanged", deps);
 
     expect(deps.broadcastRoundRevealed).toHaveBeenCalledTimes(1);
-    expect(deps.broadcastRoundReplayChanged).toHaveBeenCalledWith(supabase, "room-1", { roundId: "round-1" });
+    expect(deps.broadcastRoomChanged).toHaveBeenCalledWith(supabase, "room-1");
   });
 
   it("a tie outcome broadcasts the new Layer and its tied players", async () => {
@@ -131,7 +130,7 @@ describe("advanceRound", () => {
       tiedPlayerIds: ["p1", "p2"],
     });
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
-    expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
+    expect(deps.broadcastRoomChanged).not.toHaveBeenCalled();
   });
 
   it("a Loose Leaf roll-off outcome sends the tied broadcast, so the tie modal runs the roll-off", async () => {
@@ -156,16 +155,15 @@ describe("advanceRound", () => {
     expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
     expect(deps.broadcastLayerTied).not.toHaveBeenCalled();
-    expect(deps.broadcastRoundReplayChanged).not.toHaveBeenCalled();
-    expect(deps.broadcastSpellCastChanged).not.toHaveBeenCalled();
+    expect(deps.broadcastRoomChanged).not.toHaveBeenCalled();
   });
 
-  it("a Layer held for a Tea Party Revolt pick broadcasts a spell-cast change, so the picker sees the prompt", async () => {
+  it("a Layer held for a Tea Party Revolt pick broadcasts room-changed, so the picker sees the prompt", async () => {
     const deps = fakeDeps({ outcome: "noop", reason: "revolt_pick_pending" });
 
     await advanceRound(supabase, "round-1", "layerRolled", deps);
 
-    expect(deps.broadcastSpellCastChanged).toHaveBeenCalledWith(supabase, "room-1", { roundId: "round-1" });
+    expect(deps.broadcastRoomChanged).toHaveBeenCalledWith(supabase, "room-1");
     expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
   });
@@ -211,7 +209,7 @@ describe("advanceRound", () => {
       cupsMade: 2,
       rolls: brewer.rolls,
     });
-    expect(deps.broadcastRoundReplayChanged).toHaveBeenCalledTimes(1);
+    expect(deps.broadcastRoomChanged).toHaveBeenCalledTimes(1);
   });
 
   it("a Tie-Break Reroll Layer's first completion broadcasts its rolls and the outcome", async () => {

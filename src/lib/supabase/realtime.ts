@@ -15,62 +15,30 @@ export type RoundRevealedPayload = {
   brewerId: string;
   cupsMade: number;
   rolls: { playerId: string; value: number; discardedValue: number | null; enteredByAdmin: boolean }[];
+  version?: number;
 };
 
 export type LayerTiedPayload = {
   roundId: string;
   layer: number;
   tiedPlayerIds: string[];
-};
-
-export type RoundCancelledPayload = {
-  roundId: string;
-};
-
-export type RoundClosedPayload = {
-  roundId: string;
+  version?: number;
 };
 
 export type LayerRollsRevealedPayload = {
   roundId: string;
   layer: number;
   rolls: { playerId: string; value: number; discardedValue: number | null; enteredByAdmin: boolean }[];
-};
-
-export type ReactionWindowChangedPayload = {
-  roundId: string;
-};
-
-export type PlayerDeclaredInPayload = {
-  roundId: string;
-};
-
-export type PlayerWithdrewPayload = {
-  roundId: string;
-};
-
-export type RoundStartedPayload = {
-  roundId: string;
-};
-
-export type SpellCastChangedPayload = {
-  roundId: string;
-};
-
-export type OrderChangedPayload = {
-  roundId: string;
-};
-
-export type RoundReplayChangedPayload = {
-  roundId: string;
+  version?: number;
 };
 
 /**
- * The C# API's one-size broadcast (spec #533): the room's `version` after a write. No producer
- * yet (API writes land in later slices); the room-view store already listens for it.
+ * The one refetch hint (ADR 0011): "this room's view may be stale". `version` is the room's
+ * `rooms.version` after the write, which only a C# API write inside its transaction can supply; an
+ * unported TS/SQL writer sends none and the client's request-sequence rule covers it.
  */
 export type RoomChangedPayload = {
-  version: number;
+  version?: number;
 };
 
 /**
@@ -118,29 +86,6 @@ export async function broadcastLayerTied(
 }
 
 /**
- * Broadcasts declarations closing (rolling begins) once close_round has
- * committed, so every declared-in player still sitting on the "open" view —
- * which has no other realtime listener of its own, unlike the closed-phase
- * RoundReveal/TieBanner — finds out it's their turn to roll without needing
- * to manually reload.
- */
-export async function broadcastRoundClosed(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: RoundClosedPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("round-closed", payload);
-    if (!result.success) {
-      throw new Error(`broadcastRoundClosed: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
  * Broadcasts a layer's raw rolls the instant they're known — before the
  * reaction window that follows (issue #68) has been opened, let alone
  * closed — so every device flips its dice to the actual values while a
@@ -166,189 +111,18 @@ export async function broadcastLayerRollsRevealed(
 }
 
 /**
- * Broadcasts that the round's reaction-window state changed (opened, a new
- * reaction was cast into it, or it closed) — the ribbon banner
- * (ReactionBanner.tsx) listens for this to refresh its own state. One event
- * name covers all three: the banner just re-fetches get_open_reaction_window/
- * get_reaction_stack rather than trying to reconstruct state from the
- * broadcast payload, since it needs a fresh read either way.
+ * Broadcasts that something in the room changed, so every device refetches its view. Replaces the
+ * nine refetch-only events (round-started, player-declared-in, spell-cast-changed, ...): the
+ * receiver refetches the whole room view either way, so which write happened is not carried. Sent
+ * with no `version` -- these writers are unported, and the store's request-sequence rule
+ * orders the refetches instead.
  */
-export async function broadcastReactionWindowChanged(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: ReactionWindowChangedPayload,
-): Promise<void> {
+export async function broadcastRoomChanged(supabase: SupabaseClient, roomId: string): Promise<void> {
   const channel = supabase.channel(roomChannelName(roomId));
   try {
-    const result = await channel.httpSend("reaction-window-changed", payload);
+    const result = await channel.httpSend("room-changed", {} satisfies RoomChangedPayload);
     if (!result.success) {
-      throw new Error(`broadcastReactionWindowChanged: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts a stall-timeout cancellation (issue #21) once cancel_round has
- * committed, so every device drops the round and frees up the "start round"
- * action, the same way broadcastRoundRevealed does for a normal resolution.
- */
-export async function broadcastRoundCancelled(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: RoundCancelledPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("round-cancelled", payload);
-    if (!result.success) {
-      throw new Error(`broadcastRoundCancelled: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts a declaration once declare_in has committed (issue #98), so
- * every device still sitting on the "open"/"Who's In?" view — which already
- * listens via RoundOpenLive — sees the updated roster and "Need N more to
- * roll" count without a manual reload, the same way broadcastRoundClosed
- * covers the next transition on that same view.
- */
-export async function broadcastPlayerDeclaredIn(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: PlayerDeclaredInPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("player-declared-in", payload);
-    if (!result.success) {
-      throw new Error(`broadcastPlayerDeclaredIn: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts a withdrawal once withdraw_declaration has committed — the
- * "cancel an accidental declare" counterpart to broadcastPlayerDeclaredIn,
- * covering the same "Who's In?" view for the roster/"Need N more" update in
- * the other direction.
- */
-export async function broadcastPlayerWithdrew(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: PlayerWithdrewPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("player-withdrew", payload);
-    if (!result.success) {
-      throw new Error(`broadcastPlayerWithdrew: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts a round starting once start_round has committed (issue #98), so
- * every device sitting on the idle "Start Round" view — which previously had
- * no realtime listener at all — picks up the new round without a manual
- * reload.
- */
-export async function broadcastRoundStarted(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: RoundStartedPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("round-started", payload);
-    if (!result.success) {
-      throw new Error(`broadcastRoundStarted: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts a change to a round's spell-cast/active-effect state (issue
- * #205) — casting an Action card, filling in a deferred target, or ending
- * another player's active effect early all change what other players see
- * (caster/target/advantage in RoundReveal per PR #176, effect badges on
- * PlayerTile, the dispellable-effects list on their own SpellCardPanel), but
- * previously had no broadcast at all. One event covers all three causes —
- * mirrors broadcastReactionWindowChanged's approach — since the receiving
- * side (SpellCastLive.tsx) just refreshes the server component tree rather
- * than trying to reconstruct state from the payload.
- */
-export async function broadcastSpellCastChanged(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: SpellCastChangedPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("spell-cast-changed", payload);
-    if (!result.success) {
-      throw new Error(`broadcastSpellCastChanged: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts a change to a round's Menu (issue #227) once submit_order has
- * committed — picking or changing an Order previously had no broadcast at
- * all, so the live Menu (RoundMenu.tsx, via MenuLive.tsx) went stale until a
- * manual reload. Same one-event/just-refetch shape as
- * broadcastSpellCastChanged/broadcastReactionWindowChanged: the receiving
- * side re-fetches round_menu rather than trying to reconstruct it from the
- * payload.
- */
-export async function broadcastOrderChanged(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: OrderChangedPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("order-changed", payload);
-    if (!result.success) {
-      throw new Error(`broadcastOrderChanged: send failed with status ${result.status}`);
-    }
-  } finally {
-    await supabase.removeChannel(channel);
-  }
-}
-
-/**
- * Broadcasts that a round's replay decision changed (issue #315): a
- * pending_round_replay row was created (Time for Brew survived the reaction
- * window and its round just resolved), confirmed (round scrapped, generation
- * 1 begins), declined, or auto-declined by the stall sweep. Same
- * one-event/just-refetch shape as the other room broadcasts — RoundReplayPrompt
- * (and RoundReveal, which is what's mounted at announce time) re-renders the
- * server tree so the blocking prompt / "waiting on X" banner appears or clears
- * in lockstep on every device.
- */
-export async function broadcastRoundReplayChanged(
-  supabase: SupabaseClient,
-  roomId: string,
-  payload: RoundReplayChangedPayload,
-): Promise<void> {
-  const channel = supabase.channel(roomChannelName(roomId));
-  try {
-    const result = await channel.httpSend("round-replay-changed", payload);
-    if (!result.success) {
-      throw new Error(`broadcastRoundReplayChanged: send failed with status ${result.status}`);
+      throw new Error(`broadcastRoomChanged: send failed with status ${result.status}`);
     }
   } finally {
     await supabase.removeChannel(channel);

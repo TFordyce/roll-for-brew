@@ -2,7 +2,12 @@
 
 import { createContext, useContext, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { coalesceWithinTick } from "./coalesceWithinTick";
 import type { RoomView, RoomViewStore } from "./roomViewStore";
+
+// Every refresh-only panel hears the same room-changed, so the legacy path folds the panels'
+// refreshes of one broadcast into one router.refresh().
+const refreshRouter = coalesceWithinTick((router: ReturnType<typeof useRouter>) => router.refresh());
 
 export const RoomViewContext = createContext<RoomViewStore | null>(null);
 
@@ -25,5 +30,5 @@ export function useRoomView(): RoomView {
 export function useRoomRefresh(): () => void {
   const store = useRoomViewStore();
   const router = useRouter();
-  return store ? () => store.refetch() : () => router.refresh();
+  return store ? () => store.refetch() : () => refreshRouter(router);
 }

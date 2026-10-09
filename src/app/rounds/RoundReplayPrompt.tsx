@@ -36,9 +36,7 @@ export function RoundReplayPrompt({
   const refresh = useRoomRefresh();
 
   useRoomChannel(roomId, roundId, {
-    "round-replay-changed": () => refresh(),
-    "round-closed": () => refresh(),
-    "round-cancelled": () => refresh(),
+    "room-changed": () => refresh(),
   });
 
   if (!isCaster) {

@@ -40,10 +40,10 @@ export type RoundRevealParticipant = {
  * no timeout of its own. Also listens for layer-tied (issue #20): if layer 0
  * itself ties, every device needs to swap this roster for the tie banner, so
  * it refreshes just like a reveal does. And listens for
- * reaction-window-changed (issue #245): this component is mounted for the
+ * room-changed (issue #245): this component is mounted for the
  * round's entire closed/tie phase, ahead of ReactionBanner ever existing, so
  * it's the only thing that can catch a reaction window's first-open
- * broadcast and refresh the page to bring the banner into existence — once
+ * change and refresh the page to bring the banner into existence — once
  * mounted, the banner's own listener takes over for every later change to
  * that same window (hasOpenReactionWindow guards against both refreshing at
  * once).
@@ -103,7 +103,7 @@ export function RoundReveal({
   ownRoll: number | null;
   // Issue #245: whether page.tsx's own server-side read already sees an
   // open reaction window (i.e. whether ReactionBanner is currently
-  // mounted alongside this component). Lets the reaction-window-changed
+  // mounted alongside this component). Lets the room-changed
   // handler below refresh only for a window's *first* appearance — once
   // the banner is mounted it owns every subsequent refresh for that same
   // event itself, so this stays a no-op rather than double-refreshing.
@@ -200,39 +200,23 @@ export function RoundReveal({
       }
     },
     "layer-tied": () => refresh(),
-    "round-cancelled": () => refresh(),
-    // Issue #246 (Late Declare): unlike ordinary declare-in, which only ever
-    // happens while RoundOpenLive (not this component) is mounted, a Late
-    // Declare adds a participant *after* the round has closed — the phase
-    // this component owns. Without this, only the actor's own device (via
-    // its server action's revalidation) would ever see the new roster;
-    // everyone else's closed-round view would stay stale until their next
-    // unrelated refresh.
-    "player-declared-in": () => refresh(),
-    // Issue #245: this component is the only thing mounted for the round's
-    // closed/reveal/tie phase ahead of a reaction window ever opening — the
-    // banner itself (ReactionBanner.tsx, rendered by page.tsx only once the
-    // server already sees an open window) has no chance to catch its own
-    // first-open broadcast. Refreshing here re-fetches openReactionWindow
-    // server-side so the banner mounts live instead of waiting for a manual
-    // reload. Guarded on hasOpenReactionWindow so this only fires for the
-    // window's first appearance — once the banner is mounted it owns every
-    // subsequent refresh for this same event via its own listener, so this
-    // becomes a no-op rather than double-refreshing alongside it.
-    // Issue #409: a reaction cast or a pass also moves the Provisional Recap.
-    "reaction-window-changed": () => {
+    // Everything else that moves this phase arrives as room-changed: a cancel,
+    // a Late Declare (issue #246: it adds a participant *after* the round has
+    // closed, the phase this component owns), a Round Replay decision (issue
+    // #315: a surviving Time for Brew turns the just-announced round into a
+    // pending scrap/keep decision, and this component is what's mounted at
+    // announce time), and a reaction window's first appearance.
+    //
+    // Issue #245: the refresh is guarded on hasOpenReactionWindow (see its prop
+    // comment): once the banner is mounted it refreshes on the same event
+    // itself, so this doesn't double up with it.
+    // Issue #409: a reaction cast, a pass, a pre-roll cast / target or a Pending
+    // Spell Die's value also moves the Provisional Recap, so it refetches on
+    // every change.
+    "room-changed": () => {
       bumpRecap();
       if (!hasOpenReactionWindow) refresh();
     },
-    // Issue #409: a pre-roll cast / target, or a Pending Spell Die's value,
-    // changes what the resolver would say — refresh the Provisional Recap.
-    "spell-cast-changed": () => bumpRecap(),
-    // Issue #315 (Round Replay): a surviving Time for Brew turns this
-    // just-announced round into a pending scrap/keep decision. This component
-    // is what's mounted at announce time — refresh so the server re-render
-    // swaps in the blocking prompt / "waiting on X" banner (and, on
-    // confirm/decline, swaps it back out).
-    "round-replay-changed": () => refresh(),
   });
 
   function dismissKettleModal() {
