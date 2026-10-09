@@ -4,12 +4,6 @@ import { advanceRound, type AdvanceRoundDeps, type AdvanceRoundEvent } from "./a
 
 const supabase = {} as never;
 
-/**
- * Advancement behaviour itself is covered against the real SQL functions in
- * tests/integration/round-advancement.test.ts. These pin only what the module
- * owns: which database entry point each event may reach, and which broadcasts
- * each outcome sends.
- */
 function fakeDeps(outcome: LayerOutcome): AdvanceRoundDeps {
   return {
     advanceLayer: vi.fn(async () => outcome),
@@ -92,8 +86,6 @@ describe("advanceRound", () => {
   });
 
   it("roundClosed resolving a debt round broadcasts the reveal with no rolls", async () => {
-    // Issue #432: a debt round resolves at close -- advance_layer finalizes it
-    // with no window and no layer_rolls, and the Debtor is the Tea Maker.
     const debtRound: LayerOutcome = { ...brewer, brewerId: "p2", rolls: [] };
     const deps = fakeDeps(debtRound);
 

@@ -5,16 +5,6 @@ import { getBrewRatingAverage, getPlayerStatsSnapshot, windowFromParam } from "@
 import { getUsualDrinks } from "@/lib/supabase/usualDrinks";
 import { ProfilePage } from "@/app/_components/ProfilePage";
 
-/**
- * `/:playerId` — a player's profile page (issue #212, part of the Brew
- * Rating spec #208): header, Brew Rating average, the four existing
- * per-player stats (with the same all-time/last-30-days `?window=` toggle
- * `/stats` uses), and a link down to `/:playerId/collection`. Mirrors
- * `/collection/:playerId`'s shape (now moved to `/:playerId/collection`,
- * see `src/app/[playerId]/collection/page.tsx`): auth-gate, resolve viewer
- * identity, fetch the target player row, `notFound()` if missing, fetch
- * data via typed lib helpers, delegate to a presentational component.
- */
 export default async function PlayerProfilePage({
   params,
   searchParams,

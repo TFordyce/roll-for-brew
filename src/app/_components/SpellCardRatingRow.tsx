@@ -5,17 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { PixelStar } from "@/app/_components/PixelStar";
 import { rateSpellCard, withdrawSpellCardRating } from "@/lib/supabase/spellCardRatings";
 
-/**
- * The 1-5 star rating row shown in the Spell Collection card inspector, on
- * the viewer's own collection only, for a card they've cast (issue #300).
- * Tap a star to set/change the rating; tap the current value again to
- * withdraw it. Deliberately thinner than BrewRatingPanel — no preview/
- * stamp two-phase, the tap commits straight to the server.
- *
- * Renders nothing when the card is neither rated nor cast-eligible. When a
- * rating is held but eligibility has since gone (e.g. an admin deleted the
- * round the qualifying cast belonged to), the stars render read-only.
- */
 export function SpellCardRatingRow({
   cardId,
   myRating,

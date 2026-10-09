@@ -11,20 +11,6 @@ const initialState: BackfillRoundState = { status: "idle" };
 
 type Step = "participants" | "layers";
 
-/**
- * The /admin/backfill wizard (issue #274): walks an admin through entering
- * an entire missed round's rolls, one layer at a time, replaying
- * resolveLayer.ts (the plain lowest-pick rule — a backfilled round carries no
- * spells; live rounds are decided by the SQL resolver, ADR 0005/0007)
- * client-side after every layer so the admin sees the
- * real outcome before confirming it — a tie reveals the next reroll layer's
- * roster automatically, and a single winner surfaces a final "Record this
- * round" step. The full layer-by-layer payload this wizard builds is only
- * ever sent once, on that final submit — admin_backfill_round (0072)
- * recomputes the same precedence server-side and rejects anything that
- * doesn't match, so this preview is a UX convenience, not the source of
- * truth.
- */
 export function BackfillRoundForm({ players }: { players: RealPlayer[] }) {
   const [state, formAction, isPending] = useActionState(backfillRoundAction, initialState);
 

@@ -2,19 +2,8 @@
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
 
-/** Shared with `HeldCardThumbnail`'s docked thumbnail so the tilt feel is identical. */
 export const MAX_TILT_DEG = 16;
 
-/**
- * The 3D pointer-tracking tilt lifted out of `HeldCardThumbnail` (issue #266)
- * so every modal that shows a single card's art gets the same treatment:
- * the `CardInspectModal` consumers `HeldCardThumbnail` and
- * `SpellCollectionGrid`.
- *
- * Renders the standard `aspect-[3/4]` art frame + cover image and rotates it
- * toward the cursor. Gated on `(hover: hover) and (pointer: fine)` — touch
- * devices get a plain static frame, same as the thumbnail.
- */
 export function TiltCardArt({
   artPath,
   artClassName = "",

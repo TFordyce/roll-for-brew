@@ -3,22 +3,6 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
 
-// Native pixel size of back-layer.png. The whole scene (background + props)
-// is laid out at this fixed resolution, then scaled as one rigid unit and
-// anchored to the bottom of the viewport (see computeSceneScale / the
-// bottom-anchored scene wrapper below) — so props stay glued to the same
-// spot on the art at every width, and the counter surface never gets pushed
-// above the fold on tall/narrow viewports (issue #95).
-//
-// The scale is derived from container *width* only, never height. A
-// height-inclusive "cover" scale (the previous approach) forces the scene to
-// grow tall enough to cover portrait viewports, which crops most of its
-// width away — on a typical phone that crop window ends up entirely between
-// the leftmost and rightmost prop slots, i.e. every prop disappears. Fitting
-// to width guarantees the full width (every slot) stays visible; any excess
-// scene height above the container is simply cropped from the top (the
-// bottom-anchored counter/shelf row stays put) instead of redistributing the
-// crop across both edges.
 const SCENE_WIDTH = 1376;
 const SCENE_HEIGHT = 768;
 
@@ -31,9 +15,6 @@ const PROP_IMAGES: Record<PropKey, string> = {
   saucerStack: "/backdrop/props/saucer-stack.png",
 };
 
-// Natural pixel dimensions of each sprite (public/backdrop/props/*.png),
-// used to keep aspect ratio when scaling every prop to a shared on-counter
-// height.
 const PROP_ASPECT: Record<PropKey, number> = {
   kettle: 252 / 243,
   teapot: 302 / 209,
@@ -43,11 +24,6 @@ const PROP_ASPECT: Record<PropKey, number> = {
   saucerStack: 259 / 173,
 };
 
-// Kettle and saucer-stack are both wide-relative-to-tall sprites (near-1:1
-// and 3:2 aspect ratios respectively), so at the shared slot height they
-// read visibly wider than the others — scaled down a bit here so their
-// footprint matches the rest of the row rather than tightening the slot
-// spacing to compensate.
 const PROP_SCALE: Record<PropKey, number> = {
   kettle: 1.1,
   teapot: 1,
@@ -57,18 +33,6 @@ const PROP_SCALE: Record<PropKey, number> = {
   saucerStack: 0.8,
 };
 
-// Per-slot anchor: x/y position in px within the fixed SCENE_WIDTH x
-// SCENE_HEIGHT canvas, and a pixel height (the whole canvas is scaled as one
-// unit, so these are fixed art-native sizes, not viewport-relative). Slot
-// indices 3 and 4 used to sit on the counter directly behind the centered
-// "Room" card, so they're relocated up onto the back shelf instead —
-// smaller, since the shelf reads as further from the viewer than the
-// counter-top. Their x stays well inboard of the shelf's support brackets
-// (~19%/81% of scene width) and clear of the middle post (~46-48%), so they
-// actually rest on the shelf's surface rather than floating past its edge.
-// The counter anchors likewise sit a few points in from the counter's own
-// edges rather than running right up to them, and skip the two central
-// positions (behind the "Room" card) for a deliberately uneven row.
 type SlotAnchor = { x: number; y: number; heightPx: number };
 
 const SLOT_ANCHORS: SlotAnchor[] = [
@@ -87,18 +51,11 @@ const STEAM_FRAME_MS = 500;
 const STEAM_MIN_DELAY_MS = 45_000;
 const STEAM_MAX_DELAY_MS = 90_000;
 
-/**
- * Scale factor to make a SCENE_WIDTH-wide box fit its container's width
- * exactly — width only, deliberately never height (see the SCENE_WIDTH
- * comment above for why: a height-inclusive scale crops the horizontal
- * extent that every prop slot lives in on tall/narrow viewports).
- */
 export function computeSceneScale(containerWidth: number): number {
   if (containerWidth <= 0) return 1;
   return containerWidth / SCENE_WIDTH;
 }
 
-/** Recomputes computeSceneScale on resize via ResizeObserver. */
 function useSceneScale(containerRef: RefObject<HTMLDivElement | null>): number {
   const [scale, setScale] = useState(1);
 
@@ -137,7 +94,6 @@ function useReducedMotion(): boolean {
   return reduced;
 }
 
-/** Cycles the kettle through an infrequent steam puff; null while idle. */
 function useKettleSteamFrame(reducedMotion: boolean): number | null {
   const [frameIndex, setFrameIndex] = useState<number | null>(null);
 
@@ -180,22 +136,6 @@ function useKettleSteamFrame(reducedMotion: boolean): number | null {
   return frameIndex;
 }
 
-/**
- * Fixed (non-parallax) tavern-counter backdrop (issue #82), replacing the
- * tiled wood-plank placeholder from issue #64. Prop-to-slot assignment is
- * shuffled once per player per day (see backdropShuffle.ts) so the counter
- * looks different day to day without shifting mid-session.
- *
- * The wrapper is viewport-`fixed`, not `absolute` within the page. Pages
- * like /collection can grow far taller than one screen (a long card grid),
- * and an `absolute inset-0` wrapper stretches to match that full scrollable
- * height — anchoring the bottom-anchored scene to the bottom of the *page*
- * instead of the bottom of the *viewport*. That left the counter/shelf art
- * sitting far below the fold, only scrolling into view near the very bottom
- * of a long grid (issue: collection page backdrop scuffed when scrolled).
- * `fixed` keeps the scene glued to the visible viewport at every scroll
- * position, matching how it already reads on one-screen pages.
- */
 export function ParallaxBackdrop({ playerId }: { playerId: string }) {
   const reducedMotion = useReducedMotion();
   const steamFrameIndex = useKettleSteamFrame(reducedMotion);

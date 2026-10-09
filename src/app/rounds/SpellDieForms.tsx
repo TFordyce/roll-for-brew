@@ -3,13 +3,6 @@ import { SubmitButton } from "@/app/_components/SubmitButton";
 import { parseDiceRange } from "@/lib/game/dieShape";
 import { PendingSpellDieManualForm } from "@/app/rounds/PendingSpellDieManualForm";
 
-/**
- * The in-app (server-generated) form for resolving a Pending Spell Die
- * (issue #252) — the dice_modifier counterpart to RollForms.tsx's
- * InAppRollForm, sharing its styling but posting to
- * resolvePendingSpellDieInAppAction with the cast id instead of a bare
- * roundId.
- */
 export function InAppSpellDieForm({ roundId, castId }: { roundId: string; castId: string }) {
   return (
     <form action={resolvePendingSpellDieInAppAction} className="mt-3">
@@ -22,14 +15,6 @@ export function InAppSpellDieForm({ roundId, castId }: { roundId: string; castId
   );
 }
 
-/**
- * The manual-entry form for resolving a Pending Spell Die (issue #252) —
- * the dice_modifier counterpart to RollForms.tsx's ManualRollForm. `dice`
- * (e.g. "1d6") sizes the number input's min/max client-side, mirroring
- * resolve_pending_spell_die_manual's own server-side range check; a value
- * outside it surfaces as resolvePendingSpellDieManualAction's inline typed
- * error, same as any other spell-cast precondition failure.
- */
 export function ManualSpellDieForm({ roundId, castId, dice }: { roundId: string; castId: string; dice: string }) {
   const range = parseDiceRange(dice);
 

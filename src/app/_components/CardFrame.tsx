@@ -1,11 +1,5 @@
 import type { ReactNode } from "react";
 
-/**
- * Gold-bordered, dark-filled panel wrapper — the tabletop design system's
- * base UI chrome (issue #64), modelled on a TCG card's engraved frame.
- * Reused for both pre-roll lobby states now, and intended for Stats/
- * Settings/roll-reveal screens in later passes.
- */
 export function CardFrame({
   title,
   children,

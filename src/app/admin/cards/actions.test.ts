@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The action needs a Next request and a Supabase client; the RPC wrapper is
-// the seam, so it is the one thing faked here.
 const allocateSpellCard = vi.fn();
 vi.mock("next/cache", () => ({ revalidatePath: vi.fn() }));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn(async () => ({})) }));

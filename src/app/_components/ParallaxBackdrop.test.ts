@@ -5,9 +5,6 @@ const SCENE_WIDTH = 1376;
 
 describe("computeSceneScale", () => {
   it("scales purely off container width, so the full scene width always fits", () => {
-    // A height-inclusive "cover" scale (the pre-#95-fix behavior) would pick
-    // a much larger factor here to also cover the tall viewport, cropping
-    // most of the scene's width away and hiding every prop slot with it.
     const portraitPhone = { width: 375, height: 812 };
     const scale = computeSceneScale(portraitPhone.width);
 

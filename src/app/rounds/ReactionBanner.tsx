@@ -16,25 +16,8 @@ import type { SkipVoteState } from "@/lib/game/skipVote";
 
 const initialCastState: SpellCastActionState = { status: "idle" };
 
-/** A single die reads as the table says it: "1d6" → "d6". */
 const dieLabel = (dice: string) => dice.replace(/^1d/, "d");
 
-/**
- * The reaction window's ribbon banner (issue #68): a bottom bar over the
- * already-revealed dice screen (RoundReveal/TieBanner render above it, not
- * behind a dimming overlay) rather than a full-screen modal, per the map's
- * user story 26. The window closes when every eligible holder has passed,
- * or when the table stops waiting on them: a Skip vote (SkipVote, issue #411)
- * or the 5-minute stall backstop.
- *
- * `compelled` (issue #440): Brewmageddon obliges the caller to play their
- * Reaction card here, so there is no Pass; being skipped forfeits the card.
- *
- * `courageTokens` (issue #439): the caller's unspent Liquid Courage tokens,
- * passed only for a Layer-0 window. Each is a Reaction Source on its own, so
- * a player with no Reaction card is still prompted, and may spend one to add
- * 1d6 to their roll (a Pending Spell Die they then roll).
- */
 export function ReactionBanner({
   roomId,
   roundId,
@@ -73,22 +56,11 @@ export function ReactionBanner({
   });
 
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
-  // pendingPlayers only ever includes players who are both eligible and not
-  // yet passed this poll round, so — given the branch below only renders
-  // this text when the caller isn't in that state themselves — selfPlayerId
-  // never appears here; no "(you)" marker needed.
   const pendingNames = joinNames(pendingPlayers.map((p) => p.displayName), "");
-  // A CARD-target reaction (contested_negate/redirect) can only target a
-  // stack entry that hasn't already been negated by an earlier reaction.
-  // Ordered LIFO (most recently cast first, src/lib/game/reactionStack.ts)
-  // so the picker offers the top of the stack first — the entry a further
-  // reaction would most naturally be responding to.
   const negatableStack = orderStackForResolution(stack.filter((entry) => !entry.negated));
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t-4 border-gilt bg-tavern-panel p-3 shadow-[0_-8px_24px_rgb(0_0_0_/_0.5)]">
-      {/* The stack list moved to the Round Recap ledger (issue #314); this
-          banner keeps only the cast/pass controls. */}
       <p className="mb-2 font-display text-sm uppercase tracking-widest text-gilt-bright">
         Reaction window open
       </p>

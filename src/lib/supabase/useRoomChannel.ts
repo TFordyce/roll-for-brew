@@ -35,20 +35,6 @@ export type ChannelClient<T extends SubscribableChannel = SubscribableChannel> =
   removeChannel: (channel: T) => unknown;
 };
 
-/**
- * Wires up a room's realtime channel, filtering every event to the given
- * roundId before handing the payload to its handler, and returns the
- * cleanup function. Split out from useRoomChannel so the subscribe/filter
- * wiring is a plain function testable without rendering a component.
- *
- * roundId is nullable for the idle "no active round yet" view (issue #98):
- * that view has no roundId to filter on, so a null roundId skips the filter
- * and every event on the room's channel is passed straight through.
- *
- * onSubscribed runs each time the channel reaches SUBSCRIBED -- the first
- * subscribe and every reconnect -- so a caller can resync for events missed
- * while it was down.
- */
 export function subscribeToRoomChannel<T extends SubscribableChannel>(
   supabase: ChannelClient<T>,
   roomId: string,
@@ -63,7 +49,6 @@ export function subscribeToRoomChannel<T extends SubscribableChannel>(
     if (!handler) continue;
     channel.on("broadcast", { event }, ({ payload }) => {
       const typedPayload = payload as { roundId: string };
-      // room-changed names a room, not a round, so it is never round-filtered.
       if (event !== "room-changed" && roundId !== null && typedPayload.roundId !== roundId) return;
       handler(typedPayload);
     });
@@ -78,16 +63,6 @@ export function subscribeToRoomChannel<T extends SubscribableChannel>(
   };
 }
 
-/**
- * Subscribes to a room's Realtime Broadcast channel for the lifetime of the
- * calling component, dispatching each configured event to its handler once
- * filtered to the current roundId, and cleans up on unmount. Replaces the
- * subscribe/filter/cleanup scaffolding that RoundReveal, TieBanner, and
- * RoundOpenLive each used to construct independently (issue #41).
- *
- * Handlers are read from a ref on each event so callers can pass a fresh
- * object every render without re-subscribing the channel.
- */
 export function useRoomChannel(
   roomId: string,
   roundId: string | null,

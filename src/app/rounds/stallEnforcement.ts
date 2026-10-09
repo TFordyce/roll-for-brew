@@ -35,64 +35,6 @@ export type StallOutcome =
   | { action: "reactionWindowRecovered" }
   | { action: "reactionWindowTimedOut"; playerIds: string[] };
 
-/**
- * Lazy check-on-read stall-timeout enforcement (issue #21): called from
- * src/app/page.tsx on every render of a room with an active round, rather
- * than a scheduled job — there's no cron/worker anywhere in this app, and a
- * fresh Supabase read already happens on every request there. `now` is
- * injectable so tests can simulate ~5 minutes elapsing without sleeping it
- * out for real.
- *
- * Stall only clears blockages (ADR 0008, issue #416): it cancels, excludes,
- * auto-resolves or abandons, then raises advanceRound(stallCleared) like any
- * other caller — so a stall-cleared Layer 0 gets its reaction window and roll
- * transforms exactly as an ordinary round would, and nothing here runs a
- * resolution step directly. Advancement never checks who the caller is, so
- * this is safe on a spectator's render.
- *
- * Stall points, by round phase:
- *  - status 'open': the starter never closed declarations -> cancel.
- *  - status 'closed', layer 0, in Brewmageddon's Compelled Cast step (issue
- *    #440): a compelled holder never made their Action cast -> forfeit it,
- *    which ends the step and opens rolling. Nobody has rolled yet, so the
- *    exclude-a-non-roller branch below must not fire here. Counted from
- *    closed_at; the roll clock after the step counts from the step's end.
- *  - status 'closed', layer 0: a declared player never rolled -> exclude
- *    them; the remaining participants' Layer is then complete. A player
- *    with a Roll Exemption (issue #433) isn't expected to roll, so is never
- *    excluded; if their exemption is countered they roll late, and this
- *    clock restarts when the Reaction Window closes.
- *  - status 'closed', layer > 0: a tied player never submitted their
- *    reroll -> exclude them from that layer; the remaining tied players'
- *    Layer is then complete.
- *  - status 'closed', layer 0, every expected roller already rolled but a
- *    Pending Spell Die (issue #252, e.g. Cold Tea/Slipped Spoon's caster)
- *    is still unresolved, or a pre-roll forced_reroll cast (issue #325,
- *    Yorkshire Terror) is still awaiting its deferred target -> auto-resolve
- *    / force-negate it. A Tea Party Revolt pick the lowest roller never
- *    made (issue #430) is cleared the same way: the cast is treated as
- *    negated and the default pick stands. Not an independent clock — it's this same
- *    5-minute-since-closed timer catching stall shapes the "did they roll"
- *    check above can't see (the caster already rolled; they just never gave
- *    their die a value, or never named their reroll's target). In practice
- *    the pending-die case is the recovery path for a *pre-roll* pending die
- *    (Cold Tea/Slipped Spoon) — a Reaction-timed one (Six Sugars) is usually
- *    already resolved by the time its still-open reaction window would
- *    otherwise leave this same query blocked, but resolving it here too if
- *    it somehow isn't is harmless: advance_layer leaves an open window open.
- *  - status 'closed', layer 0, every expected roller already rolled but the
- *    layer's reaction window is still status = 'open' with zero eligible
- *    Reaction-card holders (issue #387) -> close the window. Same 5-minute
- *    clock again; recovers a window a pre-0104 cast_reaction_spell_card
- *    stranded (the cast reopened the poll but left nobody able to Pass),
- *    which migration 0104 prevents going forward.
- *  - status 'closed', layer 0, the reaction window is open and players are
- *    still being waited on 5 minutes after its latest poll round started
- *    (issue #411, the Skip vote backstop) -> auto-pass them. This one counts
- *    from the poll round's start, not closed_at.
- * Any exclusion that drops the layer's active (non-excluded) participant
- * count below 2 cancels the round outright instead; a cancel raises no event.
- */
 export async function enforceStallTimeout(
   supabase: SupabaseClient,
   roundId: string,
@@ -115,9 +57,6 @@ export async function enforceStallTimeout(
   const layer = round.currentLayer;
   let layerStartedAt: string | null;
   if (layer === 0) {
-    // Brewmageddon's Compelled Cast step (issue #440) holds all rolling, so it
-    // gets its own branch of this same clock: forfeit whoever still owes a
-    // compelled Action cast, then raise stallCleared like any other clearing.
     const step = await getCompelledCastStep(supabase, roundId);
     if (step.waitingOn.length > 0) {
       if (!round.closedAt || !hasStalled(round.closedAt, nowDate)) return { action: "none" };
@@ -126,9 +65,6 @@ export async function enforceStallTimeout(
       await advanceRound(supabase, roundId, "stallCleared");
       return { action: "compelledCastsForfeited", playerIds };
     }
-    // Rolling opened when the step ended, so that is when the roll clock starts
-    // -- or restarts when the Reaction Window closes (issue #433): a caster
-    // whose Roll Exemption was countered is only expected to roll from then.
     layerStartedAt = latest(
       step.endedAt ?? round.closedAt,
       await getLayerZeroWindowClosedAt(supabase, roundId),
@@ -144,45 +80,18 @@ export async function enforceStallTimeout(
   const stalledPlayerIds = [...expectedPlayerIds].filter((playerId) => !rolledPlayerIds.has(playerId));
 
   if (stalledPlayerIds.length === 0) {
-    // Every expected roller has rolled, yet the Layer can still be held
-    // incomplete by a Pending Spell Die, a Deferred Forced-Reroll Target or a
-    // Tea Party Revolt pick —
-    // the exclude-a-non-roller logic below has nothing to do here, so this is
-    // the recovery path for those shapes instead (see the doc comment above).
     if (layer === 0) {
-      // Two shapes the "did they roll" check above can't see, both cleared
-      // by this same 5-minute timer: a Pending Spell Die never given a value
-      // (issue #252), and a pre-roll forced_reroll cast whose caster never
-      // named its deferred target (issue #325). Clear whichever is
-      // outstanding; advance_layer then opens the reaction window (or
-      // finalizes, if nobody can react) as it would for any complete Layer.
-      // A Tea Party Revolt pick the lowest roller never made (issue #430)
-      // is the third shape: abandon it, and the default pick stands.
       const resolvedDice = await resolveStalledPendingSpellDice(supabase, roundId);
       const abandonedRerolls = await resolveStalledPendingForcedRerollCasts(supabase, roundId);
       const abandonedPicks = await resolveStalledRevoltPicks(supabase, roundId);
       if (resolvedDice > 0 || abandonedRerolls > 0 || abandonedPicks > 0) {
         await advanceRound(supabase, roundId, "stallCleared");
-        // Several shapes can be outstanding on one round; the outcome is a
-        // single label for page.tsx's "did anything happen" check, so report
-        // the one that changed the outcome most: an abandoned pick drops a
-        // whole card, an abandoned reroll one roll change, a die only a value.
         if (abandonedPicks > 0) return { action: "revoltPickAbandoned" };
         return abandonedRerolls > 0
           ? { action: "deferredForcedRerollAbandoned" }
           : { action: "diceAutoResolved" };
       }
 
-      // A reaction window left status = 'open' with zero eligible Reaction-
-      // card holders (issue #387): casting the last held Reaction card
-      // reopened the chaining poll (0068) but left nobody able to Pass it, so
-      // close_reaction_window never fired and the round can't finalize.
-      // Migration 0104 stops cast_reaction_spell_card doing this going
-      // forward; this clears any window a pre-0104 cast (or some unforeseen
-      // path) already stranded, once this same 5-minute clock has elapsed.
-      // With the window closed, advance_layer performs Layer finalization:
-      // the window's roll-transform casts (Zariel's Fall, ...) apply and the
-      // Layer resolves.
       const openWindow = await getOpenReactionWindow(supabase, roundId);
       if (openWindow && (await countEligibleReactionHolders(supabase, roundId)) === 0) {
         await closeReactionWindow(supabase, openWindow.windowId);
@@ -190,10 +99,6 @@ export async function enforceStallTimeout(
         return { action: "reactionWindowRecovered" };
       }
 
-      // The Skip vote backstop (issue #411): players still being waited on
-      // 5 minutes after the latest poll round started are auto-passed, as if
-      // they had passed. Counted from the poll round, not closed_at, so a
-      // chained Reaction cast restarts it.
       const skipVote = openWindow ? await getReactionSkipVote(supabase, roundId) : null;
       if (skipVote && hasStalled(skipVote.pollRoundStartedAt, nowDate)) {
         const playerIds = await timeOutReactionWindow(supabase, roundId);
@@ -208,14 +113,6 @@ export async function enforceStallTimeout(
     await excludeRoundParticipant(supabase, roundId, playerId, layer);
   }
 
-  // Layer 0 needs at least 2 active participants to resolve a round at all
-  // (mirrors close_round's own >=2 gate). They are counted from the
-  // participants, not the expected rollers: a player with a Roll Exemption
-  // (issue #433) takes part without rolling. A reroll layer (layer > 0) is
-  // already a tied subset of those same participants, so shrinking it to a
-  // single remaining roller isn't a failure to resolve — resolve_round
-  // treats that lone roller as the outright winner of the tie, same as if
-  // everyone else had simply lost the reroll outright.
   if (layer === 0) {
     const participants = await getRoundParticipants(supabase, roundId);
     if (participants.filter((p) => p.excludedAt === null).length < 2) {
@@ -225,13 +122,10 @@ export async function enforceStallTimeout(
     }
   }
 
-  // The Layer is now complete: at Layer 0 this opens the reaction window, at
-  // a Tie-Break Reroll Layer it finalizes.
   await advanceRound(supabase, roundId, "stallCleared");
   return { action: "excluded", playerIds: stalledPlayerIds };
 }
 
-/** The later of two timestamps (either may be missing). */
 function latest(a: string | null, b: string | null): string | null {
   if (a === null || b === null) return a ?? b;
   return Date.parse(b) > Date.parse(a) ? b : a;

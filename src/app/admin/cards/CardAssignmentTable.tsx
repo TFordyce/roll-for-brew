@@ -5,14 +5,6 @@ import { CardAssignmentRow } from "./CardAssignmentRow";
 import type { CardAssignment } from "@/lib/supabase/adminCards";
 import type { RealPlayer } from "@/lib/supabase/players";
 
-/**
- * The /admin/cards bulk table (issue #154) — one row per catalog card, with
- * a search bar filtering by name so a large backfill across most of the
- * player base can be done in one sitting rather than one card at a time.
- * Filtering is plain client-side state over the already-fetched card list
- * (71 rows — small enough that a server round-trip per keystroke would be
- * pure overhead).
- */
 export function CardAssignmentTable({ cards, players }: { cards: CardAssignment[]; players: RealPlayer[] }) {
   const [search, setSearch] = useState("");
 

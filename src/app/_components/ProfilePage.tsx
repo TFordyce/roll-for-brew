@@ -8,24 +8,6 @@ import { WindowToggle } from "@/app/_components/WindowToggle";
 
 const DRINK_LABELS: Record<DrinkType, string> = { tea: "Tea", coffee: "Coffee" };
 
-/**
- * `/:playerId` profile page shell (issue #212, part of the Brew Rating spec
- * #208) — player header, Usual card, Brew Rating card, Player Stats card,
- * and a link down to the collection route, per the picked "stacked
- * stats-page mirror" layout prototype variant (issue #203). Mirrors
- * `SpellCollectionPage`'s split between the route (auth/data-fetching) and
- * this presentational shell. `viewerPlayerId` seeds the backdrop's daily
- * prop shuffle off the signed-in viewer, same reasoning as
- * `SpellCollectionPage`'s own prop — the background doesn't change
- * depending on whose profile is being viewed.
- *
- * The Usual card is read-only here regardless of whose profile is being
- * viewed — `usual_drinks` is already world-readable (Menu depends on
- * that), so there's no visibility gate to add. Editing only ever happens
- * on Settings' `UsualForm`; this card just links there when
- * `viewerPlayerId === targetPlayerId`, rather than duplicating the
- * milk/sugar picker on a second page.
- */
 export function ProfilePage({
   viewerPlayerId,
   targetPlayerId,

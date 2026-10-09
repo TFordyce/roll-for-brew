@@ -27,7 +27,6 @@ describe("castTargetMode", () => {
     for (const name of opponentCards) {
       expect(castTargetMode(card({ cardName: name, target: "OPPONENT" }))).toBe("at-cast-target");
     }
-    // Tea for Two is stamped PLAYER, not OPPONENT.
     expect(castTargetMode(card({ cardName: "Tea for Two", target: "PLAYER" }))).toBe("at-cast-target");
   });
 
@@ -63,7 +62,6 @@ describe("castTargetMode", () => {
   it("exposes the two name sets it keys off (mirroring cast_spell_card's by-name branches)", () => {
     expect(AT_CAST_TARGET_CARDS.has("Chai-nge of Heart")).toBe(true);
     expect(TWO_OTHER_PLAYER_CARDS.has("Stir the Pot")).toBe(true);
-    // Stir the Pot is handled by its own picker, not the single-target select.
     expect(AT_CAST_TARGET_CARDS.has("Stir the Pot")).toBe(false);
   });
 });

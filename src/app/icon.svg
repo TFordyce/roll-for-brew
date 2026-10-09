@@ -1,14 +1,3 @@
-<!--
-  d20 as the exact icosahedron wireframe from DieIcon.tsx (vertices/edges
-  copied verbatim, transformed out of its native 100x100 space) — the same
-  die used in RollCalculation's rich mode inside RoundReveal, dimmed to read
-  as texture behind the text. "TEA 20" is set in Cinzel Semibold, the
-  app's own display face (layout.tsx / tailwind.config.ts's font-display
-  token) — embedded here as a base64 woff2 since a standalone favicon SVG
-  has no access to the page's next/font loading. Both the die and the text
-  block share the icon's center (16,16). Background is a rounded square to
-  match the app's card-frame chrome (tavern palette).
--->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <defs>
     <style>
@@ -23,7 +12,6 @@ d09GMgABAAAAADtkABAAAAAAhPAAADsCAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGoFiG8VSHHIGYD9T
   </defs>
   <rect width="32" height="32" rx="7" fill="#2a1e14"/>
 
-  <!-- d20, DieIcon.tsx's icosahedron wireframe, centered at (16,16) -->
   <g transform="translate(1,1) scale(0.3)" stroke="#c9a54a" stroke-width="1.5" fill="none" opacity="0.55">
     <line x1="25.99" y1="63.86" x2="50.0" y2="94.86"/>
     <line x1="25.99" y1="63.86" x2="50.0" y2="22.28"/>
@@ -57,7 +45,6 @@ d09GMgABAAAAADtkABAAAAAAhPAAADsCAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAGoFiG8VSHHIGYD9T
     <line x1="11.15" y1="72.43" x2="25.99" y2="36.14"/>
   </g>
 
-  <!-- "TEA 20", stacked and centered on the die -->
   <g font-family="'Cinzel Favicon', Georgia, serif" font-weight="600" text-anchor="middle" fill="#f1e6cf" stroke="#1c130c" stroke-width="1.6" paint-order="stroke" stroke-linejoin="round">
     <text x="16" y="13.5" font-size="8.5" letter-spacing="0.6">TEA</text>
     <text x="16" y="25" font-size="12.5" fill="#e8ce8f">20</text>

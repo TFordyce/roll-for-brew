@@ -1,9 +1,3 @@
-/**
- * Deterministic per-player, per-day shuffle of the tavern-counter backdrop
- * props (issue #82) — same layout all day for a given player, reshuffles at
- * the next UTC date, independent across players. No cryptographic strength
- * needed, just a stable seed -> stable Fisher-Yates order.
- */
 
 export const PROP_KEYS = [
   "kettle",
@@ -16,10 +10,6 @@ export const PROP_KEYS = [
 
 export type PropKey = (typeof PROP_KEYS)[number];
 
-// There are more anchor slots (SLOT_COUNT, see ParallaxBackdrop) than props,
-// so the shuffle also decides which slots sit empty that day — that's what
-// keeps the layout looking unevenly spaced rather than a fixed row filling
-// every anchor.
 export const SLOT_COUNT = 8;
 
 function hashString(input: string): number {
@@ -45,12 +35,6 @@ function dateKey(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-/**
- * Returns SLOT_COUNT entries in slot order (index = slot position) for a
- * given player on a given day — one per prop, padded with `null`s (empty
- * slots) up to SLOT_COUNT, then shuffled together so it's a different subset
- * of slots left empty each day.
- */
 export function getSlotAssignments(playerId: string, date: Date = new Date()): (PropKey | null)[] {
   const seed = hashString(`${playerId}-${dateKey(date)}`);
   const random = mulberry32(seed);

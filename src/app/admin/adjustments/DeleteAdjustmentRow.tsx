@@ -6,14 +6,6 @@ import type { AdminModifierAdjustmentListing } from "@/lib/supabase/modifierAdju
 
 const initialState: DeleteAdjustmentState = { status: "idle" };
 
-/**
- * One row of the /admin/adjustments cleanup tool (issue #191). Same
- * collapsed-Delete-then-reveal-reason-and-Confirm shape as DeleteRoundRow
- * (src/app/admin/rounds/DeleteRoundRow.tsx) -- the reason isn't decorative
- * here either: admin_delete_modifier_adjustment (0056) logs it to
- * admin_modifier_adjustment_deletions before dropping the row, since that
- * row's own reason won't exist afterward to explain the delta.
- */
 export function DeleteAdjustmentRow({ adjustment }: { adjustment: AdminModifierAdjustmentListing }) {
   const [state, formAction, isPending] = useActionState(deleteAdjustmentAction, initialState);
   const [confirming, setConfirming] = useState(false);

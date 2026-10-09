@@ -6,12 +6,6 @@ import type { RosterEntry } from "@/lib/supabase/rooms";
 
 const initialState: LogModifierAdjustmentState = { status: "idle" };
 
-/**
- * Logs a Modifier Adjustment (issue #183): pick a target from today's
- * roster, a non-zero signed delta, and a required reason. Resets the delta
- * and reason fields after a successful submit so a second adjustment for a
- * different reason doesn't start pre-filled with the last one's text.
- */
 export function ModifierAdjustmentForm({ roster }: { roster: RosterEntry[] }) {
   const [state, formAction, isPending] = useActionState(logModifierAdjustmentAction, initialState);
   const formRef = useRef<HTMLFormElement>(null);

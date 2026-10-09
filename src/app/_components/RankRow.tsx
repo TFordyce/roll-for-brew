@@ -1,19 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-/**
- * A single ranked-list row — rank, avatar, name, stat value — for the
- * tabletop design system's dense leaderboard/history lists (issue #79).
- * Sits alongside `PlayerTile`: that component suits a roster grid of square
- * tiles, this one suits a tall list of many rows (a leaderboard, or a
- * per-room round history) where a tile grid would be too tall on mobile.
- * `rank` is omitted for rows that aren't a ranking (e.g. history rounds).
- * `playerId`, when passed, makes the whole row a tap target linking to that
- * player's `/:playerId` profile page (issue #135; pointed at the profile
- * page rather than straight to the collection once #212 introduced it) —
- * every place a player's name/row already renders becomes an entry point
- * into their profile.
- */
 export function RankRow({
   rank,
   displayName,

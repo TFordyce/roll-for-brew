@@ -1,12 +1,5 @@
 import { cookies } from "next/headers";
 
-/**
- * Admin Mode (issue #101): a per-browser toggle, cookie-backed rather than a
- * DB column, so enabling/disabling it never writes to the database (see
- * GLOSSARY.md). It only ever widens what a flagged `players.is_admin` caller
- * can reach — see canAccessTestRoom (src/lib/game/testRoomAccess.ts), the
- * one place both flags are combined.
- */
 const ADMIN_MODE_COOKIE = "admin_mode";
 
 export async function getAdminModeEnabled(): Promise<boolean> {

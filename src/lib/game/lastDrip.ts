@@ -1,18 +1,12 @@
 import type { LastDripPassedOver, LastDripPassedOverReason, LastDripPreview } from "@/lib/supabase/rolls";
 import { joinNames } from "@/lib/game/displayName";
 
-/**
- * Issue #470: Last Drip falls through an absent or Roll-Exempt previous
- * winner to the next-highest previous-round roller (_last_drip_target). The
- * wording shared by the Round Recap and the cast-time notice.
- */
 
 const PASSED_OVER_TEXT: Record<LastDripPassedOverReason, (name: string) => string> = {
   absent: (n) => `${n} isn't in this round`,
   roll_exempt: (n) => `${n} is exempt from rolling`,
 };
 
-/** "Cat isn't in this round and Dan is exempt from rolling". "" for nobody. */
 export function passedOverClause(
   passedOver: LastDripPassedOver[],
   displayName: (playerId: string) => string,
@@ -23,11 +17,6 @@ export function passedOverClause(
   );
 }
 
-/**
- * The cast-time notice: null when the previous winner qualifies (nothing to
- * warn about). Says "currently", since a later declare-in or Roll Exemption
- * can still change who Last Drip names.
- */
 export function lastDripNotice(
   preview: LastDripPreview | null,
   displayName: (playerId: string) => string,

@@ -7,12 +7,6 @@ import { getCurrentLayerRollerIds, getExpectedLayerRollerIds } from "@/lib/supab
 import { getInDeckSpellCards, type InDeckSpellCard } from "@/lib/supabase/spellCards";
 import { RollForOthers, type PendingRoller } from "@/app/admin/test-room/RollForOthers";
 
-/**
- * The Test Room's "Roll For" panel on the room view path. The view carries only the viewer's own
- * roll duties, not who else is still expected to roll (Roll Exemptions and the stall clock decide
- * that in SQL), so this asks the same two SQL reads the legacy page did, from the browser, each
- * time the view changes. Admin-only, a handful of cheap rpcs per refetch.
- */
 export function LiveRollForOthers({ view }: { view: RoomView }) {
   const { room, viewer } = view;
   const active = room.activeRound;
@@ -42,7 +36,6 @@ export function LiveRollForOthers({ view }: { view: RoomView }) {
           displayName: names.get(id)?.displayName ?? null,
           email: names.get(id)?.email ?? "",
         }));
-      // Only the "force crit card" picker needs the deck, so only fetch it with someone to roll for.
       const cards = pending.length > 0 ? await getInDeckSpellCards(supabase, room.roomId) : [];
       if (cancelled) return;
       setPendingRollers(pending);
@@ -51,7 +44,6 @@ export function LiveRollForOthers({ view }: { view: RoomView }) {
     return () => {
       cancelled = true;
     };
-    // `view` is a new object per applied response; that is the signal to re-ask.
   }, [view, roundId, isClosed, layer, room.roomId, room.roster, viewer.playerId]);
 
   if (!roundId) return null;

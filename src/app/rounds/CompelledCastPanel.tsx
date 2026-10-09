@@ -5,13 +5,6 @@ import { joinNames } from "@/lib/game/displayName";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { CastForm, DispelForm } from "@/app/rounds/SpellCardForms";
 
-/**
- * Brewmageddon's Compelled Cast (issue #440). For a player who owes a cast:
- * an Action card is cast right here, in the Compelled Cast step, with its
- * target named now; a Reaction card waits for the Layer-0 Reaction Window,
- * where ReactionBanner offers no Pass. For everyone else while the step is
- * holding rolling: who the table is waiting on.
- */
 export function CompelledCastPanel({
   roundId,
   compelled,
@@ -28,14 +21,11 @@ export function CompelledCastPanel({
   compelled: CompelledCast | null;
   held: HeldSpellCard | null;
   brewmageddonCasterName: string;
-  /** Other players who still owe a compelled Action cast (rolling is held meanwhile). */
   waitingOnNames: string[];
   participants: RoundParticipant[];
   selfPlayerId: string;
   dispellableEffects: DispellableEffect[];
-  /** Issue #438: Tea Heist's picker roster, for a compelled Heist holder. */
   heistTargetIds: string[];
-  /** Issue #470: shown in the cast form (Last Drip's fall-through). */
   castNotice?: string | null;
 }) {
   if (!compelled && waitingOnNames.length === 0) return null;

@@ -12,11 +12,6 @@ type RatingIdResponse =
 type AdjustmentIdResponse =
   paths["/modifier-adjustments"]["post"]["responses"][200]["content"]["application/json"];
 
-/**
- * Thin fetch wrapper over the C# API (api/, spec #533). Types come from the committed
- * `schema.d.ts` (regenerate with `npm run gen:api`; CI fails on drift). Sends the Supabase
- * session JWT as Bearer. Add one method per ported endpoint here.
- */
 export type RoomViewResponse =
   paths["/rooms/{roomId}/view"]["get"]["responses"][200]["content"]["application/json"];
 
@@ -32,7 +27,6 @@ export interface ApiClient {
   logModifierAdjustment(targetPlayerId: string, delta: number, reason: string): Promise<AdjustmentIdResponse>;
   deleteModifierAdjustment(adjustmentId: string): Promise<void>;
   adminDeleteModifierAdjustment(adjustmentId: string, reason: string): Promise<void>;
-  /** GET /rooms/{id}/view (slice 1b): the per-viewer screen model. Sent with cache: no-store. */
   getRoomView(roomId: string): Promise<RoomViewResponse>;
 }
 
@@ -92,7 +86,6 @@ export function createApiClient(
   };
 }
 
-/** The app's API client, authenticated with the given Supabase client's session. */
 export function apiClientFor(supabase: SupabaseClient): ApiClient {
   const base = process.env.NEXT_PUBLIC_API_URL;
   if (!base) throw new Error("NEXT_PUBLIC_API_URL must be set to use a ported (API) path.");

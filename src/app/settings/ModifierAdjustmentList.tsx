@@ -13,15 +13,6 @@ function formatTime(createdAt: string): string {
   return new Date(createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
-/**
- * Today's logged Modifier Adjustments (issue #183), newest first. The undo
- * button is shown only on the caller's own most-recent entry -- the first
- * row in this (already newest-first) list whose actor is the caller -- and
- * only while it's still within the 5 minute window
- * delete_modifier_adjustment (0052) itself enforces. That's a rendering
- * convenience, not the source of truth: the RPC re-checks both conditions
- * server-side regardless of what this component decides to show.
- */
 export function ModifierAdjustmentList({
   adjustments,
   currentPlayerId,

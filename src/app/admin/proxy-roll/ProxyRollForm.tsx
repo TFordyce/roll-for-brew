@@ -6,13 +6,6 @@ import type { RealPlayer } from "@/lib/supabase/players";
 
 const initialState: AdminProxyRollState = { status: "idle" };
 
-/**
- * The /admin/proxy-roll form itself (issue #273): picks one of today's
- * absent real players and the value they read out loud, then submits
- * adminProxyRollAction. Only rendered by the page when it's already
- * confirmed the round is eligible and there's at least one absent player to
- * pick from.
- */
 export function ProxyRollForm({ roundId, absentPlayers }: { roundId: string; absentPlayers: RealPlayer[] }) {
   const [state, formAction, isPending] = useActionState(adminProxyRollAction, initialState);
 

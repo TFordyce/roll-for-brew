@@ -2,11 +2,6 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type StatsWindow = "all_time" | "last_30_days";
 
-/**
- * Parses the shared `?window=` search param used by both `/stats` and the
- * `/[playerId]` profile page (issue #212) — anything other than the literal
- * `last_30_days` defaults to all-time, matching `/stats`' original behavior.
- */
 export function windowFromParam(value: string | undefined): StatsWindow {
   return value === "last_30_days" ? "last_30_days" : "all_time";
 }
@@ -42,12 +37,7 @@ export type RoomRoundEntry = {
   brewerId: string;
   brewerDisplayName: string | null;
   brewerEmail: string;
-  // Whether any of this round's rolls was admin-entered (issue #273's Proxy
-  // Roll) — stats_room_rounds' own provenance flag, distinct from any
-  // player-level detail, since this view never names individual rolls.
   hasProxyRoll: boolean;
-  // Whether this round was bulk-recorded after the fact via Round Backfill
-  // (issue #274) rather than played live — rounds.backfilled_by is not null.
   backfilled: boolean;
 };
 
@@ -64,11 +54,6 @@ export type RoomAdjustmentEntry = {
   targetEmail: string;
 };
 
-/**
- * Reads the stats_cups_made_{all_time,last_30_days} view
- * (supabase/migrations/0006_stats_leaderboards.sql) — total cups_made
- * across a player's resolved rounds as brewer, most first.
- */
 export async function getCupsMadeLeaderboard(
   supabase: SupabaseClient,
   window: StatsWindow,
@@ -88,11 +73,6 @@ export async function getCupsMadeLeaderboard(
   }));
 }
 
-/**
- * Reads the stats_rounds_lost_{all_time,last_30_days} view — how many
- * resolved rounds each player who has played at least one lost (was
- * brewer on), fewest first ("luckiest").
- */
 export async function getRoundsLostLeaderboard(
   supabase: SupabaseClient,
   window: StatsWindow,
@@ -112,10 +92,6 @@ export async function getRoundsLostLeaderboard(
   }));
 }
 
-/**
- * Reads the stats_loss_percentage_{all_time,last_30_days} view —
- * rounds_lost / rounds_played as a percentage, lowest (best) first.
- */
 export async function getLossPercentageLeaderboard(
   supabase: SupabaseClient,
   window: StatsWindow,
@@ -139,11 +115,6 @@ export async function getLossPercentageLeaderboard(
   }));
 }
 
-/**
- * Reads the stats_modifier_peak_{all_time,last_30_days} view — the
- * highest running modifier (sum of cups_made across a brewer's resolved
- * rounds within one room) any player has ever reached, highest first.
- */
 export async function getModifierPeakLeaderboard(
   supabase: SupabaseClient,
   window: StatsWindow,
@@ -163,15 +134,6 @@ export async function getModifierPeakLeaderboard(
   }));
 }
 
-/**
- * One player's slice of the four `stats_*` leaderboards (issue #212's
- * `/[playerId]` profile page's Player Stats card) — reuses the existing
- * leaderboard fetchers rather than adding parallel per-player views, and
- * extracts the row matching `playerId` from each. A player absent from a
- * leaderboard (no rounds played as brewer in the window) reads as zero, not
- * unknown — mirrors how the leaderboards themselves simply omit that player
- * rather than listing a zero row.
- */
 export type PlayerStatsSnapshot = {
   cupsMade: number;
   roundsLost: number;
@@ -203,10 +165,6 @@ export async function getPlayerStatsSnapshot(
   };
 }
 
-/**
- * Reads the stats_room_history view — every room (day), newest first, with
- * how many resolved rounds it had, for the history drill-down's day list.
- */
 export async function getRoomHistory(supabase: SupabaseClient): Promise<RoomHistoryEntry[]> {
   const { data, error } = await supabase
     .from("stats_room_history")
@@ -222,10 +180,6 @@ export async function getRoomHistory(supabase: SupabaseClient): Promise<RoomHist
   }));
 }
 
-/**
- * Reads the stats_room_rounds view filtered to one room — that day's
- * resolved rounds (starter, brewer, cups_made), newest first.
- */
 export async function getRoomRounds(
   supabase: SupabaseClient,
   roomId: string,
@@ -255,11 +209,6 @@ export async function getRoomRounds(
   }));
 }
 
-/**
- * Reads the stats_room_adjustments view filtered to one room — that day's
- * logged modifier adjustments (actor, target, delta, reason), newest first
- * (supabase/migrations/0053_stats_modifier_adjustments.sql).
- */
 export async function getRoomAdjustments(
   supabase: SupabaseClient,
   roomId: string,
@@ -288,14 +237,6 @@ export async function getRoomAdjustments(
   }));
 }
 
-/**
- * Reads the stats_brew_rating_{all_time,last_30_days} view
- * (supabase/migrations/0059_stats_brew_rating.sql) — a single brewer's
- * average score across their non-test-room brew_ratings, or null if they
- * have no ratings yet in the given window (per spec, no minimum-sample-size
- * gate — the average is shown from the first rating, so null only means
- * "zero ratings", not "not enough").
- */
 export async function getBrewRatingAverage(
   supabase: SupabaseClient,
   playerId: string,
@@ -312,12 +253,6 @@ export async function getBrewRatingAverage(
   return data ? Number(data.average_score) : null;
 }
 
-/**
- * Looks up avatar_url straight from `players` (not a stats view) for a set
- * of player ids, so the restyled leaderboards/history rows (issue #79) can
- * show avatars the same way the Room tab's roster does, without touching
- * any stats view/query.
- */
 export async function getPlayerAvatars(
   supabase: SupabaseClient,
   playerIds: string[],

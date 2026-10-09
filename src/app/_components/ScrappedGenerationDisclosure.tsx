@@ -7,24 +7,12 @@ import { RoundRecap } from "@/app/_components/RoundRecap";
 import { RerollChainRows } from "@/app/_components/RerollChainRows";
 import { ProxyBadge } from "@/app/_components/ProxyBadge";
 
-/**
- * Round replay (issue #352, spec #302 §11): the canonical view is generation 1,
- * headlined normally by RoundReveal / RoundRecap. Every scrapped generation
- * before it — generation 0, the original "Time for Brew" attempt — hangs here
- * in a collapsed disclosure holding its own Round Recap (its Resolution Trace,
- * brewer, layer-0 rolls) and, if it went to a tie-break, its own nested reroll
- * rows (issue #220 rendering), kept separate from generation 1's layers.
- *
- * The scrap is a labelled boundary between two Recaps, not a Trace step. This
- * component only lays out the model from buildScrappedGenerationRecap.
- */
 export function ScrappedGenerationDisclosure({
   generations,
   roster,
   displayName,
 }: {
   generations: ScrappedGeneration[];
-  /** Participant player ids in display order, for the layer-0 roll list. */
   roster: string[];
   displayName: (playerId: string) => string;
 }) {
@@ -58,8 +46,6 @@ export function ScrappedGenerationDisclosure({
                   </p>
                   <ul className="divide-y divide-gilt-dark/30">
                     {model.firstAttemptRolls.map((row) => {
-                      // Issue #408: that generation's own Resolution Summary
-                      // and Trace terms (degraded — no total — without one).
                       return (
                         <li key={row.playerId} className="py-1.5">
                           <div className="flex items-center justify-between gap-3">

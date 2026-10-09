@@ -4,18 +4,6 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { InAppSpellDieForm, ManualSpellDieForm } from "@/app/rounds/SpellDieForms";
 import { SpellDieBothPicker } from "@/app/rounds/SpellDieBothPicker";
 
-/**
- * The "roll your card's die" prompt (issue #252) — shown for each of the
- * caller's own dice_modifier casts still awaiting a value (Six Sugars/Cold
- * Tea/Slipped Spoon today), offering the same in-app/manual/both choice the
- * main d20 roll already offers via roll_input_mode (RollInputPicker.tsx).
- * Rendered unconditionally once cast (round can be either 'open', for a
- * pre-roll Action cast, or 'closed', for a Reaction cast made mid-window) —
- * unlike SpellDrawChoicePanel, there's no Spell Draw Window-style gate here:
- * the round's own layer-0 resolution is already blocked on this being
- * resolved (the Layer-completeness hold, _layer_is_complete), so
- * showing the prompt as soon as it exists is the whole point.
- */
 export function PendingSpellDiePanel({
   roundId,
   pendingDice,

@@ -5,16 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { submitBrewRating, withdrawBrewRating, type RateableRound } from "@/lib/supabase/brewRatings";
 import { PixelStar } from "@/app/_components/PixelStar";
 
-// A hanging luggage-tag tab pinned to the screen edge that opens a pushpin
-// notepad panel — the real-data wiring (issue #211, part of #208) for the
-// standalone prototype at prototypes/brew-rating-panel.html (issue #202).
-// That prototype tried four tab looks and three panel variants before
-// settling on the hanging tag + pushpin-card combination reproduced here;
-// only that final pick is kept, none of the prototype's other variants or
-// its manual state buttons.
 
-// Matches ModifierAdjustmentList's (Settings) and stats/page.tsx's own
-// formatTime convention.
 function formatResolvedAt(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
@@ -27,17 +18,7 @@ function BrewRatingPanelActive({
   raterInitials: string;
 }) {
   const [open, setOpen] = useState(false);
-  // The server-committed score — changes only on a successful submit/
-  // withdraw, never on a star preview tap. This is what the tab's
-  // pending-dot reflects, so previewing a different star without
-  // committing it can't make an already-rated round look unrated again
-  // from outside the panel.
   const [committedScore, setCommittedScore] = useState(round.myScore);
-  // The in-panel visual state: which star count is currently shown, and
-  // whether the sign box is showing the signed stamp or the unsigned "Rate"
-  // box. Starts matching committedScore, then diverges from it freely as
-  // the player previews — reconciled back into committedScore only on an
-  // actual submit/withdraw.
   const [score, setScore] = useState(round.myScore ?? 0);
   const [stamped, setStamped] = useState(round.myScore !== null);
   const [pending, setPending] = useState(false);
@@ -56,12 +37,6 @@ function BrewRatingPanelActive({
     if (pending) return;
     setError(null);
     setScore(n);
-    // Picking a star always stages a fresh, unconfirmed selection — any
-    // existing stamp is retracted visually the moment the stars are
-    // touched again, before any new commit (issue #211's acceptance
-    // criteria). This is purely visual (stamped, not committedScore) — the
-    // server-side rating, and the tab's pending-dot, are untouched until an
-    // actual Rate/withdraw commit.
     setStamped(false);
   }
 
@@ -91,9 +66,6 @@ function BrewRatingPanelActive({
     setOpen(false);
   }
 
-  // Clicking the panel's background — anything that isn't a button — closes
-  // it, same as the ×. Buttons (stars, the sign box, the × itself) each
-  // handle their own click and this delegate just steps aside for them.
   function handleBackgroundClick(event: React.MouseEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("button")) return;
     if (open) closePanel();
@@ -179,11 +151,6 @@ function BrewRatingPanelActive({
   );
 }
 
-/**
- * Renders nothing when `round` is null — the "nothing to rate" state isn't
- * a message shown anywhere, the tab simply doesn't appear (issue #211's
- * acceptance criteria).
- */
 export function BrewRatingPanel({
   round,
   raterInitials,
@@ -192,11 +159,5 @@ export function BrewRatingPanel({
   raterInitials: string;
 }) {
   if (!round) return null;
-  // Keyed on roundId so a change to *which* round is rateable (a newer
-  // round superseding the previous one, per "most recent round only")
-  // remounts this component fresh instead of carrying over the previous
-  // round's committed/preview state (issue #247) — all of committedScore,
-  // score, stamped, and the pending-dot are seeded from useState once per
-  // mount, so a clean remount is what resyncs them to the new round.
   return <BrewRatingPanelActive key={round.roundId} round={round} raterInitials={raterInitials} />;
 }

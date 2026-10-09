@@ -6,13 +6,6 @@ import { adminDeleteModifierAdjustment } from "@/lib/supabase/modifierAdjustment
 
 export type DeleteAdjustmentState = { status: "idle" } | { status: "error"; message: string };
 
-/**
- * Deletes any modifier adjustment (issue #191), keyed off the RFB19/RFB20/
- * RFB21 error codes admin_delete_modifier_adjustment raises
- * (0056_admin_delete_modifier_adjustment.sql) -- same "strip the RPC's own
- * prefix, surface the rest" handling deleteRoundAction
- * (src/app/admin/rounds/actions.ts) already models.
- */
 export async function deleteAdjustmentAction(
   _prevState: DeleteAdjustmentState,
   formData: FormData,

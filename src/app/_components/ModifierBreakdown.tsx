@@ -5,24 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { formatModifier } from "@/lib/game/rollCalculation";
 import { getModifierBreakdown, type ModifierBreakdown as Breakdown } from "@/lib/supabase/modifierAdjustments";
 
-/**
- * Wraps a player's modifier number in a tap/click target that opens a small
- * popover breaking it down into its three sources — cups made as brewer,
- * logged modifier_adjustments, and the rest-of-day spell modifier delta
- * (persistent_modifier_transfer / persistent_modifier_spend, issue #311) —
- * all room-scoped (issue #184, get_modifier_breakdown 0054 / 0085). The three
- * reconcile to room_players.modifier. Deliberately click-driven rather than
- * hover-driven so
- * the same interaction works identically on mobile and desktop (no
- * hover-only affordance) — used from both PlayerTile (Room roster) and
- * RoundReveal (round results).
- *
- * Fetches lazily on first open rather than eagerly for every roster tile —
- * most tiles are never tapped, so this avoids one RPC per rendered player.
- * PlayerTile's own /:playerId/collection link is scoped to just the avatar,
- * not this trigger, so there's no competing tap target to guard against
- * here.
- */
 export function ModifierBreakdown({
   playerId,
   roomId,
