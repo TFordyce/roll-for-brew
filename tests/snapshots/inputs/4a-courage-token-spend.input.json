@@ -1,0 +1,231 @@
+{
+  "scenario": "4a-courage-token-spend",
+  "roster": {
+    "p-giver": "giver",
+    "p-spender": "spender"
+  },
+  "as_of_round_id": "00000000-0000-4000-8000-000000000003",
+  "snapshot": {
+    "room_id": "00000000-0000-4000-8000-000000000001",
+    "db_now": "2026-01-01T00:00:10.000000+00:00",
+    "rooms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "is_test": false
+      }
+    ],
+    "rounds": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-giver",
+        "status": "resolved",
+        "started_at": "2026-01-01T00:00:01.000000+00:00",
+        "resolved_at": "2026-01-01T00:00:00.000000+00:00",
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": null,
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-giver",
+        "status": "closed",
+        "started_at": "2026-01-01T00:00:04.000000+00:00",
+        "resolved_at": null,
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": "2026-01-01T00:00:06.000000+00:00",
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      }
+    ],
+    "round_participants": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-giver",
+        "declared_at": "2026-01-01T00:00:04.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-spender",
+        "declared_at": "2026-01-01T00:00:05.000000+00:00",
+        "excluded_at": null
+      }
+    ],
+    "round_layer_participants": [],
+    "rolls": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-giver",
+        "layer": 0,
+        "value": 12,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:08.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-spender",
+        "layer": 0,
+        "value": 9,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:07.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      }
+    ],
+    "spell_casts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-giver",
+        "card_instance_id": "00000000-0000-4000-8000-000000000005",
+        "target_player_id": "p-spender",
+        "target_pending": false,
+        "effect_kind": "courage_token",
+        "effect_params": {
+          "dice": "1d6",
+          "persist": true,
+          "participated_rounds_from_cast": 3
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:02.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 1,
+        "target_role": null,
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "caster_id": "p-spender",
+        "card_instance_id": "00000000-0000-4000-8000-000000000005",
+        "target_player_id": "p-spender",
+        "target_pending": false,
+        "effect_kind": "dice_modifier",
+        "effect_params": {
+          "dice": "1d6"
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:09.000000+00:00",
+        "reaction_window_id": "00000000-0000-4000-8000-000000000007",
+        "negated": false,
+        "seq": 2,
+        "target_role": "CASTER",
+        "cast_inputs": {
+          "dice_roll": 5,
+          "courage_token_cast_id": "00000000-0000-4000-8000-000000000004"
+        },
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      }
+    ],
+    "active_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000008",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "target_player_id": "p-spender",
+        "caster_id": "p-giver",
+        "source_cast_id": "00000000-0000-4000-8000-000000000004",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "effect_kind": "courage_token",
+        "effect_params": {
+          "dice": "1d6",
+          "persist": true,
+          "participated_rounds_from_cast": 3
+        },
+        "rounds_remaining": null,
+        "created_at": "2026-01-01T00:00:03.000000+00:00",
+        "is_undispellable": false,
+        "ended_in_round_id": null
+      }
+    ],
+    "deck_instances": [
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "location": "in_deck",
+        "held_by_player": null
+      }
+    ],
+    "spell_cards": [
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "name": "Liquid Courage",
+        "casting_time": "A",
+        "target": "OPPONENT",
+        "tier": "rare",
+        "effect_text": "Give another player a d6. In the next 3 rounds they may use it as a Reaction to add to their roll.",
+        "duration_rounds": null,
+        "polarity": "positive",
+        "edition": "4th"
+      }
+    ],
+    "spell_card_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "card_id": "00000000-0000-4000-8000-000000000009",
+        "target_role": "TARGET",
+        "effect_kind": "courage_token",
+        "effect_params": {
+          "dice": "1d6",
+          "persist": true,
+          "participated_rounds_from_cast": 3
+        },
+        "ordinal": 0
+      }
+    ],
+    "room_players": [
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-giver",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-spender",
+        "modifier": 0
+      }
+    ],
+    "modifier_adjustments": []
+  },
+  "expected": {
+    "live_effect_ids": []
+  }
+}

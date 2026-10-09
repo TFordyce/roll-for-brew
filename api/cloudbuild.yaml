@@ -1,0 +1,62 @@
+# Cloud Build native GitHub trigger on master, included files api/**, default e2-standard-2 pool.
+# Trigger substitutions used: $SHORT_SHA. Custom (set on the trigger or left at defaults):
+substitutions:
+  _REGION: europe-west1
+  _REPO: rfb-api # Artifact Registry repository
+  _SERVICE: rfb-api
+  _SECRET: rfb-api-postgres-connection-string
+  _JWKS_URL: "" # https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+  _PROJECT_REF: ""
+  _CORS_ORIGINS: "" # comma list; '*' wildcard allowed, e.g. https://prod.example,https://rfb-*-<team>.vercel.app
+
+options:
+  machineType: E2_STANDARD_2 # default pool; keeps the free build-minutes tier
+  logging: CLOUD_LOGGING_ONLY
+
+steps:
+  # 1. Bake the newest migration filename into the image context.
+  - id: bake-schema-version
+    name: bash
+    script: |
+      ls supabase/migrations/*.sql | sort | tail -n 1 | xargs basename > api/schema-version.txt
+      echo "schema gate version: $(cat api/schema-version.txt)"
+
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    dir: api
+    args: ["build", "-t", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$SHORT_SHA", "."]
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$SHORT_SHA"]
+
+  # 2. Deploy. The startup probe fails until the schema gate opens, so a deploy that races its
+  #    migration fails and is retried with exponential backoff (~10 min total).
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    script: |
+      #!/usr/bin/env bash
+      set -u
+      delay=15
+      for attempt in 1 2 3 4 5 6; do
+        if gcloud run deploy "$SERVICE" \
+          --image "$IMAGE" --region "$REGION" \
+          --min-instances 0 --max-instances 2 \
+          --allow-unauthenticated \
+          --set-secrets "POSTGRES_CONNECTION_STRING=$SECRET:latest" \
+          --set-env-vars "^@^JWKS_URL=$JWKS_URL@SUPABASE_PROJECT_REF=$PROJECT_REF@CORS_ORIGINS=$CORS_ORIGINS" \
+          --startup-probe "httpGet.path=/health/ready,httpGet.port=8080,initialDelaySeconds=0,periodSeconds=5,timeoutSeconds=5,failureThreshold=12"; then
+          exit 0
+        fi
+        echo "deploy attempt $attempt failed (schema gate not open?); retrying in ${delay}s"
+        sleep "$delay"; delay=$((delay * 2))
+      done
+      exit 1
+    env:
+      - SERVICE=${_SERVICE}
+      - IMAGE=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$SHORT_SHA
+      - REGION=${_REGION}
+      - SECRET=${_SECRET}
+      - JWKS_URL=${_JWKS_URL}
+      - PROJECT_REF=${_PROJECT_REF}
+      - CORS_ORIGINS=${_CORS_ORIGINS}

@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 
 /**
  * Calls the get_acting_as RPC (supabase/migrations/0026_acting_as_and_end_test_session.sql):
@@ -6,7 +8,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * currently acting as themselves. Only ever resolves the caller's own row —
  * there's no way to read another admin's pointer.
  */
-export async function getActingAsPlayerId(supabase: SupabaseClient): Promise<string | null> {
+export async function getActingAsPlayerId(
+  supabase: SupabaseClient,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<string | null> {
+  // Flagged cutover (#536): the global port_flags row "getActingAs" switches this read to the C# API.
+  if (await isPortEnabled(supabase, "getActingAs")) {
+    return (await api().getActingAs()).actingAsPlayerId ?? null;
+  }
   const { data, error } = await supabase.rpc("get_acting_as");
   if (error) throw error;
   return (data as string | null) ?? null;
