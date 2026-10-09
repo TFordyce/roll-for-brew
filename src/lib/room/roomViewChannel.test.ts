@@ -30,8 +30,8 @@ function fakeSupabase() {
   };
 }
 
-function fakeStore(version: number) {
-  return { getSnapshot: () => ({ version }) as never, refetch: vi.fn() };
+function fakeStore() {
+  return { refetch: vi.fn() };
 }
 
 // The twelve events the eight *Live components listened for, written out independently of the code.
@@ -53,7 +53,7 @@ const OLD_EVENTS = [
 describe("subscribeRoomViewStore", () => {
   it("listens on the room's channel for the old event names and room-changed, with no round filter", () => {
     const { supabase, listeners } = fakeSupabase();
-    subscribeRoomViewStore(supabase, "room-1", fakeStore(1), { onResubscribe: () => {} });
+    subscribeRoomViewStore(supabase, "room-1", fakeStore(), { onResubscribe: () => {} });
 
     expect(supabase.channel).toHaveBeenCalledWith("room:room-1");
     expect([...Object.keys(listeners)].sort()).toEqual([...OLD_EVENTS, "room-changed"].sort());
@@ -61,7 +61,7 @@ describe("subscribeRoomViewStore", () => {
 
   it.each(OLD_EVENTS)("refetches on %s, whichever round it names", (event) => {
     const { supabase, emit } = fakeSupabase();
-    const store = fakeStore(1);
+    const store = fakeStore();
     subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
 
     emit(event, { roundId: "any-round" });
@@ -69,41 +69,22 @@ describe("subscribeRoomViewStore", () => {
     expect(store.refetch).toHaveBeenCalledTimes(1);
   });
 
-  it("refetches on a room-changed whose version is ahead of the held view", () => {
+  it("refetches on every room-changed, whatever version it announces (the store drops stale responses itself)", () => {
     const { supabase, emit } = fakeSupabase();
-    const store = fakeStore(4);
+    const store = fakeStore();
     subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
 
     emit("room-changed", { version: 5 });
-
-    expect(store.refetch).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores a room-changed the held view already covers", () => {
-    const { supabase, emit } = fakeSupabase();
-    const store = fakeStore(5);
-    subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
-
-    emit("room-changed", { version: 5 });
-    emit("room-changed", { version: 3 });
-
-    expect(store.refetch).not.toHaveBeenCalled();
-  });
-
-  it("refetches on a room-changed that carries no usable version", () => {
-    const { supabase, emit } = fakeSupabase();
-    const store = fakeStore(5);
-    subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
-
+    emit("room-changed", { version: 1 });
     emit("room-changed", {});
 
-    expect(store.refetch).toHaveBeenCalledTimes(1);
+    expect(store.refetch).toHaveBeenCalledTimes(3);
   });
 
   it("asks for a resync each time the channel (re)subscribes, and for nothing else", () => {
     const { supabase, status } = fakeSupabase();
     const onResubscribe = vi.fn();
-    subscribeRoomViewStore(supabase, "room-1", fakeStore(1), { onResubscribe });
+    subscribeRoomViewStore(supabase, "room-1", fakeStore(), { onResubscribe });
 
     status("SUBSCRIBED");
     status("CHANNEL_ERROR");
@@ -115,7 +96,7 @@ describe("subscribeRoomViewStore", () => {
 
   it("removes the channel on cleanup", () => {
     const { supabase, channel } = fakeSupabase();
-    const unsubscribe = subscribeRoomViewStore(supabase, "room-1", fakeStore(1), { onResubscribe: () => {} });
+    const unsubscribe = subscribeRoomViewStore(supabase, "room-1", fakeStore(), { onResubscribe: () => {} });
 
     unsubscribe();
 

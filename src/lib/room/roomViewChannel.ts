@@ -4,7 +4,6 @@ import {
   type RoomChannelEventHandlers,
   type SubscribableChannel,
 } from "@/lib/supabase/useRoomChannel";
-import type { RoomView } from "./roomViewStore";
 
 /** The events the eight `*Live` refreshes listened for. Each means "your view may be stale". */
 const LEGACY_EVENTS = [
@@ -29,24 +28,17 @@ void _everyEventListed;
 
 /**
  * The room view's single channel listener: hears every legacy event name plus the API's
- * `room-changed { version }`, unfiltered by round, and refetches. Coalescing lives in the store, so
- * a burst of events costs one follow-up fetch. `onResubscribe` fires on every (re)subscribe.
+ * `room-changed { version }`, unfiltered by round, and refetches. Coalescing and the version rule
+ * live in the store: a burst costs one follow-up fetch, and a stale response is dropped there. `onResubscribe` fires on every (re)subscribe.
  */
 export function subscribeRoomViewStore<T extends SubscribableChannel>(
   supabase: ChannelClient<T>,
   roomId: string,
-  store: { getSnapshot(): RoomView; refetch(): void },
+  store: { refetch(): void },
   opts: { onResubscribe: () => void },
 ): () => void {
-  const handlers: RoomChannelEventHandlers = {
-    "room-changed": (payload) => {
-      const announced = Number((payload as { version?: unknown }).version);
-      // A version we already hold needs no fetch; a missing one can't be judged, so fetch.
-      if (Number.isFinite(announced) && announced <= Number(store.getSnapshot().version)) return;
-      store.refetch();
-    },
-  };
-  for (const event of LEGACY_EVENTS) handlers[event] = () => store.refetch();
+  const handlers: RoomChannelEventHandlers = {};
+  for (const event of [...LEGACY_EVENTS, "room-changed" as const]) handlers[event] = () => store.refetch();
 
   return subscribeToRoomChannel(supabase, roomId, null, handlers, opts.onResubscribe);
 }

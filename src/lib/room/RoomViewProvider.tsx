@@ -44,18 +44,27 @@ export function RoomViewProvider({
     store.applyServerView(initialView);
   }, [initialView, store]);
 
-  // Stall sweep, then refetch to show what it changed. One at a time: mount, the first
-  // SUBSCRIBED and a visibility flip can all land together.
+  // Stall sweep, then refetch to show what it changed. One sweep at a time; a call that lands
+  // mid-sweep (a deadline passing, a tab flip) queues exactly one more, so it is never lost.
   const resync = useRef<() => Promise<void>>(async () => {});
   useEffect(() => {
     let running = false;
+    let again = false;
     resync.current = async () => {
-      if (running) return;
+      if (running) {
+        again = true;
+        return;
+      }
       running = true;
       try {
-        await enforceStall(roomId);
-      } catch (error) {
-        console.error("enforceStall failed", error);
+        do {
+          again = false;
+          try {
+            await enforceStall(roomId);
+          } catch (error) {
+            console.error("enforceStall failed", error);
+          }
+        } while (again);
       } finally {
         running = false;
       }
@@ -63,13 +72,14 @@ export function RoomViewProvider({
     };
 
     const unsubscribe = subscribeRoomViewStore(createClient(), roomId, store, {
+      // The first SUBSCRIBED is the mount sweep: anything before it is in the fetch it triggers,
+      // anything after it is heard on the channel, so nothing falls in a gap.
       onResubscribe: () => void resync.current(),
     });
     const onVisible = () => {
       if (document.visibilityState === "visible") void resync.current();
     };
     document.addEventListener("visibilitychange", onVisible);
-    void resync.current();
 
     return () => {
       document.removeEventListener("visibilitychange", onVisible);
