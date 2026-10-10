@@ -98,8 +98,6 @@ export default async function HomePage() {
 
   const roomId = await enterTodaysRoom(supabase);
 
-  // Flagged room (port_flags `room_view`, spec #533 slice 1c): the page is a shell around one
-  // client-held room view; everything below this block is the legacy render.
   const initialView = await loadInitialRoomView(supabase, roomId);
   if (initialView) {
     const signOutName = player?.display_name ?? player?.email ?? user.email ?? "";
@@ -136,11 +134,6 @@ export default async function HomePage() {
 
   const roster = await getRoomRoster(supabase, roomId);
 
-  // Round Replay — Time for Brew (issue #315, spec §11). While a scrap/keep
-  // decision is pending the round is 'resolved' (so getActiveRound returns
-  // null) yet start_round is locked room-wide, so this is read directly off
-  // the room. The lazy check-on-read sweep auto-declines any decision left
-  // past the existing 5-minute closed-round stall window ("no new clock").
   await autoDeclineStalledRoundReplays(supabase);
   const pendingRoundReplay = await getRoomPendingRoundReplay(supabase, roomId);
   const pendingReplayCaster = pendingRoundReplay
@@ -159,36 +152,16 @@ export default async function HomePage() {
   const isStarter = activeRound?.startedBy === playerId;
   const canClose = activeRound?.status === "open" && isStarter && participants.length >= 2;
 
-  // Late Declare (issue #246): "Add me in!" only ever needs to render for a
-  // closed round the caller hasn't already joined — declare_in_late's own
-  // window (no roll yet for this round) is checked here too, so the button
-  // never renders for a state where the RPC would just reject it. Skips the
-  // extra roundHasAnyRolls round-trip entirely once either of those is
-  // already false.
   const canDeclareLate =
     activeRound?.status === "closed" &&
     !hasDeclared &&
     !(await roundHasAnyRolls(supabase, activeRound.id));
 
-  // Order (issue #226, part of #223): decoupled from declare-in, so this is
-  // independent of hasDeclared above. orderRoundId falls back to
-  // getMyOrderableRound once there's no activeRound — the Order Window
-  // itself stays open through a round's 'resolved' status (ADR 0004), well
-  // past the point getActiveRound stops returning it. myOrderForRound wins
-  // over the sticky most-recent-across-rooms default, which only matters as
-  // a fallback for a round the player hasn't explicitly ordered for yet.
   const orderRoundId = activeRound ? activeRound.id : await getMyOrderableRound(supabase, roomId);
   const myOrderForRound = orderRoundId ? await getMyOrderForRound(supabase, orderRoundId, playerId) : null;
   const myMostRecentOrder =
     orderRoundId && myOrderForRound === null ? await getMyMostRecentOrder(supabase, playerId) : null;
 
-  // Menu (issue #227, part of #223): shares orderRoundId's exact window —
-  // it's built from the same round the Order picker targets, so it stays
-  // visible through the same open/closed/resolved span the Order Window
-  // covers (ADR 0004), not just while activeRound is set. menuParticipants
-  // reuses the participants fetch above when the round in question is still
-  // activeRound; only needs its own fetch for the post-resolve tail where
-  // activeRound has already gone null.
   const menuEntries = orderRoundId ? await getRoundMenu(supabase, orderRoundId) : [];
   const menuParticipants = activeRound
     ? participants
@@ -199,10 +172,6 @@ export default async function HomePage() {
   const modifierByPlayerId = new Map(roster.map((entry) => [entry.playerId, entry.modifier]));
 
   const heldSpellCards = await getMySpellCards(supabase, roomId);
-  // The Spell Draw Window gate (issue #248): only offer the "how did you
-  // draw?" choice once the earning round has actually resolved or been
-  // cancelled — independent of activeRound, same as rateableRound below,
-  // since getActiveRound never returns a resolved round to hang this off of.
   const myPendingSpellDraw = await getMyPendingSpellDraw(supabase);
   const spellCardCatalog = myPendingSpellDraw ? await getSpellCardCatalog(supabase) : [];
   const pendingSpellCasts =
@@ -211,15 +180,6 @@ export default async function HomePage() {
       : [];
   const heldReactionCard = heldSpellCards.find((c) => c.location === "held" && c.castingTime === "R") ?? null;
 
-  // Pending Spell Die (issue #252): unlike the Spell Draw Window above, this
-  // has no resolved/cancelled gate — the round's own layer-0 resolution is
-  // already blocked on it (the Layer-completeness hold, _layer_is_complete),
-  // so it's shown the moment it exists, for either an
-  // 'open' round (a pre-roll Action cast, e.g. Cold Tea) or a 'closed' one
-  // (a Reaction cast made mid-window, e.g. Slipped Spoon). spellDieRollInputMode
-  // is fetched independently of rollInputMode below, which stays scoped to
-  // whether it's this player's *own* turn to roll the main d20 — a pending
-  // die can be outstanding regardless of that.
   const myPendingSpellDice = activeRound ? await getMyPendingSpellDice(supabase, activeRound.id) : [];
   const spellDieRollInputMode =
     myPendingSpellDice.length > 0 ? await getRollInputMode(supabase, playerId) : null;
@@ -234,30 +194,20 @@ export default async function HomePage() {
     openReactionWindow && activeRound ? await getReactionWindowPendingPlayers(supabase, activeRound.id) : [];
   const reactionSkipVote =
     openReactionWindow && activeRound ? await getReactionSkipVote(supabase, activeRound.id) : null;
-  // Liquid Courage (issue #439): a Courage Token is only spendable in a
-  // Layer-0 window.
   const myCourageTokens =
     openReactionWindow?.layer === 0 && activeRound ? await getMyCourageTokens(supabase, activeRound.id) : [];
 
-  // Brewmageddon (issue #440): what the caller still owes it, and who else the
-  // Compelled Cast step is holding rolling for. Only a closed Layer-0 round
-  // can be in either state.
   const compelledRound = activeRound?.status === "closed" && activeRound.currentLayer === 0 ? activeRound : null;
   const myCompelledCast = compelledRound ? await getMyCompelledCast(supabase, compelledRound.id) : null;
   const compelledStep = compelledRound ? await getCompelledCastStep(supabase, compelledRound.id) : null;
 
-  // Tea Party Revolt (issue #430): once layer 0 is rolled, the round waits on
-  // the lowest roller to choose who makes tea.
   const revoltPickerId = compelledRound ? await getTeaPartyRevoltPicker(supabase, compelledRound.id) : null;
 
-  // A compelled Detox holder plays their card in the Compelled Cast step,
-  // after close, so they need the dispel picker then too.
   const dispellableEffects =
     activeRound && (activeRound.status === "open" || myCompelledCast?.castingTime === "A")
       ? await getDispellableActiveEffects(supabase, activeRound.id)
       : [];
 
-  // Issue #438: Tea Heist's picker lists only players holding a card.
   const heistTargetIds =
     activeRound &&
     (activeRound.status === "open" || myCompelledCast?.castingTime === "A") &&
@@ -265,7 +215,6 @@ export default async function HomePage() {
       ? await getHeistTargetIds(supabase, activeRound.id)
       : [];
 
-  // Issue #470: Last Drip's cast-time notice -- who it would currently name.
   const lastDripPreview =
     activeRound &&
     (activeRound.status === "open" || myCompelledCast?.castingTime === "A") &&
@@ -290,10 +239,6 @@ export default async function HomePage() {
       : [];
   const isTied = tiedParticipants.some((p) => p.playerId === playerId);
 
-  // The caller's own roll for whichever layer is *current* right now (0, or
-  // a live reroll) — feeds isPlayersTurnToRoll/rollInputMode/needsRollInput
-  // below regardless of phase, and doubles as TieBanner/TieRollModal's
-  // ownRoll during a tie.
   const currentLayerOwnRoll = !activeRound
     ? null
     : isTiePhase
@@ -304,27 +249,12 @@ export default async function HomePage() {
         ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
         : null;
 
-  // RoundReveal's own ownRoll is always specifically layer 0's — issue #220
-  // piece 4 keeps RoundReveal mounted through the tie phase too (not just
-  // after it), so unlike currentLayerOwnRoll above this can't track
-  // whichever layer happens to be current; RoundReveal shows layer 0's row
-  // as its primary row no matter how many reroll layers came after it.
-  // Outside a tie, "the current layer" already *is* layer 0, so
-  // currentLayerOwnRoll above is already the answer — only an actual tie
-  // phase needs its own extra fetch.
   const layerZeroOwnRoll = !isTiePhase
     ? currentLayerOwnRoll
     : activeRound?.status === "closed" && hasDeclared
       ? await getOwnRoll(supabase, activeRound.id, playerId, 0)
       : null;
 
-  // Whether it's this player's turn to submit a roll right now: they're
-  // expected to roll the round's current layer (is_expected_layer_roller,
-  // issue #40 — the same SQL predicate submit_roll/submit_manual_roll gate
-  // on, so this reads its answer rather than re-deriving hasDeclared/isTied/
-  // excludedAt locally) and haven't already rolled it. The player's
-  // roll_input_mode preference (#22) then decides which input method(s)
-  // they're offered.
   const isExpectedToRoll =
     activeRound?.status === "closed"
       ? await isExpectedLayerRoller(supabase, activeRound.id, playerId, currentLayer)
@@ -333,13 +263,9 @@ export default async function HomePage() {
   const rollInputMode = isPlayersTurnToRoll ? await getRollInputMode(supabase, playerId) : null;
   const needsRollInput = isPlayersTurnToRoll && !isTiePhase;
 
-  // Independent of the active-round flow above — a player can have a round
-  // to rate whether or not today's room currently has one open (issue #211).
   const rateableRound = await getMyRateableRound(supabase, playerId);
   const raterInitials = initialsFrom(player?.display_name ?? null, player?.email ?? user.email ?? "");
 
-  // Room history (issue #314): every resolved round of today's room, each
-  // expandable to its full Round Recap ledger via the same renderer.
   const roomRounds = await getRoomRounds(supabase, roomId);
   const recapHistoryEntries = roomRounds.map((r) => ({
     roundId: r.roundId,
@@ -477,11 +403,6 @@ export default async function HomePage() {
                 }))}
               />
 
-              {/* Late Declare (issue #246): same "I'm in" button/placement
-                  as the open-round path below, reused here for the window
-                  between close_round and the round's first roll. Not shown
-                  once it would just error (canDeclareLate already checks
-                  both hasDeclared and roundHasAnyRolls). */}
               {canDeclareLate ? (
                 <form action={declareInLateAction} className="mt-4">
                   <input type="hidden" name="roundId" value={activeRound.id} />
@@ -515,12 +436,6 @@ export default async function HomePage() {
                   ))}
                 </div>
 
-                {/* Declare-in-time cue (issue #226, user story 19): a nudge
-                    toward the Tea/Coffee buttons on your own avatar above
-                    (issue #267), not a blocker — Order stays fully decoupled
-                    from declare/withdraw (ADR 0004), so this only disappears
-                    once an Order actually exists for this round, independent
-                    of hasDeclared. */}
                 {myOrderForRound === null ? (
                   <p className="mt-4 text-xs text-gilt-bright">🫖 Don&rsquo;t forget to set your Order above.</p>
                 ) : null}
@@ -564,12 +479,6 @@ export default async function HomePage() {
         </section>
       ) : null}
 
-      {/* Decoupled from declare/withdraw (ADR 0004) and from activeRound's
-          own open/closed section above — orderRoundId already covers the
-          rest of the Order Window (through resolved) via
-          getMyOrderableRound once activeRound goes null. The Order picker
-          itself now lives on your own avatar (issue #267, see PlayerTile /
-          AvatarOrderPicker) rather than as a card here. */}
       {orderRoundId ? (
         <section className="w-full max-w-md">
           <MenuLive roomId={roomId} roundId={orderRoundId} />

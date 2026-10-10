@@ -8,7 +8,6 @@ describe("slugifyCardName", () => {
   });
 
   it("drops apostrophes rather than turning them into hyphens", () => {
-    // Verified against the real public/spell-art/ filenames from PR #125.
     expect(slugifyCardName("Gambler's Infusion")).toBe("gamblers-infusion");
     expect(slugifyCardName("Fortune's Flavour")).toBe("fortunes-flavour");
     expect(slugifyCardName("Saucerer's Apprentice")).toBe("saucerers-apprentice");

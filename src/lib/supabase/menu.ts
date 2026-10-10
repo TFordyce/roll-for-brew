@@ -6,29 +6,10 @@ export type MenuEntry = {
   drinkType: DrinkType;
   milk: string | null;
   sugar: string | null;
-  /** `false` (not `null`) when noPreferenceSet -- decaf defaults false on
-   * usual_drinks (0063_usual_drinks_decaf.sql), so there's no "unset decaf"
-   * state distinct from milk/sugar's null. */
   decaf: boolean;
-  /** True when the player has no `usual_drinks` row for `drinkType` — the
-   * Menu still shows their Order, just with no milk/sugar to go with it
-   * (issue #223 user story 14). */
   noPreferenceSet: boolean;
 };
 
-/**
- * Reads a round's Menu (issue #227) — the `round_menu` view (0062), a live
- * join of `round_participants` × `orders` × `usual_drinks` restricted to
- * this round. A participant who never placed an Order for this round simply
- * isn't in the result (the view inner-joins `orders`); nothing here
- * distinguishes "declared but ordered nothing" from "never declared" —
- * that's `getRoundParticipants`' job, not this one's.
- *
- * Always a live read of each orderer's *current* Usual (ADR 0003) — no
- * snapshot, no caching. Callers needing display names join this against
- * `getRoundParticipants`'s own result by playerId, same as RoundReveal does
- * for modifiers.
- */
 export async function getRoundMenu(supabase: SupabaseClient, roundId: string): Promise<MenuEntry[]> {
   const { data, error } = await supabase
     .from("round_menu")

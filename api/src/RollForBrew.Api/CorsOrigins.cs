@@ -1,6 +1,5 @@
 namespace RollForBrew.Api;
 
-/// <summary>Origins are exact strings, or contain a single '*' wildcard (e.g. https://rfb-*-team.vercel.app).</summary>
 public static class CorsOrigins
 {
     public static bool IsAllowed(string origin, IEnumerable<string> patterns) =>

@@ -5,11 +5,6 @@ using RollForBrew.Api.Problems;
 
 namespace RollForBrew.Api.ModifierAdjustments;
 
-/// <summary>
-/// Modifier Adjustment rules (ports log_modifier_adjustment, delete_modifier_adjustment,
-/// admin_delete_modifier_adjustment; migrations 0052, 0056). Check order and RFBnn mirror the SQL.
-/// The adjustment and the room_players.modifier bump happen in the one store transaction.
-/// </summary>
 public static class ModAdjRules
 {
     private static ProblemException Problem(string sqlState) =>
@@ -22,7 +17,6 @@ public static class ModAdjRules
         var trimmed = (reason ?? "").Trim();
         if (trimmed.Length == 0) throw Problem("RFB11");
 
-        // "Today" is re-derived server-side (Europe/London), never a client room id.
         await using var q = new NpgsqlCommand(
             "select id from public.rooms where date = ((now() at time zone 'Europe/London')::date)", s.Connection, s.Transaction);
         var roomId = (Guid?)await q.ExecuteScalarAsync(ct)
@@ -39,7 +33,6 @@ public static class ModAdjRules
         return row.Id;
     }
 
-    /// <summary>Self-serve undo: caller's own, most recent, within 5 minutes.</summary>
     public static async Task Undo(StoreSession s, Guid id, CancellationToken ct)
     {
         var actor = await s.CurrentPlayerId(ct: ct);
@@ -52,7 +45,6 @@ public static class ModAdjRules
             .OrderByDescending(r => r.CreatedAt).ThenByDescending(r => r.Id).Select(r => r.Id).FirstAsync(ct);
         if (latest != id) throw Problem("RFB14");
 
-        // Database clock, as in SQL (now() - created_at > 5 minutes).
         await using var q = new NpgsqlCommand(
             "select now() - created_at > interval '5 minutes' from public.modifier_adjustments where id = @id", s.Connection, s.Transaction);
         q.Parameters.AddWithValue("id", id);
@@ -62,7 +54,6 @@ public static class ModAdjRules
         await db.Set<ModAdjRow>().Where(r => r.Id == id).ExecuteDeleteAsync(ct);
     }
 
-    /// <summary>Admin-only unrestricted delete; the audit row is written before the adjustment is dropped.</summary>
     public static async Task AdminDelete(StoreSession s, Guid id, string? reason, CancellationToken ct)
     {
         var caller = await s.CurrentPlayerId(ct: ct);

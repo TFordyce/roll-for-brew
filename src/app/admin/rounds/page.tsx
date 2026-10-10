@@ -8,14 +8,6 @@ import { listRecentRounds } from "@/lib/supabase/adminRounds";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { DeleteRoundRow } from "@/app/admin/rounds/DeleteRoundRow";
 
-/**
- * `/admin/rounds` (issue #189): lets an admin hard-delete a single round
- * that's left the app in a bad state — e.g. a player turned out not to be
- * whitelisted partway through a round, so it had to be resolved by hand
- * outside the app, leaving bogus rolls/participants behind that stats would
- * otherwise keep counting. Gated the same way as /admin/cards —
- * canAccessTestRoom (is_admin + the Admin Mode cookie).
- */
 export default async function AdminRoundsPage() {
   const supabase = await createClient();
   const current = await getCurrentPlayer(supabase);

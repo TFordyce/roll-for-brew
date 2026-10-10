@@ -12,14 +12,6 @@ export type HeldSpellCard = {
   edition: "4th";
 };
 
-/**
- * Calls the draw_spell_card RPC (supabase/migrations/0018_spell_deck_draw_hold_swap.sql):
- * draws one uniformly-random in-deck instance for the caller after a nat-1
- * or nat-20 (issue #66). Returns null if the deck is momentarily exhausted
- * (every instance held/pending — an explicitly unresolved edge case
- * upstream), otherwise the drawn instance's id and whether it's now parked
- * awaiting a keep-or-swap decision (the caller already held a card).
- */
 export async function drawSpellCard(
   supabase: SupabaseClient,
   trigger: "nat1" | "nat20",
@@ -38,17 +30,6 @@ export async function drawSpellCard(
   return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
 }
 
-/**
- * Calls the draw_spell_card_as RPC (supabase/migrations/0034_admin_forced_crit_card.sql):
- * the admin "roll for others" counterpart to drawSpellCard — draws for an
- * explicit target player rather than current_player_id()'s Acting As
- * resolution, and optionally forces a specific catalog card (cardId) instead
- * of a random in-deck instance. draw_spell_card_as itself re-checks the
- * caller is an admin acting on the Test Room regardless of what's passed.
- * roundId is the round the crit was rolled in: the RPC runs the shared
- * crit-redirect hook against it (issue #435), so the card may go to someone
- * other than playerId.
- */
 export async function drawSpellCardAs(
   supabase: SupabaseClient,
   trigger: "nat1" | "nat20",
@@ -73,14 +54,6 @@ export async function drawSpellCardAs(
   return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
 }
 
-/**
- * Calls the record_pending_spell_draw RPC (supabase/migrations/
- * 0036_manual_spell_card_draw.sql): records that a nat-1/nat-20 has fired
- * for the caller this round, without drawing yet — replaces the old
- * immediate drawSpellCard call in maybeRecordPendingSpellDraw
- * (roundActionHelpers.ts) so the player can be offered a choice of how the
- * card gets drawn before it actually happens.
- */
 export async function recordPendingSpellDraw(
   supabase: SupabaseClient,
   roundId: string,
@@ -96,23 +69,9 @@ export async function recordPendingSpellDraw(
 export type MyPendingSpellDraw = {
   roundId: string;
   trigger: "nat1" | "nat20";
-  /** How many other eligible (resolved/cancelled-round) draws are queued behind this one. */
   otherCount: number;
 };
 
-/**
- * Calls the get_my_pending_spell_draw RPC (supabase/migrations/
- * 0066_pending_spell_draw_gated_on_round_resolution.sql, issue #248): the
- * caller's own oldest outstanding Pending Spell Draw whose earning round
- * has actually resolved or been cancelled — the gate SpellDrawChoicePanel's
- * *render* is keyed off of, so the "how did you draw?" prompt no longer
- * fires while the round is still open/closed, mid-tie-break, or mid-
- * reaction-window. Independent of activeRound, same pattern as
- * getMyRateableRound (brewRatings.ts) — getActiveRound never returns a
- * resolved round to hang this off of. Returns null when nothing is
- * eligible yet; otherCount reflects how many more eligible draws are
- * queued behind the one returned, for the "N more waiting" cue.
- */
 export async function getMyPendingSpellDraw(supabase: SupabaseClient): Promise<MyPendingSpellDraw | null> {
   const { data, error } = await supabase.rpc("get_my_pending_spell_draw");
   if (error) throw error;
@@ -124,11 +83,6 @@ export async function getMyPendingSpellDraw(supabase: SupabaseClient): Promise<M
   return { roundId: row.round_id, trigger: row.trigger, otherCount: row.other_count };
 }
 
-/**
- * Calls the draw_pending_spell_card RPC: resolves the caller's pending
- * trigger with the app's own uniformly-random draw (the "draw in-app"
- * choice), same semantics as drawSpellCard.
- */
 export async function drawPendingSpellCard(
   supabase: SupabaseClient,
   roundId: string,
@@ -143,13 +97,6 @@ export async function drawPendingSpellCard(
   return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
 }
 
-/**
- * Calls the draw_pending_spell_card_manual RPC: resolves the caller's
- * pending trigger with the specific card they say they physically drew
- * from the real deck. Throws with error.code === "RFB06" if that card has
- * no currently-in-deck instance (a physical/digital desync) — callers
- * should surface that as a retryable message, not a crash.
- */
 export async function drawPendingSpellCardManual(
   supabase: SupabaseClient,
   roundId: string,
@@ -168,15 +115,6 @@ export async function drawPendingSpellCardManual(
   return { instanceId: row.instance_id, needsSwapDecision: row.needs_swap_decision };
 }
 
-/**
- * The full spell card catalog's id/name/tier, for resolving a player's
- * free-text "I drew this IRL" input to a card id (and for the datalist
- * that autocompletes it). Reading the whole catalog isn't a blind-deck
- * violation — spell_cards, unlike spell_deck_instances, is already
- * readable by every authenticated player (0017: names/effects aren't
- * secret, only who holds which physical instance is) — so this is a plain
- * table read, not a new RPC.
- */
 export async function getSpellCardCatalog(
   supabase: SupabaseClient,
 ): Promise<{ cardId: string; name: string; tier: "common" | "rare" | "epic"; edition: "4th" }[]> {
@@ -204,12 +142,6 @@ export type InDeckSpellCard = {
   edition: "4th";
 };
 
-/**
- * Calls the get_in_deck_spell_cards RPC: every catalog card currently
- * drawable in the given room's deck — an admin/Test-Room-only exception to
- * the deck otherwise never disclosing its contents (user story 9), used to
- * populate the "force this card" picker in RollForOthers.tsx.
- */
 export async function getInDeckSpellCards(supabase: SupabaseClient, roomId: string): Promise<InDeckSpellCard[]> {
   const { data, error } = await supabase.rpc("get_in_deck_spell_cards", { p_room_id: roomId });
   if (error) throw error;
@@ -231,21 +163,6 @@ export async function getInDeckSpellCards(supabase: SupabaseClient, roomId: stri
   }));
 }
 
-/**
- * Calls the resolve_card_swap RPC (supabase/migrations/0064_reaction_window_close_on_swap.sql,
- * issue #251): resolves a pending keep-or-swap decision, keeping either the
- * newly-drawn card or the one already held. The other instance is
- * reshuffled back to in_deck, never removed.
- *
- * Returns the id of the round whose open reaction window this decision just
- * closed (the resolving player was its last eligible Reaction-card holder),
- * or null if nothing closed — either because no window needed closing, or
- * roomId wasn't passed so there was no round context to check. Callers
- * should finalize that round's layer the same way passReactionWindowAction
- * (src/app/rounds/actions.ts) already does when its own pass closes the
- * window, since resolve_card_swap only closes the window — it never
- * finalizes.
- */
 export async function resolveCardSwap(
   supabase: SupabaseClient,
   keepNew: boolean,
@@ -260,12 +177,6 @@ export async function resolveCardSwap(
   return (data as string | null) ?? null;
 }
 
-/**
- * Calls the get_my_spell_cards RPC: the caller's own held (and, mid-swap-
- * decision, pending_swap) card instance(s) joined with the catalog — never
- * anyone else's, and never the deck's remaining contents or count (the
- * deck stays blind, user story 9).
- */
 export async function getMySpellCards(supabase: SupabaseClient, roomId?: string): Promise<HeldSpellCard[]> {
   const { data, error } = await supabase.rpc("get_my_spell_cards", { p_room_id: roomId ?? null });
   if (error) throw error;
@@ -301,36 +212,10 @@ export type SpellCollectionCard = {
   tier: "common" | "rare" | "epic";
   effectText: string | null;
   drawCount: number;
-  /**
-   * The signed-in viewer's own 1-5 rating of this card, or null if unrated
-   * (issue #300). Always scoped to the caller server-side, never the
-   * collection's owner — it's null on anyone else's collection.
-   */
   myRating: number | null;
-  /**
-   * Whether the signed-in viewer has a rateable cast of this card — a
-   * non-negated `spell_casts` row in a resolved round of a non-test room
-   * (issue #300). Drives whether the card inspector shows the star row at
-   * all, and (with myRating set) whether it's read-only. Always false on
-   * anyone else's collection.
-   */
   isCastEligible: boolean;
 };
 
-/**
- * Calls the get_player_spell_collection RPC (supabase/migrations/
- * 0039_player_spell_collection.sql, extended by 0073): the full 71+-card
- * catalog left-joined against the given player's own draw counts (issue
- * #133, child of the Spell Collection page spec #130), plus the signed-in
- * viewer's own spell-card rating and cast-eligibility per card (issue #300,
- * always null/false when viewing someone else's collection). Takes
- * an explicit playerId, not implicit-self like getMySpellCards, since the
- * same call path serves both "my collection" and viewing someone else's —
- * spell names/effects aren't secret (0017/0032), only which physical
- * instance a player currently holds is. castingTime/target/effectText are
- * null until drawCount > 0; the page derives "discovered" as drawCount > 0
- * rather than a separate flag.
- */
 export async function getPlayerSpellCollection(
   supabase: SupabaseClient,
   playerId: string,

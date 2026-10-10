@@ -4,10 +4,6 @@ using static RollForBrew.Tests.RoomView.ViewFixture;
 
 namespace RollForBrew.Tests.RoomView;
 
-/// <summary>
-/// Game secrecy, pinned on the serialised view: whatever is hidden must be absent from the JSON
-/// altogether, not just from the obvious field.
-/// </summary>
 public class RoomViewSecrecyTests
 {
     private static IEnumerable<long> IntegerLeaves(JsonElement e)
@@ -20,7 +16,6 @@ public class RoomViewSecrecyTests
         }
     }
 
-    // Fixture numbers are all small (modifiers 1-3, version 7, layers 0-1), so 18, 19 and 20 cannot occur by accident.
     private static ViewFixture RolledRound(string viewer, params (string Player, int Value, int Layer)[] rolls)
     {
         var f = new ViewFixture { Viewer = viewer }.ClosedRound(0, "ann", "bob", "cat");
@@ -35,7 +30,7 @@ public class RoomViewSecrecyTests
         var leaves = IntegerLeaves(JsonDocument.Parse(f.Json()).RootElement).ToList();
         Assert.DoesNotContain(19L, leaves);
         Assert.DoesNotContain(20L, leaves);
-        Assert.Contains(5L, leaves); // the viewer's own roll is theirs to see
+        Assert.Contains(5L, leaves);
     }
 
     [Fact]
@@ -72,7 +67,6 @@ public class RoomViewSecrecyTests
         var bobsCard = Guid.NewGuid();
         var f = new ViewFixture { Viewer = "ann" };
         f.Deck.Add(new DeckInstanceRow(bobsCard, Guid.NewGuid(), "held", "bob"));
-        // Only the viewer's own bridge result is in play.
         var mine = new RollForBrew.Domain.RoomView.HeldCard(Guid.NewGuid(), "held", "Hex", "A", "PLAYER", "common", "x", null, "4th");
         f.Reads = f.Reads with { HeldCards = [mine] };
         var json = f.Json();
@@ -91,7 +85,6 @@ public class RoomViewSecrecyTests
     [Fact]
     public void Ratings_carry_only_the_viewers_own_score()
     {
-        // The rater-scoped read supplies MyScore; the projection has no other rater's score to leak.
         var f = new ViewFixture { Viewer = "ann" }.WithExtras(e => e with { Rateable = new(RoundId, "BOB", "bob@x.test", T0, 2) });
         var json = JsonDocument.Parse(f.Json()).RootElement;
         Assert.Equal(2, json.GetProperty("viewer").GetProperty("rateableRound").GetProperty("myScore").GetInt32());

@@ -3,10 +3,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Domain.Liveness;
 
-/// <summary>
-/// Pure port of SQL _rr_active_effects_as_of(room, round) (db/sql/functions/_rr_active_effects_as_of.sql):
-/// the active-effect rows live as of a round. Same rules, same bounds; see the SQL header for the why.
-/// </summary>
 public static class ActiveEffects
 {
     public static IReadOnlyList<ActiveEffectRow> AsOf(RoundSnapshot s, Guid roomId, Guid asOfRoundId)
@@ -21,9 +17,8 @@ public static class ActiveEffects
         var asOfRound = rounds[asOfRoundId];
         var asOfStarted = asOfRound.StartedAt;
         var asOfIsTest = rooms[asOfRound.RoomId].IsTest;
-        var kindIsTest = rooms[roomId].IsTest; // the clock's kind comes from p_room_id
+        var kindIsTest = rooms[roomId].IsTest;
 
-        // Participation Clock (_rr_participated_rounds_elapsed). A null source bound counts nothing (SQL: >= NULL).
         int Elapsed(string player, DateTimeOffset? source, DateTimeOffset? asOf)
         {
             if (source is null || !participants.TryGetValue(player, out var mine)) return 0;
@@ -89,10 +84,8 @@ public static class ActiveEffects
             live.Add(sae);
         }
 
-        // One Earl: of the live Earl title rows only the newest (created_at, then uuid byte order) stands,
-        // and only a title cast at or before the as-of round displaces an older one.
         static bool IsEarl(ActiveEffectRow e) => e.EffectKind == "brewer_immunity" && Param(e.EffectParams, "mode") == "earl";
-        static bool Newer(ActiveEffectRow a, ActiveEffectRow b) => // a > b
+        static bool Newer(ActiveEffectRow a, ActiveEffectRow b) =>
             a.CreatedAt != b.CreatedAt ? a.CreatedAt > b.CreatedAt
             : string.CompareOrdinal(a.Id.ToString("N"), b.Id.ToString("N")) > 0;
 
@@ -105,7 +98,6 @@ public static class ActiveEffects
             .ToList();
     }
 
-    /// <summary>jsonb ->>: the text of a key; null when the object, key or value is absent or JSON null.</summary>
     public static string? Param(JsonElement? obj, string key)
     {
         if (obj is not { ValueKind: JsonValueKind.Object } o || !o.TryGetProperty(key, out var v)) return null;

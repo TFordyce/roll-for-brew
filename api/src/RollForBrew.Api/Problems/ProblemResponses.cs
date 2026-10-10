@@ -3,7 +3,6 @@ using Microsoft.AspNetCore.Diagnostics;
 
 namespace RollForBrew.Api.Problems;
 
-/// <summary>RFC 9457 application/problem+json writer with a stable `code` extension member.</summary>
 public static class ProblemResponses
 {
     public const string ContentType = "application/problem+json";
@@ -33,7 +32,6 @@ public static class ProblemResponses
                 await WriteAsync(ctx, 500, "internal_error", "Something went wrong.");
         }));
 
-    /// <summary>Bodyless 401/403/404/405 responses become problem+json too.</summary>
     public static IApplicationBuilder UseStatusCodeProblems(this IApplicationBuilder app) =>
         app.UseStatusCodePages(async c =>
         {

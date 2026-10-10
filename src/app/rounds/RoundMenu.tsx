@@ -10,35 +10,6 @@ export type RoundMenuParticipant = {
   email: string;
 };
 
-/**
- * The live Menu (issue #227, part of #223): who wants what this round, with
- * milk/sugar pulled from each orderer's current Usual. Entries and
- * participant names both arrive as props, already resolved by the caller
- * (page.tsx/admin/test-room's page.tsx) via getRoundMenu + getRoundParticipants,
- * the same "server component owns the data, MenuLive.tsx just triggers a
- * refetch" split RoundOpenLive/SpellCastLive already use elsewhere on this
- * page.
- *
- * Renders as a right-edge pop-out tab (issue #265) — the same hanging-tag +
- * pushpin-notepad pattern as BrewRatingPanel
- * (src/app/_components/BrewRatingPanel.tsx), stacked below its "Rate Brew"
- * tab. This is a presentation change only: the prop shape is unchanged from
- * the previous plain `CardFrame "Menu"` block, so callers don't fetch or
- * pass data any differently.
- *
- * Only ever contains this round's declared participants who have an Order
- * (round_menu's own round_participants join, 0062) — a participant with no
- * Order simply isn't in `entries`, no explicit "no drink" row (user story
- * 18). Renders nothing (not even the tab) when there's nobody to list yet,
- * so an empty Menu doesn't sit on the page before the first Order comes in —
- * same as the old `entries.length === 0 → return null`.
- *
- * A decaf preference (0063, issue #237) renders as a "Decaf " prefix on the
- * drink type ("Decaf Tea — Dairy, 1 Tsp") rather than a suffix — decided via
- * a standalone HTML prototype, issue #238. `entry.decaf` is always false
- * when `noPreferenceSet`, so the prefix only ever shows alongside a real
- * milk/sugar preference.
- */
 export function RoundMenu({
   entries,
   participants,
@@ -65,8 +36,6 @@ export function RoundMenu({
     setOpen(false);
   }
 
-  // Clicking the panel's background — anything that isn't a button — closes
-  // it, same as the ×, mirroring BrewRatingPanel's handleBackgroundClick.
   function handleBackgroundClick(event: React.MouseEvent<HTMLDivElement>) {
     if ((event.target as HTMLElement).closest("button")) return;
     if (open) closePanel();
@@ -83,9 +52,6 @@ export function RoundMenu({
           open ? "translate-x-[140%] rotate-[4deg]" : "translate-x-0 rotate-[4deg] hover:-translate-x-1"
         }`}
       >
-        {/* "Menu" is a single word, so unlike "Rate\nBrew" it can't literally
-            span two lines — kept single-line rather than forcing an
-            arbitrary break, same font/case treatment as Rate Brew's label. */}
         <span>Menu</span>
       </button>
 

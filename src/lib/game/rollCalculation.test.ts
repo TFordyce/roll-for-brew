@@ -29,8 +29,6 @@ describe("getModifierJitterIntensity", () => {
   });
 
   it("is already visibly jittering right at +8, not fading in from 0", () => {
-    // A floor intensity, not 0 — the acceptance criteria calls for a
-    // *visible* jitter the instant a modifier crosses the threshold.
     expect(getModifierJitterIntensity(8)).toBeGreaterThan(0);
   });
 

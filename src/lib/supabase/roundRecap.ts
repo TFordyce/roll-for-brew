@@ -6,13 +6,6 @@ import {
   type ResolutionTraceStep,
 } from "@/lib/supabase/rolls";
 
-/**
- * One entry in a round's cast list, as returned by get_round_recap (migration
- * 0086). `phase` is where the cast was armed; `onStack` is a coarse live-phase
- * flag the cast strip falls back on before a Resolution Trace exists. Once the
- * round is resolved the renderer derives each cast's state from the Trace and
- * ignores `onStack`.
- */
 export type RoundRecapCast = {
   castId: string;
   seq: number;
@@ -24,25 +17,10 @@ export type RoundRecapCast = {
   phase: "preroll" | "reaction";
   negated: boolean;
   redirectedToCastId: string | null;
-  /**
-   * Issue #440: the Brewmageddon cast this cast answers — a compelled cast or
-   * a Forfeit — else null.
-   */
   compelledByCastId: string | null;
   onStack: boolean;
 };
 
-/**
- * One retained scrapped replay generation (issue #352), snapshotted into
- * rounds.scrapped_generations by _rr_scrap_round (migration 0090) just before
- * the scrap delete pass removes its rows. Generation 0 is the original attempt;
- * a replayed round has exactly one entry (the deck holds one Time for Brew).
- *
- * It carries no cast list — the scrap deletes generation 0's spell_casts — but
- * every Trace step embeds its own source card + caster, so the step rows still
- * render in full; only the tap-to-filter cast strip is absent for a scrapped
- * generation.
- */
 export type ScrappedGeneration = {
   generation: number;
   brewerId: string | null;
@@ -50,86 +28,36 @@ export type ScrappedGeneration = {
   brewerModifierGain: number | null;
   resolvedAt: string | null;
   trace: ResolutionTraceStep[];
-  /**
-   * Issue #408: the generation's own layer-0 Resolution Summary, snapshotted at
-   * scrap time. null for a generation scrapped before summaries existed.
-   */
   summary: ResolutionSummaryEntry[] | null;
-  /**
-   * The generation's rolls grouped by layer, oldest first — layer 0 plus any
-   * tie-break reroll layers. Same shape as RoundRecapData.layers, so
-   * buildRerollChain consumes it directly.
-   */
   layers: CompletedLayer[];
-  /**
-   * The generation's own per-layer participant set (issue #220's
-   * round_layer_participants), snapshotted before the scrap cleared it — the
-   * ordering source for the layer-0 roll list, independent of generation 1's
-   * roster.
-   */
   layerParticipants: LayerParticipant[];
 };
 
-/** One row of round_layer_participants: `playerId` rolled in tie-break `layer`. */
 export type LayerParticipant = { layer: number; playerId: string };
 
-/**
- * One layer-0 roller's entry in the Resolution Summary (issue #407, ADR 0007):
- * the resolver's own final values. The roll row renders these as-is.
- */
 export type ResolutionSummaryEntry = {
   playerId: string;
-  /** Final roll, after every roll-input transform. */
   roll: number;
-  /** Roll-time modifier (rolls.modifier_snapshot). */
   snapshot: number;
-  /** Final composed modifier. */
   composed: number;
   total: number;
-  /** As _rr_pick_lowest judged it — a Calami-Tea-floored 1 is not a nat 1. */
   nat: "nat1" | "nat20" | null;
-  /** A Calami-Tea tick floored this roll. */
   diceReduced: boolean;
 };
 
 export type RoundRecapData = {
   resolved: boolean;
-  /**
-   * The layer-0 resolver outcome for a resolved round: "tie" when layer 0
-   * tied and the round was decided by tie-break reroll layers (the Recap ends
-   * at the tie), "brewer" otherwise. null while the round is still live.
-   */
   layerZeroOutcome: "brewer" | "tie" | null;
   trace: ResolutionTraceStep[];
-  /**
-   * Issue #407: the layer-0 Resolution Summary. null before the round
-   * resolves, or for a round resolved before summaries existed (the row then
-   * renders degraded: roll, snapshot and terms, no total).
-   */
   summary: ResolutionSummaryEntry[] | null;
-  /** Issue #409: the trace and summary are a live dry run, not the resolution. */
   provisional: boolean;
   casts: RoundRecapCast[];
-  /**
-   * Issue #352: every scrapped replay generation of this round, oldest first
-   * (generation 0 = the original attempt). Empty for a round never replayed.
-   */
   scrappedGenerations: ScrappedGeneration[];
-  /**
-   * Issue #406: every fully-rolled layer's rolls, layer 0 first — the rows'
-   * layer-0 rolls and the Reroll Chain's tie-break levels.
-   */
   layers: CompletedLayer[];
-  /** Issue #406: tie-break layer membership — the Reroll Chain's tie source. */
   layerParticipants: LayerParticipant[];
-  /**
-   * Issue #411: everyone the Layer 0 reaction window stopped waiting on —
-   * skipped by vote, or timed out by the stall backstop. Empty otherwise.
-   */
   reactionSkips: ReactionSkip[];
 };
 
-/** A player the reaction window was closed on without hearing from them (issue #411). */
 export type ReactionSkip = { playerId: string; reason: "vote" | "timeout" };
 
 type RawRecapCast = {
@@ -191,11 +119,6 @@ type RawRoundRecap = {
   reaction_skips: { player_id: string; reason: "vote" | "timeout" }[] | null;
 };
 
-/**
- * Group a flat roll list — the round's own `layers`, or a scrapped
- * generation's roll snapshot — into ordered per-layer buckets, the shape
- * buildRerollChain walks.
- */
 function groupRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] {
   const byLayer = new Map<number, LayerRoll[]>();
   for (const row of rows) {
@@ -212,7 +135,6 @@ function groupRollsByLayer(rows: RawScrappedGenerationRoll[]): CompletedLayer[] 
   return [...byLayer.entries()].sort(([a], [b]) => a - b).map(([layer, rolls]) => ({ layer, rolls }));
 }
 
-/** Parses a raw Resolution Summary (null stays null — a pre-summary round). */
 export function parseResolutionSummary(raw: RawSummaryEntry[] | null | undefined): ResolutionSummaryEntry[] | null {
   if (!Array.isArray(raw)) return null;
   return raw.map((p) => ({
@@ -246,23 +168,12 @@ function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration
   };
 }
 
-/**
- * Calls the get_round_recap RPC (migration 0086, issue #314; spec #402): the
- * Resolution Trace and Summary — stored, or the Provisional Recap's dry run
- * while the round is live — plus the round's cast list, layer rolls and
- * tie-break participants. Everything RoundReveal's rows, Ledger and Reroll
- * Chain need in one room-member-gated round trip. Returns null on any error so
- * the caller can fall back to the bare revealed dice.
- */
 export async function getRoundRecap(
   supabase: SupabaseClient,
   roundId: string,
 ): Promise<RoundRecapData | null> {
   const { data, error } = await supabase.rpc("get_round_recap", { p_round_id: roundId });
   if (error || !data) {
-    // A gate rejection (P0001) is expected for a viewer outside the round's
-    // room (room history shows "no recap available"); anything else is a real fault
-    // worth a console line before the additive Recap falls back silently.
     if (error && error.code !== "P0001") {
       console.error("getRoundRecap failed", error);
     }

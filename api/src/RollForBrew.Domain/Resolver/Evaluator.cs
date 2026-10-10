@@ -4,17 +4,8 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Domain.Resolver;
 
-/// <summary>
-/// Pure port of SQL <c>_rr_resolve_eval</c> (ADR 0010): <c>Evaluate(snapshot, roller) -> Resolution</c>.
-/// No I/O, no clock, no globals. A tie layer (layer &gt; 0) returns early with an empty Trace; layer 0 runs the
-/// ordered phase pipeline over a private <see cref="EvalContext"/> working copy. See docs/port/evaluate-pipeline.md.
-/// </summary>
 public static class Evaluator
 {
-    /// <summary>
-    /// The pipeline, in the order SQL executes it. NOT the numeric order of the tickets: 0b and 2 follow 1, 4c runs
-    /// before 4b, and 4b-pre (tick synthesis) before 4b (the projection that reads its rows). Pinned by a test.
-    /// </summary>
     private static readonly IReadOnlyList<EvalPhase> Pipeline =
     [
         new LoadRollersPhase(),
@@ -37,10 +28,8 @@ public static class Evaluator
         new Phase6HeistsAndMarks(),
     ];
 
-    /// <summary>Phase ids in execution order (layer 0).</summary>
     public static IReadOnlyList<string> PhaseIds { get; } = Pipeline.Select(p => p.Id).ToList();
 
-    /// <summary>Evaluates the Room's single closed round.</summary>
     public static Resolution Evaluate(RoundSnapshot snapshot, IDieRoller dice)
     {
         var closed = snapshot.Rounds.Where(r => r.RoomId == snapshot.RoomId && r.Status == "closed").ToList();
@@ -61,7 +50,6 @@ public static class Evaluator
         return Build(ctx);
     }
 
-    /// <summary>Layers above 0 have no spell logic at all (issue #219): lowest roll brews, a tie rerolls.</summary>
     private static Resolution TieLayer(EvalContext ctx)
     {
         var layer = ctx.Round.CurrentLayer;
@@ -83,7 +71,6 @@ public static class Evaluator
         var exempt = Rules.RollExemptions(ctx, Rules.CastLogResolution(ctx)).Select(e => e.Player).ToHashSet();
         var expected = ctx.S.RoundParticipants.Count(p => p.RoundId == ctx.RoundId && p.ExcludedAt is null && !exempt.Contains(p.PlayerId));
         if (rollCount >= expected) return;
-        // A Brew Debt round expects nobody to roll (get_expected_layer_roller_ids); the debt rule is Phase 5's (#544).
         if (ctx.S.Rounds.Any(r => r.BrewerSource == "brew_iou"))
             throw new PhasePendingException("5", "Brew Debt round (#544)");
         throw ResolveException.NotAllRolled();

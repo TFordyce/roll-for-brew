@@ -15,16 +15,8 @@ import { SubmitButton } from "@/app/_components/SubmitButton";
 
 const initialState: SpellCastActionState = { status: "idle" };
 
-/**
- * A card's own minimum for CHOSEN_PLAYERS is not currently plumbed through
- * to the client (spell_card_effects.effect_params only carries a
- * max_targets ceiling — see issue #244's research) — the server's own
- * blanket floor (cast_spell_card: "this card requires at least one chosen
- * player") is 1, so that's what the client guard mirrors.
- */
 const MIN_CHOSEN_PLAYERS = 1;
 
-/** Renders a SpellCastActionState's error inline, near the form's own submit button (issue #244). */
 function CastErrorMessage({ state }: { state: SpellCastActionState }) {
   if (state.status !== "error") return null;
   return (
@@ -37,7 +29,6 @@ function CastErrorMessage({ state }: { state: SpellCastActionState }) {
 const buttonClassName =
   "w-full rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark";
 
-/** The dispel (Lesser Detox, issue #69) form — split out of SpellCardPanel so its cast result can render inline (issue #244). */
 export function DispelForm({
   roundId,
   cardName,
@@ -69,22 +60,6 @@ export function DispelForm({
   );
 }
 
-/**
- * The pre-roll cast form (issues #66/#67) — split out of SpellCardPanel so its
- * cast result can render inline, and its CHOSEN_PLAYERS picker can enforce a
- * minimum selection (issue #244).
- *
- * Target control per card is chosen by `castTargetMode` (issue #360): the
- * effect-application rebuild's by-name OPPONENT/PLAYER cards need an explicit
- * target at cast time (their `cast_spell_card` branch raises RFB46 with no
- * deferred path), so they render an at-cast picker here instead of the
- * "target chosen after declare-in" message — Stir the Pot gets its own
- * exactly-two-other-players picker, the rest a single-target select.
- *
- * `compelled` (issue #440, Brewmageddon's Compelled Cast step): nothing
- * defers, so a deferred-target or WILD card gets the single-target select too
- * (`compelledCastTargetMode`).
- */
 export function CastForm({
   roundId,
   held,
@@ -97,11 +72,9 @@ export function CastForm({
   roundId: string;
   held: HeldSpellCard;
   participants: RoundParticipant[];
-  /** Issue #438: other participants holding a card — Tea Heist's picker roster. */
   heistTargetIds: string[];
   selfPlayerId: string;
   compelled?: boolean;
-  /** Issue #470: a heads-up shown before confirming (Last Drip's fall-through). */
   castNotice?: string | null;
 }) {
   const [state, formAction] = useActionState(castSpellCardAction, initialState);
@@ -118,8 +91,6 @@ export function CastForm({
   );
   const noAtCastTarget = mode === "at-cast-target" && atCastOptions.length === 0;
 
-  // The checkbox picker is shared by the blanket CHOSEN_PLAYERS flow and Stir
-  // the Pot's exactly-two-others flow; only the count rule and copy differ.
   const isTwoOthers = mode === "two-other-players";
   const isChosenPlayers = mode === "chosen-players";
   const belowMinimum = isChosenPlayers && chosenCount < MIN_CHOSEN_PLAYERS;
@@ -220,7 +191,6 @@ export function CastForm({
   );
 }
 
-/** One target-confirmation form per pending (declare-in-deferred) cast (issue #67) — split out of SpellCardPanel so each cast's result renders inline against its own form (issue #244). */
 export function TargetConfirmForm({
   roundId,
   cast,

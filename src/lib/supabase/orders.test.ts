@@ -5,7 +5,6 @@ import { getMyMostRecentOrder, getMyOrderForRound, submitOrder } from "./orders"
 
 type Row = { slice?: string; room_id: string | null; enabled: boolean };
 
-// port_flags select(...).eq("slice", s) -> rows; orders chain resolves a direct read.
 function fake(flags: Row[]) {
   const rpc = vi.fn(async () => ({ data: null, error: null }));
   const ordersRead = { data: { drink_type: "tea" }, error: null };
@@ -25,7 +24,7 @@ const api = () => ({
   submitOrder: vi.fn(async () => {}),
   getMyOrderForRound: vi.fn(async () => ({ drinkType: "coffee" as string | null })),
   getMyMostRecentOrder: vi.fn(async () => ({ drinkType: null as string | null })),
-}) as unknown as ApiClient & Record<string, ReturnType<typeof vi.fn>>; // partial fake
+}) as unknown as ApiClient & Record<string, ReturnType<typeof vi.fn>>;
 
 describe("order wrappers", () => {
   it("submitOrder keeps the RPC when the flag is off", async () => {

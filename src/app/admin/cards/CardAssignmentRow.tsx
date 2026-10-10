@@ -14,16 +14,6 @@ const TIER_LABEL: Record<CardAssignment["tier"], string> = {
   epic: "Epic",
 };
 
-/**
- * One row of the /admin/cards bulk table (issue #154): the card's current
- * holder (or an inline player-picker to assign one) plus an Unassign button
- * once it's held. A held/pending_swap card only ever shows Unassign — never
- * a picker to reassign straight to someone else — so a conflict always
- * requires the admin to explicitly clear the old hold first, matching
- * admin_allocate_spell_card's own RFB07/RFB08 refusal to auto-reassign.
- * A live Stale Biscuit mark on the chosen player (RFB57, issue #471) swaps
- * the picker for MarkWarning's three choices.
- */
 export function CardAssignmentRow({ card, players }: { card: CardAssignment; players: RealPlayer[] }) {
   const [state, formAction, isPending] = useActionState(allocateSpellCardAction, initialState);
   const isAssigned = card.location !== "in_deck";

@@ -8,25 +8,6 @@ export type PendingRoller = {
   email: string;
 };
 
-/**
- * Admin-only "roll for others" panel (issue #102 follow-up): lists every
- * Test Room player still expected to roll the round's current layer, each
- * with its own manual-value field and random-roll button — so an admin can
- * fill in or roll the whole table's dice without switching Acting As once
- * per person. Both submit buttons live in one form per player (rather than
- * two separate forms) purely so the "force crit card" select below can feed
- * whichever one gets clicked — the Roll button opts out of the manual
- * value's required-ness via formNoValidate since it doesn't use that field.
- * submit_roll_as/submit_manual_roll_as re-check admin + Test Room status
- * server-side regardless of what this panel renders.
- *
- * The "Force crit card" select is the admin's way of picking which spell
- * card gets drawn if this roll lands on nat-1/20, instead of the usual
- * random in-deck instance — left on "Random on crit" it behaves exactly as
- * before. Only cards currently in_deck (inDeckCards, sourced from
- * get_in_deck_spell_cards — 0034) are offered, so a selection can never fail
- * against a card someone else is already holding.
- */
 export function RollForOthers({
   roundId,
   pendingRollers,

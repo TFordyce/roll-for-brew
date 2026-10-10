@@ -7,13 +7,6 @@ import { canAccessTestRoom } from "@/lib/game/testRoomAccess";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { BackfillRoundForm } from "@/app/admin/backfill/BackfillRoundForm";
 
-/**
- * `/admin/backfill` (issue #274): lets an admin bulk-record an entire round
- * that happened with physical dice but that nobody ever opened the app for
- * — distinct from Proxy Roll (#273), which folds one absent player into an
- * already-live round. Gated the same way as every other admin tool —
- * canAccessTestRoom (is_admin + the Admin Mode cookie).
- */
 export default async function AdminBackfillPage() {
   const supabase = await createClient();
   const current = await getCurrentPlayer(supabase);

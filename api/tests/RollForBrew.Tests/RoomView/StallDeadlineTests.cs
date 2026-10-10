@@ -2,10 +2,6 @@ using RollForBrew.Domain.RoomView;
 
 namespace RollForBrew.Tests.RoomView;
 
-/// <summary>
-/// Golden table for nextStallDeadline. Expected instants are hand-computed from the stall rules in
-/// src/app/rounds/stallEnforcement.ts (5-minute clock) so a drift in either implementation shows up here.
-/// </summary>
 public class StallDeadlineTests
 {
     private static readonly DateTimeOffset T = new(2026, 10, 9, 12, 0, 0, TimeSpan.Zero);
@@ -19,7 +15,6 @@ public class StallDeadlineTests
 
     public static IEnumerable<object?[]> Golden() =>
     [
-        // name, input, expected
         ["no round, no replay: no clock", Input(null), null],
         ["open round counts from started_at", Input("open", now: 2, started: At(0)), At(5)],
         ["open round already past its deadline: nothing to offer", Input("open", now: 6, started: At(0)), null],

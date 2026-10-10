@@ -14,17 +14,6 @@ export type AdminRoundListing = {
   cupsMade: number | null;
 };
 
-/**
- * Recent rounds across every room, newest first, for the /admin/rounds
- * cleanup tool (issue #189). rounds/rooms are already readable by any
- * authenticated user (0003/0004's select policies), so this is a plain
- * query -- no admin-only list RPC needed, unlike admin_delete_round itself
- * which mutates and so re-checks is_admin server-side regardless of this
- * page's own gate. rounds has two foreign keys into players (started_by,
- * brewer_id), so each embed is disambiguated by its default constraint name
- * (<table>_<column>_fkey), the same way modifier_adjustments' dual-FK embed
- * is resolved (0052 era, src/lib/supabase/modifierAdjustments.ts).
- */
 export async function listRecentRounds(supabase: SupabaseClient, limit = 50): Promise<AdminRoundListing[]> {
   const { data, error } = await supabase
     .from("rounds")
@@ -58,14 +47,6 @@ export async function listRecentRounds(supabase: SupabaseClient, limit = 50): Pr
   });
 }
 
-/**
- * Calls the admin_delete_round RPC (0055): hard-deletes a single round and
- * everything cascaded off it (rolls, participants, spell casts, ...),
- * logging a snapshot + the given reason to admin_round_deletions first
- * since the round row itself won't exist afterward to attach the reason to.
- * Throws with error.code "RFB16" if the caller isn't an admin, "RFB17" for
- * a blank reason, "RFB18" if the round doesn't exist.
- */
 export async function adminDeleteRound(supabase: SupabaseClient, roundId: string, reason: string): Promise<void> {
   const { error } = await supabase.rpc("admin_delete_round", { p_round_id: roundId, p_reason: reason });
   if (error) throw error;

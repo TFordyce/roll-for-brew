@@ -5,19 +5,6 @@ import { createClient } from "@/lib/supabase/client";
 import { submitOrder, type DrinkType } from "@/lib/supabase/orders";
 import { notifyOrderChangedAction } from "@/app/rounds/actions";
 
-/**
- * Tea/Coffee order buttons flanking a player's own avatar (issue #267) —
- * replaces the standalone "Your Order" card (formerly OrderPicker.tsx) with
- * a picker docked directly to the avatar that already represents you in the
- * roster, rather than a second card the player has to find below it. Same
- * submit_order plumbing, best-effort notifyOrderChangedAction, and RFB29/
- * RFB30 (round gone / Order Window closed) handling as the old OrderPicker
- * — only the presentation changed. Still fully decoupled from declare/
- * withdraw (ADR 0004): available whenever `roundId`'s Order Window is open,
- * independent of round status. Callers should key this on `roundId` so a
- * new round's fresh `initialDrinkType` replaces stale selection state
- * rather than the two fighting each other.
- */
 export function AvatarOrderPicker({
   roundId,
   initialDrinkType,
@@ -25,14 +12,11 @@ export function AvatarOrderPicker({
 }: {
   roundId: string;
   initialDrinkType: DrinkType | null;
-  /** The avatar (or avatar-wrapped-in-profile-link) this picker flanks. */
   children: ReactNode;
 }) {
   const [selected, setSelected] = useState<DrinkType | null>(initialDrinkType);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Set once submit_order rejects with RFB29/RFB30 — see OrderPicker's own
-  // comment on why this disables further taps rather than inviting a retry.
   const [windowClosed, setWindowClosed] = useState(false);
 
   async function pick(drinkType: DrinkType) {
@@ -49,8 +33,6 @@ export function AvatarOrderPicker({
         fd.set("roundId", roundId);
         await notifyOrderChangedAction(fd);
       } catch {
-        // Best-effort — the Order itself already saved; other devices just
-        // pick the change up on their next unrelated refresh instead.
       }
     } catch (err) {
       setSelected(previous);

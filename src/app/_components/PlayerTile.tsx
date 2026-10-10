@@ -8,37 +8,6 @@ import { ModifierBreakdown } from "@/app/_components/ModifierBreakdown";
 import { EffectBadgePopover } from "@/app/_components/EffectBadgePopover";
 import { AvatarOrderPicker } from "@/app/_components/AvatarOrderPicker";
 
-/**
- * A single player's tile — avatar, name, modifier — inside its own small
- * frame (issue #64). Used both for the full daily roster and the "who's in"
- * open-round grid; `joined` lights the tile up to distinguish participants
- * from the rest of the roster in that second view. `effectBadges` (issue
- * #69) renders one dot per active spell-card effect currently on this
- * player — red for negative/debuff, gold for positive/buff — so the roster
- * doubles as an at-a-glance "who's under what effect" view. `revealedRoll`
- * (issue #99) is only passed by TieBanner, once a tied player's reroll comes
- * in — it renders the roll+modifier calculation alongside the raw modifier,
- * rather than leaving them as two values a player has to add up themselves.
- * `playerId`, when passed, makes the avatar a tap target linking to that
- * player's `/:playerId` profile page (issue #135; pointed at the profile
- * page rather than straight to the collection once #212 introduced it)
- * — used for the room roster
- * grids, not the tied-reroll/reveal views that reuse this same tile. Scoped
- * to just the avatar (not the whole tile) so it doesn't compete with the
- * modifier number's own tap target below.
- * `roomId`, when passed alongside `playerId`, additionally makes the
- * modifier number itself a tap/click target opening the modifier breakdown
- * popover (issue #184).
- * Each effect badge dot is itself a tap/click target opening a popover with
- * that effect's card name, tier, and rounds remaining (issue #249) — see
- * `EffectBadgePopover`.
- * `selfPlayerId` + `orderRoundId` (issue #267) together flank *this* tile's
- * avatar with small Tea/Coffee buttons when `playerId === selfPlayerId` —
- * i.e. only ever on the viewer's own tile, never a teammate's. Replaces the
- * standalone "Your Order" card; see `AvatarOrderPicker`. `orderInitialDrinkType`
- * is the same resolved starting selection the old card took (this round's
- * Order, else the player's most recent Order anywhere, else null).
- */
 export function PlayerTile({
   displayName,
   email,
@@ -71,19 +40,12 @@ export function PlayerTile({
   orderInitialDrinkType?: DrinkType | null;
 }) {
   const name = displayName ?? email;
-  // First name only — a long full name wraps to two lines in the tile's
-  // fixed width, so show just the first name and truncate with an ellipsis
-  // rather than wrap. Full name still shows on hover via the title attribute.
-  // The email fallback skips extraction (issue #197) — an email has no
-  // surname to drop.
   const firstNameOnly = firstNameOrFallback(displayName, email);
   const initial = firstNameOnly.trim().charAt(0).toUpperCase() || "?";
 
   const avatar = (
     <div className="flex h-14 w-14 items-center justify-center overflow-hidden rounded-full border-2 border-gilt bg-tavern-plank">
       {avatarUrl ? (
-        // next/image requires allowlisting Google's avatar host; a plain
-        // <img> avoids that config for a small, user-supplied thumbnail.
         // eslint-disable-next-line @next/next/no-img-element
         <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
       ) : (
@@ -96,9 +58,6 @@ export function PlayerTile({
   const isSelf = Boolean(playerId) && playerId === selfPlayerId;
   const avatarWithOrderControls =
     isSelf && orderRoundId ? (
-      // Keyed on orderRoundId so a new round's fresh initial selection
-      // replaces stale client state instead of the two fighting each other
-      // (mirrors OrderPicker's own `key={orderRoundId}` at its old call site).
       <AvatarOrderPicker key={orderRoundId} roundId={orderRoundId} initialDrinkType={orderInitialDrinkType}>
         {avatarLinked}
       </AvatarOrderPicker>

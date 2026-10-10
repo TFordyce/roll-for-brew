@@ -2,10 +2,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace RollForBrew.Api.Data;
 
-/// <summary>
-/// EF Core model for the Filler tables (ADR 0012). Tables stay owned by the hand-written SQL migrations
-/// until the consolidation slice, so every mapped entity is excluded from EF migrations.
-/// </summary>
 public sealed partial class RfbDbContext(DbContextOptions<RfbDbContext> options) : DbContext(options)
 {
     public DbSet<AdminActingAs> AdminActingAs => Set<AdminActingAs>();
@@ -25,7 +21,6 @@ public sealed partial class RfbDbContext(DbContextOptions<RfbDbContext> options)
     }
 }
 
-/// <summary>One row per admin; a null pointer means "acting as self".</summary>
 public sealed class AdminActingAs
 {
     public required string AdminPlayerId { get; set; }

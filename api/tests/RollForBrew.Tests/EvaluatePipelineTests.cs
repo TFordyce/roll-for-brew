@@ -11,8 +11,6 @@ public class EvaluatePipelineTests
     [Fact]
     public void Phase_order_is_the_order_SQL_executes_including_4c_before_4b()
     {
-        // _rr_resolve_eval order, NOT the ticket numbering: 0b and 2 follow 1; 4c runs before 4b; the 4b-pre tick
-        // synthesis runs before the 4b projection that reads its rows; the Summary sits between 4b and Phase 5.
         Assert.Equal(
             ["load-rollers", "roll-frozen", "roll-exemption", "0a", "1", "1-ward-blocked-prepass", "1-brewmageddon-prepass",
              "0b", "2", "3-pre", "3", "4a", "4c", "4b-pre", "4b", "summary", "5", "6"],
@@ -23,14 +21,14 @@ public class EvaluatePipelineTests
     [Fact]
     public void Evaluate_is_deterministic_and_leaves_the_snapshot_untouched()
     {
-        var fx = GoldenFixture.Load("0-spell-copy-onto-apprentice-caster"); // synthesises a copy row internally
+        var fx = GoldenFixture.Load("0-spell-copy-onto-apprentice-caster");
         var before = fx.Snapshot.SpellCasts.ToList();
         var a = GoldenWriter.Render(fx.Name, Evaluator.Evaluate(fx.Snapshot, fx.RoundId, new NoDiceRoller()), fx.Roster);
         var b = GoldenWriter.Render(fx.Name, Evaluator.Evaluate(fx.Snapshot, fx.RoundId, new NoDiceRoller()), fx.Roster);
         Assert.Equal(a, b);
-        Assert.Equal(before, fx.Snapshot.SpellCasts); // the working copy is private
+        Assert.Equal(before, fx.Snapshot.SpellCasts);
         var derived = Evaluator.Evaluate(fx.Snapshot, fx.RoundId, new NoDiceRoller()).Derived;
-        Assert.Single(derived.SynthesizedCasts); // the Apprentice copy, as derived cast state for Commit
+        Assert.Single(derived.SynthesizedCasts);
     }
 
     [Fact]
@@ -49,11 +47,10 @@ public class EvaluatePipelineTests
         Assert.Equal(3, r.Roll(4));
         Assert.Equal(4, r.Roll(4));
         Assert.Equal([4, 4], r.Requests);
-        Assert.Throws<InvalidOperationException>(() => r.Roll(4)); // exhausted
-        Assert.Throws<InvalidOperationException>(() => new ScriptedDieRoller(5).Roll(4)); // not a d4
+        Assert.Throws<InvalidOperationException>(() => r.Roll(4));
+        Assert.Throws<InvalidOperationException>(() => new ScriptedDieRoller(5).Roll(4));
     }
 
-    // ---- tie layers: early return, empty trace -------------------------------------------------
 
     private static RoundSnapshot TieLayerSnapshot(int[] rolls, int[] snapshots, int layer = 1)
     {
@@ -100,7 +97,7 @@ public class EvaluatePipelineTests
     public void Tie_layer_natural_one_loses_before_totals_are_compared()
     {
         var r = Evaluator.Evaluate(TieLayerSnapshot([1, 2, 12], [9, 0, 0]), new NoDiceRoller());
-        Assert.Equal("p0", r.BrewerId); // 1+9 > 2+0, but a natural 1 loses first
+        Assert.Equal("p0", r.BrewerId);
     }
 
     [Fact]
@@ -120,7 +117,6 @@ public class EvaluatePipelineTests
         Assert.Equal("resolve_round_not_found", e.Code);
     }
 
-    // ---- Trace / Summary wire shape (frozen, ADR 0010) -----------------------------------------
 
     [Fact]
     public void Trace_step_keys_serialise_in_postgres_jsonb_order_length_then_bytewise()
@@ -163,7 +159,7 @@ public class EvaluatePipelineTests
         var step = TraceStep.Create(0, "x", SourceCast.None, null, TraceValue.Status("a<b>&'é\"\\"), TraceValue.Status("b"),
             ("empty_list", new List<object?>()), ("empty_obj", new Dictionary<string, object?>()));
         var json = TraceJson.Pretty(TraceJson.ToNode(step));
-        Assert.Contains("\"value\": \"a<b>&'é\\\"\\\\\"", json); // no HTML / non-ASCII escaping, like JSON.stringify
+        Assert.Contains("\"value\": \"a<b>&'é\\\"\\\\\"", json);
         Assert.Contains("\"empty_list\": []", json);
         Assert.Contains("\"empty_obj\": {}", json);
     }

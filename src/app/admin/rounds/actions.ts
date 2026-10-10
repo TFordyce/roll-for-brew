@@ -6,12 +6,6 @@ import { adminDeleteRound } from "@/lib/supabase/adminRounds";
 
 export type DeleteRoundState = { status: "idle" } | { status: "error"; message: string };
 
-/**
- * Deletes an invalid round (issue #189), keyed off the RFB16/RFB17/RFB18
- * error codes admin_delete_round raises (0055_admin_delete_round.sql) — same
- * "strip the RPC's own prefix, surface the rest" handling
- * allocateSpellCardAction (src/app/admin/cards/actions.ts) already models.
- */
 export async function deleteRoundAction(
   _prevState: DeleteRoundState,
   formData: FormData,

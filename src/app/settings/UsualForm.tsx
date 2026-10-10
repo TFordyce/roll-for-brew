@@ -9,17 +9,6 @@ const initialState: UpdateUsualDrinkState = { status: "idle" };
 const selectClassName =
   "rounded-md border-2 border-gilt-dark bg-tavern-panel-dark px-2 py-1.5 text-sm text-parchment focus:border-gilt focus:outline-none";
 
-/**
- * One drink type's Usual editor (tea or coffee, issue #225) — a milk
- * selector and a sugar selector saved together via updateUsualDrinkAction.
- * Rendered twice by UsualForm below, once per drink type, each with its own
- * save state so editing one Usual never disturbs the other's "Saved" flash.
- * An unset Usual (usual === null) starts both selects on their first
- * option rather than leaving them blank — a valid, no-preference state that
- * only becomes a saved row once the player actually hits Save. The status
- * line above the selects is what actually distinguishes "never saved" from
- * "saved as Dairy/None", since the selects themselves can't show blank.
- */
 function UsualDrinkSection({ drinkType, usual }: { drinkType: DrinkType; usual: UsualDrink | null }) {
   const [state, formAction, isPending] = useActionState(updateUsualDrinkAction, initialState);
   const [showSaved, setShowSaved] = useState(false);
@@ -86,12 +75,6 @@ function UsualDrinkSection({ drinkType, usual }: { drinkType: DrinkType; usual: 
   );
 }
 
-/**
- * Settings' Tea Usual / Coffee Usual editors (issue #225) — two
- * independent UsualDrinkSections, one per drink type. The caller (Settings
- * page) supplies whichever Usuals are currently saved, `null` for either
- * that's never been set.
- */
 export function UsualForm({
   usualDrinks,
 }: {

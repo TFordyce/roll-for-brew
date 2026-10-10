@@ -16,9 +16,6 @@ function fakeSupabase() {
     channel: vi.fn(() => channel),
     removeChannel: vi.fn(),
   };
-  // Test-only helper: the events under test are always registered via `on()`
-  // before this is called, so the lookup is safe — this just gives tsc proof
-  // of that instead of a possibly-undefined call at each site.
   const getListener = (event: string): BroadcastListener => {
     const listener = listeners[event];
     if (!listener) throw new Error(`no listener registered for "${event}"`);

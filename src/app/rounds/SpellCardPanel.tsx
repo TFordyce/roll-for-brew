@@ -6,15 +6,6 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 import { TargetConfirmForm } from "@/app/rounds/SpellCardForms";
 
-/**
- * The pending-decision prompts that aren't about the held card's own display
- * (issue #266 split this out of the old combined "Your Spell Card" panel):
- * the keep-or-swap decision after a nat-1/nat-20 draw, and target
- * confirmation for casts armed before declare-in closed. The held card
- * itself now lives in the docked `HeldCardThumbnail`. The two prompts get
- * their own titled `CardFrame`s (rather than one shared title) since they
- * can coexist and answer different questions.
- */
 export function SpellCardPanel({
   heldCards,
   pendingCasts,

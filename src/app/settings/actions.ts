@@ -40,12 +40,6 @@ export async function updateRollInputModeAction(
 
 export type UpdateUsualDrinkState = { status: "idle" } | { status: "saved"; drinkType: DrinkType };
 
-/**
- * Upserts the caller's own Usual for one drink type (tea/coffee, issue
- * #225) — mirrors updateRollInputModeAction: a direct table write behind
- * usual_drinks' own-row RLS policies, no RPC. drinkType travels as a hidden
- * form field so the same action serves both Usual sections independently.
- */
 export async function updateUsualDrinkAction(
   _prevState: UpdateUsualDrinkState,
   formData: FormData,
@@ -53,8 +47,6 @@ export async function updateUsualDrinkAction(
   const drinkType = formData.get("drinkType");
   const milk = formData.get("milk");
   const sugar = formData.get("sugar");
-  // Unchecked checkboxes are simply absent from FormData -- presence, not
-  // value, is what "checked" means here, same as any HTML checkbox.
   const decaf = formData.get("decaf") !== null;
 
   if (typeof drinkType !== "string" || !DRINK_TYPES.includes(drinkType as DrinkType)) {
@@ -78,12 +70,6 @@ export async function updateUsualDrinkAction(
   return { status: "saved", drinkType: drinkType as DrinkType };
 }
 
-/**
- * Sets/clears the Admin Mode cookie (never a DB write — see
- * src/lib/supabase/adminMode.ts). Re-checks is_admin server-side rather than
- * trusting the form, so a non-admin can't grant themselves the cookie by
- * posting directly to this action.
- */
 export async function setAdminModeAction(formData: FormData): Promise<void> {
   const supabase = await createClient();
   const current = await getCurrentPlayer(supabase);
@@ -103,13 +89,6 @@ export async function setAdminModeAction(formData: FormData): Promise<void> {
 
 export type LogModifierAdjustmentState = { status: "idle" } | { status: "error"; message: string };
 
-/**
- * Logs a Modifier Adjustment (issue #183). Client-side validation (required
- * fields, a `!= 0` number input) makes most bad submissions impossible, but
- * the RFB10/RFB11/RFB12 codes log_modifier_adjustment (0052) raises are
- * re-checked here anyway and surfaced as friendly messages — same "block,
- * don't crash" shape as allocateSpellCardAction's RFB07/RFB08 handling.
- */
 export async function logModifierAdjustmentAction(
   _prevState: LogModifierAdjustmentState,
   formData: FormData,
@@ -149,13 +128,6 @@ export async function logModifierAdjustmentAction(
   return { status: "idle" };
 }
 
-/**
- * Undoes the caller's own most-recent Modifier Adjustment (issue #183). Only
- * ever rendered for the caller's own eligible entry (ModifierAdjustmentList),
- * so a rejection here means the window closed or another adjustment was
- * logged between render and submit — that's surfaced as a thrown error
- * rather than a friendly message, same as unassignSpellCardAction.
- */
 export async function deleteModifierAdjustmentAction(formData: FormData): Promise<void> {
   const adjustmentId = formData.get("adjustmentId");
   if (typeof adjustmentId !== "string" || !adjustmentId) {

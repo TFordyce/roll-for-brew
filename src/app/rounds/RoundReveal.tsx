@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRoomRefresh } from "@/lib/room/roomViewContext";
 import { createClient } from "@/lib/supabase/client";
 import { type LayerRollsRevealedPayload, type RoundRevealedPayload } from "@/lib/supabase/realtime";
@@ -23,67 +23,6 @@ export type RoundRevealParticipant = {
   modifier: number;
 };
 
-/**
- * The layer-0 dice view (prototype Variant A:
- * prototype/roll-reveal-ui/index.html). Every participant's die spins until
- * one of three things happens: the caller personally submits their own roll
- * (that one die flips immediately — "hidden from everyone but not from
- * yourself once you've rolled"), the room's Realtime Broadcast channel
- * delivers layer-rolls-revealed (every die flips to its actual value, in
- * lockstep, but with nobody highlighted as brewer yet — issue #68: this is
- * the moment the reaction window, rendered above/alongside this component in
- * page.tsx via ReactionBanner, can open), or it delivers round-revealed
- * (the brewer is now decided — highlights them and, after a beat, refreshes
- * to move on). round-revealed no longer necessarily follows
- * layer-rolls-revealed immediately: a reaction window, and any
- * forced-reroll-in-place effect it resolves into, can sit between them with
- * no timeout of its own. Also listens for layer-tied (issue #20): if layer 0
- * itself ties, every device needs to swap this roster for the tie banner, so
- * it refreshes just like a reveal does. And listens for
- * room-changed (issue #245): this component is mounted for the
- * round's entire closed/tie phase, ahead of ReactionBanner ever existing, so
- * it's the only thing that can catch a reaction window's first-open
- * change and refresh the page to bring the banner into existence — once
- * mounted, the banner's own listener takes over for every later change to
- * that same window (hasOpenReactionWindow guards against both refreshing at
- * once).
- *
- * On round-revealed, the losing player (the brewer) gets a full-screen
- * "Get the kettle on" modal covering the result until they dismiss it (a
- * deliberate exception to the no-full-screen-modal precedent set for the
- * reaction banner — this one's a one-off reveal beat aimed only at the
- * brewer, not a recurring interruption for everyone). Everyone else sees the
- * results immediately, no modal. Once results are visible to a given
- * player — immediately for non-brewers, on dismiss for the brewer — a
- * 5-minute idle timer refreshes the page back to the normal room state, so a
- * room nobody navigates away from doesn't sit on the results screen
- * indefinitely. The timer is cleared on unmount so navigating away cancels
- * it rather than firing late.
- *
- * Each row also carries any reroll history the player went through (issue
- * #220): once a layer-0 tie sends a player through one or more reroll
- * layers, buildRerollChain (src/lib/game/roundRecap.ts, issue #406) walks
- * get_round_recap's per-layer rolls and layer participants into an ordered
- * list of dependent rows nested under that player's primary row — one per reroll
- * level, indented further for a chained tie, each rendered with the same
- * rich RollCalculation treatment as layer 0 (never a discarded die or
- * effect badge, since #219 fixed spell effects/reactions out of tie-break
- * rerolls entirely). This is layer history, not the live tie phase itself —
- * TieBanner still owns the roll-in prompt for whichever layer is currently
- * live (issue #220 piece 3) — so a given reroll level only shows up here
- * once its layer has fully completed.
- *
- * page.tsx keeps this component mounted for the round's entire closed
- * phase now, tie phase included (issue #220 piece 4) — not just after the
- * final layer resolves, as before. That matters beyond showing the nested
- * rows live: finalize_layer has already committed the round as 'resolved' by
- * the time round-revealed broadcasts (see advanceRound.ts), so a round
- * that ever tied would previously vanish from the next server fetch
- * before this component — the only thing that
- * actually holds rolls/brewerId/showKettleModal in local state and
- * deliberately avoids refreshing on round-revealed — ever got a chance to
- * mount and catch that broadcast at all.
- */
 const RESULTS_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function RoundReveal({
@@ -101,18 +40,7 @@ export function RoundReveal({
   participants: RoundRevealParticipant[];
   selfPlayerId: string;
   ownRoll: number | null;
-  // Issue #245: whether page.tsx's own server-side read already sees an
-  // open reaction window (i.e. whether ReactionBanner is currently
-  // mounted alongside this component). Lets the room-changed
-  // handler below refresh only for a window's *first* appearance — once
-  // the banner is mounted it owns every subsequent refresh for that same
-  // event itself, so this stays a no-op rather than double-refreshing.
   hasOpenReactionWindow: boolean;
-  // Room view (spec #533, slice 1c): the view drops a round the moment it
-  // resolves, which would unmount this component before anyone has seen the
-  // result. RoomScreen passes these to keep it mounted -- onRevealed when the
-  // brewer is decided, onResultsDone when the results screen is finished with.
-  // Unset on the legacy page, where the 5-minute timer just refreshes.
   onRevealed?: () => void;
   onResultsDone?: () => void;
 }) {
@@ -120,26 +48,17 @@ export function RoundReveal({
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
   const [showKettleModal, setShowKettleModal] = useState(false);
-  // Everything the rows, the Ledger and the Reroll Chain render (spec #402,
-  // ADR 0007): one get_round_recap read — the Resolution Trace and Summary
-  // (the Provisional Recap's dry run while the round is live), the cast list,
-  // and the layer rolls + tie-break participants. Fetched client-side (no
-  // realtime broadcast carries it). Best-effort: a failed fetch leaves the
-  // rows showing just the revealed dice.
   const [recap, setRecap] = useState<RoundRecapData | null>(null);
-  // Bumped by every broadcast that can change what the resolver would say —
-  // any layer's reveal, round-revealed, a cast, a pass / reaction-window
-  // change, a Pending Spell Die's value (issue #409) — to refetch the recap.
   const [recapRefreshToken, setRecapRefreshToken] = useState(0);
   const bumpRecap = () => setRecapRefreshToken((t) => t + 1);
   const resultsTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  function clearResultsTimeout() {
+  const clearResultsTimeout = useCallback(() => {
     if (resultsTimeoutRef.current !== null) {
       clearTimeout(resultsTimeoutRef.current);
       resultsTimeoutRef.current = null;
     }
-  }
+  }, []);
 
   function startResultsTimeout() {
     clearResultsTimeout();
@@ -154,8 +73,7 @@ export function RoundReveal({
     setRecapRefreshToken(0);
     clearResultsTimeout();
     return clearResultsTimeout;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId, roundId]);
+  }, [roomId, roundId, clearResultsTimeout]);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,30 +83,18 @@ export function RoundReveal({
         if (!cancelled) setRecap(data);
       })
       .catch(() => {
-        // Best-effort — the plain reveal below still renders.
       });
     return () => {
       cancelled = true;
     };
-    // recapRefreshToken bumps on every broadcast that can move the Trace.
   }, [roundId, recapRefreshToken]);
 
   useRoomChannel(roomId, roundId, {
-    // Scoped to layer 0 — this drives the *primary* row's own die (every
-    // other layer's reveal only ever feeds the nested reroll rows via the
-    // recap refetch below, never this state, or a mid-tie reroll's
-    // reveal would incorrectly overwrite the primary row's already-known
-    // layer-0 value).
     "layer-rolls-revealed": (payload) => {
       if (payload.layer === 0) setRolls(payload.rolls);
       bumpRecap();
     },
     "round-revealed": (payload: RoundRevealedPayload) => {
-      // Same layer-0 scoping as above: a round that went through one or
-      // more ties can be decided by a reroll layer, and payload.rolls is
-      // whichever layer that was (issue #220 piece 4) — never assume it's
-      // layer 0's. The nested rows pick the final layer up via the recap
-      // refetch instead, same as any other layer completion.
       if (payload.layer === 0) setRolls(payload.rolls);
       bumpRecap();
       setBrewerId(payload.brewerId);
@@ -200,19 +106,6 @@ export function RoundReveal({
       }
     },
     "layer-tied": () => refresh(),
-    // Everything else that moves this phase arrives as room-changed: a cancel,
-    // a Late Declare (issue #246: it adds a participant *after* the round has
-    // closed, the phase this component owns), a Round Replay decision (issue
-    // #315: a surviving Time for Brew turns the just-announced round into a
-    // pending scrap/keep decision, and this component is what's mounted at
-    // announce time), and a reaction window's first appearance.
-    //
-    // Issue #245: the refresh is guarded on hasOpenReactionWindow (see its prop
-    // comment): once the banner is mounted it refreshes on the same event
-    // itself, so this doesn't double up with it.
-    // Issue #409: a reaction cast, a pass, a pre-roll cast / target or a Pending
-    // Spell Die's value also moves the Provisional Recap, so it refetches on
-    // every change.
     "room-changed": () => {
       bumpRecap();
       if (!hasOpenReactionWindow) refresh();
@@ -226,19 +119,12 @@ export function RoundReveal({
 
   const revealedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.value]) ?? []);
   const discardedValueByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.discardedValue]) ?? []);
-  // Issue #273's Proxy Roll provenance flag — carried on every rolls
-  // broadcast now (layer-rolls-revealed/round-revealed), same map shape as
-  // discardedValueByPlayerId above.
   const enteredByAdminByPlayerId = new Map(rolls?.map((r) => [r.playerId, r.enteredByAdmin]) ?? []);
   const brewer = participants.find((p) => p.playerId === brewerId);
   const firstNameByPlayerId = new Map(
     participants.map((p) => [p.playerId, firstNameOrFallback(p.displayName, p.email)]),
   );
 
-  // Issue #314: the Round Recap ledger, primary content whenever this round
-  // has >= 1 cast. Zero-cast rounds get hasContent === false and everything
-  // below renders exactly as before. layerZeroOutcome (the tie-break note)
-  // rides on the RPC payload, so nothing extra to thread through here.
   const recapDisplayName = (playerId: string) => firstNameByPlayerId.get(playerId) ?? playerId;
   const recapModel = recap
     ? buildRoundRecap({
@@ -247,13 +133,8 @@ export function RoundReveal({
       })
     : null;
   const hasRecap = recapModel?.hasContent ?? false;
-  // Issue #409: the Provisional Recap — totals and steps so far, never a
-  // brewer or a tie until the round really resolves.
   const provisional = recapModel?.provisional ?? false;
 
-  // Issue #352: a replayed round. The canonical view below is generation 1;
-  // generation 0's own Recap (its Trace, brewer, first-attempt rolls, and any
-  // tie-break reroll rows) hangs above it in a collapsed disclosure.
   const scrappedGenerations = recap?.scrappedGenerations ?? [];
 
   return (
@@ -293,24 +174,12 @@ export function RoundReveal({
           {participants.map((p) => {
             const revealedValue = revealedValueByPlayerId.get(p.playerId);
             const value = revealedValue ?? (p.playerId === selfPlayerId ? ownRoll : null);
-            // Only known once the layer-rolls-revealed/round-revealed
-            // broadcast lands — during the brief self-only ownRoll fallback
-            // window there's no discarded-roll data yet, so it's just
-            // withheld until the real broadcast corrects it moments later.
             const discardedValue = discardedValueByPlayerId.get(p.playerId) ?? null;
             const enteredByAdmin = enteredByAdminByPlayerId.get(p.playerId) ?? false;
-            // Issue #409: never highlight a brewer from a provisional view.
             const isBrewer = brewerId === p.playerId && !provisional;
-            // Issue #406: tie membership from the next layer's participants,
-            // never re-judged here.
             const rerollChain = recap
               ? buildRerollChain(p.playerId, recap.layers, recap.layerParticipants)
               : [];
-            // Issue #407 / #409: the row is the resolver's own output — the
-            // Resolution Summary + Trace terms, or the Provisional Recap's dry
-            // run while the round is live (degraded, no total, for a round
-            // resolved before summaries existed). Until layer 0 is complete
-            // there is no row yet: just the revealed die.
             const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
             const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
 

@@ -10,7 +10,6 @@ const MOCK_ROSTER = [
   { displayName: "Sam", email: "sam@example.com", avatarUrl: null, modifier: -1 },
 ];
 
-/** Toggles the "Room" card between empty and a mock roster — no Supabase, no auth. */
 export function PreviewRoom() {
   const [populated, setPopulated] = useState(false);
 

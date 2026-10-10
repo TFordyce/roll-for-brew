@@ -1,10 +1,5 @@
 "use client";
 
-// A single pixel-art star, lit (gold) or unlit (dim) — copied verbatim
-// from the brew-rating prototype's grid (prototypes/brew-rating-panel.html,
-// issue #202). Extracted from BrewRatingPanel into its own file so the
-// Spell Collection card inspector (issue #300) can reuse the exact same
-// star without importing the whole panel.
 
 const STAR_PATTERN = [
   "....X....",

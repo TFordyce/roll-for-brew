@@ -2,16 +2,6 @@ using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Domain.RoomView;
 
-/// <summary>
-/// The Room view projection (spec #533, "Room view projection"): everything the room page derives today
-/// from its ~44 reads (src/app/page.tsx, src/app/admin/test-room/page.tsx), computed once, for one viewer.
-/// Pure: no clock, no I/O. Game secrecy is enforced here and nowhere else:
-///  - rolls: only the viewer's own value is ever emitted; others appear as "has rolled" ids;
-///  - hands and draws: only bridge results (which are scoped to the effective player in SQL) and nothing
-///    taken from the snapshot's deck instances;
-///  - ratings: only the viewer's own score, via the rater-scoped extras read;
-///  - orders and the menu are public (as RLS makes them today).
-/// </summary>
 public static class RoomViewProjector
 {
     public static RoomViewResponse Project(RoomViewInput input)
@@ -33,7 +23,6 @@ public static class RoomViewProjector
         var layer = active?.CurrentLayer ?? 0;
         var isTiePhase = isClosed && layer > 0;
 
-        // ---- roster with Effect badges (badges only for effects that carry a polarity)
         var badges = r.EffectBadges.Where(b => b.Polarity is not null)
             .GroupBy(b => b.TargetPlayerId)
             .ToDictionary(g => g.Key, g => (IReadOnlyList<EffectBadge>)g
@@ -45,7 +34,6 @@ public static class RoomViewProjector
                 badges.GetValueOrDefault(rp.PlayerId) ?? []))
             .ToList();
 
-        // ---- participants, tie, rolled ids
         var rolls = active is null
             ? new List<RollRow>()
             : s.Rolls.Where(ro => ro.RoundId == active.Id && ro.Generation == active.ReplayGeneration).ToList();
@@ -71,21 +59,18 @@ public static class RoomViewProjector
         var canClose = isOpen && isStarter && participants.Count >= 2;
         var canDeclareLate = isClosed && !hasDeclared && rolls.Count == 0;
 
-        // ---- the viewer's own rolls (never anyone else's value)
         int? OwnRollAt(int l) => rolls.Where(ro => ro.PlayerId == me && ro.Layer == l).Select(ro => (int?)ro.Value).FirstOrDefault();
         int? ownRoll = active is null ? null
             : isTiePhase ? (isTied ? OwnRollAt(layer) : null)
             : isClosed && hasDeclared ? OwnRollAt(0) : null;
         int? layerZeroOwnRoll = !isTiePhase ? ownRoll : isClosed && hasDeclared ? OwnRollAt(0) : null;
 
-        // ---- Compelled Cast step (Brewmageddon), Tea Party Revolt
         var compelledRound = isClosed && layer == 0 ? active : null;
         var step = r.CompelledStep;
         IReadOnlyList<string> stepWaiting = step?.WaitingOn ?? [];
         var myCompelled = compelledRound is null ? null : r.CompelledCast;
         var revoltPicker = compelledRound is null ? null : r.RevoltPickerId;
 
-        // ---- turn to roll: SQL is_expected_layer_roller = expected ids, and not inside the Compelled Cast step at layer 0
         var isExpectedToRoll = isClosed
             && !(layer == 0 && stepWaiting.Count > 0)
             && r.ExpectedRollerIds.Contains(me);
@@ -93,7 +78,6 @@ public static class RoomViewProjector
         var rollInputMode = isPlayersTurn ? x.RollInputMode ?? "in_app_only" : null;
         var needsRollInput = isPlayersTurn && !isTiePhase;
 
-        // ---- Order / Menu: the active round, else the room's latest resolved round (the Order Window outlives it)
         var orderRound = active ?? s.Rounds.Where(rd => rd.RoomId == s.RoomId && rd.Status == "resolved")
             .OrderByDescending(rd => rd.ResolvedAt).FirstOrDefault();
         var orderRoundId = orderRound?.Id;
@@ -105,7 +89,6 @@ public static class RoomViewProjector
         var myOrderForRound = orderRoundId is null ? null : x.MyOrderForRound;
         var myMostRecent = orderRoundId is not null && myOrderForRound is null ? x.MyMostRecentOrder : null;
 
-        // ---- held cards and the gates the page puts on each bridge result
         var held = r.HeldCards;
         bool Holds(string name) => held.Any(c => c.Location == "held" && c.CardName == name);
         var heldReaction = held.FirstOrDefault(c => c.Location == "held" && c.CastingTime == "R");
@@ -139,7 +122,6 @@ public static class RoomViewProjector
             ? new RateableRoundView(rt.RoundId, rt.BrewerDisplayName, rt.BrewerEmail, rt.ResolvedAt, rt.MyScore)
             : null;
 
-        // ---- history: this room's resolved rounds (the stats_room_rounds view excludes the Test Room)
         IReadOnlyList<HistoryEntry> history = room.IsTest
             ? []
             : s.Rounds.Where(rd => rd.RoomId == s.RoomId && rd.Status == "resolved" && rd.BrewerId is not null)
@@ -148,7 +130,6 @@ public static class RoomViewProjector
                     P(rd.BrewerId!)?.DisplayName ?? P(rd.BrewerId!)?.Email))
                 .ToList();
 
-        // ---- the next stall clock
         var layerEntered = active is not null && layer > 0
             ? s.RoundLayerParticipants.Where(p => p.RoundId == active.Id && p.Layer == layer).Select(p => (DateTimeOffset?)p.EnteredAt).Min()
             : null;

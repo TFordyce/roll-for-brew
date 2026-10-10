@@ -45,15 +45,8 @@ const PRIMARY_BUTTON =
 const SECONDARY_BUTTON =
   "w-full rounded-md border-2 border-gilt-dark bg-transparent px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment-dim hover:border-gilt hover:text-parchment disabled:cursor-not-allowed disabled:hover:border-gilt-dark disabled:hover:text-parchment-dim";
 
-/** A resolved round whose result screen is still up (see RoundReveal's onRevealed). */
 type HeldReveal = { roundId: string; participants: RoundRevealParticipant[] };
 
-/**
- * The room page rendered from the room view store (spec #533, slice 1c). One component for both
- * room pages: it maps the view onto the existing panels, which keep their own props and actions.
- * `variant` carries the few places the Test Room differs (roster tiles without ordering, its
- * Order picker, Roll For Others); the shells pass their server-only chrome as slots.
- */
 export function RoomScreen({
   variant,
   top,
@@ -62,11 +55,8 @@ export function RoomScreen({
   raterInitials = "",
 }: {
   variant: "home" | "testRoom";
-  /** Rendered first inside <main>. */
   top: ReactNode;
-  /** After the rating / menu / draw / replay / spell-die panels, before the spell card panels. */
   afterTopPanels: ReactNode;
-  /** Rendered last inside <main>. */
   bottom: ReactNode;
   raterInitials?: string;
 }) {
@@ -135,8 +125,6 @@ export function RoomScreen({
     : null;
   const castNotice = lastDripNotice(lastDrip, (id) => nameOf(id, "A player"));
 
-  // The result screen outlives the round. The view drops a round the moment it resolves, but
-  // RoundReveal is what shows the brewer and the dice -- keep it mounted until it says it is done.
   const [held, setHeld] = useState<HeldReveal | null>(null);
   const latestReveal = useRef<HeldReveal | null>(null);
   latestReveal.current = active ? { roundId: active.roundId, participants: revealParticipants } : null;

@@ -6,7 +6,6 @@ using RollForBrew.Api.Problems;
 
 namespace RollForBrew.Api.Auth;
 
-/// <summary>The validated caller. ClaimsJson is the verified JWT payload, handed to Postgres as request.jwt.claims.</summary>
 public sealed record Caller(string Subject, string ClaimsJson);
 
 public static class AuthSetup
@@ -18,7 +17,6 @@ public static class AuthSetup
         services.AddSingleton<IJwksSource>(_ =>
         {
             var url = cfg["JWKS_URL"];
-            // Unset (local dev, health-only tests): fail only when a token actually needs validating.
             return string.IsNullOrWhiteSpace(url) ? new UnconfiguredJwksSource() : new HttpJwksSource(url);
         });
 
@@ -75,7 +73,6 @@ public static class AuthSetup
         return services;
     }
 
-    /// <summary>The validated caller. Throws when called on an unauthenticated request (a wiring bug).</summary>
     public static Caller GetCaller(this HttpContext ctx) =>
         ctx.Items[CallerKey] as Caller ?? throw new InvalidOperationException("No validated caller on this request.");
 }

@@ -3,13 +3,6 @@ using Testcontainers.PostgreSql;
 
 namespace RollForBrew.Tests.Harness;
 
-/// <summary>
-/// Seam 2 harness (spec #533). One plain-Postgres container per test run. The repo migrations are applied
-/// once, over stubs for the Supabase-only pieces, into a template database; every test class then gets its
-/// own database via CREATE DATABASE ... TEMPLATE, so classes run in parallel with no shared rows.
-///
-/// Usage: <c>await using var db = await TestPostgres.CreateDatabase();</c> in an IAsyncLifetime.
-/// </summary>
 public static class TestPostgres
 {
     public const string ApiRolePassword = "rfb_api_test_pw";
@@ -25,7 +18,7 @@ public static class TestPostgres
     {
         var s = await Shared.Value;
         var name = $"t_{Interlocked.Increment(ref _counter)}_{Guid.NewGuid():N}"[..30];
-        await CloneLock.WaitAsync(); // CREATE DATABASE ... TEMPLATE needs the template idle; serialise the clones only
+        await CloneLock.WaitAsync();
         try
         {
             await using var conn = new NpgsqlConnection(s.Admin.ConnectionString);
@@ -56,7 +49,6 @@ public static class TestPostgres
             await Exec(conn, SupabaseStubs.Sql);
             foreach (var file in Directory.GetFiles(FindMigrationsDir(), "*.sql").OrderBy(Path.GetFileName, StringComparer.Ordinal))
                 await Exec(conn, await File.ReadAllTextAsync(file), Path.GetFileName(file));
-            // Hosted sets this by hand (docs/port/rfb-api-role-runbook.md); tests set a known one.
             await Exec(conn, $"alter role rfb_api password '{ApiRolePassword}'");
         }
         return new State(container, admin);
@@ -86,7 +78,6 @@ public static class TestPostgres
     }
 }
 
-/// <summary>One per-class database. Connect as the owner for seeding, or as rfb_api to behave like the API.</summary>
 public sealed class TestDatabase(NpgsqlConnectionStringBuilder admin, string name) : IAsyncDisposable
 {
     public string Name { get; } = name;
@@ -94,7 +85,6 @@ public sealed class TestDatabase(NpgsqlConnectionStringBuilder admin, string nam
     public string AdminConnectionString =>
         new NpgsqlConnectionStringBuilder(admin.ConnectionString) { Database = Name }.ConnectionString;
 
-    /// <summary>The API's own login: what RoomStore and the HTTP host connect with.</summary>
     public string ApiConnectionString =>
         new NpgsqlConnectionStringBuilder(admin.ConnectionString)
         {
@@ -120,7 +110,6 @@ public sealed class TestDatabase(NpgsqlConnectionStringBuilder admin, string nam
         return v is null or DBNull ? default : (T)v;
     }
 
-    /// <summary>Creates an auth.users row; the migration trigger derives the players row (id = Google sub).</summary>
     public async Task<TestUser> AddUser(string googleSub, bool admin = false)
     {
         var id = Guid.NewGuid();
@@ -134,10 +123,8 @@ public sealed class TestDatabase(NpgsqlConnectionStringBuilder admin, string nam
 
     public ValueTask DisposeAsync()
     {
-        // The container (and every database in it) is reaped by Testcontainers at process end.
         return ValueTask.CompletedTask;
     }
 }
 
-/// <summary>AuthId is the Supabase user id (the JWT sub); PlayerId is the Google sub (players.id).</summary>
 public sealed record TestUser(Guid AuthId, string PlayerId);

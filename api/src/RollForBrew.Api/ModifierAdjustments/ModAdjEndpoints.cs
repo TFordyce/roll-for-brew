@@ -11,7 +11,6 @@ public static class ModAdjEndpoints
 
     public static IEndpointRouteBuilder MapModifierAdjustments(this IEndpointRouteBuilder app)
     {
-        // Operation names match the TS wrappers (docs/port/port-flags.md).
         app.MapPost("/modifier-adjustments", async (HttpContext http, RoomStore store, LogRequest body, CancellationToken ct) =>
             Results.Ok(new AdjustmentIdResponse(await store.Filler(http.GetCaller(),
                 s => ModAdjRules.Log(s, body.TargetPlayerId, body.Delta, body.Reason, ct), ct))))

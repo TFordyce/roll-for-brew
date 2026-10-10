@@ -1,9 +1,5 @@
 namespace RollForBrew.Domain.Resolver.Phases;
 
-/// <summary>
-/// The layer-0 Resolution Summary (issue #407, ADR 0007): each roller's final roll, snapshot, composed modifier,
-/// total and nat standing, built from the working arrays after the modifier phases. Phase 5 moves none of them.
-/// </summary>
 internal sealed class SummaryPhase : EvalPhase
 {
     public override string Id => "summary";
@@ -20,13 +16,6 @@ internal sealed class SummaryPhase : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 5 (ADR 0005): tea-maker selection by the Tea-Maker Precedence Ladder (issue #451), then Eternal Steep's
-/// block_earned_modifier ward zeroing the gain. PORTED HERE: only tier 4, the default lowest roller, and the
-/// Eternal Steep ward. NOT PORTED (#544): Brew Debt, tier 0 Brewer Immunity, tier 1 declared number, tier 2
-/// overrides, tier 3 Loose Leaf roll-off, Earl transfer, brewer_record. The guard throws when the snapshot
-/// engages any of those, so a default-pick answer is never given for a round that needs the ladder.
-/// </summary>
 internal sealed class Phase5TeaMaker : EvalPhase
 {
     public override string Id => "5";
@@ -48,7 +37,6 @@ internal sealed class Phase5TeaMaker : EvalPhase
             ctx.BrewerSource = "default";
         }
 
-        // Issue #309: a block_earned_modifier ward on the brewer (Eternal Steep) zeroes their tea-making gain.
         if (ctx.BrewerId is { } brewer && ctx.WardMap.TryGetValue(brewer, out var wards) && wards.FirstOrDefault(w => w.BlockEarnedModifier) is { } ward)
         {
             if (ctx.ModifierGain != 0)
@@ -71,10 +59,6 @@ internal sealed class Phase5TeaMaker : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 6 (issues #438 / #436): Tea Heist outcome steps, then Marked for Brew / Stale Biscuit draw_redirect
-/// steps. Trace only; the card move is Commit's. NOT PORTED (#545).
-/// </summary>
 internal sealed class Phase6HeistsAndMarks : EvalPhase
 {
     public override string Id => "6";

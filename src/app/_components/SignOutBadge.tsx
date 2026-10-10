@@ -3,15 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 
-/**
- * Top-right signed-in badge. For everyone (the common case, `showAdminMenu`
- * false), clicking the name confirms then submits the existing
- * /auth/signout form — unchanged behavior. For a qualifying admin
- * (canAccessTestRoom true — see src/lib/game/testRoomAccess.ts), clicking
- * instead opens a small menu with "Admin" (-> /admin/test-room) and "Sign
- * out" (today's confirm+submit flow), so sign-out no longer fires
- * immediately for that one case.
- */
 export function SignOutBadge({ name, showAdminMenu = false }: { name: string; showAdminMenu?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
 

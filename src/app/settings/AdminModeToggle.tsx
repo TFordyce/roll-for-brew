@@ -3,12 +3,6 @@
 import { setAdminModeAction } from "@/app/settings/actions";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 
-/**
- * Admin Mode toggle (issue #101) — only ever rendered for a flagged
- * `players.is_admin` caller (see SettingsPage). Each click submits
- * immediately rather than needing a separate "Save", since it's a single
- * boolean cookie flip, not a form with several fields.
- */
 export function AdminModeToggle({ enabled }: { enabled: boolean }) {
   return (
     <form action={setAdminModeAction}>

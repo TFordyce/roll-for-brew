@@ -1,4 +1,3 @@
-# Build context is api/ . cloudbuild.yaml first writes api/schema-version.txt (newest migration filename).
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY global.json RollForBrew.sln ./
@@ -13,7 +12,6 @@ RUN dotnet publish src/RollForBrew.Api/RollForBrew.Api.csproj -c Release -r linu
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /out .
-# Newest migration filename; the startup probe (/health/ready) fails until it is in schema_migrations.
 COPY schema-version.tx[t] ./
 ENV ASPNETCORE_HTTP_PORTS=8080
 EXPOSE 8080

@@ -35,10 +35,8 @@ function fakeStore() {
   return { refetch: vi.fn() };
 }
 
-// The animation events that survive the room-changed vocabulary (ADR 0011), written out independently of the code.
 const ANIMATION_EVENTS = ["round-revealed", "layer-tied", "layer-rolls-revealed"];
 
-// The nine refetch-only events room-changed replaced; no sender emits them any more.
 const RETIRED_EVENTS = [
   "round-cancelled",
   "round-closed",
@@ -112,7 +110,6 @@ describe("subscribeRoomViewStore", () => {
     const { supabase, emit } = fakeSupabase();
     subscribeRoomViewStore(supabase, "room-1", store, { onResubscribe: () => {} });
 
-    // An unported SQL path wrote without bumping rooms.version, so the view comes back at the same version.
     emit("room-changed", {});
     await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ marker: "after-unported-write" }));
     expect(fetchView).toHaveBeenCalledTimes(1);

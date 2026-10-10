@@ -10,9 +10,6 @@ public static class ActingAsEndpoints
 
     public static IEndpointRouteBuilder MapActingAs(this IEndpointRouteBuilder app)
     {
-        // Same result as SQL get_acting_as(): the caller's own pointer, or null.
-        // The caller is the validated JWT's player. Nothing in the request can name another admin or
-        // another player to act as (ADR 0001); query, header and body are ignored.
         app.MapGet("/acting-as", async (HttpContext http, RoomStore store, CancellationToken ct) =>
         {
             var caller = http.GetCaller();
@@ -25,7 +22,7 @@ public static class ActingAsEndpoints
                     .SingleOrDefaultAsync(ct);
             }, ct);
             return Results.Ok(new ActingAsResponse(pointer));
-        }).Produces<ActingAsResponse>().WithName("getActingAs"); // named for the generated TS client (api/openapi/)
+        }).Produces<ActingAsResponse>().WithName("getActingAs");
         return app;
     }
 }

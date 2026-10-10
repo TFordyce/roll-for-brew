@@ -9,13 +9,6 @@ import { CardFrame } from "@/app/_components/CardFrame";
 import { RoundRecap } from "@/app/_components/RoundRecap";
 import { ScrappedGenerationDisclosure } from "@/app/_components/ScrappedGenerationDisclosure";
 
-/**
- * Room history (issue #314): every resolved round of the current room as a
- * collapsed one-line summary that expands to its full ledger inline, drawn by
- * the same RoundRecap renderer. The Trace is fetched lazily on first expand
- * (readable by any room member since #409, so a round the viewer sat out shows
- * its ledger too; "no recap available" is left for a round outside the room).
- */
 
 export type RoundRecapHistoryEntry = {
   roundId: string;
@@ -51,8 +44,6 @@ function HistoryRow({
       const built = buildRoundRecap({ data, displayName });
       setModel(built);
       setScrappedGenerations(data.scrappedGenerations);
-      // A replayed round with no generation-1 casts still has a scrapped
-      // attempt to show — "ready" whenever there is anything to render.
       setState(built.hasContent || data.scrappedGenerations.length > 0 ? "ready" : "empty");
     } catch {
       setState("error");

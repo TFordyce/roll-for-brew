@@ -4,12 +4,10 @@ using static RollForBrew.Tests.RoomView.ViewFixture;
 
 namespace RollForBrew.Tests.RoomView;
 
-/// <summary>The room page's derivations (src/app/page.tsx), one behaviour per test.</summary>
 public class RoomViewProjectorTests
 {
     private static ViewerReads Reads(Func<ViewerReads, ViewerReads> f) => f(ViewerReads.Empty);
 
-    // ---- idle / open
 
     [Fact]
     public void Idle_room_offers_start_round_and_the_idle_panel_only()
@@ -51,7 +49,7 @@ public class RoomViewProjectorTests
         Assert.Equal(1, one.Viewer.NeedMoreToClose);
         Assert.True(one.Viewer.Panels.WhosIn);
         Assert.False(one.Viewer.CanDeclare);
-        Assert.False(one.Viewer.CanWithdraw); // the starter's row is owning the round
+        Assert.False(one.Viewer.CanWithdraw);
 
         var two = new ViewFixture().OpenRound("ann", "bob").Project();
         Assert.True(two.Viewer.CanClose);
@@ -72,7 +70,6 @@ public class RoomViewProjectorTests
         Assert.True(after.Viewer.HasDeclared);
     }
 
-    // ---- late declare
 
     [Fact]
     public void Late_declare_is_offered_to_an_undeclared_viewer_until_any_roll_lands()
@@ -91,7 +88,6 @@ public class RoomViewProjectorTests
         Assert.False(new ViewFixture().ClosedRound(0, "ann", "bob").Project().Viewer.CanDeclareLate);
     }
 
-    // ---- turn to roll
 
     [Fact]
     public void Turn_to_roll_needs_expected_roller_and_no_roll_yet()
@@ -100,7 +96,7 @@ public class RoomViewProjectorTests
         var v = f.Project();
         Assert.True(v.Viewer.IsPlayersTurnToRoll);
         Assert.True(v.Viewer.NeedsRollInput);
-        Assert.Equal("in_app_only", v.Viewer.RollInputMode); // the default when the viewer never opened Settings
+        Assert.Equal("in_app_only", v.Viewer.RollInputMode);
         Assert.True(v.Viewer.Panels.RollInput);
 
         f.Extras = f.Extras with { RollInputMode = "both" };
@@ -147,7 +143,6 @@ public class RoomViewProjectorTests
         Assert.Equal("A", v.Viewer.CompelledCast.Mine!.CastingTime);
     }
 
-    // ---- tie phase
 
     [Fact]
     public void Tie_phase_reads_the_current_layer_roll_and_shows_the_tie_banner_not_the_roll_input_gate()
@@ -162,10 +157,10 @@ public class RoomViewProjectorTests
         Assert.Equal(["ann", "bob"], v.Room.ActiveRound.TiedParticipants.Select(t => t.PlayerId));
         Assert.True(v.Viewer.IsTied);
         Assert.True(v.Viewer.Panels.TieBanner);
-        Assert.Null(v.Viewer.OwnRoll);              // no layer-1 roll yet
-        Assert.Equal(4, v.Viewer.LayerZeroOwnRoll); // layer 0 stays visible to RoundReveal
+        Assert.Null(v.Viewer.OwnRoll);
+        Assert.Equal(4, v.Viewer.LayerZeroOwnRoll);
         Assert.True(v.Viewer.IsPlayersTurnToRoll);
-        Assert.False(v.Viewer.NeedsRollInput);      // the TieRollModal owns tie rolling
+        Assert.False(v.Viewer.NeedsRollInput);
 
         f.Rolls.Add(Roll("bob", 12, layer: 1));
         Assert.Equal(12, f.Project().Viewer.OwnRoll);
@@ -204,7 +199,6 @@ public class RoomViewProjectorTests
         Assert.Null(f.Project().Viewer.OwnRoll);
     }
 
-    // ---- tea party revolt, held cards and their gates
 
     [Fact]
     public void Tea_party_revolt_panel_needs_a_picker_in_a_closed_layer_zero_round()
@@ -294,7 +288,6 @@ public class RoomViewProjectorTests
         Assert.True(f.Project().Viewer.Panels.SpellDrawChoice);
     }
 
-    // ---- reaction window
 
     [Fact]
     public void Reaction_window_exposes_stack_pending_players_and_skip_vote_while_closed()
@@ -330,7 +323,6 @@ public class RoomViewProjectorTests
         Assert.Null(new ViewFixture().OpenRound("ann", "bob").With(_ => window1).Project().Viewer.Reaction);
     }
 
-    // ---- orders, menu, rating, replay
 
     [Fact]
     public void Order_round_is_the_active_round_else_the_latest_resolved_one()
@@ -386,7 +378,6 @@ public class RoomViewProjectorTests
         Assert.True(f.Project().Viewer.PendingRoundReplay!.IsCaster);
     }
 
-    // ---- history
 
     [Fact]
     public void History_lists_resolved_rounds_newest_first_with_the_brewer_name()
@@ -411,12 +402,10 @@ public class RoomViewProjectorTests
         Assert.Empty(f.Project().Room.History);
     }
 
-    // ---- viewer identity
 
     [Fact]
     public void The_projection_is_computed_for_the_viewer_it_is_given()
     {
-        // Acting As is resolved before projection: an admin acting as bob is simply viewer "bob".
         var f = new ViewFixture().ClosedRound(0, "ann", "bob").With(r => r with { ExpectedRollerIds = ["ann", "bob"] });
         f.Rolls.Add(Roll("ann", 9));
         f.Viewer = "bob";

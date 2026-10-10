@@ -2,13 +2,6 @@ using System.Text.Json;
 
 namespace RollForBrew.Domain.Resolver.Phases;
 
-/// <summary>
-/// Phase 4a (spec section 6): gather modifier-bucket effects (flat / dice / multiplier / set, from this round's
-/// Cast Log and live persistent effects), bucket per target in application order, drop ward-blocked ones with a
-/// warded step, re-bucket a backfired counter's victim rows onto the reactor, then compose each player's modifier
-/// and emit one running before/after step per surviving effect. Also builds the targeting_skip map (#321).
-/// Fully ported here because the Phase 0-2 goldens' summaries need it; #543 owns its further coverage.
-/// </summary>
 internal sealed class Phase4aModifiers : EvalPhase
 {
     private static readonly HashSet<string> ModKinds = ["flat_modifier", "dice_modifier", "modifier_multiplier", "set_modifier"];
@@ -49,7 +42,6 @@ internal sealed class Phase4aModifiers : EvalPhase
             ctx.Effects[target].Add(el);
         }
 
-        // Issue #308: a backfired counter re-buckets every modifier row of its victim group onto the reactor.
         if (ctx.HasCounters)
         {
             foreach (var bf in ctx.ClrRows.Where(r => r.CounterBackfired).OrderBy(r => r.CounterSeq))
@@ -79,7 +71,6 @@ internal sealed class Phase4aModifiers : EvalPhase
             }
         }
 
-        // Compose each player's final modifier, one step per effect with a running before/after.
         for (var i = 0; i < ctx.Players.Count; i++)
         {
             var pid = ctx.Players[i];
@@ -99,7 +90,6 @@ internal sealed class Phase4aModifiers : EvalPhase
             ctx.Composed[i] = after;
         }
 
-        // Issue #321 (Cloud of Cream): earliest live targeting_skip per player, consumed by Phases 4c and 5.
         ctx.SkipMap.Clear();
         foreach (var g in ctx.LiveEffects.Where(e => e.EffectKind == "targeting_skip").GroupBy(e => e.TargetPlayerId))
         {
@@ -108,7 +98,6 @@ internal sealed class Phase4aModifiers : EvalPhase
         }
     }
 
-    /// <summary>Issue #309 ward filter: emits the warded step and returns true when an earlier-seq ward blocks this effect.</summary>
     private bool WardBlocks(EvalContext ctx, ModEffect el, string target, long? ord, string caster)
     {
         if (!ctx.WardMap.ContainsKey(target)) return false;
@@ -130,11 +119,6 @@ internal sealed class Phase4aModifiers : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 4c (Broken Biscuit, lowest_gains_highest_modifier). Runs BEFORE 4b in the SQL; the order is pinned by a test.
-/// NOT PORTED (#543). Throws only when a live lowest_gains_highest_modifier cast in a reaction window exists
-/// (the snapshot carries no window rows, so "in a window" is "has a reaction_window_id").
-/// </summary>
 internal sealed class Phase4cLowestGainsHighest : EvalPhase
 {
     public override string Id => "4c";
@@ -145,10 +129,6 @@ internal sealed class Phase4cLowestGainsHighest : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 4b-pre (issue #342): Bitter Leech per-round tick synthesis plus the ward pre-pass on its rows. Runs
-/// before the 4b projection that consumes the synthesised rows. NOT PORTED (#543).
-/// </summary>
 internal sealed class Phase4bPreBitterLeech : EvalPhase
 {
     public override string Id => "4b-pre";
@@ -159,10 +139,6 @@ internal sealed class Phase4bPreBitterLeech : EvalPhase
     }
 }
 
-/// <summary>
-/// Phase 4b (issue #311): persistent (rest-of-day) modifier delta projection; the one phase that writes the
-/// room_players.modifier cache (recorded in ctx.RoomPlayerModifierWrites for Commit). NOT PORTED (#543).
-/// </summary>
 internal sealed class Phase4bPersistentModifiers : EvalPhase
 {
     public override string Id => "4b";

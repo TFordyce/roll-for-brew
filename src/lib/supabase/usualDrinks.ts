@@ -14,20 +14,6 @@ export const SUGAR_OPTIONS: Sugar[] = ["None", "Sprinkle", "Half Tsp", "1 Tsp", 
 
 export type UsualDrink = { milk: Milk; sugar: Sugar; decaf: boolean };
 
-/**
- * A given player's Usual for both drink types (supabase/migrations/
- * 0062_usual_order_menu.sql, issue #224), keyed by drink_type. `playerId` is
- * caller-supplied, not RLS-restricted to the caller's own row -- unlike
- * player_settings, usual_drinks' SELECT policy is world-readable (round_menu
- * needs to join any participant's Usual), so this can read anyone's row; the
- * Settings page (issue #225) just happens to always call it with the
- * current player's own id. A drink type with no saved row comes back as
- * `null` -- leaving a Usual unset is a valid state, not an error.
- *
- * `decaf` (0063_usual_drinks_decaf.sql, issue #237) is a hard requirement on
- * the Usual, tracked independently per drink type -- there's no separate
- * "decaf" row or global flag.
- */
 export async function getUsualDrinks(
   supabase: SupabaseClient,
   playerId: string,
@@ -47,12 +33,6 @@ export async function getUsualDrinks(
   return result;
 }
 
-/**
- * Upserts the caller's Usual for one drink type. Direct table write (not an
- * RPC), matching setRollInputMode: usual_drinks' own-row RLS policies
- * (insertable/updatable by their own player) are the only guard needed, same
- * as player_settings.
- */
 export async function setUsualDrink(
   supabase: SupabaseClient,
   playerId: string,

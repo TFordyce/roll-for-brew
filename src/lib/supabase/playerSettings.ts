@@ -6,11 +6,6 @@ export const ROLL_INPUT_MODES: RollInputMode[] = ["in_app_only", "manual_only", 
 
 const DEFAULT_ROLL_INPUT_MODE: RollInputMode = "in_app_only";
 
-/**
- * The caller's own roll_input_mode preference (supabase/migrations/
- * 0008_player_settings_and_manual_rolls.sql), defaulting to 'in_app_only'
- * for a player who has never visited Settings and so has no row yet.
- */
 export async function getRollInputMode(
   supabase: SupabaseClient,
   playerId: string,
@@ -25,11 +20,6 @@ export async function getRollInputMode(
   return (data?.roll_input_mode as RollInputMode | undefined) ?? DEFAULT_ROLL_INPUT_MODE;
 }
 
-/**
- * Upserts the caller's roll_input_mode preference. Direct table write (not
- * an RPC) protected by player_settings' own-row RLS policies — there's no
- * cross-player invariant to guard here, unlike the round/roll RPCs.
- */
 export async function setRollInputMode(
   supabase: SupabaseClient,
   playerId: string,

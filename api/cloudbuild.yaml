@@ -1,20 +1,17 @@
-# Cloud Build native GitHub trigger on master, included files api/**, default e2-standard-2 pool.
-# Trigger substitutions used: $SHORT_SHA. Custom (set on the trigger or left at defaults):
 substitutions:
   _REGION: europe-west1
-  _REPO: rfb-api # Artifact Registry repository
+  _REPO: rfb-api
   _SERVICE: rfb-api
   _SECRET: rfb-api-postgres-connection-string
-  _JWKS_URL: "" # https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json
+  _JWKS_URL: ""
   _PROJECT_REF: ""
-  _CORS_ORIGINS: "" # comma list; '*' wildcard allowed, e.g. https://prod.example,https://rfb-*-<team>.vercel.app
+  _CORS_ORIGINS: ""
 
 options:
-  machineType: E2_STANDARD_2 # default pool; keeps the free build-minutes tier
+  machineType: E2_STANDARD_2
   logging: CLOUD_LOGGING_ONLY
 
 steps:
-  # 1. Bake the newest migration filename into the image context.
   - id: bake-schema-version
     name: bash
     script: |
@@ -30,8 +27,6 @@ steps:
     name: gcr.io/cloud-builders/docker
     args: ["push", "${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/api:$SHORT_SHA"]
 
-  # 2. Deploy. The startup probe fails until the schema gate opens, so a deploy that races its
-  #    migration fails and is retried with exponential backoff (~10 min total).
   - id: deploy
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
     script: |

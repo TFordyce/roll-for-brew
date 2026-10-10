@@ -12,7 +12,6 @@ public class ModifierAdjustmentsHttpTests(ApiHost api) : IClassFixture<ApiHost>
     private async Task<TestUser> User(string tag, bool admin = false) =>
         await api.Db.AddUser($"{tag}-{Interlocked.Increment(ref _seq)}", admin);
 
-    /// <summary>Today's (Europe/London) room, with the given players in it at modifier 0.</summary>
     private async Task<Guid> TodayRoom(params TestUser[] players)
     {
         await api.Db.Execute("insert into public.rooms (date) values ((now() at time zone 'Europe/London')::date) on conflict (date) where not is_test do nothing");

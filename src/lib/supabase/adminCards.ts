@@ -11,13 +11,6 @@ export type CardAssignment = {
   heldByEmail: string | null;
 };
 
-/**
- * Calls the admin_get_card_assignments RPC (supabase/migrations/
- * 0047_admin_allocate_spell_cards.sql): every catalog card plus its current
- * physical-instance state and holder, for the /admin/cards bulk table
- * (issue #154). Admin-only — the RPC re-checks is_admin regardless of what
- * called it.
- */
 export async function getCardAssignments(supabase: SupabaseClient): Promise<CardAssignment[]> {
   const { data, error } = await supabase.rpc("admin_get_card_assignments");
   if (error) throw error;
@@ -43,34 +36,15 @@ export async function getCardAssignments(supabase: SupabaseClient): Promise<Card
   }));
 }
 
-/**
- * What the admin chose when the target has a live Stale Biscuit mark (issue
- * #471): allocate to the target anyway (the mark stays live), or send the
- * card where the mark sends it (the beneficiary; the mark is spent).
- */
 export type MarkChoice = "target" | "beneficiary";
 
-/** "fizzled": the beneficiary's hand was full, so the target got the card (the mark is spent either way). */
 export type DrawRedirectOutcome = "redirected" | "fizzled";
 
 export type AllocationResult = {
   recipientPlayerId: string;
-  /** Null unless the beneficiary option ran. */
   drawRedirectOutcome: DrawRedirectOutcome | null;
 };
 
-/**
- * Calls the admin_allocate_spell_card RPC: assigns a catalog card to a
- * player as "held" and records the spell_draws row (trigger =
- * 'admin_allocation') needed for the Spell Collection page to count it as
- * discovered. Throws with error.code "RFB07" if the card is already held by
- * someone else, or "RFB08" if the target player already holds a different
- * card — callers should surface both as a retryable message naming the
- * conflict, not a crash. Throws "RFB57" (error.details = the beneficiary's
- * player id) when the target has a live Stale Biscuit mark and no
- * markChoice was given (issue #471) — callers re-submit with one — and
- * "RFB58" when "beneficiary" was chosen but the mark is no longer live.
- */
 export async function allocateSpellCard(
   supabase: SupabaseClient,
   cardId: string,
@@ -88,11 +62,6 @@ export async function allocateSpellCard(
   return { recipientPlayerId: row!.recipient_player_id, drawRedirectOutcome: row!.draw_redirect_outcome };
 }
 
-/**
- * Calls the admin_unassign_spell_card RPC: returns a held/pending-swap
- * card's instance to in_deck, the "explicit unassign first" step the
- * conflict handling above requires. Doesn't touch spell_draws history.
- */
 export async function unassignSpellCard(supabase: SupabaseClient, cardId: string): Promise<void> {
   const { error } = await supabase.rpc("admin_unassign_spell_card", { p_card_id: cardId });
   if (error) throw error;

@@ -2,10 +2,6 @@ using Npgsql;
 
 namespace RollForBrew.Api.Health;
 
-/// <summary>
-/// Deploy-ordering gate: the image bakes the newest migration filename; the instance is not ready
-/// until that version is recorded in supabase_migrations.schema_migrations.
-/// </summary>
 public static class SchemaGate
 {
     public static string ParseVersion(string migrationFileName)

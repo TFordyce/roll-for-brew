@@ -9,12 +9,6 @@ import { SubmitButton } from "@/app/_components/SubmitButton";
 
 const initialState: SpellCastActionState = { status: "idle" };
 
-/**
- * Tea Party Revolt's pick (issue #430). Once layer 0 is rolled, the lowest
- * roller (a tie goes to the smallest player id — get_tea_party_revolt_picker)
- * chooses who makes tea; the round is held until they do, or until stall
- * abandons the pick. Everyone else sees who the table is waiting on.
- */
 export function TeaPartyRevoltPanel({
   roundId,
   pickerId,
@@ -23,7 +17,6 @@ export function TeaPartyRevoltPanel({
   participants,
 }: {
   roundId: string;
-  /** The lowest roller being waited on, from get_tea_party_revolt_picker. */
   pickerId: string;
   pickerName: string;
   selfPlayerId: string;

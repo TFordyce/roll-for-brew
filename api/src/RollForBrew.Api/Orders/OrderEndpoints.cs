@@ -13,7 +13,6 @@ public static class OrderEndpoints
 
     public static IEndpointRouteBuilder MapOrders(this IEndpointRouteBuilder app)
     {
-        // Same rules as SQL submit_order (0062): upsert the caller's own Order; the Order Window is enforced here (ADR 0004).
         app.MapPut("/rounds/{roundId:guid}/order", async (Guid roundId, SubmitOrderRequest body, HttpContext http, RoomStore store, CancellationToken ct) =>
         {
             var caller = http.GetCaller();
@@ -46,7 +45,6 @@ public static class OrderEndpoints
             return Results.NoContent();
         }).Produces(StatusCodes.Status204NoContent).WithName("submitOrder");
 
-        // The caller's own Order for a round, or null.
         app.MapGet("/rounds/{roundId:guid}/order", async (Guid roundId, HttpContext http, RoomStore store, CancellationToken ct) =>
         {
             var drink = await store.Read(http.GetCaller(), async s =>
@@ -59,7 +57,6 @@ public static class OrderEndpoints
             return Results.Ok(new OrderResponse(drink));
         }).Produces<OrderResponse>().WithName("getMyOrderForRound");
 
-        // The caller's most recently updated Order across any room (OrderPicker's sticky default).
         app.MapGet("/orders/latest", async (HttpContext http, RoomStore store, CancellationToken ct) =>
         {
             var drink = await store.Read(http.GetCaller(), async s =>

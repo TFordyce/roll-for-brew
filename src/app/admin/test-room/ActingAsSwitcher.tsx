@@ -8,14 +8,6 @@ export type ActingAsOption = {
   isSelf: boolean;
 };
 
-/**
- * Lists every Test Player plus the admin's own real identity (issue #102),
- * highlights whichever one the caller is currently Acting As, and switches
- * on selection. Purely a client-facing menu — the actual resolution (and
- * the "only inside the Test Room" safety property) is enforced entirely
- * server-side by current_player_id()/set_acting_as; this component can't
- * itself make puppeting take effect anywhere else.
- */
 export function ActingAsSwitcher({
   options,
   currentPlayerId,

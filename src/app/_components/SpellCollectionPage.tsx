@@ -5,17 +5,6 @@ import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { SpellCollectionGrid } from "@/app/_components/SpellCollectionGrid";
 import { Nav } from "@/app/Nav";
 
-/**
- * Shared page shell for both `/collection` (own collection, issue #134) and
- * `/:playerId/collection` (any player's, issue #135) — the two routes fetch
- * `get_player_spell_collection` for different target ids and share this one
- * rendering. `viewerPlayerId` always seeds the backdrop's daily prop shuffle
- * off the signed-in viewer (not the collection being looked at), so the
- * background doesn't change depending on whose collection you're viewing.
- * `targetPlayerId` is whose collection this is (equal to `viewerPlayerId`
- * on `/collection`, the URL param on `/:playerId/collection`) — it gates
- * the own-collection-only spell-card rating row (issue #300).
- */
 export function SpellCollectionPage({
   viewerPlayerId,
   targetPlayerId,

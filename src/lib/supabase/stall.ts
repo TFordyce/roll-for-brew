@@ -1,12 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/**
- * When a round's given reroll layer (layer > 0) became current
- * (round_layer_participants.entered_at, migrations/0009) — the layer-N
- * stall clock's start time. Layer 0's equivalent is rounds.closed_at.
- * Returns null if the layer has no participants (shouldn't happen for a
- * layer that's actually current, but guards a bad call cleanly).
- */
 export async function getLayerEnteredAt(
   supabase: SupabaseClient,
   roundId: string,
@@ -25,15 +18,6 @@ export async function getLayerEnteredAt(
   return data ? (data.entered_at as string) : null;
 }
 
-/**
- * The ids of players currently expected to roll a round's given layer —
- * i.e. declared/tied and not yet excluded (issue #21's excluded_at rule).
- * Calls the get_expected_layer_roller_ids RPC (supabase/migrations/
- * 0014_consolidate_expected_layer_roller.sql), the single source of truth
- * also backing is_expected_layer_roller and count_expected_layer_rollers, so
- * callers here (stallEnforcement.ts) never have to re-derive the excluded_at
- * rule themselves from raw participant rows.
- */
 export async function getExpectedLayerRollerIds(
   supabase: SupabaseClient,
   roundId: string,
@@ -49,15 +33,6 @@ export async function getExpectedLayerRollerIds(
   return new Set(rows.map((row) => row.player_id));
 }
 
-/**
- * Whether a given player is currently expected to roll a round's given
- * layer — declared/tied for it and not excluded. Calls the
- * is_expected_layer_roller RPC (supabase/migrations/0007_reroll_layers.sql,
- * redefined atop get_expected_layer_roller_ids by 0014), the same predicate
- * submit_roll/submit_manual_roll gate on, so page.tsx's "is it this player's
- * turn to roll" check reads SQL's answer instead of re-deriving it from
- * hasDeclared/isTied/excludedAt locally.
- */
 export async function isExpectedLayerRoller(
   supabase: SupabaseClient,
   roundId: string,
@@ -73,14 +48,6 @@ export async function isExpectedLayerRoller(
   return data as boolean;
 }
 
-/**
- * The ids of players who've already rolled the round's current layer —
- * values withheld (rolls stay hidden until reveal per rolls' own RLS
- * policy). Calls the get_current_layer_roller_ids RPC
- * (supabase/migrations/0009_stall_timeout.sql), which grants this to any
- * authenticated caller (not just expected rollers of the current layer) so
- * a spectator's device can drive stall-timeout enforcement too.
- */
 export async function getCurrentLayerRollerIds(
   supabase: SupabaseClient,
   roundId: string,
@@ -94,32 +61,12 @@ export async function getCurrentLayerRollerIds(
   return new Set(rows.map((row) => row.player_id));
 }
 
-/**
- * Calls the resolve_stalled_pending_spell_dice RPC (0069, issue #252):
- * auto-resolves every still-unresolved dice_modifier spell cast for the
- * round (Cold Tea/Slipped Spoon's pre-roll casts — a Reaction-timed one
- * like Six Sugars is already covered by the reaction window's own recovery)
- * once enforceStallTimeout's own hasStalled check has already fired.
- * Returns how many casts it resolved, so the caller only raises
- * advanceRound(stallCleared) when there was actually something to recover.
- */
 export async function resolveStalledPendingSpellDice(supabase: SupabaseClient, roundId: string): Promise<number> {
   const { data, error } = await supabase.rpc("resolve_stalled_pending_spell_dice", { p_round_id: roundId });
   if (error) throw error;
   return data as number;
 }
 
-/**
- * Calls the resolve_stalled_pending_forced_reroll_casts RPC (0098, issue
- * #325): force-negates every pre-roll forced_reroll cast (Yorkshire Terror,
- * WILD/TABLE fan-out) still awaiting its deferred target once
- * enforceStallTimeout's own hasStalled check has fired — the terminal no-op
- * for a target the caster never named, so the Layer 0 completeness hold
- * releases. Returns how
- * many casts it negated, so the caller only raises
- * advanceRound(stallCleared) when there was something to recover. Sibling
- * of resolveStalledPendingSpellDice above.
- */
 export async function resolveStalledPendingForcedRerollCasts(
   supabase: SupabaseClient,
   roundId: string,
@@ -131,34 +78,17 @@ export async function resolveStalledPendingForcedRerollCasts(
   return data as number;
 }
 
-/**
- * Calls the resolve_stalled_revolt_picks RPC (0131, issue #430): abandons
- * every Tea Party Revolt pick the lowest roller never made, once
- * enforceStallTimeout's own hasStalled check has fired — the cast is treated
- * as negated and the default pick stands, so the Layer 0 completeness hold
- * releases. Returns how many casts it abandoned, so the caller only raises
- * advanceRound(stallCleared) when there was something to recover.
- */
 export async function resolveStalledRevoltPicks(supabase: SupabaseClient, roundId: string): Promise<number> {
   const { data, error } = await supabase.rpc("resolve_stalled_revolt_picks", { p_round_id: roundId });
   if (error) throw error;
   return data as number;
 }
 
-/**
- * Calls the cancel_round RPC: cancels a stalled round (issue #21). A no-op
- * if the round has already left 'open'/'closed' by the time this runs.
- */
 export async function cancelRound(supabase: SupabaseClient, roundId: string): Promise<void> {
   const { error } = await supabase.rpc("cancel_round", { p_round_id: roundId });
   if (error) throw error;
 }
 
-/**
- * Calls the exclude_round_participant RPC: marks a stalled participant
- * excluded from a round's given layer (issue #21), so they stop being
- * waited on without their row being deleted.
- */
 export async function excludeRoundParticipant(
   supabase: SupabaseClient,
   roundId: string,
@@ -174,18 +104,10 @@ export async function excludeRoundParticipant(
 }
 
 export type CompelledCastStep = {
-  /** Who still owes Brewmageddon a compelled Action cast; rolling is held while non-empty. */
   waitingOn: string[];
-  /** When the step ended (the last compelled Action cast or Forfeit), or null if the round had none. */
   endedAt: string | null;
 };
 
-/**
- * Calls the get_compelled_cast_step RPC (0119, issue #440): the Compelled Cast
- * step Brewmageddon puts between close_round and the first roll. Layer 0's
- * roll stall clock runs from `endedAt` when there is one, so time spent in
- * the step never counts against the rollers.
- */
 export async function getCompelledCastStep(supabase: SupabaseClient, roundId: string): Promise<CompelledCastStep> {
   const { data, error } = await supabase.rpc("get_compelled_cast_step", { p_round_id: roundId });
   if (error) throw error;
@@ -193,24 +115,12 @@ export async function getCompelledCastStep(supabase: SupabaseClient, roundId: st
   return { waitingOn: row?.waiting_on ?? [], endedAt: row?.ended_at ?? null };
 }
 
-/**
- * Calls the get_layer_zero_window_closed_at RPC (issue #433): when the round's
- * layer-0 Reaction Window closed, or null while none has. Layer 0's roll stall
- * clock restarts there, so a caster whose Roll Exemption was countered — an
- * expected roller only from that moment — gets the full timeout to roll late.
- */
 export async function getLayerZeroWindowClosedAt(supabase: SupabaseClient, roundId: string): Promise<string | null> {
   const { data, error } = await supabase.rpc("get_layer_zero_window_closed_at", { p_round_id: roundId });
   if (error) throw error;
   return (data as string | null) ?? null;
 }
 
-/**
- * Calls the forfeit_stalled_compelled_casts RPC (0119, issue #440): the stall
- * clock's Compelled Cast branch. Forfeits every compelled Action cast still
- * owed once enforceStallTimeout's own hasStalled check has fired, which ends
- * the step and opens rolling. Returns who forfeited.
- */
 export async function forfeitStalledCompelledCasts(supabase: SupabaseClient, roundId: string): Promise<string[]> {
   const { data, error } = await supabase.rpc("forfeit_stalled_compelled_casts", { p_round_id: roundId });
   if (error) throw error;

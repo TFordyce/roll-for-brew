@@ -4,14 +4,6 @@ import type { RealPlayer } from "@/lib/supabase/players";
 const CHOICE_CLASS =
   "rounded-md border-2 border-gilt-dark bg-transparent px-3 py-1 font-display text-xs uppercase tracking-widest text-parchment-dim hover:border-gilt hover:text-parchment disabled:cursor-not-allowed";
 
-/**
- * The /admin/cards prompt when the chosen player has a live Stale Biscuit
- * mark (RFB57, issue #471). An admin allocation is not a draw, so it would
- * bypass the mark; instead of doing that silently the admin picks: give the
- * card to the target anyway (the mark stays live), give it to the player who
- * marked them (the mark is spent, as if drawn), or cancel. Each choice
- * re-submits the same card and target with a `markChoice`.
- */
 export function MarkWarning({
   cardId,
   warning,

@@ -80,7 +80,6 @@ public class ActingAsHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var viaApi = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("actingAsPlayerId").GetString();
 
-        // The SQL function, called as the same caller the way PostgREST would.
         await using var conn = new NpgsqlConnection(api.Db.AdminConnectionString);
         await conn.OpenAsync();
         await using var tx = await conn.BeginTransactionAsync();
@@ -99,7 +98,6 @@ public class ActingAsHttpTests(ApiHost api) : IClassFixture<ApiHost>
     [Fact]
     public async Task Acting_as_is_never_client_supplied()
     {
-        // ADR 0001: nothing in the request (query, header, body) names another admin's pointer.
         var admin = await api.Db.AddUser("g-admin-own", admin: true);
         var other = await api.Db.AddUser("g-admin-other", admin: true);
         await api.Db.AddUser("g-other-target");
