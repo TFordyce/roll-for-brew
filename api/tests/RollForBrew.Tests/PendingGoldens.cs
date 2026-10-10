@@ -4,8 +4,6 @@ internal static class PendingGoldens
 {
     public static readonly IReadOnlySet<string> Names = new HashSet<string>(StringComparer.Ordinal)
     {
-        "4c-lowest-gains-highest-modifier",
-        "4c-targeting-skip-excludes-holder",
         "4b-pre-bitter-leech-tick-synthesis",
         "4b-persistent-modifier-transfer-rest-of-day",
         "wild-2-persistent-plus-three-caster",

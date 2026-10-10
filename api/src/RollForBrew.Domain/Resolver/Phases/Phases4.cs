@@ -124,8 +124,80 @@ internal sealed class Phase4cLowestGainsHighest : EvalPhase
     public override string Id => "4c";
     public override void Run(EvalContext ctx)
     {
-        if (ctx.Players.Count > 0 && ctx.Casts.Any(c => c.EffectKind == "lowest_gains_highest_modifier" && !c.Negated && c.ReactionWindowId is not null))
-            throw new PhasePendingException(Id, "lowest_gains_highest_modifier (#543)");
+        if (ctx.Players.Count == 0) return;
+        if (!ctx.Casts.Any(c => c.EffectKind == "lowest_gains_highest_modifier" && !c.Negated && c.ReactionWindowId is not null)) return;
+        var cast = ctx.Casts
+            .Where(c => c.EffectKind == "lowest_gains_highest_modifier" && !c.Negated && c.ReactionWindowId is not null
+                && ctx.CardOfCast(c) is not null)
+            .OrderBy(c => c.Seq)
+            .FirstOrDefault();
+        if (cast is null) return;
+        var card = ctx.CardOfCast(cast)!;
+
+        var lowestRoll = ctx.Rolls.Min();
+        var order = Enumerable.Range(0, ctx.Players.Count)
+            .OrderByDescending(i => ctx.Rolls[i])
+            .ThenBy(i => ctx.Players[i], StringComparer.Ordinal)
+            .ToList();
+        var plainHigh = order[0];
+        var high = order.FirstOrDefault(i => !ctx.SkipMap.ContainsKey(ctx.Players[i]), -1);
+        if (high < 0) high = plainHigh;
+        var highComposed = ctx.Composed[high];
+
+        if (plainHigh != high && ctx.SkipMap.ContainsKey(ctx.Players[plainHigh]))
+            EmitSkip(ctx, ctx.Players[plainHigh]);
+
+        var natural = Enumerable.Range(0, ctx.Players.Count)
+            .Where(i => ctx.Rolls[i] == lowestRoll)
+            .OrderBy(i => ctx.Players[i], StringComparer.Ordinal)
+            .Select(i => ctx.Players[i])
+            .ToList();
+
+        List<string> beneficiaries;
+        if (ctx.SkipMap.Count == 0 || !natural.Any(ctx.SkipMap.ContainsKey))
+        {
+            beneficiaries = natural;
+        }
+        else
+        {
+            beneficiaries = Enumerable.Range(0, ctx.Players.Count)
+                .Where(i => !ctx.SkipMap.ContainsKey(ctx.Players[i]))
+                .OrderBy(i => ctx.Rolls[i])
+                .ThenBy(i => ctx.Players[i], StringComparer.Ordinal)
+                .Select(i => ctx.Players[i])
+                .Take(natural.Count)
+                .ToList();
+            if (beneficiaries.Count == 0) beneficiaries = natural;
+        }
+
+        foreach (var pid in natural)
+            if (ctx.SkipMap.ContainsKey(pid) && !beneficiaries.Contains(pid))
+                EmitSkip(ctx, pid);
+
+        foreach (var pid in beneficiaries)
+        {
+            var i = ctx.PlayerIndex(pid);
+            var src = new SourceCast(cast.Id, null, card.Name, cast.CasterId);
+            var hit = Rules.WardHit(ctx, pid, "modifier", "positive", cast.Seq);
+            if (hit is not null)
+            {
+                ctx.Emit("warded", src, pid, TraceValue.Modifier(ctx.Composed[i]), TraceValue.Modifier(ctx.Composed[i]),
+                    ("blocked_cast_id", cast.Id), ("ward_cast_id", hit.WardCastId), ("ward_card_name", hit.WardCardName),
+                    ("target", pid), ("would_be_before", ctx.Composed[i]), ("would_be_after", highComposed), ("outcome", "blocked"));
+                continue;
+            }
+
+            var before = ctx.Composed[i];
+            ctx.Composed[i] = highComposed;
+            ctx.Emit("lowest_gains_highest_modifier", src, pid, TraceValue.Modifier(before), TraceValue.Modifier(highComposed));
+        }
+    }
+
+    private static void EmitSkip(EvalContext ctx, string pid)
+    {
+        var (aeId, caster) = ctx.SkipMap[pid];
+        ctx.Emit("targeting_skip", new SourceCast(null, aeId, "Cloud of Cream", caster), pid,
+            TraceValue.Status("targetable"), TraceValue.Status("skipped"));
     }
 }
 
