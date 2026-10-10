@@ -116,6 +116,7 @@ internal sealed class EvalContext
     public Dictionary<string, List<Ward>> WardMap { get; } = [];
     public Dictionary<string, (Guid AeId, string CasterId)> SkipMap { get; } = [];
     public Dictionary<string, int> RoomPlayerModifierWrites { get; } = [];
+    public List<HeistMove> HeistMoves { get; } = [];
 
     public List<TraceStep> Trace { get; } = [];
     public TraceStep Emit(

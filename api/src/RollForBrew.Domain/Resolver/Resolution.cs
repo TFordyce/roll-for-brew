@@ -24,12 +24,18 @@ public sealed record BrewerRecord(string Source, Guid CastId);
 public sealed record SummaryEntry(
     string PlayerId, int Roll, decimal Snapshot, decimal Composed, decimal Total, string? Nat, bool DiceReduced);
 
+public sealed record HeistMove(Guid CastId, Guid InstanceId, string Location, string ThiefPlayerId);
+
 public sealed record DerivedCastState(
     IReadOnlyList<CastFlags> CastFlags,
     IReadOnlyList<SpellCastRow> SynthesizedCasts,
-    IReadOnlyDictionary<string, int> RoomPlayerModifiers)
+    IReadOnlyDictionary<string, int> RoomPlayerModifiers,
+    Guid RoomId,
+    Guid RoundId,
+    DateTimeOffset DbNow,
+    IReadOnlyList<HeistMove> HeistMoves)
 {
-    public static readonly DerivedCastState Empty = new([], [], new Dictionary<string, int>());
+    public static readonly DerivedCastState Empty = new([], [], new Dictionary<string, int>(), Guid.Empty, Guid.Empty, DateTimeOffset.MinValue, []);
 }
 
 public sealed record CastFlags(
