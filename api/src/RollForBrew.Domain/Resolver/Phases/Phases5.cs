@@ -114,6 +114,7 @@ internal sealed class Phase5TeaMaker : EvalPhase
                 }
                 else if (c.TargetPending)
                 {
+                    target = null;
                 }
                 else if (mode == "chosen")
                 {
@@ -155,11 +156,7 @@ internal sealed class Phase5TeaMaker : EvalPhase
                     {
                         target = high.PlayerId;
                         if (plainHigh is not null && plainHigh.PlayerId != high.PlayerId && ctx.SkipMap.ContainsKey(plainHigh.PlayerId))
-                        {
-                            var (aeId, caster) = ctx.SkipMap[plainHigh.PlayerId];
-                            ctx.Emit("targeting_skip", new SourceCast(null, aeId, "Cloud of Cream", caster), plainHigh.PlayerId,
-                                TraceValue.Status("targetable"), TraceValue.Status("skipped"));
-                        }
+                            Rules.EmitTargetingSkip(ctx, plainHigh.PlayerId);
                     }
                 }
                 else

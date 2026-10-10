@@ -30,7 +30,7 @@ internal sealed class Phase6HeistsAndMarks : EvalPhase
             ctx.Emit("card_heist", new SourceCast(h.CastId, null, h.CardName, h.CasterId), h.VictimId,
                 TraceValue.Status("held"), TraceValue.Status(h.Outcome), [.. extras]);
             if (h.Outcome == "moved" && h.Slot is { } slot)
-                ctx.HeistMoves.Add(new HeistMove(h.CastId, h.InstanceId, slot, h.CasterId));
+                ctx.HeistMoves.Add(new HeistMove(h.CastId, h.InstanceId, slot, h.CasterId, h.VictimId!));
         }
 
         var round = ctx.RoundId.ToString();

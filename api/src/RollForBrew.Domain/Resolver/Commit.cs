@@ -10,7 +10,7 @@ public sealed record SetRoomPlayerModifier(Guid RoomId, string PlayerId, int Val
 public sealed record SetRoundTraceAndSummary(Guid RoundId, string TraceJson, string SummaryJson) : Write;
 public sealed record SetRoundResolution(Guid RoundId, string? BrewerId, int CupsMade, int BrewerModifierGain, DateTimeOffset ResolvedAt) : Write;
 public sealed record IncrementRoomPlayerModifier(Guid RoomId, string PlayerId, int Delta) : Write;
-public sealed record MoveHeistCard(Guid CastId, Guid InstanceId, string Location, string ThiefPlayerId) : Write;
+public sealed record MoveHeistCard(Guid CastId, Guid InstanceId, string Location, string ThiefPlayerId, string VictimPlayerId) : Write;
 public sealed record TransferEarlTitle(Guid RoundId, Guid FromEffectId, Guid ToEffectId, string FromPlayerId, string ToPlayerId, Guid CastId) : Write;
 public sealed record SetBrewerSource(Guid RoundId, string Source, Guid? CastId) : Write;
 public sealed record RecordPendingReplay(Guid RoundId) : Write;
@@ -36,6 +36,11 @@ public static class Committer
                 TraceJson.Pretty(TraceJson.ToNode(resolution.Trace)),
                 TraceJson.Pretty(TraceJson.ToNode(resolution.Players ?? []))));
 
+        if (resolution.EarlTransfer is { } earl && resolution.Outcome != "tie")
+            writes.Add(new TransferEarlTitle(d.RoundId, earl.ActiveEffectId,
+                Ids.Deterministic($"rfb-earl-title:{earl.CastId}:{earl.ToPlayerId}"),
+                earl.FromPlayerId, earl.ToPlayerId, earl.CastId));
+
         if (resolution.Outcome == "brewer")
         {
             var gain = resolution.ModifierGain ?? resolution.CupsMade;
@@ -43,27 +48,16 @@ public static class Committer
             if (gain != 0 && resolution.BrewerId is not null)
                 writes.Add(new IncrementRoomPlayerModifier(d.RoomId, resolution.BrewerId, gain));
             foreach (var move in d.HeistMoves)
-                writes.Add(new MoveHeistCard(move.CastId, move.InstanceId, move.Location, move.ThiefPlayerId));
-            if (resolution.EarlTransfer is { } earl)
-                writes.Add(new TransferEarlTitle(d.RoundId, earl.ActiveEffectId, NewEarlEffectId(earl),
-                    earl.FromPlayerId, earl.ToPlayerId, earl.CastId));
+                writes.Add(new MoveHeistCard(move.CastId, move.InstanceId, move.Location, move.ThiefPlayerId, move.VictimPlayerId));
             if (resolution.BrewerRecord is { } record)
                 writes.Add(new SetBrewerSource(d.RoundId, record.Source, record.CastId));
             writes.Add(new RecordPendingReplay(d.RoundId));
         }
-        else
+        else if (resolution.TiedPlayerIds is { } tied)
         {
-            if (resolution.EarlTransfer is { } earl && resolution.Outcome == "rolloff")
-                writes.Add(new TransferEarlTitle(d.RoundId, earl.ActiveEffectId, NewEarlEffectId(earl),
-                    earl.FromPlayerId, earl.ToPlayerId, earl.CastId));
-            if (resolution.TiedPlayerIds is { } tied)
-                writes.Add(new AdvanceTieLayer(d.RoundId, tied));
+            writes.Add(new AdvanceTieLayer(d.RoundId, tied));
         }
 
         return writes;
     }
-
-    private static Guid NewEarlEffectId(EarlTransfer earl) =>
-        new(System.Security.Cryptography.MD5.HashData(
-            System.Text.Encoding.UTF8.GetBytes($"rfb-earl-title:{earl.CastId}:{earl.ToPlayerId}")));
 }

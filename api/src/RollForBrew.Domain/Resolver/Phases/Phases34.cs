@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 
 namespace RollForBrew.Domain.Resolver.Phases;
@@ -43,7 +41,7 @@ internal sealed class Phase3PreDiceTick : EvalPhase
             });
             ctx.AddCast(seq => new WorkingCast
             {
-                Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"rfb-dice-tick:{e.SourceCastId}:{ctx.Gen}"))),
+                Id = Ids.Deterministic($"rfb-dice-tick:{e.SourceCastId}:{ctx.Gen}"),
                 RoundId = ctx.RoundId, CasterId = e.CasterId, CardInstanceId = src.CardInstanceId, TargetPlayerId = victim,
                 EffectKind = "per_round_dice_tick",
                 EffectParams = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["die"] = die, ["sign"] = sign, ["rolled"] = rolled }),

@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
 using RollForBrew.Domain.Snapshot;
 
@@ -148,7 +146,7 @@ internal sealed class Phase4cLowestGainsHighest : EvalPhase
         var highComposed = ctx.Composed[high];
 
         if (plainHigh != high && ctx.SkipMap.ContainsKey(ctx.Players[plainHigh]))
-            EmitSkip(ctx, ctx.Players[plainHigh]);
+            Rules.EmitTargetingSkip(ctx, ctx.Players[plainHigh]);
 
         var natural = Enumerable.Range(0, ctx.Players.Count)
             .Where(i => ctx.Rolls[i] == lowestRoll)
@@ -175,7 +173,7 @@ internal sealed class Phase4cLowestGainsHighest : EvalPhase
 
         foreach (var pid in natural)
             if (ctx.SkipMap.ContainsKey(pid) && !beneficiaries.Contains(pid))
-                EmitSkip(ctx, pid);
+                Rules.EmitTargetingSkip(ctx, pid);
 
         foreach (var pid in beneficiaries)
         {
@@ -194,13 +192,6 @@ internal sealed class Phase4cLowestGainsHighest : EvalPhase
             ctx.Composed[i] = highComposed;
             ctx.Emit("lowest_gains_highest_modifier", src, pid, TraceValue.Modifier(before), TraceValue.Modifier(highComposed));
         }
-    }
-
-    private static void EmitSkip(EvalContext ctx, string pid)
-    {
-        var (aeId, caster) = ctx.SkipMap[pid];
-        ctx.Emit("targeting_skip", new SourceCast(null, aeId, "Cloud of Cream", caster), pid,
-            TraceValue.Status("targetable"), TraceValue.Status("skipped"));
     }
 }
 
@@ -251,7 +242,7 @@ internal sealed class Phase4bPreBitterLeech : EvalPhase
 
     private static WorkingCast Tick(EvalContext ctx, long seq, WorkingCast src, ActiveEffectRow e, string target, decimal delta) => new()
     {
-        Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"rfb-bitter-leech-tick:{e.SourceCastId}:{target}:{ctx.Gen}"))),
+        Id = Ids.Deterministic($"rfb-bitter-leech-tick:{e.SourceCastId}:{target}:{ctx.Gen}"),
         RoundId = ctx.RoundId, CasterId = e.CasterId, CardInstanceId = src.CardInstanceId, TargetPlayerId = target,
         EffectKind = "persistent_modifier_transfer",
         EffectParams = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["delta"] = delta }),

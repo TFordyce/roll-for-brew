@@ -24,7 +24,7 @@ public sealed record BrewerRecord(string Source, Guid CastId);
 public sealed record SummaryEntry(
     string PlayerId, int Roll, decimal Snapshot, decimal Composed, decimal Total, string? Nat, bool DiceReduced);
 
-public sealed record HeistMove(Guid CastId, Guid InstanceId, string Location, string ThiefPlayerId);
+public sealed record HeistMove(Guid CastId, Guid InstanceId, string Location, string ThiefPlayerId, string VictimPlayerId);
 
 public sealed record DerivedCastState(
     IReadOnlyList<CastFlags> CastFlags,

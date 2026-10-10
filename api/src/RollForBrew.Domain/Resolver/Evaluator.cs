@@ -62,7 +62,8 @@ public static class Evaluator
         var one = tied.Count == 1;
         return new Resolution(
             one ? "brewer" : "tie", layer, one ? tied[0] : null, one ? "default" : null, one ? null : tied,
-            ctx.ParticipantCount, null, false, null, null, [], null, DerivedCastState.Empty);
+            ctx.ParticipantCount, null, false, null, null, [], null,
+            new DerivedCastState([], [], new Dictionary<string, int>(), ctx.RoomId, ctx.RoundId, ctx.S.DbNow, []));
     }
 
     private static void CheckAllRolled(EvalContext ctx)

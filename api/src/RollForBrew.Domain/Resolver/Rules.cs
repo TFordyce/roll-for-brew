@@ -205,6 +205,13 @@ internal static class Rules
         return sum;
     }
 
+    public static void EmitTargetingSkip(EvalContext ctx, string player)
+    {
+        var (aeId, caster) = ctx.SkipMap[player];
+        ctx.Emit("targeting_skip", new SourceCast(null, aeId, "Cloud of Cream", caster), player,
+            TraceValue.Status("targetable"), TraceValue.Status("skipped"));
+    }
+
     public static BrewDebt? BrewDebtDue(EvalContext ctx)
     {
         if (ctx.S.Rolls.Any(r => r.RoundId == ctx.RoundId && r.Layer == 0)) return null;
@@ -235,7 +242,8 @@ internal static class Rules
         return due.OrderBy(d => d.ResolvedAt).ThenBy(d => d.CastAt).ThenBy(d => d.Seq).Select(d => d.Debt).FirstOrDefault();
     }
 
-    public static List<string> PickLowest(IReadOnlyList<string> players, IReadOnlyList<int> rolls, IReadOnlyList<decimal> modifier, IReadOnlyList<bool>? diceReduced)    {
+    public static List<string> PickLowest(IReadOnlyList<string> players, IReadOnlyList<int> rolls, IReadOnlyList<decimal> modifier, IReadOnlyList<bool>? diceReduced)
+    {
         bool Reduced(int i) => diceReduced is not null && i < diceReduced.Count && diceReduced[i];
         var idx = Enumerable.Range(0, players.Count).ToList();
         List<string> Named(IEnumerable<int> ix) => ix.Select(i => players[i]).OrderBy(p => p, StringComparer.Ordinal).ToList();

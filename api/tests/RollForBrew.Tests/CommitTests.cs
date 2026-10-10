@@ -47,6 +47,58 @@ public class CommitTests
         Assert.Equal(heist.InstanceId, move.InstanceId);
         Assert.Equal("held", move.Location);
         Assert.Equal(res.BrewerId, move.ThiefPlayerId);
+        Assert.Equal(heist.VictimPlayerId, move.VictimPlayerId);
+    }
+
+    [Fact]
+    public void Cast_flag_writes_equal_the_derived_flags_the_evaluator_computed()
+    {
+        var fx = GoldenFixture.Load("6-heist-countered");
+        var heistCast = fx.Snapshot.SpellCasts.Single(c => c.EffectKind == "card_heist");
+
+        var res = Evaluator.Evaluate(fx.Snapshot, fx.RoundId, new ScriptedDieRoller());
+        var writes = Committer.Commit(res);
+
+        var flagWrites = writes.OfType<UpdateCastFlags>().Select(w => w.Flags).ToList();
+        Assert.Equal(res.Derived.CastFlags, flagWrites);
+        var negated = flagWrites.Single(f => f.CastId == heistCast.Id);
+        Assert.True(negated.Negated);
+        Assert.Equal(heistCast.TargetPlayerId, negated.TargetPlayerId);
+        Assert.Equal(heistCast.TargetRole, negated.TargetRole);
+    }
+
+    [Fact]
+    public void An_existing_calami_tea_tick_row_suppresses_the_roll()
+    {
+        var fx = GoldenFixture.Load("3-pre-calami-tea-tick-warded");
+        var effect = fx.Snapshot.ActiveEffects.Single(e => e.EffectKind == "per_round_dice_tick");
+        var anchor = fx.Snapshot.SpellCasts.Single(c => c.Id == effect.SourceCastId);
+        var die = effect.EffectParams.TryGetProperty("die", out var d) ? d.GetInt32() : 4;
+        var sign = effect.EffectParams.TryGetProperty("sign", out var s) ? s.GetInt32() : -1;
+        var tick = new SpellCastRow(
+            Guid.NewGuid(), fx.RoundId, anchor.CasterId, anchor.CardInstanceId, effect.TargetPlayerId, false,
+            "per_round_dice_tick", JsonSerializer.SerializeToElement(new { die, sign, rolled = 2 }),
+            null, fx.Snapshot.DbNow, null, false, anchor.Seq + 1, null,
+            JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+            {
+                ["dice_tick"] = true,
+                ["roll_transform"] = new Dictionary<string, object?>
+                {
+                    ["kind"] = "per_round_dice_tick", ["order"] = 2, ["die"] = die, ["sign"] = sign, ["rolled"] = 2,
+                    ["players"] = new[]
+                    {
+                        new Dictionary<string, object?> { ["player_id"] = effect.TargetPlayerId, ["before"] = null, ["after"] = null, ["warded"] = false },
+                    },
+                },
+            }),
+            null, null, null, 0, anchor.Id);
+        var snapshot = fx.Snapshot with { SpellCasts = [.. fx.Snapshot.SpellCasts, tick] };
+        var roller = new ScriptedDieRoller();
+
+        var res = Evaluator.Evaluate(snapshot, fx.RoundId, roller);
+
+        Assert.Empty(roller.Requests);
+        Assert.DoesNotContain(res.Derived.SynthesizedCasts, c => c.SourceCastId == anchor.Id);
     }
 
     [Fact]
