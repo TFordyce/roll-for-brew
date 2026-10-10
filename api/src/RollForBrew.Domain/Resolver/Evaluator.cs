@@ -84,7 +84,8 @@ public static class Evaluator
                 || x.Cast.TargetPending != x.Orig.TargetPending)
             .Select(x => x.Cast.Flags()).ToList();
         var derived = new DerivedCastState(flags, ctx.Casts.Where(c => c.Synthesized).Select(c => c.ToRow()).ToList(),
-            new Dictionary<string, int>(ctx.RoomPlayerModifierWrites));
+            new Dictionary<string, int>(ctx.RoomPlayerModifierWrites), ctx.RoomId, ctx.RoundId, ctx.S.DbNow,
+            [.. ctx.HeistMoves]);
 
         return new Resolution(
             ctx.Outcome, 0, ctx.BrewerId, ctx.BrewerSource, ctx.TiedPlayers, ctx.ParticipantCount, ctx.ModifierGain,
