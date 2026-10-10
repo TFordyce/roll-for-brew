@@ -40,7 +40,7 @@ public/backdrop/props/saucer-stack.png
 public/backdrop/steam/steam-1.png … steam-5.png   — 5-frame puff→dissipate loop, transparent, aligned bottom-center anchor
 ```
 
-All assets have been visually verified (pixel-cropped and inspected): transparent backgrounds are clean, no leftover watermarks/registration marks, consistent scale. `assets/tavern-backdrop-source/` retains the raw/intermediate generation files (including `*-raw.png` originals and the stitched `steam-sheet.png`) for reference — not needed for the app, don't wire those in directly.
+All assets have been visually verified (pixel-cropped and inspected): transparent backgrounds are clean, no leftover watermarks/registration marks, consistent scale. The former `assets/tavern-backdrop-source/` folder (raw/intermediate generation files) was removed when the refreshed #583 pixel art landed directly in `public/backdrop/` — the files under `public/backdrop/` are the only copies and the canonical source for new art.
 
 **Slot geometry note:** these are individual transparent PNGs, not a pre-composed layer. The 8 slot x-positions along the counter (side-on view) still need to be defined in code — pick 8 evenly-spaced x-anchors that make sense against `back-layer.png`'s actual counter surface (open the image to eyeball counter-top y-position and left/right bounds).
 
