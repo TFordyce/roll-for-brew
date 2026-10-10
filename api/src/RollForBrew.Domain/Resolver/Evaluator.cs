@@ -71,8 +71,7 @@ public static class Evaluator
         var exempt = Rules.RollExemptions(ctx, Rules.CastLogResolution(ctx)).Select(e => e.Player).ToHashSet();
         var expected = ctx.S.RoundParticipants.Count(p => p.RoundId == ctx.RoundId && p.ExcludedAt is null && !exempt.Contains(p.PlayerId));
         if (rollCount >= expected) return;
-        if (ctx.S.Rounds.Any(r => r.BrewerSource == "brew_iou"))
-            throw new PhasePendingException("5", "Brew Debt round (#544)");
+        if (Rules.BrewDebtDue(ctx) is not null) return;
         throw ResolveException.NotAllRolled();
     }
 

@@ -12,6 +12,8 @@ internal sealed record Invocation(
     Guid CastId, string Kind, long Seq, string Caster, bool Negated, Guid? SourceParentCastId, Guid? SourceGroup,
     string? SourceCaster, bool SourceBroken, Guid? WardCastId, string? WardCardName);
 
+internal sealed record BrewDebt(string DebtorPlayerId, Guid CastId, string CardName, Guid BrewIouRoundId);
+
 internal static class Rules
 {
     public static int TierDefaultDc(string tier) => tier switch { "common" => 2, "rare" => 5, _ => 10 };
@@ -203,8 +205,37 @@ internal static class Rules
         return sum;
     }
 
-    public static List<string> PickLowest(IReadOnlyList<string> players, IReadOnlyList<int> rolls, IReadOnlyList<decimal> modifier, IReadOnlyList<bool>? diceReduced)
+    public static BrewDebt? BrewDebtDue(EvalContext ctx)
     {
+        if (ctx.S.Rolls.Any(r => r.RoundId == ctx.RoundId && r.Layer == 0)) return null;
+        var asOf = ctx.Round.ClosedAt ?? ctx.S.DbNow;
+        var roomIsTest = ctx.S.Rooms.FirstOrDefault(rm => rm.Id == ctx.RoomId)?.IsTest;
+        var paid = ctx.S.Rounds
+            .Where(r => r.BrewerSource == "brew_debt" && r.Id != ctx.RoundId && r.BrewerSourceCastId is not null)
+            .Select(r => r.BrewerSourceCastId!.Value)
+            .ToHashSet();
+
+        var due = new List<(DateTimeOffset ResolvedAt, DateTimeOffset CastAt, long Seq, BrewDebt Debt)>();
+        foreach (var player in ctx.S.RoundParticipants
+                     .Where(p => p.RoundId == ctx.RoundId && p.ExcludedAt is null)
+                     .Select(p => p.PlayerId).Distinct())
+        {
+            if (ctx.LiveEffects.Any(e => e.EffectKind == "brewer_immunity" && e.TargetPlayerId == player)) continue;
+            foreach (var c in ctx.AllCasts.Values.Where(c => c.CasterId == player))
+            {
+                if (paid.Contains(c.Id)) continue;
+                if (ctx.CardOfCast(c) is not { } card) continue;
+                foreach (var iou in ctx.S.Rounds.Where(r => r.BrewerSource == "brew_iou" && r.BrewerSourceCastId == c.Id
+                             && r.Id != ctx.RoundId && r.Status == "resolved"
+                             && r.ResolvedAt is not null && r.ResolvedAt < asOf))
+                    if (ctx.S.Rooms.FirstOrDefault(rm => rm.Id == iou.RoomId)?.IsTest == roomIsTest)
+                        due.Add((iou.ResolvedAt!.Value, c.CastAt, c.Seq, new BrewDebt(player, c.Id, card.Name, iou.Id)));
+            }
+        }
+        return due.OrderBy(d => d.ResolvedAt).ThenBy(d => d.CastAt).ThenBy(d => d.Seq).Select(d => d.Debt).FirstOrDefault();
+    }
+
+    public static List<string> PickLowest(IReadOnlyList<string> players, IReadOnlyList<int> rolls, IReadOnlyList<decimal> modifier, IReadOnlyList<bool>? diceReduced)    {
         bool Reduced(int i) => diceReduced is not null && i < diceReduced.Count && diceReduced[i];
         var idx = Enumerable.Range(0, players.Count).ToList();
         List<string> Named(IEnumerable<int> ix) => ix.Select(i => players[i]).OrderBy(p => p, StringComparer.Ordinal).ToList();
