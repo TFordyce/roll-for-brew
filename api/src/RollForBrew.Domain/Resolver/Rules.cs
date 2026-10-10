@@ -178,6 +178,31 @@ internal static class Rules
         return set ?? baseValue * mult + flat;
     }
 
+    public static decimal BaseModifier(EvalContext ctx, string playerId) =>
+        ctx.S.Rounds
+            .Where(r => r.RoomId == ctx.RoomId && r.BrewerId == playerId && r.Status == "resolved")
+            .Sum(r => (decimal)r.BrewerModifierGain)
+        + ctx.S.ModifierAdjustments
+            .Where(m => m.RoomId == ctx.RoomId && m.TargetPlayerId == playerId)
+            .Sum(m => (decimal)m.Delta);
+
+    public static decimal SpellModifierDelta(EvalContext ctx, string playerId, Guid? excludeRoundId)
+    {
+        var rounds = ctx.S.Rounds.Where(r => r.RoomId == ctx.RoomId).ToDictionary(r => r.Id);
+        decimal sum = 0;
+        foreach (var sc in ctx.AllCasts.Values)
+        {
+            if (!rounds.TryGetValue(sc.RoundId, out var r)) continue;
+            if (sc.TargetPlayerId != playerId) continue;
+            if (sc.EffectKind is not ("persistent_modifier_transfer" or "persistent_modifier_spend")) continue;
+            if (sc.Negated) continue;
+            if (sc.Generation != r.ReplayGeneration) continue;
+            if (excludeRoundId is { } ex && sc.RoundId == ex) continue;
+            sum += sc.EffectParams.Dec("delta") ?? 0;
+        }
+        return sum;
+    }
+
     public static List<string> PickLowest(IReadOnlyList<string> players, IReadOnlyList<int> rolls, IReadOnlyList<decimal> modifier, IReadOnlyList<bool>? diceReduced)
     {
         bool Reduced(int i) => diceReduced is not null && i < diceReduced.Count && diceReduced[i];
