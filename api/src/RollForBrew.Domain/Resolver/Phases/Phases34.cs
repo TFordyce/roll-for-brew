@@ -7,8 +7,55 @@ internal sealed class Phase3PreDiceTick : EvalPhase
     public override string Id => "3-pre";
     public override void Run(EvalContext ctx)
     {
-        if (ctx.LiveEffects.Any(e => e.EffectKind == "per_round_dice_tick" && ctx.Players.Contains(e.TargetPlayerId)))
-            throw new PhasePendingException(Id, "Calami-Tea dice tick synthesis (#543)");
+        foreach (var e in ctx.LiveEffects.Where(e => e.EffectKind == "per_round_dice_tick")
+                     .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id, Jb.UuidOrder))
+        {
+            if (!ctx.Players.Contains(e.TargetPlayerId)) continue;
+            if (!ctx.AllCasts.TryGetValue(e.SourceCastId, out var src)) continue;
+            var ep = (JsonElement?)e.EffectParams;
+            var die = ep.Int("die") ?? 4;
+            var sign = ep.Int("sign") ?? -1;
+
+            if (ctx.AllCasts.Values.Any(t => t.RoundId == ctx.RoundId && t.SourceCastId == e.SourceCastId
+                    && t.CastInputs.Flag("dice_tick") && t.Generation == ctx.Gen))
+                continue;
+
+            var rolled = ctx.Dice.Roll(die);
+            var ward = Rules.WardHit(ctx, e.TargetPlayerId, "roll", "negative", null);
+            var victim = e.TargetPlayerId;
+
+            var inputs = JsonSerializer.SerializeToElement(new Dictionary<string, object?>
+            {
+                ["dice_tick"] = true,
+                ["roll_transform"] = new Dictionary<string, object?>
+                {
+                    ["kind"] = "per_round_dice_tick", ["order"] = 2, ["die"] = die, ["sign"] = sign, ["rolled"] = rolled,
+                    ["players"] = new[]
+                    {
+                        new Dictionary<string, object?>
+                        {
+                            ["player_id"] = victim, ["before"] = null, ["after"] = null, ["warded"] = ward is not null,
+                        },
+                    },
+                },
+            });
+            ctx.AddCast(seq => new WorkingCast
+            {
+                Id = Ids.Deterministic($"rfb-dice-tick:{e.SourceCastId}:{ctx.Gen}"),
+                RoundId = ctx.RoundId, CasterId = e.CasterId, CardInstanceId = src.CardInstanceId, TargetPlayerId = victim,
+                EffectKind = "per_round_dice_tick",
+                EffectParams = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["die"] = die, ["sign"] = sign, ["rolled"] = rolled }),
+                CastAt = ctx.S.DbNow, Seq = seq, CastInputs = inputs, SourceCastId = e.SourceCastId, Generation = ctx.Gen,
+                Negated = ward is not null, Synthesized = true,
+            });
+
+            if (ward is null) continue;
+            decimal? roll = ctx.S.Rolls.FirstOrDefault(r => r.RoundId == ctx.RoundId && r.Layer == 0 && r.PlayerId == victim)?.Value;
+            ctx.Emit("warded", new SourceCast(null, null, "Calami-Tea", e.CasterId), victim, TraceValue.Roll(roll), TraceValue.Roll(roll),
+                ("blocked_cast_id", null), ("ward_cast_id", ward.WardCastId), ("ward_card_name", ward.WardCardName),
+                ("target", victim), ("would_be_before", roll), ("would_be_after", roll is null ? null : Math.Max(1, roll.Value + sign * rolled)),
+                ("outcome", "blocked"));
+        }
     }
 }
 
@@ -26,20 +73,34 @@ internal sealed class Phase3RollInputs : EvalPhase
 
     public override void Run(EvalContext ctx)
     {
-        if (ctx.LiveEffects.Any(e => e.EffectKind is "advantage" or "disadvantage" && ctx.Players.Contains(e.TargetPlayerId)))
-            throw new PhasePendingException(Id, "persistent advantage / disadvantage (Prophe-Tea) (#543)");
-
         for (var i = 0; i < ctx.Players.Count; i++)
         {
             var pid = ctx.Players[i];
             decimal? running = null;
 
+            if (!ctx.Casts.Any(c => c.TargetPlayerId == pid && !c.TargetPending && c.EffectKind is "advantage" or "disadvantage"))
+            {
+                foreach (var e in ctx.LiveEffects.Where(e => e.EffectKind is "advantage" or "disadvantage" && e.TargetPlayerId == pid)
+                             .OrderBy(e => e.CreatedAt))
+                {
+                    if (ctx.Card(e.CardId) is not { } pcard) continue;
+                    var l0 = ctx.S.Rolls.FirstOrDefault(r => r.RoundId == ctx.RoundId && r.Layer == 0 && r.PlayerId == pid);
+                    var first = RowsFor(ctx, pid).FirstOrDefault();
+                    decimal? kept = first?.PBefore is { } fb ? Math.Round(fb, MidpointRounding.AwayFromZero) : l0?.Value;
+                    decimal? pAfter = kept, pBefore;
+                    if (l0?.DiscardedValue is not { } disc) pBefore = pAfter;
+                    else pBefore = e.EffectKind == "advantage" ? Math.Min(kept ?? 0, disc) : Math.Max(kept ?? 0, disc);
+                    running = pAfter;
+                    ctx.Emit(e.EffectKind, new SourceCast(null, e.Id, pcard.Name, e.CasterId), pid, TraceValue.Roll(pBefore), TraceValue.Roll(pAfter));
+                }
+            }
+
             foreach (var row in RowsFor(ctx, pid))
             {
-                decimal before, after;
+                decimal? before, after;
                 if (row.Warded)
                 {
-                    before = running ?? row.PBefore ?? 0;
+                    before = running ?? row.PBefore;
                     ctx.Emit("warded", Src(row.Cast, row.CardName), pid, TraceValue.Roll(before), TraceValue.Roll(before),
                         ("blocked_cast_id", row.Cast.Id), ("ward_cast_id", row.WardCastId), ("ward_card_name", row.WardCardName),
                         ("target", pid), ("would_be_before", before), ("would_be_after", row.WouldBeAfter ?? before), ("outcome", "blocked"));
@@ -49,17 +110,17 @@ internal sealed class Phase3RollInputs : EvalPhase
 
                 if (row.Cast.EffectKind == "per_round_dice_tick")
                 {
-                    before = running ?? ctx.Rolls[i];
-                    after = Math.Max(1, before + (row.TickSign ?? -1) * (row.TickRolled ?? 0));
-                    running = after;
-                    if (after < before) ctx.DiceReduced[i] = true;
-                    ctx.Emit("dice_tick", Src(row.Cast, row.CardName), pid, TraceValue.Roll(before), TraceValue.Roll(after),
+                    var tb = running ?? ctx.Rolls[i];
+                    var ta = Math.Max(1, tb + (row.TickSign ?? -1) * (row.TickRolled ?? 0));
+                    running = ta;
+                    if (ta < tb) ctx.DiceReduced[i] = true;
+                    ctx.Emit("dice_tick", Src(row.Cast, row.CardName), pid, TraceValue.Roll(tb), TraceValue.Roll(ta),
                         ("die", row.TickDie), ("rolled", row.TickRolled), ("sign", row.TickSign ?? -1));
                     continue;
                 }
 
-                before = running ?? row.PBefore ?? 0;
-                after = row.PAfter ?? 0;
+                before = running ?? row.PBefore;
+                after = row.PAfter;
                 running = after;
                 var kind = row.Cast.EffectKind!;
                 if (row.Condition is not null)
