@@ -1,4 +1,7 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Domain.Resolver.Phases;
 
@@ -204,19 +207,88 @@ internal sealed class Phase4cLowestGainsHighest : EvalPhase
 internal sealed class Phase4bPreBitterLeech : EvalPhase
 {
     public override string Id => "4b-pre";
+
     public override void Run(EvalContext ctx)
     {
-        if (ctx.LiveEffects.Any(e => e.EffectKind == "persistent_modifier_transfer" && ((JsonElement?)e.EffectParams).Has("per_round_delta")))
-            throw new PhasePendingException(Id, "Bitter Leech tick synthesis (#543)");
+        foreach (var e in ctx.LiveEffects
+                     .Where(e => e.EffectKind == "persistent_modifier_transfer" && ((JsonElement?)e.EffectParams).Has("per_round_delta"))
+                     .OrderBy(e => e.CreatedAt).ThenBy(e => e.Id, Jb.UuidOrder))
+        {
+            if (!ctx.AllCasts.TryGetValue(e.SourceCastId, out var src)) continue;
+            if (ctx.AllCasts.Values.Any(t => t.RoundId == ctx.RoundId && t.SourceCastId == e.SourceCastId
+                    && t.CastInputs.Flag("bitter_leech_tick") && t.Generation == ctx.Gen))
+                continue;
+
+            var delta = ((JsonElement?)e.EffectParams).Dec("per_round_delta") ?? 1;
+            var victim = e.TargetPlayerId;
+            ctx.AddCast(seq => Tick(ctx, seq, src, e, victim, -delta));
+            if (ctx.S.RoundParticipants.Any(p => p.RoundId == ctx.RoundId && p.PlayerId == e.CasterId))
+                ctx.AddCast(seq => Tick(ctx, seq, src, e, e.CasterId, delta));
+        }
+
+        foreach (var g in ctx.AllCasts.Values
+                     .Where(t => t.RoundId == ctx.RoundId && t.CastInputs.Flag("bitter_leech_tick")
+                         && (((JsonElement?)t.EffectParams).Dec("delta") ?? 0) < 0 && t.Generation == ctx.Gen)
+                     .GroupBy(t => (t.SourceCastId!.Value, t.TargetPlayerId!))
+                     .OrderBy(g => g.Key.Item1, Jb.UuidOrder).ThenBy(g => g.Key.Item2, StringComparer.Ordinal))
+        {
+            var victim = g.Key.Item2;
+            if (!ctx.Players.Contains(victim)) continue;
+            var ward = Rules.WardHit(ctx, victim, "modifier", "negative", null);
+            if (ward is null) continue;
+
+            foreach (var t in ctx.AllCasts.Values.Where(t => t.RoundId == ctx.RoundId && t.SourceCastId == g.Key.Item1
+                         && t.CastInputs.Flag("bitter_leech_tick") && t.Generation == ctx.Gen))
+                t.Negated = true;
+
+            var before = Rules.BaseModifier(ctx, victim) + Rules.SpellModifierDelta(ctx, victim, ctx.RoundId);
+            ctx.Emit("warded", new SourceCast(null, null, "Bitter Leech", null), victim,
+                TraceValue.Modifier(before), TraceValue.Modifier(before),
+                ("blocked_cast_id", null), ("ward_cast_id", ward.WardCastId), ("ward_card_name", ward.WardCardName),
+                ("target", victim), ("would_be_before", before), ("would_be_after", before - 1), ("outcome", "blocked"));
+        }
     }
+
+    private static WorkingCast Tick(EvalContext ctx, long seq, WorkingCast src, ActiveEffectRow e, string target, decimal delta) => new()
+    {
+        Id = new Guid(MD5.HashData(Encoding.UTF8.GetBytes($"rfb-bitter-leech-tick:{e.SourceCastId}:{target}:{ctx.Gen}"))),
+        RoundId = ctx.RoundId, CasterId = e.CasterId, CardInstanceId = src.CardInstanceId, TargetPlayerId = target,
+        EffectKind = "persistent_modifier_transfer",
+        EffectParams = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["delta"] = delta }),
+        CastAt = ctx.S.DbNow, Seq = seq,
+        CastInputs = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["bitter_leech_tick"] = true }),
+        SourceCastId = e.SourceCastId, Generation = ctx.Gen, Synthesized = true,
+    };
 }
 
 internal sealed class Phase4bPersistentModifiers : EvalPhase
 {
+    private static readonly HashSet<string> Kinds = ["persistent_modifier_transfer", "persistent_modifier_spend"];
+
     public override string Id => "4b";
     public override void Run(EvalContext ctx)
     {
-        if (ctx.Casts.Any(c => c.EffectKind is "persistent_modifier_transfer" or "persistent_modifier_spend" && c.TargetPlayerId is not null))
-            throw new PhasePendingException(Id, "persistent modifier projection (#543)");
+        var targets = ctx.Casts
+            .Where(c => c.EffectKind is not null && Kinds.Contains(c.EffectKind) && c.TargetPlayerId is not null)
+            .Select(c => c.TargetPlayerId!)
+            .Distinct()
+            .OrderBy(t => t, StringComparer.Ordinal);
+
+        foreach (var pid in targets)
+        {
+            var running = Rules.BaseModifier(ctx, pid) + Rules.SpellModifierDelta(ctx, pid, ctx.RoundId);
+            foreach (var c in ctx.Casts.Where(c => c.TargetPlayerId == pid && c.EffectKind is not null && Kinds.Contains(c.EffectKind)
+                         && !c.Negated && ((JsonElement?)c.EffectParams).Has("delta") && c.Generation == ctx.Gen))
+            {
+                if (ctx.CardOfCast(c) is not { } card) continue;
+                var delta = ((JsonElement?)c.EffectParams).Dec("delta") ?? 0;
+                var before = running;
+                running += delta;
+                ctx.Emit(c.EffectKind!, new SourceCast(c.Id, null, card.Name, c.CasterId), pid,
+                    TraceValue.Modifier(before), TraceValue.Modifier(running),
+                    ("delta", delta), ("rest_of_day", true));
+            }
+            ctx.RoomPlayerModifierWrites[pid] = (int)Math.Round(running, MidpointRounding.AwayFromZero);
+        }
     }
 }

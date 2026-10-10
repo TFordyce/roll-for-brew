@@ -4,11 +4,6 @@ internal static class PendingGoldens
 {
     public static readonly IReadOnlySet<string> Names = new HashSet<string>(StringComparer.Ordinal)
     {
-        "4b-pre-bitter-leech-tick-synthesis",
-        "4b-persistent-modifier-transfer-rest-of-day",
-        "wild-2-persistent-plus-three-caster",
-        "wild-3-modifier-swap-pair",
-        "wild-5-high-low-modifier-swap-pair",
         "05-brew-debt-round-paid",
         "05-brew-iou-creates-debt",
         "05-brewer-immunity-all-immune-tie",
