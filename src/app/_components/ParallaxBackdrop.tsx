@@ -6,7 +6,7 @@ import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
 const SCENE_WIDTH = 1376;
 const SCENE_HEIGHT = 768;
 
-const PROP_IMAGES: Record<PropKey, string> = {
+export const PROP_IMAGES: Record<PropKey, string> = {
   kettle: "/backdrop/props/kettle.png",
   teapot: "/backdrop/props/teapot.png",
   sugarBowl: "/backdrop/props/sugar-bowl.png",
@@ -15,13 +15,13 @@ const PROP_IMAGES: Record<PropKey, string> = {
   saucerStack: "/backdrop/props/saucer-stack.png",
 };
 
-const PROP_ASPECT: Record<PropKey, number> = {
-  kettle: 252 / 243,
-  teapot: 302 / 209,
-  sugarBowl: 227 / 190,
-  milkCarton: 170 / 253,
-  coffeeJar: 194 / 304,
-  saucerStack: 259 / 173,
+export const PROP_ASPECT: Record<PropKey, number> = {
+  kettle: 44 / 42,
+  teapot: 52 / 36,
+  sugarBowl: 39 / 32,
+  milkCarton: 29 / 44,
+  coffeeJar: 36 / 54,
+  saucerStack: 45 / 30,
 };
 
 const PROP_SCALE: Record<PropKey, number> = {
