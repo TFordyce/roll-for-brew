@@ -8,7 +8,6 @@ import type { SpellCastActionState } from "@/app/rounds/roundActionHelpers";
 import type { HeldSpellCard } from "@/lib/supabase/spellCards";
 import type { CourageToken, ReactionStackEntry, ReactionWindowPendingPlayer } from "@/lib/supabase/reactionWindow";
 import type { RoundParticipant } from "@/lib/supabase/rounds";
-import { orderStackForResolution } from "@/lib/game/reactionStack";
 import { joinNames } from "@/lib/game/displayName";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 import { SkipVote } from "@/app/rounds/SkipVote";
@@ -57,7 +56,8 @@ export function ReactionBanner({
 
   const otherParticipants = participants.filter((p) => p.playerId !== selfPlayerId);
   const pendingNames = joinNames(pendingPlayers.map((p) => p.displayName), "");
-  const negatableStack = orderStackForResolution(stack.filter((entry) => !entry.negated));
+  // The wire delivers the stack in resolution order (newest cast first).
+  const negatableStack = stack.filter((entry) => !entry.negated);
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t-4 border-gilt bg-tavern-panel p-3 shadow-[0_-8px_24px_rgb(0_0_0_/_0.5)]">

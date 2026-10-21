@@ -24,6 +24,19 @@ public class RoomViewProjectorTests
     }
 
     [Fact]
+    public void Names_resolve_for_the_roster_display_name_first_then_email()
+    {
+        var f = new ViewFixture();
+        f.Extras = f.Extras with
+        {
+            Players = f.Extras.Players.Select(p => p with { DisplayName = p.Id == "bob" ? null : p.DisplayName }).ToList(),
+        };
+        Assert.Equal(
+            new Dictionary<string, string> { ["ann"] = "ANN", ["bob"] = "bob@x.test", ["cat"] = "CAT" },
+            f.Project().Room.NamesByPlayerId);
+    }
+
+    [Fact]
     public void Roster_is_ordered_by_modifier_and_carries_only_polarised_effect_badges()
     {
         var f = new ViewFixture().With(r => r with
@@ -38,6 +51,17 @@ public class RoomViewProjectorTests
         Assert.Equal(["ann", "bob", "cat"], v.Room.Roster.Select(r => r.PlayerId));
         Assert.Empty(v.Room.Roster[0].EffectBadges);
         Assert.Equal("Hex", Assert.Single(v.Room.Roster[1].EffectBadges).CardName);
+    }
+
+    [Fact]
+    public void Roster_entries_flag_who_joined_the_active_round()
+    {
+        var open = new ViewFixture().OpenRound("ann", "bob").Project();
+        Assert.True(open.Room.Roster.Single(r => r.PlayerId == "ann").Joined);
+        Assert.True(open.Room.Roster.Single(r => r.PlayerId == "bob").Joined);
+        Assert.False(open.Room.Roster.Single(r => r.PlayerId == "cat").Joined);
+
+        Assert.All(new ViewFixture().Project().Room.Roster, r => Assert.False(r.Joined));
     }
 
     [Fact]
@@ -201,6 +225,28 @@ public class RoomViewProjectorTests
 
 
     [Fact]
+    public void Participant_rows_carry_the_room_modifier_so_the_client_needs_no_lookup()
+    {
+        var v = new ViewFixture().OpenRound("ann", "bob", "zed").Project().Room.ActiveRound!;
+        Assert.Equal(3, v.Participants.Single(p => p.PlayerId == "ann").Modifier);
+        Assert.Equal(2, v.Participants.Single(p => p.PlayerId == "bob").Modifier);
+        Assert.Equal(0, v.Participants.Single(p => p.PlayerId == "zed").Modifier);
+    }
+
+    [Fact]
+    public void The_default_drink_is_this_rounds_order_else_the_most_recent_one()
+    {
+        var f = new ViewFixture().OpenRound("ann", "bob").WithExtras(e => e with { MyMostRecentOrder = "coffee" });
+        Assert.Equal("coffee", f.Project().Viewer.DefaultDrinkType);
+
+        f.Extras = f.Extras with { MyOrderForRound = "tea" };
+        Assert.Equal("tea", f.Project().Viewer.DefaultDrinkType);
+
+        Assert.Null(new ViewFixture().OpenRound("ann", "bob").Project().Viewer.DefaultDrinkType);
+        Assert.Null(new ViewFixture().WithExtras(e => e with { MyMostRecentOrder = "coffee" }).Project().Viewer.DefaultDrinkType);
+    }
+
+    [Fact]
     public void Tea_party_revolt_panel_needs_a_picker_in_a_closed_layer_zero_round()
     {
         var r = Reads(x => x with { RevoltPickerId = "bob" });
@@ -256,6 +302,19 @@ public class RoomViewProjectorTests
     }
 
     [Fact]
+    public void The_held_card_is_the_one_in_hand_whatever_its_timing_and_null_with_an_empty_hand()
+    {
+        var action = Held("Tea Heist");
+        var holding = new ViewFixture()
+            .With(_ => Reads(x => x with { HeldCards = [Held("Just Drawn") with { Location = "pending_swap" }, action] }))
+            .Project().Viewer;
+        Assert.Equal(action.InstanceId, holding.HeldCard!.InstanceId);
+        Assert.Null(holding.HeldReactionCard);
+
+        Assert.Null(new ViewFixture().Project().Viewer.HeldCard);
+    }
+
+    [Fact]
     public void Pending_casts_only_while_closed_and_pending_dice_need_an_active_round()
     {
         var reads = Reads(x => x with
@@ -306,6 +365,25 @@ public class RoomViewProjectorTests
         Assert.Single(v.Reaction.PendingPlayers);
         Assert.Single(v.Reaction.CourageTokens);
         Assert.True(v.Reaction.Compelled);
+    }
+
+    [Fact]
+    public void The_reaction_stack_is_also_offered_in_resolution_order_newest_cast_first()
+    {
+        var reads = Reads(x => x with
+        {
+            ReactionWindow = new(Guid.NewGuid(), 0, 1, true, false),
+            ReactionStack =
+            [
+                new(Guid.NewGuid(), "A", "ann", "ANN", "OPPONENT", false, null, 1),
+                new(Guid.NewGuid(), "B", "bob", "BOB", "PLAYER", false, null, 3),
+                new(Guid.NewGuid(), "C", "cat", "CAT", "SELF", true, null, 2),
+            ],
+        });
+        var v = new ViewFixture().ClosedRound(0, "ann", "bob").With(_ => reads).Project().Viewer.Reaction!;
+        Assert.Equal([3, 2, 1], v.StackInResolutionOrder.Select(s => s.Seq));
+        Assert.Equal([1, 3, 2], v.Stack.Select(s => s.Seq));
+        Assert.Contains(v.StackInResolutionOrder, s => s.Negated);
     }
 
     [Fact]
