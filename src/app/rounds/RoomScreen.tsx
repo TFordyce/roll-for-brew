@@ -75,6 +75,7 @@ export function RoomScreen({
     avatarUrl: r.avatarUrl,
     modifier: Number(r.modifier),
     isTest: r.isTest,
+    joined: r.joined,
     effectBadges: r.effectBadges.map(
       (b): ActiveEffectBadge => ({
         effectId: b.effectId,
@@ -86,11 +87,8 @@ export function RoomScreen({
       }),
     ),
   }));
-  const namesByPlayerId: Record<string, string> = Object.fromEntries(
-    roster.map((r) => [r.playerId, r.displayName ?? r.email]),
-  );
+  const namesByPlayerId = room.namesByPlayerId;
   const nameOf = (id: string, fallback = "Someone") => namesByPlayerId[id] ?? fallback;
-  const modifierByPlayerId = new Map(roster.map((r) => [r.playerId, r.modifier]));
 
   const participants: RoundParticipant[] = (active?.participants ?? []).map((p) => ({
     playerId: p.playerId,
@@ -100,19 +98,19 @@ export function RoomScreen({
     declaredAt: p.declaredAt,
     excludedAt: p.excludedAt,
   }));
-  const joinedIds = new Set(participants.map((p) => p.playerId));
   const revealParticipants: RoundRevealParticipant[] = (active?.participants ?? []).map((p) => ({
     playerId: p.playerId,
     displayName: p.displayName,
     email: p.email ?? "",
-    modifier: modifierByPlayerId.get(p.playerId) ?? Number(p.modifier),
+    modifier: Number(p.modifier),
   }));
 
   const heldCards = viewer.heldCards as HeldSpellCard[];
+  const heldCard = viewer.heldCard as HeldSpellCard | null;
   const dispellableEffects = viewer.dispellableEffects as DispellableEffect[];
   const currentLayer = active ? Number(active.currentLayer) : 0;
   const rollInputMode = viewer.rollInputMode as RollInputMode | null;
-  const drinkDefault = (viewer.myOrderForRound ?? viewer.myMostRecentOrder) as DrinkType | null;
+  const drinkDefault = viewer.defaultDrinkType as DrinkType | null;
   const lastDrip: LastDripPreview | null = viewer.lastDripPreview
     ? {
         targetPlayerId: viewer.lastDripPreview.targetPlayerId,
@@ -217,7 +215,7 @@ export function RoomScreen({
         <CompelledCastPanel
           roundId={active.roundId}
           compelled={(compelled?.mine ?? null) as CompelledCast | null}
-          held={heldCards.find((c) => c.location === "held") ?? null}
+          held={heldCard}
           brewmageddonCasterName={compelled?.mine ? nameOf(compelled.mine.brewmageddonCasterId) : ""}
           waitingOnNames={(compelled?.waitingOnOthers ?? [])
             .filter((id) => id !== selfPlayerId)
@@ -242,6 +240,7 @@ export function RoomScreen({
 
       <SpellCardPanel
         heldCards={heldCards}
+        held={heldCard}
         pendingCasts={viewer.pendingCasts as PendingCast[]}
         roundId={active?.roundId ?? null}
         roundIsClosed={showClosed}
@@ -250,7 +249,7 @@ export function RoomScreen({
         roomId={roomId}
       />
       <HeldCardThumbnail
-        heldCards={heldCards}
+        held={heldCard}
         dispellableEffects={dispellableEffects}
         roundId={active?.roundId ?? null}
         roundIsOpen={active?.status === "open"}
@@ -307,7 +306,7 @@ export function RoomScreen({
                       email={entry.email}
                       avatarUrl={entry.avatarUrl}
                       modifier={entry.modifier}
-                      joined={joinedIds.has(entry.playerId)}
+                      joined={entry.joined}
                       isStarter={entry.playerId === active.startedBy}
                       effectBadges={entry.effectBadges}
                       {...(isTestRoom
@@ -387,7 +386,7 @@ export function RoomScreen({
           eligible={reaction.eligible}
           alreadyPassed={reaction.alreadyPassed}
           heldReactionCard={viewer.heldReactionCard as HeldSpellCard | null}
-          stack={reaction.stack.map(
+          stack={reaction.stackInResolutionOrder.map(
             (s): ReactionStackEntry => ({
               castId: s.castId,
               cardName: s.cardName,

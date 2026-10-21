@@ -13,11 +13,12 @@ public sealed record RoomPart(
     ActiveRoundView? ActiveRound,
     IReadOnlyList<HistoryEntry> History,
     DateTimeOffset? NextStallDeadline,
-    DateTimeOffset DbNow);
+    DateTimeOffset DbNow,
+    IReadOnlyDictionary<string, string> NamesByPlayerId);
 
 public sealed record RosterEntry(
     string PlayerId, string? DisplayName, string? Email, string? AvatarUrl, int Modifier, bool IsTest,
-    IReadOnlyList<EffectBadge> EffectBadges);
+    IReadOnlyList<EffectBadge> EffectBadges, bool Joined);
 
 public sealed record EffectBadge(Guid EffectId, string CardName, string Tier, string Polarity, int? RoundsRemaining);
 
@@ -59,11 +60,13 @@ public sealed record ViewerPart(
     Guid? OrderRoundId,
     string? MyOrderForRound,
     string? MyMostRecentOrder,
+    string? DefaultDrinkType,
     bool OrderCue,
     IReadOnlyList<MenuEntryView> Menu,
     IReadOnlyList<ParticipantView> MenuParticipants,
     RateableRoundView? RateableRound,
     IReadOnlyList<HeldCard> HeldCards,
+    HeldCard? HeldCard,
     HeldCard? HeldReactionCard,
     PendingSpellDrawView? PendingSpellDraw,
     IReadOnlyList<PendingCastRow> PendingCasts,
@@ -96,7 +99,8 @@ public sealed record ReactionView(
     IReadOnlyList<PendingPlayerRow> PendingPlayers,
     SkipVoteRow? SkipVote,
     IReadOnlyList<CourageTokenRow> CourageTokens,
-    bool Compelled);
+    bool Compelled,
+    IReadOnlyList<ReactionStackRow> StackInResolutionOrder);
 
 public sealed record PendingReplayView(Guid RoundId, string CasterId, string? CasterDisplayName, bool IsCaster, DateTimeOffset CreatedAt);
 

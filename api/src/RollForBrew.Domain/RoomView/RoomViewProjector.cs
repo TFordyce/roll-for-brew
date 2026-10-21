@@ -22,6 +22,9 @@ public static class RoomViewProjector
         var isClosed = active?.Status == "closed";
         var layer = active?.CurrentLayer ?? 0;
         var isTiePhase = isClosed && layer > 0;
+        var joinedIds = active is null
+            ? []
+            : s.RoundParticipants.Where(p => p.RoundId == active.Id).Select(p => p.PlayerId).ToHashSet();
 
         var badges = r.EffectBadges.Where(b => b.Polarity is not null)
             .GroupBy(b => b.TargetPlayerId)
@@ -31,12 +34,15 @@ public static class RoomViewProjector
             .OrderByDescending(rp => rp.Modifier).ThenBy(rp => rp.PlayerId, StringComparer.Ordinal)
             .Select(rp => new RosterEntry(rp.PlayerId, P(rp.PlayerId)?.DisplayName, P(rp.PlayerId)?.Email,
                 P(rp.PlayerId)?.AvatarUrl, rp.Modifier, P(rp.PlayerId)?.IsTest ?? false,
-                badges.GetValueOrDefault(rp.PlayerId) ?? []))
+                badges.GetValueOrDefault(rp.PlayerId) ?? [], joinedIds.Contains(rp.PlayerId)))
             .ToList();
 
         var rolls = active is null
             ? new List<RollRow>()
             : s.Rolls.Where(ro => ro.RoundId == active.Id && ro.Generation == active.ReplayGeneration).ToList();
+        var namesByPlayerId = roster.Select(e => (e.PlayerId, Name: e.DisplayName ?? e.Email))
+            .Where(x => x.Name is not null)
+            .ToDictionary(x => x.PlayerId, x => x.Name!);
         var rolledThisLayer = rolls.Where(ro => ro.Layer == layer).Select(ro => ro.PlayerId).ToHashSet();
         IReadOnlyList<ParticipantView> ParticipantsOf(Guid roundId) =>
             s.RoundParticipants.Where(p => p.RoundId == roundId).OrderBy(p => p.DeclaredAt).ThenBy(p => p.PlayerId, StringComparer.Ordinal)
@@ -88,9 +94,11 @@ public static class RoomViewProjector
             : orderRoundId is { } oid ? ParticipantsOf(oid) : [];
         var myOrderForRound = orderRoundId is null ? null : x.MyOrderForRound;
         var myMostRecent = orderRoundId is not null && myOrderForRound is null ? x.MyMostRecentOrder : null;
+        var defaultDrink = myOrderForRound ?? myMostRecent;
 
         var held = r.HeldCards;
         bool Holds(string name) => held.Any(c => c.Location == "held" && c.CardName == name);
+        var heldCard = held.FirstOrDefault(c => c.Location == "held");
         var heldReaction = held.FirstOrDefault(c => c.Location == "held" && c.CastingTime == "R");
         var castWindowOpenForAction = active is not null && (isOpen || myCompelled?.CastingTime == "A");
 
@@ -109,7 +117,8 @@ public static class RoomViewProjector
         var window = isClosed ? r.ReactionWindow : null;
         var reaction = window is null ? null : new ReactionView(window.WindowId, window.Layer, window.PollRound,
             window.Eligible, window.AlreadyPassed, r.ReactionStack, r.ReactionPendingPlayers, r.SkipVote,
-            window.Layer == 0 ? r.CourageTokens : [], myCompelled?.CastingTime == "R");
+            window.Layer == 0 ? r.CourageTokens : [], myCompelled?.CastingTime == "R",
+            r.ReactionStack.OrderByDescending(e => e.Seq).ToList());
 
         var compelledView = compelledRound is null ? null : new CompelledCastView(myCompelled, compelledRound.Id,
             stepWaiting.Where(id => id != me).ToList(), step?.EndedAt);
@@ -160,7 +169,7 @@ public static class RoomViewProjector
 
         return new RoomViewResponse(
             input.Version,
-            new RoomPart(s.RoomId, room.IsTest, roster, activeView, history, deadline, s.DbNow),
+            new RoomPart(s.RoomId, room.IsTest, roster, activeView, history, deadline, s.DbNow, namesByPlayerId),
             new ViewerPart(
                 me, hasDeclared, isStarter,
                 CanDeclare: isOpen && !hasDeclared,
@@ -173,9 +182,9 @@ public static class RoomViewProjector
                 IsExpectedToRoll: isExpectedToRoll, IsPlayersTurnToRoll: isPlayersTurn, NeedsRollInput: needsRollInput,
                 RollInputMode: rollInputMode,
                 OrderRoundId: orderRoundId, MyOrderForRound: myOrderForRound, MyMostRecentOrder: myMostRecent,
-                OrderCue: orderRoundId is not null && myOrderForRound is null,
+                DefaultDrinkType: defaultDrink, OrderCue: orderRoundId is not null && myOrderForRound is null,
                 Menu: menu, MenuParticipants: menuParticipants, RateableRound: rateable,
-                HeldCards: held, HeldReactionCard: heldReaction, PendingSpellDraw: pendingDraw,
+                HeldCards: held, HeldCard: heldCard, HeldReactionCard: heldReaction, PendingSpellDraw: pendingDraw,
                 PendingCasts: pendingCasts, PendingSpellDice: pendingDice, SpellDieRollInputMode: spellDieMode,
                 CompelledCast: compelledView, TeaPartyRevoltPickerId: revoltPicker,
                 DispellableEffects: dispellable, HeistTargetIds: heist, LastDripPreview: lastDrip,

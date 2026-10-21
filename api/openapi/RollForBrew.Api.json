@@ -1281,7 +1281,8 @@
           "pendingPlayers",
           "skipVote",
           "courageTokens",
-          "compelled"
+          "compelled",
+          "stackInResolutionOrder"
         ],
         "type": "object",
         "properties": {
@@ -1341,6 +1342,12 @@
           },
           "compelled": {
             "type": "boolean"
+          },
+          "stackInResolutionOrder": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReactionStackRow"
+            }
           }
         }
       },
@@ -1352,7 +1359,8 @@
           "activeRound",
           "history",
           "nextStallDeadline",
-          "dbNow"
+          "dbNow",
+          "namesByPlayerId"
         ],
         "type": "object",
         "properties": {
@@ -1395,6 +1403,12 @@
           "dbNow": {
             "type": "string",
             "format": "date-time"
+          },
+          "namesByPlayerId": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
           }
         }
       },
@@ -1430,7 +1444,8 @@
           "avatarUrl",
           "modifier",
           "isTest",
-          "effectBadges"
+          "effectBadges",
+          "joined"
         ],
         "type": "object",
         "properties": {
@@ -1471,6 +1486,9 @@
             "items": {
               "$ref": "#/components/schemas/EffectBadge"
             }
+          },
+          "joined": {
+            "type": "boolean"
           }
         }
       },
@@ -1621,11 +1639,13 @@
           "orderRoundId",
           "myOrderForRound",
           "myMostRecentOrder",
+          "defaultDrinkType",
           "orderCue",
           "menu",
           "menuParticipants",
           "rateableRound",
           "heldCards",
+          "heldCard",
           "heldReactionCard",
           "pendingSpellDraw",
           "pendingCasts",
@@ -1729,6 +1749,12 @@
               "string"
             ]
           },
+          "defaultDrinkType": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
           "orderCue": {
             "type": "boolean"
           },
@@ -1759,6 +1785,16 @@
             "items": {
               "$ref": "#/components/schemas/HeldCard"
             }
+          },
+          "heldCard": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/HeldCard"
+              }
+            ]
           },
           "heldReactionCard": {
             "oneOf": [

@@ -8,6 +8,7 @@ import { TargetConfirmForm } from "@/app/rounds/SpellCardForms";
 
 export function SpellCardPanel({
   heldCards,
+  held,
   pendingCasts,
   roundId,
   roundIsClosed,
@@ -16,6 +17,7 @@ export function SpellCardPanel({
   roomId,
 }: {
   heldCards: HeldSpellCard[];
+  held: HeldSpellCard | null;
   pendingCasts: PendingCast[];
   roundId: string | null;
   roundIsClosed: boolean;
@@ -23,7 +25,6 @@ export function SpellCardPanel({
   selfPlayerId: string;
   roomId: string;
 }) {
-  const held = heldCards.find((c) => c.location === "held");
   const pendingSwap = heldCards.find((c) => c.location === "pending_swap");
   const hasPendingCasts = !!roundId && roundIsClosed && pendingCasts.length > 0;
 

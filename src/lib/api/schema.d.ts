@@ -469,6 +469,7 @@ export interface components {
             skipVote: null | components["schemas"]["SkipVoteRow"];
             courageTokens: components["schemas"]["CourageTokenRow"][];
             compelled: boolean;
+            stackInResolutionOrder: components["schemas"]["ReactionStackRow"][];
         };
         RoomPart: {
             /** Format: uuid */
@@ -481,6 +482,9 @@ export interface components {
             nextStallDeadline: null | string;
             /** Format: date-time */
             dbNow: string;
+            namesByPlayerId: {
+                [key: string]: string;
+            };
         };
         RoomViewResponse: {
             /** Format: int64 */
@@ -497,6 +501,7 @@ export interface components {
             modifier: number | string;
             isTest: boolean;
             effectBadges: components["schemas"]["EffectBadge"][];
+            joined: boolean;
         };
         ScoreRequest: {
             /** Format: int32 */
@@ -551,11 +556,13 @@ export interface components {
             orderRoundId: null | string;
             myOrderForRound: null | string;
             myMostRecentOrder: null | string;
+            defaultDrinkType: null | string;
             orderCue: boolean;
             menu: components["schemas"]["MenuEntryView"][];
             menuParticipants: components["schemas"]["ParticipantView"][];
             rateableRound: null | components["schemas"]["RateableRoundView"];
             heldCards: components["schemas"]["HeldCard"][];
+            heldCard: null | components["schemas"]["HeldCard"];
             heldReactionCard: null | components["schemas"]["HeldCard"];
             pendingSpellDraw: null | components["schemas"]["PendingSpellDrawView"];
             pendingCasts: components["schemas"]["PendingCastRow"][];
