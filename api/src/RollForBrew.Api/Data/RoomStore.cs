@@ -33,18 +33,54 @@ public sealed class RoomStore
     public Task<T> Filler<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
         Run(actor, readOnly: false, work, ct);
 
+    /// <summary>
+    /// A write transaction that takes the round-row <c>for update</c> lock before the
+    /// snapshot (ADR 0012). The lock is handed to <paramref name="work"/> as
+    /// <c>null</c> when the round does not exist, so callers can answer with SQL's own
+    /// noop shape instead of a 404. Slice 2a's minimal write path; slice 2b's
+    /// <c>Command</c> entry point replaces it.
+    /// </summary>
+    public async Task<T> Advance<T>(Caller actor, Guid roundId, Func<RoundLock?, StoreSession, Task<T>> work, CancellationToken ct = default)
+    {
+        try
+        {
+            await using var conn = await _dataSource.OpenConnectionAsync(ct);
+            await using var tx = await conn.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+            await SetClaimsGuc(conn, tx, actor, ct);
+
+            RoundLock? round;
+            await using (var cmd = new NpgsqlCommand(
+                "select room_id, status, current_layer from public.rounds where id = @id for update", conn, tx))
+            {
+                cmd.Parameters.Add(new NpgsqlParameter("id", NpgsqlTypes.NpgsqlDbType.Uuid) { Value = roundId });
+                await using var r = await cmd.ExecuteReaderAsync(ct);
+                round = await r.ReadAsync(ct)
+                    ? new RoundLock(roundId, r.GetGuid(0), r.GetString(1), r.GetInt32(2))
+                    : null;
+            }
+
+            await using var session = new StoreSession(conn, tx);
+            var result = await work(round, session);
+            await tx.CommitAsync(ct);
+            return result;
+        }
+        catch (PostgresException e)
+        {
+            throw Translate(e);
+        }
+        catch (DbUpdateException e) when (e.InnerException is PostgresException pe)
+        {
+            throw Translate(pe);
+        }
+    }
+
     private async Task<T> Run<T>(Caller actor, bool readOnly, Func<StoreSession, Task<T>> work, CancellationToken ct)
     {
         try
         {
             await using var conn = await _dataSource.OpenConnectionAsync(ct);
             await using var tx = await conn.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
-
-            await using (var cmd = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx))
-            {
-                cmd.Parameters.AddWithValue("c", actor.ClaimsJson);
-                await cmd.ExecuteNonQueryAsync(ct);
-            }
+            await SetClaimsGuc(conn, tx, actor, ct);
             if (readOnly)
             {
                 await using var ro = new NpgsqlCommand("set transaction read only", conn, tx);
@@ -66,11 +102,20 @@ public sealed class RoomStore
         }
     }
 
+    private static async Task SetClaimsGuc(NpgsqlConnection conn, NpgsqlTransaction tx, Caller actor, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx);
+        cmd.Parameters.AddWithValue("c", actor.ClaimsJson);
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     public static Exception Translate(PostgresException e) =>
         ProblemCatalog.FromSqlState(e.SqlState) is { } info
             ? ProblemException.FromInfo(info, e.Detail ?? e.MessageText)
             : e;
 }
+
+public sealed record RoundLock(Guid RoundId, Guid RoomId, string Status, int CurrentLayer);
 
 public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
 {
