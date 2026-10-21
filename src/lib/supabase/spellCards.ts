@@ -66,23 +66,6 @@ export async function recordPendingSpellDraw(
   if (error) throw error;
 }
 
-export type MyPendingSpellDraw = {
-  roundId: string;
-  trigger: "nat1" | "nat20";
-  otherCount: number;
-};
-
-export async function getMyPendingSpellDraw(supabase: SupabaseClient): Promise<MyPendingSpellDraw | null> {
-  const { data, error } = await supabase.rpc("get_my_pending_spell_draw");
-  if (error) throw error;
-
-  const rows = (data ?? []) as { round_id: string; trigger: "nat1" | "nat20"; other_count: number }[];
-  const [row] = rows;
-  if (!row) return null;
-
-  return { roundId: row.round_id, trigger: row.trigger, otherCount: row.other_count };
-}
-
 export async function drawPendingSpellCard(
   supabase: SupabaseClient,
   roundId: string,
@@ -175,33 +158,6 @@ export async function resolveCardSwap(
   if (error) throw error;
 
   return (data as string | null) ?? null;
-}
-
-export async function getMySpellCards(supabase: SupabaseClient, roomId?: string): Promise<HeldSpellCard[]> {
-  const { data, error } = await supabase.rpc("get_my_spell_cards", { p_room_id: roomId ?? null });
-  if (error) throw error;
-
-  return ((data ?? []) as {
-    instance_id: string;
-    location: "held" | "pending_swap";
-    card_name: string;
-    casting_time: "A" | "R";
-    target: "SELF" | "OPPONENT" | "PLAYER" | "TABLE" | "CARD" | "WILD" | "CHOSEN_PLAYERS";
-    tier: "common" | "rare" | "epic";
-    effect_text: string;
-    effect_kind: string | null;
-    edition: "4th";
-  }[]).map((row) => ({
-    instanceId: row.instance_id,
-    location: row.location,
-    cardName: row.card_name,
-    castingTime: row.casting_time,
-    target: row.target,
-    tier: row.tier,
-    effectText: row.effect_text,
-    effectKind: row.effect_kind,
-    edition: row.edition,
-  }));
 }
 
 export type SpellCollectionCard = {

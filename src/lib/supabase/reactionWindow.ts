@@ -51,47 +51,6 @@ export type ReactionWindowPendingPlayer = {
   displayName: string;
 };
 
-export async function getReactionWindowPendingPlayers(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<ReactionWindowPendingPlayer[]> {
-  const { data, error } = await supabase.rpc("get_reaction_window_pending_players", { p_round_id: roundId });
-  if (error) throw error;
-
-  return ((data ?? []) as { player_id: string; display_name: string }[]).map((row) => ({
-    playerId: row.player_id,
-    displayName: row.display_name,
-  }));
-}
-
-export async function getReactionStack(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<ReactionStackEntry[]> {
-  const { data, error } = await supabase.rpc("get_reaction_stack", { p_round_id: roundId });
-  if (error) throw error;
-
-  return ((data ?? []) as {
-    cast_id: string;
-    card_name: string;
-    caster_id: string;
-    caster_name: string;
-    target_stamp: ReactionStackEntry["targetStamp"];
-    negated: boolean;
-    parent_cast_id: string | null;
-    seq: number;
-  }[]).map((row) => ({
-    castId: row.cast_id,
-    cardName: row.card_name,
-    casterId: row.caster_id,
-    casterName: row.caster_name,
-    targetStamp: row.target_stamp,
-    negated: row.negated,
-    parentCastId: row.parent_cast_id,
-    seq: row.seq,
-  }));
-}
-
 export async function castReactionSpellCard(
   supabase: SupabaseClient,
   roundId: string,
@@ -113,20 +72,6 @@ export type CourageToken = {
   giverDisplayName: string;
   dice: string;
 };
-
-export async function getMyCourageTokens(supabase: SupabaseClient, roundId: string): Promise<CourageToken[]> {
-  const { data, error } = await supabase.rpc("get_my_courage_tokens", { p_round_id: roundId });
-  if (error) throw error;
-
-  return ((data ?? []) as { effect_id: string; giver_player_id: string; giver_display_name: string; dice: string }[]).map(
-    (row) => ({
-      effectId: row.effect_id,
-      giverPlayerId: row.giver_player_id,
-      giverDisplayName: row.giver_display_name,
-      dice: row.dice,
-    }),
-  );
-}
 
 export async function spendCourageToken(supabase: SupabaseClient, roundId: string): Promise<string> {
   const { data, error } = await supabase.rpc("spend_courage_token", { p_round_id: roundId });

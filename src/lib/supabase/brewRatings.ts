@@ -1,7 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiClientFor, type ApiClient } from "@/lib/api/client";
 import { isPortEnabled } from "@/lib/api/portFlags";
-import { unwrapJoinedPlayer } from "./playerRow";
 
 export type RateableRound = {
   roundId: string;
@@ -10,57 +9,6 @@ export type RateableRound = {
   resolvedAt: string;
   myScore: number | null;
 };
-
-export async function getMyRateableRound(
-  supabase: SupabaseClient,
-  playerId: string,
-): Promise<RateableRound | null> {
-  const { data: roundRow, error: roundError } = await supabase
-    .from("rounds")
-    .select(
-      `id, room_id, resolved_at,
-       brewer:players!rounds_brewer_id_fkey(display_name, email),
-       round_participants!inner(player_id)`,
-    )
-    .eq("status", "resolved")
-    .eq("round_participants.player_id", playerId)
-    .neq("brewer_id", playerId)
-    .order("resolved_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (roundError) throw roundError;
-  if (!roundRow) return null;
-
-  const { count: newerResolvedCount, error: windowError } = await supabase
-    .from("rounds")
-    .select("id", { count: "exact", head: true })
-    .eq("room_id", roundRow.room_id as string)
-    .eq("status", "resolved")
-    .gt("resolved_at", roundRow.resolved_at as string);
-
-  if (windowError) throw windowError;
-  if ((newerResolvedCount ?? 0) > 0) return null;
-
-  const { data: ratingRow, error: ratingError } = await supabase
-    .from("brew_ratings")
-    .select("score")
-    .eq("round_id", roundRow.id as string)
-    .eq("rater_player_id", playerId)
-    .maybeSingle();
-
-  if (ratingError) throw ratingError;
-
-  const brewer = unwrapJoinedPlayer(roundRow.brewer);
-
-  return {
-    roundId: roundRow.id as string,
-    brewerDisplayName: brewer?.display_name ?? null,
-    brewerEmail: brewer?.email ?? "",
-    resolvedAt: roundRow.resolved_at as string,
-    myScore: ratingRow ? (ratingRow.score as number) : null,
-  };
-}
 
 export async function submitBrewRating(
   supabase: SupabaseClient,

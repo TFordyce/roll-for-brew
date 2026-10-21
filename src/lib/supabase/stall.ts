@@ -33,21 +33,6 @@ export async function getExpectedLayerRollerIds(
   return new Set(rows.map((row) => row.player_id));
 }
 
-export async function isExpectedLayerRoller(
-  supabase: SupabaseClient,
-  roundId: string,
-  playerId: string,
-  layer: number,
-): Promise<boolean> {
-  const { data, error } = await supabase.rpc("is_expected_layer_roller", {
-    p_round_id: roundId,
-    p_player_id: playerId,
-    p_layer: layer,
-  });
-  if (error) throw error;
-  return data as boolean;
-}
-
 export async function getCurrentLayerRollerIds(
   supabase: SupabaseClient,
   roundId: string,

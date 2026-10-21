@@ -44,32 +44,6 @@ export async function getMyMostRecentOrder(
   return (data?.drink_type as DrinkType | undefined) ?? null;
 }
 
-export async function getMyOrderableRound(supabase: SupabaseClient, roomId: string): Promise<string | null> {
-  const { data: roundRow, error: roundError } = await supabase
-    .from("rounds")
-    .select("id, resolved_at")
-    .eq("room_id", roomId)
-    .eq("status", "resolved")
-    .order("resolved_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (roundError) throw roundError;
-  if (!roundRow) return null;
-
-  const { count: newerResolvedCount, error: windowError } = await supabase
-    .from("rounds")
-    .select("id", { count: "exact", head: true })
-    .eq("room_id", roomId)
-    .eq("status", "resolved")
-    .gt("resolved_at", roundRow.resolved_at as string);
-
-  if (windowError) throw windowError;
-  if ((newerResolvedCount ?? 0) > 0) return null;
-
-  return roundRow.id as string;
-}
-
 export async function submitOrder(
   supabase: SupabaseClient,
   roundId: string,

@@ -1,7 +1,16 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
-import { getMyPendingSpellDraw } from "@/lib/supabase/spellCards";
+
+type MyPendingSpellDraw = { roundId: string; trigger: "nat1" | "nat20"; otherCount: number };
+
+// The SQL gate the C# room view reads (RoomViewLoader); the TS wrapper that used to wrap it was retired with #541.
+async function getMyPendingSpellDraw(client: SupabaseClient): Promise<MyPendingSpellDraw | null> {
+  const { data, error } = await client.rpc("get_my_pending_spell_draw");
+  if (error) throw error;
+  const [row] = (data ?? []) as { round_id: string; trigger: "nat1" | "nat20"; other_count: number }[];
+  return row ? { roundId: row.round_id, trigger: row.trigger, otherCount: row.other_count } : null;
+}
 
 // Runs against a real, dedicated test Supabase project. Exercises
 // get_my_pending_spell_draw (0066, issue #248) — the Spell Draw Window gate

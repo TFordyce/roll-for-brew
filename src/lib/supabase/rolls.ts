@@ -72,24 +72,6 @@ export async function adminProxyRoll(
   if (error) throw error;
 }
 
-export async function getOwnRoll(
-  supabase: SupabaseClient,
-  roundId: string,
-  playerId: string,
-  layer: number,
-): Promise<number | null> {
-  const { data, error } = await supabase
-    .from("rolls")
-    .select("value")
-    .eq("round_id", roundId)
-    .eq("player_id", playerId)
-    .eq("layer", layer)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data ? (data.value as number) : null;
-}
-
 export type TraceStepOutcome = "applied" | "no-op" | "blocked" | "backfired";
 
 export type ResolutionTraceStep = {
