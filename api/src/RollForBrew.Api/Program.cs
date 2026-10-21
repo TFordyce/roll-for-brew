@@ -8,6 +8,7 @@ using RollForBrew.Api.Orders;
 using RollForBrew.Api.Problems;
 using RollForBrew.Api.ModifierAdjustments;
 using RollForBrew.Api.Ratings;
+using RollForBrew.Api.RoundAdvance;
 using RollForBrew.Api.RoomView;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -43,6 +44,7 @@ app.MapRatings();
 app.MapOrders();
 app.MapModifierAdjustments();
 app.MapRoomView();
+app.MapRoundAdvance();
 app.Run();
 
 public partial class Program;

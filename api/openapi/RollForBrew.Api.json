@@ -438,6 +438,68 @@
           }
         }
       }
+    },
+    "/rounds/{roundId}/advance": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "advanceLayer",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/finalize": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "finalizeLayer",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -782,6 +844,9 @@
             ]
           }
         }
+      },
+      "JsonObject": {
+        "type": "object"
       },
       "LastDripPreviewRow": {
         "required": [
