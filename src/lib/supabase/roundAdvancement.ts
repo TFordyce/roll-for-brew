@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 import type { RoundRevealedPayload } from "@/lib/supabase/realtime";
+import { getRoundRoomId } from "@/lib/supabase/rounds";
 
 export type RevealedRoll = RoundRevealedPayload["rolls"][number];
 
@@ -102,13 +105,41 @@ function toLayerOutcome(raw: RawLayerOutcome): LayerOutcome {
   return outcome;
 }
 
-export async function finalizeLayer(supabase: SupabaseClient, roundId: string): Promise<LayerOutcome> {
+// The evaluator shadow (#546): the API runs C# Evaluate beside SQL and returns
+// SQL's own outcome payload, in the same shape the RPC returns today. Rollout is
+// the 'advanceRound' flag row: a Test Room row first, then the global flip; with
+// no row (or a read error) the .rpc path runs, unchanged.
+async function useApi(supabase: SupabaseClient, roundId: string, api: () => ApiClient): Promise<boolean> {
+  let roomId: string;
+  try {
+    roomId = await getRoundRoomId(supabase, roundId);
+  } catch {
+    return false; // unknown round: let the RPC return its noop payload
+  }
+  return isPortEnabled(supabase, "advanceRound", roomId);
+}
+
+export async function finalizeLayer(
+  supabase: SupabaseClient,
+  roundId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<LayerOutcome> {
+  if (await useApi(supabase, roundId, api)) {
+    return toLayerOutcome((await api().finalizeLayer(roundId)) as unknown as RawLayerOutcome);
+  }
   const { data, error } = await supabase.rpc("finalize_layer", { p_round_id: roundId });
   if (error) throw error;
   return toLayerOutcome(data as RawLayerOutcome);
 }
 
-export async function advanceLayer(supabase: SupabaseClient, roundId: string): Promise<LayerOutcome> {
+export async function advanceLayer(
+  supabase: SupabaseClient,
+  roundId: string,
+  api: () => ApiClient = () => apiClientFor(supabase),
+): Promise<LayerOutcome> {
+  if (await useApi(supabase, roundId, api)) {
+    return toLayerOutcome((await api().advanceLayer(roundId)) as unknown as RawLayerOutcome);
+  }
   const { data, error } = await supabase.rpc("advance_layer", { p_round_id: roundId });
   if (error) throw error;
   return toLayerOutcome(data as RawLayerOutcome);
