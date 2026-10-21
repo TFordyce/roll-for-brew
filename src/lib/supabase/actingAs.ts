@@ -23,11 +23,3 @@ export async function endTestSession(supabase: SupabaseClient): Promise<void> {
   const { error } = await supabase.rpc("end_test_session");
   if (error) throw error;
 }
-
-export async function getEffectiveTestRoomPlayerId(
-  supabase: SupabaseClient,
-  realPlayerId: string,
-): Promise<string> {
-  const actingAs = await getActingAsPlayerId(supabase);
-  return actingAs ?? realPlayerId;
-}

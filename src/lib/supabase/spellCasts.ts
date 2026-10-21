@@ -1,5 +1,4 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { type LastDripPreview, type RawLastDripPassedOver, parseLastDripPassedOver } from "@/lib/supabase/rolls";
 
 export type PendingCast = {
   castId: string;
@@ -75,108 +74,11 @@ export async function setTeaPartyRevoltTarget(
   if (error) throw error;
 }
 
-export async function getTeaPartyRevoltPicker(supabase: SupabaseClient, roundId: string): Promise<string | null> {
-  const { data, error } = await supabase.rpc("get_tea_party_revolt_picker", { p_round_id: roundId });
-  if (error) throw error;
-  return (data as string | null) ?? null;
-}
-
-export async function getMyPendingCasts(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<PendingCast[]> {
-  const { data, error } = await supabase.rpc("get_my_pending_casts", { p_round_id: roundId });
-  if (error) throw error;
-
-  return ((data ?? []) as { cast_id: string; card_name: string; target: "OPPONENT" | "PLAYER" }[]).map(
-    (row) => ({ castId: row.cast_id, cardName: row.card_name, target: row.target }),
-  );
-}
-
 export type CompelledCast = {
   castingTime: "A" | "R";
   cardName: string;
   brewmageddonCasterId: string;
 };
-
-export async function getMyCompelledCast(supabase: SupabaseClient, roundId: string): Promise<CompelledCast | null> {
-  const { data, error } = await supabase.rpc("get_my_compelled_cast", { p_round_id: roundId });
-  if (error) throw error;
-  const row = ((data ?? []) as { casting_time: "A" | "R"; card_name: string; brewmageddon_caster_id: string }[])[0];
-  return row
-    ? { castingTime: row.casting_time, cardName: row.card_name, brewmageddonCasterId: row.brewmageddon_caster_id }
-    : null;
-}
-
-export async function getRoomActiveEffects(
-  supabase: SupabaseClient,
-  roomId: string,
-): Promise<ActiveEffectBadge[]> {
-  const { data, error } = await supabase.rpc("get_room_active_effects", { p_room_id: roomId });
-  if (error) throw error;
-
-  return ((data ?? []) as {
-    effect_id: string;
-    target_player_id: string;
-    card_name: string;
-    tier: "common" | "rare" | "epic";
-    polarity: "positive" | "negative" | null;
-    rounds_remaining: number;
-  }[]).map((row) => ({
-    effectId: row.effect_id,
-    targetPlayerId: row.target_player_id,
-    cardName: row.card_name,
-    tier: row.tier,
-    polarity: row.polarity,
-    roundsRemaining: row.rounds_remaining,
-  }));
-}
-
-export async function getHeistTargetIds(supabase: SupabaseClient, roundId: string): Promise<string[]> {
-  const { data, error } = await supabase.rpc("get_heist_targets", { p_round_id: roundId });
-  if (error) throw error;
-  return (data ?? []) as string[];
-}
-
-export async function getLastDripPreview(supabase: SupabaseClient, roundId: string): Promise<LastDripPreview | null> {
-  const { data, error } = await supabase.rpc("get_last_drip_preview", { p_round_id: roundId });
-  if (error) throw error;
-  if (!data) return null;
-  const raw = data as {
-    target_player_id: string | null;
-    reason: LastDripPreview["reason"];
-    passed_over: RawLastDripPassedOver[];
-  };
-  return {
-    targetPlayerId: raw.target_player_id,
-    reason: raw.reason,
-    passedOver: parseLastDripPassedOver(raw.passed_over),
-  };
-}
-
-export async function getDispellableActiveEffects(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<DispellableEffect[]> {
-  const { data, error } = await supabase.rpc("get_dispellable_active_effects", {
-    p_round_id: roundId,
-  });
-  if (error) throw error;
-
-  return ((data ?? []) as {
-    effect_id: string;
-    target_player_id: string;
-    target_display_name: string;
-    card_name: string;
-    tier: "common" | "rare" | "epic";
-  }[]).map((row) => ({
-    effectId: row.effect_id,
-    targetPlayerId: row.target_player_id,
-    targetDisplayName: row.target_display_name,
-    cardName: row.card_name,
-    tier: row.tier,
-  }));
-}
 
 export async function endActiveEffect(
   supabase: SupabaseClient,
@@ -188,20 +90,6 @@ export async function endActiveEffect(
     p_effect_id: effectId,
   });
   if (error) throw error;
-}
-
-export async function getMyPendingSpellDice(
-  supabase: SupabaseClient,
-  roundId: string,
-): Promise<PendingSpellDie[]> {
-  const { data, error } = await supabase.rpc("get_my_pending_spell_dice", { p_round_id: roundId });
-  if (error) throw error;
-
-  return ((data ?? []) as { cast_id: string; card_name: string; dice: string }[]).map((row) => ({
-    castId: row.cast_id,
-    cardName: row.card_name,
-    dice: row.dice,
-  }));
 }
 
 export async function resolvePendingSpellDieInApp(

@@ -139,35 +139,3 @@ export async function getRoundParticipants(
   });
 }
 
-export type RoundLayerParticipant = {
-  playerId: string;
-  displayName: string | null;
-  email: string;
-  avatarUrl: string | null;
-  excludedAt: string | null;
-};
-
-export async function getRoundLayerParticipants(
-  supabase: SupabaseClient,
-  roundId: string,
-  layer: number,
-): Promise<RoundLayerParticipant[]> {
-  const { data, error } = await supabase
-    .from("round_layer_participants")
-    .select("player_id, excluded_at, players(display_name, email, avatar_url)")
-    .eq("round_id", roundId)
-    .eq("layer", layer);
-
-  if (error) throw error;
-
-  return (data ?? []).map((row) => {
-    const player = unwrapJoinedPlayer(row.players);
-    return {
-      playerId: row.player_id as string,
-      displayName: player?.display_name ?? null,
-      email: player?.email ?? "",
-      avatarUrl: player?.avatar_url ?? null,
-      excludedAt: row.excluded_at as string | null,
-    };
-  });
-}
