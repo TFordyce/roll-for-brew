@@ -5,12 +5,14 @@ namespace RollForBrew.Api.Data;
 
 public static class RoundSnapshotLoader
 {
-    public static async Task<RoundSnapshot> Load(this StoreSession session, Guid roomId, CancellationToken ct = default)
+    public static async Task<RoundSnapshot> Load(this StoreSession session, Guid roomId, CancellationToken ct = default) =>
+        RoundSnapshot.Parse(await session.LoadJson(roomId, ct));
+
+    public static async Task<string> LoadJson(this StoreSession session, Guid roomId, CancellationToken ct = default)
     {
         await using var cmd = new NpgsqlCommand(Sql, session.Connection, session.Transaction);
         cmd.Parameters.Add(new NpgsqlParameter("room", NpgsqlTypes.NpgsqlDbType.Uuid) { Value = roomId });
-        var json = (string)(await cmd.ExecuteScalarAsync(ct))!;
-        return RoundSnapshot.Parse(json);
+        return (string)(await cmd.ExecuteScalarAsync(ct))!;
     }
 
     private const string Sql = """
