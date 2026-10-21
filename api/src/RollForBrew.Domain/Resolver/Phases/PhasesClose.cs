@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace RollForBrew.Domain.Resolver.Phases;
 
 internal sealed class SummaryPhase : EvalPhase
@@ -16,57 +18,90 @@ internal sealed class SummaryPhase : EvalPhase
     }
 }
 
-internal sealed class Phase5TeaMaker : EvalPhase
-{
-    public override string Id => "5";
-    public override void Run(EvalContext ctx)
-    {
-        Guard(ctx);
-
-        var tied = Rules.PickLowest(ctx.Players, ctx.Rolls, ctx.Composed, ctx.DiceReduced);
-        if (tied.Count > 1)
-        {
-            ctx.Outcome = "tie";
-            ctx.TiedPlayers = tied;
-            ctx.BrewerSource = null;
-        }
-        else
-        {
-            ctx.Outcome = "brewer";
-            ctx.BrewerId = tied.FirstOrDefault();
-            ctx.BrewerSource = "default";
-        }
-
-        if (ctx.BrewerId is { } brewer && ctx.WardMap.TryGetValue(brewer, out var wards) && wards.FirstOrDefault(w => w.BlockEarnedModifier) is { } ward)
-        {
-            if (ctx.ModifierGain != 0)
-                ctx.Emit("warded", new SourceCast(null, null, ward.WardCardName, null), brewer,
-                    TraceValue.Status("brewer"), TraceValue.Status("brewer (no modifier gain)"),
-                    ("blocked_cast_id", null), ("ward_cast_id", ward.WardCastId), ("ward_card_name", ward.WardCardName),
-                    ("target", brewer), ("would_be_before", "brewer"), ("would_be_after", "brewer (no modifier gain)"), ("outcome", "blocked"));
-            ctx.ModifierGain = 0;
-        }
-    }
-
-    private void Guard(EvalContext ctx)
-    {
-        if (ctx.S.Rounds.Any(r => r.BrewerSource == "brew_iou"))
-            throw new PhasePendingException(Id, "Brew Debt pre-ladder rule (#544)");
-        if (ctx.LiveEffects.Any(e => e.EffectKind is "brewer_immunity" or "declared_number_tea_maker"))
-            throw new PhasePendingException(Id, "Brewer Immunity / declared number tiers (#544)");
-        if (ctx.Casts.Any(c => c.EffectKind is "tea_maker_override" or "named_tea_maker_rolloff"))
-            throw new PhasePendingException(Id, "tea_maker_override / Loose Leaf tiers (#544)");
-    }
-}
-
 internal sealed class Phase6HeistsAndMarks : EvalPhase
 {
     public override string Id => "6";
     public override void Run(EvalContext ctx)
     {
+        foreach (var h in HeistOutcomes(ctx))
+        {
+            var extras = new List<(string, object?)> { ("outcome", h.Outcome == "moved" ? "applied" : "no-op") };
+            if (h.Reason is not null) extras.Add(("heist_reason", h.Reason));
+            ctx.Emit("card_heist", new SourceCast(h.CastId, null, h.CardName, h.CasterId), h.VictimId,
+                TraceValue.Status("held"), TraceValue.Status(h.Outcome), [.. extras]);
+            if (h.Outcome == "moved" && h.Slot is { } slot)
+                ctx.HeistMoves.Add(new HeistMove(h.CastId, h.InstanceId, slot, h.CasterId, h.VictimId!));
+        }
+
         var round = ctx.RoundId.ToString();
-        if (ctx.Casts.Any(c => c.EffectKind is "card_heist" or "draw_redirect")
-            || ctx.AllCasts.Values.Any(c => c.EffectKind == "draw_redirect" && c.CastInputs.Text("consumed_by_round") == round))
-            throw new PhasePendingException(Id, "card_heist / draw_redirect trace steps (#545)");
+        var marks = new List<(int KindOrder, long Seq, Guid Id, WorkingCast Cast, string CardName, string? Outcome)>();
+        foreach (var c in ctx.AllCasts.Values.Where(c => c.EffectKind == "draw_redirect"))
+        {
+            if (ctx.CardOfCast(c) is not { } card) continue;
+            if (c.RoundId == ctx.RoundId && c.TargetPlayerId is not null && !c.Negated && !c.CastInputs.Flag("is_copy"))
+                marks.Add((0, c.Seq, c.Id, c, card.Name, "marked"));
+            if (c.CastInputs.Text("consumed_by_round") == round)
+                marks.Add((1, c.Seq, c.Id, c, card.Name, c.CastInputs.Text("draw_redirect_outcome")));
+        }
+
+        foreach (var m in marks.OrderBy(m => m.KindOrder).ThenBy(m => m.Seq).ThenBy(m => m.Id, Jb.UuidOrder))
+        {
+            var before = m.Outcome == "marked" ? null : "marked";
+            ctx.Emit("draw_redirect", new SourceCast(m.Cast.Id, null, m.CardName, m.Cast.CasterId), m.Cast.TargetPlayerId,
+                TraceValue.Status(before), TraceValue.Status(m.Outcome),
+                ("outcome", m.Outcome == "fizzled" ? "no-op" : "applied"),
+                ("redirect_trigger", ((JsonElement?)m.Cast.EffectParams).Text("trigger")));
+        }
     }
+
+    private sealed record HeistRow(
+        Guid CastId, string CasterId, string? VictimId, Guid InstanceId, string CardName, string Outcome, string? Reason, string? Slot);
+
+    private static IEnumerable<HeistRow> HeistOutcomes(EvalContext ctx)
+    {
+        foreach (var c in ctx.Casts
+                     .Where(c => c.EffectKind == "card_heist" && c.CastInputs.Has("stolen_instance_id")
+                         && !c.CastInputs.Flag("is_copy"))
+                     .OrderBy(c => c.Seq))
+        {
+            if (ctx.CardOfCast(c) is not { } card) continue;
+            if (!Guid.TryParse(c.CastInputs.Text("stolen_instance_id"), out var instanceId)) continue;
+            var inst = ctx.S.DeckInstances.FirstOrDefault(d => d.Id == instanceId);
+            var victim = c.TargetPlayerId;
+
+            string outcome;
+            string? reason = null;
+            string? slot = null;
+            if (c.CastInputs.Flag("heist_moved"))
+            {
+                outcome = "moved";
+            }
+            else if (inst is null || inst.Location != "held" || inst.HeldByPlayer != victim)
+            {
+                outcome = "fizzled";
+                reason = "victim_played_first";
+            }
+            else if (c.Negated)
+            {
+                outcome = "countered";
+            }
+            else if (FreeHandSlot(ctx, c.CasterId) is not { } free)
+            {
+                outcome = "fizzled";
+                reason = "thief_hand_full";
+            }
+            else
+            {
+                outcome = "moved";
+                slot = free;
+            }
+
+            yield return new HeistRow(c.Id, c.CasterId, victim, instanceId, card.Name, outcome, reason, slot);
+        }
+    }
+
+    internal static string? FreeHandSlot(EvalContext ctx, string player) =>
+        !ctx.S.DeckInstances.Any(d => d.HeldByPlayer == player && d.Location == "held") ? "held"
+        : !ctx.S.DeckInstances.Any(d => d.HeldByPlayer == player && d.Location == "pending_swap") ? "pending_swap"
+        : null;
 }

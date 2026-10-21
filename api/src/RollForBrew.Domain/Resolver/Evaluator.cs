@@ -62,7 +62,8 @@ public static class Evaluator
         var one = tied.Count == 1;
         return new Resolution(
             one ? "brewer" : "tie", layer, one ? tied[0] : null, one ? "default" : null, one ? null : tied,
-            ctx.ParticipantCount, null, false, null, null, [], null, DerivedCastState.Empty);
+            ctx.ParticipantCount, null, false, null, null, [], null,
+            new DerivedCastState([], [], new Dictionary<string, int>(), ctx.RoomId, ctx.RoundId, ctx.S.DbNow, []));
     }
 
     private static void CheckAllRolled(EvalContext ctx)
@@ -71,8 +72,7 @@ public static class Evaluator
         var exempt = Rules.RollExemptions(ctx, Rules.CastLogResolution(ctx)).Select(e => e.Player).ToHashSet();
         var expected = ctx.S.RoundParticipants.Count(p => p.RoundId == ctx.RoundId && p.ExcludedAt is null && !exempt.Contains(p.PlayerId));
         if (rollCount >= expected) return;
-        if (ctx.S.Rounds.Any(r => r.BrewerSource == "brew_iou"))
-            throw new PhasePendingException("5", "Brew Debt round (#544)");
+        if (Rules.BrewDebtDue(ctx) is not null) return;
         throw ResolveException.NotAllRolled();
     }
 
@@ -85,7 +85,8 @@ public static class Evaluator
                 || x.Cast.TargetPending != x.Orig.TargetPending)
             .Select(x => x.Cast.Flags()).ToList();
         var derived = new DerivedCastState(flags, ctx.Casts.Where(c => c.Synthesized).Select(c => c.ToRow()).ToList(),
-            new Dictionary<string, int>(ctx.RoomPlayerModifierWrites));
+            new Dictionary<string, int>(ctx.RoomPlayerModifierWrites), ctx.RoomId, ctx.RoundId, ctx.S.DbNow,
+            [.. ctx.HeistMoves]);
 
         return new Resolution(
             ctx.Outcome, 0, ctx.BrewerId, ctx.BrewerSource, ctx.TiedPlayers, ctx.ParticipantCount, ctx.ModifierGain,
