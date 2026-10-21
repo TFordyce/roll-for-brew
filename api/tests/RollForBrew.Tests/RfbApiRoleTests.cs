@@ -46,6 +46,15 @@ public class RfbApiRoleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Role_has_execute_on_the_round_advance_bridges()
+    {
+        Assert.True(await Flag("select has_function_privilege('rfb_api', 'public.advance_layer(uuid)', 'execute')"));
+        Assert.True(await Flag("select has_function_privilege('rfb_api', 'public.finalize_layer(uuid)', 'execute')"));
+        // Only the bridged entry points; the resolver subtree stays ungranted.
+        Assert.False(await Flag("select has_function_privilege('rfb_api', 'public.resolve_round(uuid)', 'execute')"));
+    }
+
+    [Fact]
     public async Task Login_works_and_cannot_create_objects_or_touch_auth()
     {
         await using var conn = new NpgsqlConnection(_db.ApiConnectionString);
