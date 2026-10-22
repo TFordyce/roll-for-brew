@@ -58,6 +58,13 @@ export function ReactionBanner({
   const pendingNames = joinNames(pendingPlayers.map((p) => p.displayName), "");
   // The wire delivers the stack in resolution order (newest cast first).
   const negatableStack = stack.filter((entry) => !entry.negated);
+  // A CARD reaction needs something on the stack to negate; an OPPONENT
+  // reaction needs another participant. Without one there is nothing to cast
+  // at, so the prompt would only offer a dead button (#591).
+  const noLegalTarget =
+    heldReactionCard != null &&
+    ((heldReactionCard.target === "CARD" && negatableStack.length === 0) ||
+      (heldReactionCard.target === "OPPONENT" && otherParticipants.length === 0));
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-20 border-t-4 border-gilt bg-tavern-panel p-3 shadow-[0_-8px_24px_rgb(0_0_0_/_0.5)]">
@@ -65,7 +72,11 @@ export function ReactionBanner({
         Reaction window open
       </p>
 
-      {eligible && heldReactionCard && !alreadyPassed ? (
+      {eligible && heldReactionCard && !alreadyPassed && noLegalTarget ? (
+        <p className="mb-2 font-body text-sm text-parchment-dim">
+          No legal target for {heldReactionCard.cardName} — pass instead.
+        </p>
+      ) : eligible && heldReactionCard && !alreadyPassed ? (
         <form action={castFormAction} className="mb-2 flex flex-wrap items-center gap-2">
           <input type="hidden" name="roundId" value={roundId} />
           <span className="font-body text-sm text-parchment">
@@ -100,10 +111,7 @@ export function ReactionBanner({
             </select>
           ) : null}
 
-          <SubmitButton
-            disabled={heldReactionCard.target === "CARD" && negatableStack.length === 0}
-            className="rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark"
-          >
+          <SubmitButton className="rounded-md border-2 border-gilt bg-ember px-3 py-1.5 font-display text-xs uppercase tracking-widest text-parchment hover:bg-ember-bright">
             Cast
           </SubmitButton>
 

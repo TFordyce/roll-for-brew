@@ -5,6 +5,10 @@
 -- pass as normal. Issue #439: who counts as passed is read off
 -- _is_reaction_source, the predicate count_eligible_reaction_holders counts,
 -- so a Courage Token holder's pass counts. Otherwise unchanged (0064).
+-- Issue #591: the caller is resolved with the round in scope so an admin
+-- playing a test room via acting-as passes as the player they act for — a
+-- bare current_player_id() has no room context and records the admin, whose
+-- pass can never count toward closing the window.
 create or replace function public.pass_reaction_window(p_round_id uuid)
 returns boolean
 language plpgsql
@@ -19,7 +23,7 @@ declare
   v_passed_count integer;
   v_closed boolean := false;
 begin
-  v_player_id := public.current_player_id();
+  v_player_id := public.current_player_id(p_round_id);
 
   select id, poll_round into v_window_id, v_poll_round
     from public.spell_reaction_windows
