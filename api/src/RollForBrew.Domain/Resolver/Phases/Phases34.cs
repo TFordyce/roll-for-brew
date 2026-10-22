@@ -41,7 +41,11 @@ internal sealed class Phase3PreDiceTick : EvalPhase
             });
             ctx.AddCast(seq => new WorkingCast
             {
-                Id = Ids.Deterministic($"rfb-dice-tick:{e.SourceCastId}:{ctx.Gen}"),
+                // Round-scoped: a persistent effect living into a later round
+                // re-derives this salt there, and replay_generation is 0 in both —
+                // an unscoped id collides with the earlier round's persisted tick
+                // on spell_casts_pkey (the 2026-10-22 22:29Z 500).
+                Id = Ids.Deterministic($"rfb-dice-tick:{ctx.RoundId}:{e.SourceCastId}:{ctx.Gen}"),
                 RoundId = ctx.RoundId, CasterId = e.CasterId, CardInstanceId = src.CardInstanceId, TargetPlayerId = victim,
                 EffectKind = "per_round_dice_tick",
                 EffectParams = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["die"] = die, ["sign"] = sign, ["rolled"] = rolled }),

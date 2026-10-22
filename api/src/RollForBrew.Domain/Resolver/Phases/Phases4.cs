@@ -242,7 +242,9 @@ internal sealed class Phase4bPreBitterLeech : EvalPhase
 
     private static WorkingCast Tick(EvalContext ctx, long seq, WorkingCast src, ActiveEffectRow e, string target, decimal delta) => new()
     {
-        Id = Ids.Deterministic($"rfb-bitter-leech-tick:{e.SourceCastId}:{target}:{ctx.Gen}"),
+        // Round-scoped like rfb-dice-tick: an unscoped salt collides across the
+        // rounds a persistent effect lives through.
+        Id = Ids.Deterministic($"rfb-bitter-leech-tick:{ctx.RoundId}:{e.SourceCastId}:{target}:{ctx.Gen}"),
         RoundId = ctx.RoundId, CasterId = e.CasterId, CardInstanceId = src.CardInstanceId, TargetPlayerId = target,
         EffectKind = "persistent_modifier_transfer",
         EffectParams = JsonSerializer.SerializeToElement(new Dictionary<string, object?> { ["delta"] = delta }),
