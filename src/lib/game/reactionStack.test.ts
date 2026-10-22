@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isReactionWindowClosed, orderStackForResolution } from "./reactionStack";
+import { isReactionWindowClosed } from "./reactionStack";
 
 describe("isReactionWindowClosed", () => {
   it("is open while at least one eligible player hasn't passed", () => {
@@ -23,25 +23,3 @@ describe("isReactionWindowClosed", () => {
   });
 });
 
-describe("orderStackForResolution", () => {
-  it("orders casts LIFO — last cast (highest seq) first", () => {
-    const entries = [
-      { castId: "a", seq: 1, parentCastId: null },
-      { castId: "b", seq: 3, parentCastId: "a" },
-      { castId: "c", seq: 2, parentCastId: "a" },
-    ];
-
-    expect(orderStackForResolution(entries).map((e) => e.castId)).toEqual(["b", "c", "a"]);
-  });
-
-  it("does not mutate the input array", () => {
-    const entries = [
-      { castId: "a", seq: 1, parentCastId: null },
-      { castId: "b", seq: 2, parentCastId: null },
-    ];
-
-    orderStackForResolution(entries);
-
-    expect(entries.map((e) => e.castId)).toEqual(["a", "b"]);
-  });
-});

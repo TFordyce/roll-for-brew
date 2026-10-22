@@ -12,7 +12,7 @@ import { MAX_TILT_DEG, TiltCardArt } from "@/app/_components/TiltCardArt";
 type ArmedAction = { kind: "dispel" | "cast"; roundId: string };
 
 export function HeldCardThumbnail({
-  heldCards,
+  held,
   dispellableEffects,
   roundId,
   roundIsOpen,
@@ -21,7 +21,7 @@ export function HeldCardThumbnail({
   selfPlayerId,
   castNotice = null,
 }: {
-  heldCards: HeldSpellCard[];
+  held: HeldSpellCard | null;
   dispellableEffects: DispellableEffect[];
   roundId: string | null;
   roundIsOpen: boolean;
@@ -30,7 +30,6 @@ export function HeldCardThumbnail({
   selfPlayerId: string;
   castNotice?: string | null;
 }) {
-  const held = heldCards.find((c) => c.location === "held");
   const [open, setOpen] = useState(false);
   const [armed, setArmed] = useState(false);
   const [tilt, setTilt] = useState({ rotateX: 0, rotateY: 0 });

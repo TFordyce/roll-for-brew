@@ -12,6 +12,11 @@ type RatingIdResponse =
 type AdjustmentIdResponse =
   paths["/modifier-adjustments"]["post"]["responses"][200]["content"]["application/json"];
 
+// The advance/finalize endpoints return SQL's own outcome jsonb unchanged (the
+// shadow passes SQL's payload through); callers map it with toLayerOutcome.
+export type AdvanceOutcomeResponse =
+  paths["/rounds/{roundId}/advance"]["post"]["responses"][200]["content"]["application/json"];
+
 export type RoomViewResponse =
   paths["/rooms/{roomId}/view"]["get"]["responses"][200]["content"]["application/json"];
 
@@ -27,6 +32,8 @@ export interface ApiClient {
   logModifierAdjustment(targetPlayerId: string, delta: number, reason: string): Promise<AdjustmentIdResponse>;
   deleteModifierAdjustment(adjustmentId: string): Promise<void>;
   adminDeleteModifierAdjustment(adjustmentId: string, reason: string): Promise<void>;
+  advanceLayer(roundId: string): Promise<AdvanceOutcomeResponse>;
+  finalizeLayer(roundId: string): Promise<AdvanceOutcomeResponse>;
   getRoomView(roomId: string): Promise<RoomViewResponse>;
 }
 
@@ -82,6 +89,10 @@ export function createApiClient(
     adminDeleteModifierAdjustment: async (adjustmentId, reason) => {
       await call("POST", `/modifier-adjustments/${adjustmentId}/admin-delete`, { reason });
     },
+    advanceLayer: async (roundId) =>
+      (await (await call("POST", `/rounds/${roundId}/advance`)).json()) as AdvanceOutcomeResponse,
+    finalizeLayer: async (roundId) =>
+      (await (await call("POST", `/rounds/${roundId}/finalize`)).json()) as AdvanceOutcomeResponse,
     getRoomView: (roomId) => get<RoomViewResponse>(`/rooms/${encodeURIComponent(roomId)}/view`),
   };
 }

@@ -246,6 +246,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rounds/{roundId}/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["advanceLayer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rounds/{roundId}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["finalizeLayer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -335,6 +367,7 @@ export interface components {
             brewerId: null | string;
             brewerName: null | string;
         };
+        JsonObject: Record<string, never>;
         LastDripPreviewRow: {
             targetPlayerId: null | string;
             reason: null | string;
@@ -469,6 +502,7 @@ export interface components {
             skipVote: null | components["schemas"]["SkipVoteRow"];
             courageTokens: components["schemas"]["CourageTokenRow"][];
             compelled: boolean;
+            stackInResolutionOrder: components["schemas"]["ReactionStackRow"][];
         };
         RoomPart: {
             /** Format: uuid */
@@ -481,6 +515,9 @@ export interface components {
             nextStallDeadline: null | string;
             /** Format: date-time */
             dbNow: string;
+            namesByPlayerId: {
+                [key: string]: string;
+            };
         };
         RoomViewResponse: {
             /** Format: int64 */
@@ -497,6 +534,7 @@ export interface components {
             modifier: number | string;
             isTest: boolean;
             effectBadges: components["schemas"]["EffectBadge"][];
+            joined: boolean;
         };
         ScoreRequest: {
             /** Format: int32 */
@@ -551,11 +589,13 @@ export interface components {
             orderRoundId: null | string;
             myOrderForRound: null | string;
             myMostRecentOrder: null | string;
+            defaultDrinkType: null | string;
             orderCue: boolean;
             menu: components["schemas"]["MenuEntryView"][];
             menuParticipants: components["schemas"]["ParticipantView"][];
             rateableRound: null | components["schemas"]["RateableRoundView"];
             heldCards: components["schemas"]["HeldCard"][];
+            heldCard: null | components["schemas"]["HeldCard"];
             heldReactionCard: null | components["schemas"]["HeldCard"];
             pendingSpellDraw: null | components["schemas"]["PendingSpellDrawView"];
             pendingCasts: components["schemas"]["PendingCastRow"][];
@@ -887,6 +927,50 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RoomViewResponse"];
+                };
+            };
+        };
+    };
+    advanceLayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JsonObject"];
+                };
+            };
+        };
+    };
+    finalizeLayer: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JsonObject"];
                 };
             };
         };
