@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { SkipVoteState } from "@/lib/game/skipVote";
+import type { HeldSpellCard } from "@/lib/supabase/spellCards";
+import type { ReactionStackEntry } from "@/lib/supabase/reactionWindow";
 
 vi.mock("@/app/rounds/actions", () => ({
   voteSkipReactionWindowAction: vi.fn(),
@@ -137,5 +139,71 @@ describe("ReactionBanner with a Courage Token (issue #439)", () => {
   it("offers nothing once the holder has passed", () => {
     const html = renderToStaticMarkup(<ReactionBanner {...base} eligible alreadyPassed courageTokens={[token]} />);
     expect(html).not.toContain("Courage Token");
+  });
+});
+
+describe("ReactionBanner with no legal target (issue #591)", () => {
+  const base = {
+    roomId: "room",
+    roundId: "r1",
+    selfPlayerId: "me",
+    stack: [],
+    participants: [
+      {
+        playerId: "me",
+        displayName: "Me",
+        email: "me@example.test",
+        avatarUrl: null,
+        declaredAt: "2026-01-01T09:00:00Z",
+        excludedAt: null,
+      },
+    ],
+    pendingPlayers: [],
+    skipVote: null,
+  };
+  const card = (target: "CARD" | "OPPONENT"): HeldSpellCard => ({
+    instanceId: "i1",
+    location: "held",
+    cardName: "Mug Mirror",
+    castingTime: "R",
+    target,
+    tier: "common",
+    effectText: "",
+    effectKind: null,
+    edition: "4th",
+  });
+  const stackEntry: ReactionStackEntry = {
+    castId: "c1",
+    cardName: "Dunkin",
+    casterId: "ada",
+    casterName: "Ada",
+    targetStamp: "OPPONENT",
+    negated: false,
+    parentCastId: null,
+    seq: 1,
+  };
+
+  it("a CARD reaction with nothing to negate shows the notice, not a dead cast form", () => {
+    const html = renderToStaticMarkup(<ReactionBanner {...base} eligible alreadyPassed={false} heldReactionCard={card("CARD")} />);
+    expect(html).toContain("No legal target for Mug Mirror");
+    expect(html).toContain("Pass");
+    expect(html).not.toContain("React with");
+  });
+
+  it("an OPPONENT reaction with no other participant shows the notice too", () => {
+    const html = renderToStaticMarkup(
+      <ReactionBanner {...base} eligible alreadyPassed={false} heldReactionCard={card("OPPONENT")} />,
+    );
+    expect(html).toContain("No legal target for Mug Mirror");
+    expect(html).not.toContain("React with");
+  });
+
+  it("a CARD reaction with a negatable cast still offers the cast", () => {
+    const html = renderToStaticMarkup(
+      <ReactionBanner {...base} eligible alreadyPassed={false} heldReactionCard={card("CARD")} stack={[stackEntry]} />,
+    );
+    expect(html).toContain("React with");
+    expect(html).toContain("Dunkin (Ada)");
+    expect(html).not.toContain("No legal target");
   });
 });
