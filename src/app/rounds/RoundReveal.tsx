@@ -8,6 +8,7 @@ import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import { firstNameOrFallback } from "@/lib/game/displayName";
 import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
+import { type HeldReveal } from "@/app/rounds/revealHold";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { DieIcon } from "@/app/_components/DieIcon";
@@ -41,7 +42,7 @@ export function RoundReveal({
   selfPlayerId: string;
   ownRoll: number | null;
   hasOpenReactionWindow: boolean;
-  onRevealed?: () => void;
+  onRevealed?: (reveal: HeldReveal) => void;
   onResultsDone?: () => void;
 }) {
   const refresh = useRoomRefresh();
@@ -98,12 +99,9 @@ export function RoundReveal({
       if (payload.layer === 0) setRolls(payload.rolls);
       bumpRecap();
       setBrewerId(payload.brewerId);
-      onRevealed?.();
-      if (payload.brewerId === selfPlayerId) {
-        setShowKettleModal(true);
-      } else {
-        startResultsTimeout();
-      }
+      onRevealed?.({ roundId, participants });
+      setShowKettleModal(payload.brewerId === selfPlayerId);
+      startResultsTimeout();
     },
     "layer-tied": () => refresh(),
     "room-changed": () => {
