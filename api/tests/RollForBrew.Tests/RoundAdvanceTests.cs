@@ -211,6 +211,29 @@ public class RoundAdvanceTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task An_evaluate_exception_skips_at_warning_with_the_exception_attached()
+    {
+        // Cloud Run's default severity filter drops Information logs entirely, so a
+        // skip logged below Warning makes the degradation invisible in production —
+        // the skip must carry the caught exception, or the capture round reads as
+        // "no diff, no skip, no exception" with SQL's own rolls persisted.
+        var (roomId, roundId) = await SeedClosedRound();
+        await SeedCalamiTick(roomId, roundId, victim: "g-adv");
+        await SeedClosedWindow(roundId);
+        var log = new CapturingLogger();
+        var payload = await _store.Advance(Caller, roundId, (round, s) => new ShadowAdvance(
+                new ScriptedDieRoller(3),
+                (_, _, _) => throw new InvalidOperationException("production snapshot shape"))
+            .Run(s, round, ShadowAdvance.Bridge.FinalizeLayer, log));
+
+        Assert.Equal("brewer", (string?)payload!["outcome"]); // SQL stays authoritative
+        var skip = Assert.Single(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+        Assert.Equal(LogLevel.Warning, skip.Level);
+        Assert.Equal("production snapshot shape", skip.Exception?.Message);
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
+    }
+
+    [Fact]
     public async Task A_ward_cast_during_the_window_negates_the_tick_exactly_like_the_sql_only_path()
     {
         // The same scenario twice: once through the shadow, once through today's
@@ -501,10 +524,10 @@ public class RoundAdvanceTests : IAsyncLifetime
 /// <summary>Records (level, message) pairs so tests can assert on the shadow's markers.</summary>
 public sealed class CapturingLogger : ILogger
 {
-    public List<(LogLevel Level, string Message)> Records { get; } = [];
+    public List<(LogLevel Level, string Message, Exception? Exception)> Records { get; } = [];
 
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
     public bool IsEnabled(LogLevel logLevel) => true;
     public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
-        Records.Add((logLevel, formatter(state, exception)));
+        Records.Add((logLevel, formatter(state, exception), exception));
 }

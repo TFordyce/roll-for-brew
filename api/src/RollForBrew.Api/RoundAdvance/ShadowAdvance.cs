@@ -19,7 +19,9 @@ namespace RollForBrew.Api.RoundAdvance;
 /// to finalize anything, they are deleted again inside the same transaction, so the
 /// next (finalizing) call re-runs <c>Evaluate</c> on the post-window snapshot and
 /// pre-writes fresh. Diffs are logged at Error with everything needed to reproduce
-/// them as a golden; they are never served — the caller gets SQL's payload unchanged.
+/// them as a golden; skips log at Warning with the cause attached, so they survive
+/// Cloud Run's default severity filter. Neither is ever served — the caller gets
+/// SQL's payload unchanged.
 /// </summary>
 public sealed class ShadowAdvance
 {
@@ -53,12 +55,14 @@ public sealed class ShadowAdvance
 
         Resolution? candidate = null;
         string? skipReason = null;
+        Exception? skipCause = null;
         try
         {
             candidate = _evaluate(snapshot, roundId, _dice);
         }
         catch (Exception e) when (e is ResolveException or PhasePendingException or ArgumentException or InvalidOperationException)
         {
+            skipCause = e;
             skipReason = $"evaluate unavailable: {e.Message}";
         }
 
@@ -88,8 +92,12 @@ public sealed class ShadowAdvance
 
         if (finalization is not null)
         {
+            // Warning, not Information: Cloud Run's default severity filter drops
+            // Information entirely, and an invisible skip is how the die-replay
+            // degradation hid through a whole capture attempt. The caught evaluate
+            // exception rides along so the production log carries its stack.
             if (candidate is null || skipReason is not null)
-                logger.LogInformation(
+                logger.LogWarning(skipCause,
                     "{Marker} shadow skipped: {Reason} (room {RoomId}, round {RoundId}, bridge {Bridge}, sql outcome {Outcome})",
                     SkipMarker, skipReason, round.RoomId, roundId, fn, (string?)finalization["outcome"]);
             else
