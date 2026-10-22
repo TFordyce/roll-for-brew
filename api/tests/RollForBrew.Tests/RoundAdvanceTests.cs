@@ -427,6 +427,85 @@ public class RoundAdvanceTests : IAsyncLifetime
         Assert.NotNull(payload);
     }
 
+    [Fact]
+    public async Task A_live_targeting_skip_beside_same_round_ticks_finalizes_clean()
+    {
+        // Reproduction shape for the 2026-10-22 18:07Z degradation (round 849fd030):
+        // the finalizing round carries three fresh same-round Calami-Tea ticks AND a
+        // live targeting_skip effect (Cloud of Cream, empty effect_params) created in
+        // the previous round. Production persisted SQL's own random-id ticks with no
+        // visible marker here, while the same scenario WITHOUT the targeting_skip ran
+        // clean at 21:57Z (round 441b13ac) — the effect row is the discriminator.
+        // If Evaluate throws on this snapshot, the skip message names the exception.
+        var room = Guid.NewGuid();
+        var roundA = Guid.NewGuid();
+        var roundB = Guid.NewGuid();
+        var calamiInstance = Guid.NewGuid();
+        var cocInstance = Guid.NewGuid();
+        var skipCast = Guid.NewGuid();
+        var tickCasts = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        var victims = new[] { "t-1", "t-3", "t-4" };
+        var inserts = new List<string>
+        {
+            $"""
+            insert into public.players (id, email) values
+              ('t-1', 't-1@x.test'), ('t-2', 't-2@x.test'), ('t-3', 't-3@x.test'), ('t-4', 't-4@x.test');
+            insert into public.rooms (id, date) values ('{room}', '2026-01-05');
+            insert into public.room_players (room_id, player_id, modifier) values
+              ('{room}', 't-1', 0), ('{room}', 't-2', 0), ('{room}', 't-3', 0), ('{room}', 't-4', 0);
+            insert into public.rounds (id, room_id, started_by, status, started_at, closed_at) values
+              ('{roundA}', '{room}', 't-1', 'resolved', '2026-01-05 09:00+00', '2026-01-05 09:10+00'),
+              ('{roundB}', '{room}', 't-1', 'closed',   '2026-01-05 10:00+00', '2026-01-05 10:05+00');
+            insert into public.round_participants (round_id, player_id) values
+              ('{roundA}', 't-1'), ('{roundA}', 't-2'), ('{roundA}', 't-3'), ('{roundA}', 't-4'),
+              ('{roundB}', 't-1'), ('{roundB}', 't-2'), ('{roundB}', 't-3'), ('{roundB}', 't-4');
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              ('{roundB}', 't-1', 0, 10, 'in_app', 0), ('{roundB}', 't-2', 0, 8, 'in_app', 0),
+              ('{roundB}', 't-3', 0, 10, 'in_app', 0), ('{roundB}', 't-4', 0, 9, 'in_app', 0);
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{calamiInstance}', id, 'in_deck' from public.spell_cards where name = 'Calami-Tea';
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{cocInstance}', id, 'in_deck' from public.spell_cards where name = 'Cloud of Cream';
+            """,
+        };
+        inserts.Add($$"""
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+              values ('{{skipCast}}', '{{roundA}}', 't-3', '{{cocInstance}}', 't-3', 'targeting_skip', '{}');
+            insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining)
+              values ('{{Guid.NewGuid()}}', '{{room}}', 't-3', 't-3', '{{skipCast}}',
+                      (select id from public.spell_cards where name = 'Cloud of Cream'), 'targeting_skip', '{}', 2);
+            """);
+        for (var i = 0; i < 3; i++)
+            inserts.Add($$"""
+                insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+                  values ('{{tickCasts[i]}}', '{{roundB}}', 't-2', '{{calamiInstance}}', '{{victims[i]}}', 'per_round_dice_tick', '{"die": 4, "sign": -1}');
+                insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining)
+                  values ('{{Guid.NewGuid()}}', '{{room}}', '{{victims[i]}}', 't-2', '{{tickCasts[i]}}',
+                          (select id from public.spell_cards where name = 'Calami-Tea'), 'per_round_dice_tick', '{"die": 4, "sign": -1, "max_targets": 3}', 3);
+                """);
+        foreach (var sql in inserts) await _db.Execute(sql);
+        await SeedClosedWindow(roundB);
+
+        var log = new CapturingLogger();
+        var shadow = new ShadowAdvance(new ConstantDieRoller(3));
+
+        var payload = await _store.Advance(Caller, roundB, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.FinalizeLayer, log));
+
+        foreach (var r in log.Records.Where(r => r.Message.Contains("evaluate unavailable")))
+            Assert.Fail($"Evaluate threw on the attempt-3 snapshot shape: {r.Message}");
+
+        // All three ticks must be C#'s deterministic pre-writes with the scripted roll.
+        foreach (var i in Enumerable.Range(0, 3))
+        {
+            var expectedId = Ids.Deterministic($"rfb-dice-tick:{tickCasts[i]}:0").ToString();
+            Assert.Equal(expectedId, await _db.Scalar<string>(
+                $"select id::text from public.spell_casts where round_id = '{roundB}' and source_cast_id = '{tickCasts[i]}' and cast_inputs ? 'dice_tick'"));
+            Assert.Equal("3", await _db.Scalar<string>(
+                $"select effect_params ->> 'rolled' from public.spell_casts where round_id = '{roundB}' and source_cast_id = '{tickCasts[i]}' and cast_inputs ? 'dice_tick'"));
+        }
+        Assert.NotNull(payload);
+    }
+
     private async Task SeedClosedWindow(Guid roundId)
     {
         await _db.Execute($$"""
