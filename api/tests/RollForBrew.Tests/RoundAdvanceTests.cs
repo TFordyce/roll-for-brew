@@ -351,6 +351,63 @@ public class RoundAdvanceTests : IAsyncLifetime
         Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
     }
 
+    [Fact]
+    public async Task A_persistent_tick_effect_carrying_across_rounds_finalizes_clean()
+    {
+        // Regression for the 2026-10-22 production wedge (round 30ddd9f7): round A
+        // resolved with three Calami-Tea casts and three persistent live effects
+        // (rounds_remaining 3); one effect targets test-player-4, who is NOT a
+        // participant of the next round. Round B closes with three rolls and no
+        // eligible reaction holder — the advance must finalize without raising.
+        var room = Guid.NewGuid();
+        var roundA = Guid.NewGuid();
+        var roundB = Guid.NewGuid();
+        var instance = Guid.NewGuid();
+        var casts = new[] { Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid() };
+        var victims = new[] { "t-2", "t-4", "t-3" };
+        var inserts = new List<string>
+        {
+            $"""
+            insert into public.players (id, email) values
+              ('t-1', 't-1@x.test'), ('t-2', 't-2@x.test'), ('t-3', 't-3@x.test'), ('t-4', 't-4@x.test');
+            insert into public.rooms (id, date) values ('{room}', '2026-01-05');
+            insert into public.room_players (room_id, player_id, modifier) values
+              ('{room}', 't-1', 7), ('{room}', 't-2', 6), ('{room}', 't-3', 7), ('{room}', 't-4', 0);
+            insert into public.rounds (id, room_id, started_by, status, started_at, closed_at) values
+              ('{roundA}', '{room}', 't-1', 'resolved', '2026-01-05 09:00+00', '2026-01-05 09:10+00'),
+              ('{roundB}', '{room}', 't-1', 'closed',   '2026-01-05 10:00+00', '2026-01-05 10:05+00');
+            insert into public.round_participants (round_id, player_id) values
+              ('{roundA}', 't-1'), ('{roundA}', 't-2'), ('{roundA}', 't-4'), ('{roundA}', 't-3'),
+              ('{roundB}', 't-1'), ('{roundB}', 't-2'), ('{roundB}', 't-3');
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              ('{roundB}', 't-2', 0, 8, 'in_app', 6), ('{roundB}', 't-1', 0, 10, 'in_app', 7), ('{roundB}', 't-3', 0, 10, 'in_app', 7);
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{instance}', id, 'in_deck' from public.spell_cards where name = 'Calami-Tea';
+            """,
+        };
+        for (var i = 0; i < 3; i++)
+            inserts.Add($$"""
+                insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+                  values ('{{casts[i]}}', '{{roundA}}', 't-1', '{{instance}}', '{{victims[i]}}', 'per_round_dice_tick', '{"die": 4, "sign": -1}');
+                insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining)
+                  values ('{{Guid.NewGuid()}}', '{{room}}', '{{victims[i]}}', 't-1', '{{casts[i]}}',
+                          (select id from public.spell_cards where name = 'Calami-Tea'), 'per_round_dice_tick', '{"die": 4, "sign": -1, "max_targets": 3}', 3);
+                """);
+        // the non-participant holds a reaction card (Mug Mirror), as in production
+        inserts.Add($"""
+            insert into public.spell_deck_instances (id, card_id, location, held_by_player)
+              select '{Guid.NewGuid()}', id, 'held', 't-4' from public.spell_cards where name = 'Mug Mirror';
+            """);
+        foreach (var sql in inserts) await _db.Execute(sql);
+
+        var log = new CapturingLogger();
+        var shadow = new ShadowAdvance(new ScriptedDieRoller(3));
+
+        var payload = await _store.Advance(Caller, roundB, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
+
+        Assert.NotNull(payload);
+    }
+
     private async Task SeedClosedWindow(Guid roundId)
     {
         await _db.Execute($$"""
