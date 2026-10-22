@@ -20,10 +20,25 @@ is the alert. This file is the bridge list the ticket's exit 1 asks for. Keep it
    left identity-assigned in Commit order. This is the spec's "existing tick rows mean only
    missing ticks roll": the bridged resolver's own idempotency guards (`dice_tick` /
    `is_copy` per generation) then make SQL replay C#'s rolls instead of rolling fresh.
+   The pre-writes are bridge fuel, not state — their lifecycle is
+   **insert → bridge call → delete by the exact ids inserted, unless the call finalized**
+   (below), all inside this one transaction. A warded tick is never pre-written: its roll
+   is never applied (it collapses to `<rng>`), so SQL needs no replay, and pre-writing it
+   would suppress SQL's own synthesis — whose `warded` step the candidate's trace does
+   carry — for a false diff.
 5. Bridge call (below) — SQL commits authoritative state and returns its outcome payload.
+   When the outcome finalizes nothing — any `noop`, or `windowOpened` with a null
+   `finalization` (the window stays open) — the pre-written rows are deleted again, so
+   nothing synthesized survives into an open window: a ward cast as a reaction still
+   negates a tick, and the window-close call re-runs `Evaluate` on the post-window
+   snapshot and pre-writes fresh, exactly where the SQL-only path synthesizes.
 6. Read back what SQL wrote (`resolution_trace` / `resolution_summary` jsonb and the
    resolution columns) and diff against the candidate through the goldens' normalized-JSON
-   comparison (`Domain.TraceNormaliser`, shared with the golden renderer).
+   comparison (`Domain.TraceNormaliser`, shared with the golden renderer). The diff covers
+   every finalization: `brewer`/`tie` at the payload's top level, and `advance_layer`'s
+   nested `finalization` block when the window opened and closed on the spot (nobody
+   eligible to react, so no player could cast into it — the candidate evaluated the same
+   state SQL resolves). A non-finalizing outcome has nothing to examine: no diff, no skip.
 7. Return SQL's payload unchanged. Broadcasts stay TS-side, exactly as today.
 
 ## Write bridges (still SQL, EXECUTE granted to `rfb_api` by migration `0162`)
@@ -82,14 +97,11 @@ silently ignored):
   (`Phase3RollInputs` skips casts without `cast_inputs.roll_transform`), so the candidate
   cannot carry the shim's outcomes. The shadow therefore **skips the diff** and logs
   `rfb-shadow-skip` (reason `unapplied roll-transform casts`) whenever the snapshot holds
-  any cast of those kinds without a recorded transform. When slice 2b ports the shim into
+  any cast of those kinds without a recorded transform. The same guard covers
+  `advance_layer`'s attach step (`attach_pre_roll_forced_reroll_casts` /
+  `attach_pre_roll_roll_pair_transform_casts`), which stamps exactly those kinds with the
+  new window's id right before the shim transforms them. When slice 2b ports the shim into
   the C# `AdvanceRound` (fresh rolls via `IDieRoller`), the skip and this paragraph go.
-* Consequence of the settled pre-write design, worth watching in the skip logs: a tick
-  pre-written on an advance that doesn't immediately finalize (window opening, reaction
-  window open) freezes its ward negation at pre-write time, so a ward cast as a reaction
-  later in the window would not negate it, where today's SQL-only path would. Rare
-  (requires Calami-Tea live + a roll-domain ward cast during that window); slice 2b
-  removes the window entirely.
 
 Category **(c) — outside the advance path** (cannot reach the bridges; no normalization
 needed): cast-time rolls in `cast_spell_card` (WILD d6 branch, the `order by random()`
@@ -98,6 +110,27 @@ other-player pick, CHOSEN_PLAYERS dice totals; `0150`), reaction rolls in
 player d20s in `submit_roll` / `submit_roll_as`, deck draws, `close_round`'s placeholder
 fan-out, pending-die resolution, and the stall/report reads. These are slice 3–6 entry
 points, not callees of `advance_layer` / `finalize_layer`.
+
+## The nested finalization is comparable (SQL trace, #546)
+
+`advance_layer`'s `windowOpened` + `window_closed: true` outcome opens the window, closes
+it and finalizes in one call, so the diff runs against the nested `finalization` block. The
+SQL trace that decided the candidate is comparable — nothing window-time can reach the
+resolution:
+
+* `open_reaction_window` inserts the window, attaches pre-roll
+  `forced_reroll`/`roll_pair_transform` casts, counts eligible reaction holders and — at
+  zero — closes immediately, all inside the one locked call. No player can cast into a
+  window that never sits open.
+* The attach step stamps only shim-guarded kinds, so whenever it mutates anything the
+  `rfb-shadow-skip` guard above has already skipped the diff.
+* `_forfeit_untargetable_compelled_reactions` cannot fire here: an outstanding compelled
+  Reaction cast implies its holder still holds the Reaction-timed card, and any held
+  Reaction-timed card keeps the window open — not the nested path.
+* The window row itself is resolution-invisible: the only resolver read of
+  `spell_reaction_windows` is the Broken-Biscuit `lowest_gains_highest_modifier` join on
+  `casts.reaction_window_id` (the C# side gates the same way), and a brand-new window has
+  no casts stamped with its id — only Reaction casts carry window ids.
 
 ## Deliberately out of the diff
 

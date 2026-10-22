@@ -27,7 +27,7 @@ public static class RoundAdvanceEndpoints
     {
         var caller = http.GetCaller();
         var shadow = new ShadowAdvance();
-        var payload = await store.Advance(caller, roundId, (round, s) => shadow.Run(s, round, roundId, bridge, log, ct), ct);
+        var payload = await store.Advance(caller, roundId, (round, s) => shadow.Run(s, round, bridge, log, ct), ct);
         return Results.Json(payload);
     }
 }

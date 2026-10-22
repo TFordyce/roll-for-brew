@@ -114,7 +114,7 @@ public class RoundAdvanceTests : IAsyncLifetime
         var log = new CapturingLogger();
         var shadow = new ShadowAdvance(new ScriptedDieRoller(3));
 
-        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, roundId, ShadowAdvance.Bridge.AdvanceLayer, log));
+        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
         // SQL stayed authoritative and its payload passes through unchanged.
         Assert.Equal("brewer", (string?)payload!["outcome"]);
@@ -141,7 +141,7 @@ public class RoundAdvanceTests : IAsyncLifetime
         var log = new CapturingLogger();
         var shadow = new ShadowAdvance(new ScriptedDieRoller());
 
-        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, roundId, ShadowAdvance.Bridge.AdvanceLayer, log));
+        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
         // Nobody holds a reaction card, so SQL opens the window and closes it on the
         // spot, finalizing inline: the payload carries both the window and the result.
@@ -150,6 +150,116 @@ public class RoundAdvanceTests : IAsyncLifetime
         Assert.Equal("brewer", (string?)payload["finalization"]!["outcome"]);
         Assert.Equal(1L, await _db.Scalar<long>($"select count(*) from public.spell_reaction_windows where round_id = '{roundId}'"));
         Assert.NotNull(await _db.Scalar<string>($"select resolution_trace from public.rounds where id = '{roundId}'"));
+        // The nested finalization is a real finalization: the shadow examined it
+        // (and agreed), not skipped it and not let it pass silently.
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
+    }
+
+    [Fact]
+    public async Task An_open_window_leaves_no_synthesized_rows_behind_after_the_advance_commits()
+    {
+        var (roomId, roundId) = await SeedClosedRound();
+        await SeedCalamiTick(roomId, roundId, victim: "g-adv");
+        // A held Reaction card keeps the window open, so the advance cannot finalize
+        // (g-adv: g-p2 is already holding the Calami-Tea, and the hold cap is one).
+        await SeedHeldReactionCard("g-adv");
+        var log = new CapturingLogger();
+        var shadow = new ShadowAdvance(new ScriptedDieRoller(3));
+
+        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
+
+        Assert.Equal("windowOpened", (string?)payload!["outcome"]);
+        Assert.Equal(false, (bool?)payload["window_closed"]);
+        Assert.Null((string?)payload["finalization"]); // jsonb null, not an absent key
+        // The pre-written tick did not survive the non-finalizing outcome: the next
+        // call re-evaluates and pre-writes fresh, so nothing freezes mid-window.
+        Assert.Equal(0L, await _db.Scalar<long>(
+            $"select count(*) from public.spell_casts where round_id = '{roundId}' and cast_inputs ? 'dice_tick'"));
+        Assert.Equal("open", await _db.Scalar<string>($"select status from public.spell_reaction_windows where round_id = '{roundId}'"));
+        Assert.Null(await _db.Scalar<string>($"select resolution_trace from public.rounds where id = '{roundId}'"));
+        // No finalization happened, so there was nothing to examine: no diff and no skip.
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+    }
+
+    [Fact]
+    public async Task The_window_close_finalize_re_synthesizes_and_diffs_clean()
+    {
+        var (roomId, roundId) = await SeedClosedRound();
+        await SeedCalamiTick(roomId, roundId, victim: "g-adv");
+        await SeedHeldReactionCard("g-adv");
+        // A fresh shadow (and scripted die) per call, as production's per-request
+        // instance: each call evaluates and rolls its own tick.
+        await _store.Advance(Caller, roundId, (round, s) => new ShadowAdvance(new ScriptedDieRoller(3))
+            .Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, new CapturingLogger()));
+
+        // The window closes (in play: every eligible holder passes), then the
+        // finalize bridge runs: it synthesizes the tick then, with the window's
+        // final state in the snapshot, and SQL replays C#'s roll.
+        await CloseWindow(roundId);
+        var log = new CapturingLogger();
+        var payload = await _store.Advance(Caller, roundId, (round, s) => new ShadowAdvance(new ScriptedDieRoller(3))
+            .Run(s, round, ShadowAdvance.Bridge.FinalizeLayer, log));
+
+        Assert.Equal("brewer", (string?)payload!["outcome"]);
+        Assert.Equal(1L, await _db.Scalar<long>($"select count(*) from public.spell_casts where round_id = '{roundId}' and cast_inputs ? 'dice_tick'"));
+        Assert.Equal("3", await _db.Scalar<string>($"select effect_params ->> 'rolled' from public.spell_casts where round_id = '{roundId}' and cast_inputs ? 'dice_tick'"));
+        Assert.Equal("g-p2", await _db.Scalar<string>($"select brewer_id from public.rounds where id = '{roundId}'"));
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+    }
+
+    [Fact]
+    public async Task A_ward_cast_during_the_window_negates_the_tick_exactly_like_the_sql_only_path()
+    {
+        // The same scenario twice: once through the shadow, once through today's
+        // SQL-only rpc path. The ward enters mid-window, so the tick's negation may
+        // only be decided when the round finalizes — the fix must land both engines
+        // on the identical state.
+        // The hold cap is one card per player: the Calami-Tea instance sits in the
+        // deck (the tick runs off its active effect, not the hold), freeing a
+        // participant to hold the Reaction card that keeps each window open.
+        var (shadowRoom, shadowRound) = await SeedClosedRound();
+        await SeedCalamiTick(shadowRoom, shadowRound, victim: "g-adv", held: false);
+        await SeedHeldReactionCard("g-adv");
+        await _store.Advance(Caller, shadowRound, (round, s) => new ShadowAdvance(new ScriptedDieRoller(3))
+            .Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, new CapturingLogger()));
+        await SeedWardCast(shadowRoom, shadowRound, target: "g-adv", caster: "g-adv");
+        await CloseWindow(shadowRound);
+        var log = new CapturingLogger();
+        await _store.Advance(Caller, shadowRound, (round, s) => new ShadowAdvance(new ScriptedDieRoller(3))
+            .Run(s, round, ShadowAdvance.Bridge.FinalizeLayer, log));
+
+        var (sqlRoom, sqlRound) = await SeedClosedRound(date: "2026-01-02"); // rooms.date is unique
+        await SeedCalamiTick(sqlRoom, sqlRound, victim: "g-adv", held: false);
+        await SeedHeldReactionCard("g-p2");
+        await _db.Execute($"select public.advance_layer('{sqlRound}')");
+        await SeedWardCast(sqlRoom, sqlRound, target: "g-adv", caster: "g-adv");
+        await CloseWindow(sqlRound);
+        await _db.Execute($"select public.finalize_layer('{sqlRound}')");
+
+        // Pinned negation outcome: the warded tick applies nothing, in both engines.
+        foreach (var round in new[] { shadowRound, sqlRound })
+        {
+            Assert.True(await _db.Scalar<bool>(
+                $"select negated from public.spell_casts where round_id = '{round}' and cast_inputs ? 'dice_tick'"),
+                "the synthesized tick must end up negated (warded)");
+            Assert.Equal("g-p2", await _db.Scalar<string>($"select brewer_id from public.rounds where id = '{round}'"));
+            Assert.Equal(17, await _db.Scalar<int>($"select value from public.rolls where round_id = '{round}' and player_id = 'g-adv'"));
+        }
+
+        // And the shadow agreed with SQL through the goldens' normalized comparison.
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
+        var (shadowTrace, shadowSummary) = await TraceAndSummary(shadowRound);
+        var (sqlTrace, sqlSummary) = await TraceAndSummary(sqlRound);
+        var roster = new Dictionary<string, string>();
+        Assert.True(TraceNormaliser.NodesEqual(
+                TraceNormaliser.NormaliseTrace(shadowTrace, roster), TraceNormaliser.NormaliseTrace(sqlTrace, roster)),
+            "shadow and sql-only traces diverge");
+        Assert.True(TraceNormaliser.NodesEqual(
+                TraceNormaliser.NormaliseSummary(shadowSummary, roster), TraceNormaliser.NormaliseSummary(sqlSummary, roster)),
+            "shadow and sql-only summaries diverge");
     }
 
     [Fact]
@@ -160,7 +270,7 @@ public class RoundAdvanceTests : IAsyncLifetime
         var log = new CapturingLogger();
         var shadow = new ShadowAdvance(new ScriptedDieRoller());
 
-        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, roundId, ShadowAdvance.Bridge.FinalizeLayer, log));
+        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.FinalizeLayer, log));
 
         Assert.Equal("brewer", (string?)payload!["outcome"]);
         Assert.NotNull(await _db.Scalar<string>($"select resolution_summary from public.rounds where id = '{roundId}'"));
@@ -174,7 +284,7 @@ public class RoundAdvanceTests : IAsyncLifetime
         var log = new CapturingLogger();
         var shadow = new ShadowAdvance(new ScriptedDieRoller());
 
-        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, roundId, ShadowAdvance.Bridge.AdvanceLayer, log));
+        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
         Assert.Equal("noop", (string?)payload!["outcome"]);
         Assert.Equal("layer_incomplete", (string?)payload["reason"]);
@@ -190,7 +300,7 @@ public class RoundAdvanceTests : IAsyncLifetime
         var log = new CapturingLogger();
         var shadow = new ShadowAdvance();
 
-        var payload = await _store.Advance(Caller, missing, (round, s) => shadow.Run(s, round, missing, ShadowAdvance.Bridge.AdvanceLayer, log));
+        var payload = await _store.Advance(Caller, missing, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
         Assert.Equal("noop", (string?)payload!["outcome"]);
         Assert.Equal("round_not_found", (string?)payload["reason"]);
@@ -208,7 +318,7 @@ public class RoundAdvanceTests : IAsyncLifetime
             return r with { BrewerId = "g-adv" }; // force the candidate to disagree (SQL brews g-p2)
         });
 
-        await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, roundId, ShadowAdvance.Bridge.AdvanceLayer, log));
+        await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
         var diff = Assert.Single(log.Records, r => r.Level == LogLevel.Error && r.Message.Contains(ShadowAdvance.DiffMarker));
         Assert.Contains(roundId.ToString(), diff.Message);
@@ -234,7 +344,7 @@ public class RoundAdvanceTests : IAsyncLifetime
               values ('22222222-2222-4222-8222-222222222222', '{{roundId}}', 'g-p2', '11111111-1111-4111-8111-111111111111', 'g-adv', 'forced_reroll', '{}', false);
             """);
 
-        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, roundId, ShadowAdvance.Bridge.AdvanceLayer, log));
+        var payload = await _store.Advance(Caller, roundId, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
         Assert.NotNull(payload);
         Assert.Contains(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker) && r.Message.Contains("roll-transform"));
@@ -249,23 +359,63 @@ public class RoundAdvanceTests : IAsyncLifetime
             """);
     }
 
-    private async Task SeedCalamiTick(Guid roomId, Guid roundId, string victim)
+    private async Task SeedCalamiTick(Guid roomId, Guid roundId, string victim, bool held = true)
     {
+        var instance = Guid.NewGuid();
+        var cast = Guid.NewGuid();
         await _db.Execute($$"""
             insert into public.spell_deck_instances (id, card_id, location, held_by_player)
-              select '33333333-3333-4333-8333-333333333333', id, 'held', 'g-p2' from public.spell_cards where name = 'Calami-Tea';
+              select '{{instance}}', id, '{{(held ? "held" : "in_deck")}}', {{(held ? "'g-p2'" : "null")}} from public.spell_cards where name = 'Calami-Tea';
             insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
-              values ('44444444-4444-4444-8444-444444444444', '{{roundId}}', 'g-p2', '33333333-3333-4333-8333-333333333333', '{{victim}}', 'per_round_dice_tick', '{}');
+              values ('{{cast}}', '{{roundId}}', 'g-p2', '{{instance}}', '{{victim}}', 'per_round_dice_tick', '{}');
             insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining)
-              values ('55555555-5555-4555-8555-555555555555', '{{roomId}}', '{{victim}}', 'g-p2', '44444444-4444-4444-8444-444444444444',
+              values ('{{Guid.NewGuid()}}', '{{roomId}}', '{{victim}}', 'g-p2', '{{cast}}',
                       (select id from public.spell_cards where name = 'Calami-Tea'), 'per_round_dice_tick', '{"die": 4, "sign": -1}', 3);
             """);
     }
 
+    /// <summary>A held Reaction card, so <c>count_eligible_reaction_holders</c> keeps
+    /// the layer-0 window open and the advance cannot finalize.</summary>
+    private async Task SeedHeldReactionCard(string player)
+    {
+        var instance = Guid.NewGuid();
+        await _db.Execute($$"""
+            insert into public.spell_deck_instances (id, card_id, location, held_by_player)
+              select '{{instance}}', id, 'held', '{{player}}' from public.spell_cards where name = 'Six Sugars';
+            """);
+    }
+
+    /// <summary>A Cast-Iron Kettle ward (roll domain, negative polarity) on
+    /// <paramref name="target"/> — the rows <c>cast_reaction_spell_card</c> writes,
+    /// seeded directly so the ward can enter mid-window in a test.</summary>
+    private async Task SeedWardCast(Guid roomId, Guid roundId, string target, string caster)
+    {
+        var instance = Guid.NewGuid();
+        var cast = Guid.NewGuid();
+        await _db.Execute($$"""
+            insert into public.spell_deck_instances (id, card_id, location, held_by_player)
+              select '{{instance}}', id, 'in_deck', null from public.spell_cards where name = 'Cast-Iron Kettle';
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+              values ('{{cast}}', '{{roundId}}', '{{caster}}', '{{instance}}', '{{target}}',
+                      'ward', '{"domain": ["roll"], "polarity": ["negative"]}');
+            insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params)
+              values ('{{Guid.NewGuid()}}', '{{roomId}}', '{{target}}', '{{caster}}', '{{cast}}',
+                      (select id from public.spell_cards where name = 'Cast-Iron Kettle'), 'ward', '{"domain": ["roll"], "polarity": ["negative"]}');
+            """);
+    }
+
+    private async Task CloseWindow(Guid roundId) =>
+        await _db.Execute($"update public.spell_reaction_windows set status = 'closed', closed_at = now() where round_id = '{roundId}' and status = 'open'");
+
+    private async Task<(JsonArray Trace, JsonArray Summary)> TraceAndSummary(Guid roundId) =>
+        (JsonNode.Parse((await _db.Scalar<string>($"select resolution_trace from public.rounds where id = '{roundId}'"))!)!.AsArray(),
+         JsonNode.Parse((await _db.Scalar<string>($"select resolution_summary from public.rounds where id = '{roundId}'"))!)!.AsArray());
+
     /// <summary>A closed layer-0 round with two participants; <paramref name="complete"/>
     /// gives both a roll so SQL and C# agree the layer is ready to resolve.</summary>
     internal async Task<(Guid RoomId, Guid RoundId)> SeedClosedRound(
-        bool complete = true, Guid? roundId = null, string p1 = "g-adv", string p2 = "g-p2", int v1 = 17, int v2 = 6)
+        bool complete = true, Guid? roundId = null, string p1 = "g-adv", string p2 = "g-p2", int v1 = 17, int v2 = 6,
+        string date = "2026-01-01")
     {
         var room = Guid.NewGuid();
         var round = roundId ?? Guid.NewGuid();
@@ -277,7 +427,7 @@ public class RoundAdvanceTests : IAsyncLifetime
               """
             : "";
         await _db.Execute($"""
-            insert into public.rooms (id, date) values ('{room}', '2026-01-01');
+            insert into public.rooms (id, date) values ('{room}', '{date}');
             insert into public.rounds (id, room_id, started_by, status, started_at, closed_at) values
               ('{round}', '{room}', '{p1}', 'closed', '2026-01-01 09:00+00', '2026-01-01 09:01+00');
             insert into public.round_participants (round_id, player_id) values ('{round}', '{p1}'), ('{round}', '{p2}');

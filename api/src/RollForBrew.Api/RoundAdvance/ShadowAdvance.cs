@@ -15,8 +15,11 @@ namespace RollForBrew.Api.RoundAdvance;
 /// synthesized casts, so SQL replays C#'s rolls instead of rolling its own — "existing
 /// tick rows mean only missing ticks roll"), then let the bridged SQL function commit
 /// authoritative state and diff the C# <c>Resolution</c> against what SQL wrote.
-/// Diffs are logged at Error with everything needed to reproduce them as a golden;
-/// they are never served — the caller gets SQL's payload unchanged.
+/// The pre-writes are bridge fuel, not state: when the bridge outcome turns out not
+/// to finalize anything, they are deleted again inside the same transaction, so the
+/// next (finalizing) call re-runs <c>Evaluate</c> on the post-window snapshot and
+/// pre-writes fresh. Diffs are logged at Error with everything needed to reproduce
+/// them as a golden; they are never served — the caller gets SQL's payload unchanged.
 /// </summary>
 public sealed class ShadowAdvance
 {
@@ -40,9 +43,10 @@ public sealed class ShadowAdvance
     }
 
     public async Task<JsonNode?> Run(
-        StoreSession session, RoundLock? round, Guid roundId, Bridge bridge, ILogger logger, CancellationToken ct = default)
+        StoreSession session, RoundLock? round, Bridge bridge, ILogger logger, CancellationToken ct = default)
     {
         if (round is null) return Noop("round_not_found");
+        var roundId = round.RoundId;
 
         var snapshotJson = await session.LoadJson(round.RoomId, ct);
         var snapshot = RoundSnapshot.Parse(snapshotJson);
@@ -58,10 +62,19 @@ public sealed class ShadowAdvance
             skipReason = $"evaluate unavailable: {e.Message}";
         }
 
+        var prewritten = new List<Guid>();
         if (candidate is not null)
         {
             foreach (var write in Committer.Commit(candidate).OfType<InsertSpellCast>())
+            {
+                // A warded tick's roll is never applied (the walk collapses it to
+                // <rng>), so SQL needs no replay — and pre-writing it would suppress
+                // SQL's own synthesis, whose warded step the candidate's trace does
+                // carry. Leave warded ticks to SQL so both traces keep both steps.
+                if (write.Row.EffectKind == "per_round_dice_tick" && write.Row.Negated) continue;
                 await InsertCast(session, write.Row, ct);
+                prewritten.Add(write.Row.Id);
+            }
             if (skipReason is null && HasUnappliedShimTransforms(snapshot, roundId))
                 skipReason = "unapplied roll-transform casts: the finalize shim will record transforms the candidate was not evaluated with";
         }
@@ -69,21 +82,36 @@ public sealed class ShadowAdvance
         var fn = bridge == Bridge.AdvanceLayer ? "advance_layer" : "finalize_layer";
         var payload = (await BridgeJson(session, fn, roundId, ct))!;
 
-        var outcome = (string?)payload["outcome"];
-        if (outcome is "brewer" or "tie")
+        var finalization = FinalizationOf(payload);
+        if (finalization is null && prewritten.Count > 0)
+            await DeleteCasts(session, prewritten, ct);
+
+        if (finalization is not null)
         {
             if (candidate is null || skipReason is not null)
                 logger.LogInformation(
                     "{Marker} shadow skipped: {Reason} (room {RoomId}, round {RoundId}, bridge {Bridge}, sql outcome {Outcome})",
-                    SkipMarker, skipReason, round.RoomId, roundId, fn, outcome);
+                    SkipMarker, skipReason, round.RoomId, roundId, fn, (string?)finalization["outcome"]);
             else
-                await DiffAgainstSql(session, round.RoomId, roundId, fn, snapshotJson, candidate, payload, logger, ct);
+                await DiffAgainstSql(session, round.RoomId, roundId, fn, snapshotJson, candidate, finalization, logger, ct);
         }
 
         return payload;
     }
 
     private static JsonNode Noop(string reason) => new JsonObject { ["outcome"] = "noop", ["reason"] = reason };
+
+    /// <summary>The finalization a bridge outcome commits, or null when it commits
+    /// none: <c>brewer</c>/<c>tie</c> at the top level, or <c>advance_layer</c>'s
+    /// nested <c>finalization</c> block when the window opened and closed on the spot
+    /// (nobody eligible to react, so no player could cast into it — the candidate
+    /// evaluated the same state SQL resolves). A noop, or a window that stays open,
+    /// finalizes nothing and the pre-writes must not survive it.</summary>
+    private static JsonNode? FinalizationOf(JsonNode payload)
+    {
+        var block = (string?)payload["outcome"] == "windowOpened" ? payload["finalization"] : payload;
+        return (string?)block?["outcome"] is "brewer" or "tie" ? block : null;
+    }
 
     /// <summary>The finalize shim (forced reroll, flip, swap, chosen-pair) records roll
     /// transforms onto casts at bridge time; a cast still waiting for one means the
@@ -135,12 +163,25 @@ public sealed class ShadowAdvance
         await cmd.ExecuteNonQueryAsync(ct);
     }
 
+    /// <summary>Removes the pre-writes by the exact ids they were inserted with,
+    /// inside the bridge's transaction: a non-finalizing outcome must leave nothing
+    /// synthesized behind (a tick frozen mid-window would dodge a ward cast as a
+    /// reaction, and both engines would end up reusing the shadow's own rows).</summary>
+    private static async Task DeleteCasts(StoreSession session, IReadOnlyList<Guid> ids, CancellationToken ct)
+    {
+        await using var cmd = new NpgsqlCommand(
+            "delete from public.spell_casts where id = any(@ids)", session.Connection, session.Transaction);
+        cmd.Parameters.Add(new NpgsqlParameter("ids", NpgsqlTypes.NpgsqlDbType.Array | NpgsqlTypes.NpgsqlDbType.Uuid)
+            { Value = ids.ToArray() });
+        await cmd.ExecuteNonQueryAsync(ct);
+    }
+
     private static async Task DiffAgainstSql(
         StoreSession session, Guid roomId, Guid roundId, string bridge, string snapshotJson,
-        Resolution candidate, JsonNode payload, ILogger logger, CancellationToken ct)
+        Resolution candidate, JsonNode finalization, ILogger logger, CancellationToken ct)
     {
-        var sql = await ReadSqlSide(session, roundId, payload, ct);
-        var roster = RosterOf(candidate, sql);
+        var sql = await ReadSqlSide(session, roundId, finalization, ct);
+        var roster = IdsAsRoster(candidate, sql);
         var fields = ShadowDiff.Compare(candidate, sql, roster);
         if (fields.Count == 0) return;
 
@@ -168,7 +209,7 @@ public sealed class ShadowAdvance
             },
             ["sql"] = new JsonObject
             {
-                ["payload"] = payload.DeepClone(),
+                ["payload"] = finalization.DeepClone(),
                 ["resolutionTrace"] = sql.Trace?.DeepClone(),
                 ["resolutionSummary"] = sql.Summary?.DeepClone(),
             },
@@ -178,7 +219,11 @@ public sealed class ShadowAdvance
             DiffMarker, roomId, roundId, string.Join(",", fields), detail.ToJsonString());
     }
 
-    private static async Task<SqlSide> ReadSqlSide(StoreSession session, Guid roundId, JsonNode payload, CancellationToken ct)
+    /// <summary>Maps a finalization outcome block — the payload's top level, or
+    /// <c>advance_layer</c>'s nested <c>finalization</c> — the same way either way;
+    /// the resolution columns (<c>brewer_source</c>, modifier gain, trace, summary)
+    /// come off the rounds row both blocks committed.</summary>
+    private static async Task<SqlSide> ReadSqlSide(StoreSession session, Guid roundId, JsonNode outcome, CancellationToken ct)
     {
         await using var cmd = new NpgsqlCommand("""
             select brewer_id, cups_made, brewer_modifier_gain, brewer_source,
@@ -189,19 +234,21 @@ public sealed class ShadowAdvance
         await using var r = await cmd.ExecuteReaderAsync(ct);
         await r.ReadAsync(ct);
         return new SqlSide(
-            Layer: payload["layer"]?.GetValue<int>() ?? 0,
-            Outcome: (string?)payload["outcome"] ?? "",
-            BrewerId: (string?)payload["brewer_id"],
+            Layer: outcome["layer"]?.GetValue<int>() ?? 0,
+            Outcome: (string?)outcome["outcome"] ?? "",
+            BrewerId: (string?)outcome["brewer_id"],
             BrewerSource: await r.IsDBNullAsync(3, ct) ? null : r.GetString(3),
-            CupsMade: payload["cups_made"]?.GetValue<int>() ?? 0,
-            Rolloff: payload["rolloff"]?.GetValue<bool>() ?? false,
-            TiedPlayerIds: [.. (payload["tied_player_ids"] as JsonArray ?? []).Select(x => x!.GetValue<string>())],
+            CupsMade: outcome["cups_made"]?.GetValue<int>() ?? 0,
+            Rolloff: outcome["rolloff"]?.GetValue<bool>() ?? false,
+            TiedPlayerIds: [.. (outcome["tied_player_ids"] as JsonArray ?? []).Select(x => x!.GetValue<string>())],
             Trace: await r.IsDBNullAsync(4, ct) ? null : JsonNode.Parse(r.GetString(4)),
             Summary: await r.IsDBNullAsync(5, ct) ? null : JsonNode.Parse(r.GetString(5)),
             ModifierGain: r.GetInt32(2));
     }
 
-    private static IReadOnlyDictionary<string, string> RosterOf(Resolution candidate, SqlSide sql)
+    /// <summary>The ids the diff can name, each mapped to itself — the roster shape
+    /// <see cref="TraceNormaliser"/> wants (ids absent from it become stable aliases).</summary>
+    private static IReadOnlyDictionary<string, string> IdsAsRoster(Resolution candidate, SqlSide sql)
     {
         var ids = new SortedSet<string>(StringComparer.Ordinal);
         if (candidate.BrewerId is { } b) ids.Add(b);
