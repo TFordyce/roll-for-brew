@@ -401,10 +401,29 @@ public class RoundAdvanceTests : IAsyncLifetime
         foreach (var sql in inserts) await _db.Execute(sql);
 
         var log = new CapturingLogger();
-        var shadow = new ShadowAdvance(new ScriptedDieRoller(3));
+        // three live ticks ask the die once each — a finite script exhausts
+        var shadow = new ShadowAdvance(new ConstantDieRoller(3));
 
         var payload = await _store.Advance(Caller, roundB, (round, s) => shadow.Run(s, round, ShadowAdvance.Bridge.AdvanceLayer, log));
 
+        foreach (var r in log.Records.Where(r => r.Message.Contains("evaluate unavailable")))
+            Assert.Fail($"Evaluate threw on the production-shaped snapshot: {r.Message}");
+
+        // SQL must have replayed C#'s rolls for the two participant targets —
+        // deterministic ids, the scripted value, one row each, and nothing for the
+        // lapsed participant (t-4). Random-id rows here would mean SQL rolled fresh
+        // because the exists-check missed the cross-round pre-writes.
+        Assert.Equal(2L, await _db.Scalar<long>($"select count(*) from public.spell_casts where round_id = '{roundB}' and cast_inputs ? 'dice_tick'"));
+        foreach (var i in new[] { 0, 2 }) // t-2 and t-3 are round B's ticked participants
+        {
+            var expectedId = Ids.Deterministic($"rfb-dice-tick:{casts[i]}:0").ToString();
+            Assert.Equal(expectedId, await _db.Scalar<string>(
+                $"select id::text from public.spell_casts where round_id = '{roundB}' and source_cast_id = '{casts[i]}' and cast_inputs ? 'dice_tick'"));
+            Assert.Equal("3", await _db.Scalar<string>(
+                $"select effect_params ->> 'rolled' from public.spell_casts where round_id = '{roundB}' and source_cast_id = '{casts[i]}' and cast_inputs ? 'dice_tick'"));
+        }
+        Assert.Equal(0L, await _db.Scalar<long>(
+            $"select count(*) from public.spell_casts where round_id = '{roundB}' and target_player_id = 't-4'"));
         Assert.NotNull(payload);
     }
 
