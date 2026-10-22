@@ -33,7 +33,7 @@ function fake(flags: Row[]) {
           }
         : {},
   );
-  return { supabase: { from, rpc } as unknown as SupabaseClient, rpc };
+  return { supabase: { from, rpc } as unknown as SupabaseClient, rpc, from };
 }
 
 const api = () =>
@@ -80,5 +80,38 @@ describe("round advancement wrappers", () => {
     await advanceLayer(supabase, roundId, () => a);
     expect(rpc).toHaveBeenCalled();
     expect(a.advanceLayer).not.toHaveBeenCalled();
+  });
+
+  // The flag-off path must not add a round trip over today's RPC call: with no
+  // room-scoped flag row, the global row (or no row) decides from the one
+  // port_flags select, and the round's room id is never fetched.
+  it.each(["advanceLayer", "finalizeLayer"])("%s with the global flag off reads only port_flags", async (fn) => {
+    const { supabase, rpc, from } = fake([{ slice: "advanceRound", room_id: null, enabled: false }]);
+    const a = api();
+    const outcome = fn === "advanceLayer" ? await advanceLayer(supabase, roundId, () => a) : await finalizeLayer(supabase, roundId, () => a);
+    expect(rpc).toHaveBeenCalled();
+    expect(fn === "advanceLayer" ? a.advanceLayer : a.finalizeLayer).not.toHaveBeenCalled();
+    expect(from).toHaveBeenCalledWith("port_flags");
+    expect(from).not.toHaveBeenCalledWith("rounds");
+    expect(outcome).toMatchObject({ outcome: "brewer" });
+  });
+
+  it.each(["advanceLayer", "finalizeLayer"])("%s with the global flag on never fetches the room id", async (fn) => {
+    const { supabase, rpc, from } = fake([{ slice: "advanceRound", room_id: null, enabled: true }]);
+    const a = api();
+    const outcome = fn === "advanceLayer" ? await advanceLayer(supabase, roundId, () => a) : await finalizeLayer(supabase, roundId, () => a);
+    expect(fn === "advanceLayer" ? a.advanceLayer : a.finalizeLayer).toHaveBeenCalledWith(roundId);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(from).not.toHaveBeenCalledWith("rounds");
+    expect(outcome).toMatchObject({ outcome: "brewer" });
+  });
+
+  it("a room-scoped flag row fetches the room id to decide", async () => {
+    const { supabase, rpc, from } = fake([{ slice: "advanceRound", room_id: roomId, enabled: true }]);
+    const a = api();
+    await advanceLayer(supabase, roundId, () => a);
+    expect(a.advanceLayer).toHaveBeenCalled();
+    expect(rpc).not.toHaveBeenCalled();
+    expect(from).toHaveBeenCalledWith("rounds");
   });
 });
