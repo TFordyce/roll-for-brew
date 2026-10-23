@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useRoomView, useRoomViewStore } from "@/lib/room/roomViewContext";
 import type { RoomView } from "@/lib/room/roomViewStore";
 import { lastDripNotice } from "@/lib/game/lastDrip";
@@ -22,6 +22,7 @@ import {
 } from "@/app/rounds/actions";
 import { RoundReplayPrompt } from "@/app/rounds/RoundReplayPrompt";
 import { RoundReveal, type RoundRevealParticipant } from "@/app/rounds/RoundReveal";
+import { shouldClearRevealHold, type HeldReveal } from "@/app/rounds/revealHold";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { RoundMenu } from "@/app/rounds/RoundMenu";
@@ -44,8 +45,6 @@ const PRIMARY_BUTTON =
   "w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark";
 const SECONDARY_BUTTON =
   "w-full rounded-md border-2 border-gilt-dark bg-transparent px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment-dim hover:border-gilt hover:text-parchment disabled:cursor-not-allowed disabled:hover:border-gilt-dark disabled:hover:text-parchment-dim";
-
-type HeldReveal = { roundId: string; participants: RoundRevealParticipant[] };
 
 export function RoomScreen({
   variant,
@@ -124,17 +123,13 @@ export function RoomScreen({
   const castNotice = lastDripNotice(lastDrip, (id) => nameOf(id, "A player"));
 
   const [held, setHeld] = useState<HeldReveal | null>(null);
-  const latestReveal = useRef<HeldReveal | null>(null);
-  latestReveal.current = active ? { roundId: active.roundId, participants: revealParticipants } : null;
-  const holdReveal = useCallback(() => {
-    if (latestReveal.current) setHeld(latestReveal.current);
-  }, []);
+  const holdReveal = useCallback((reveal: HeldReveal) => setHeld(reveal), []);
   const releaseReveal = useCallback(() => {
     setHeld(null);
     store?.refetch();
   }, [store]);
   useEffect(() => {
-    if (active && held) setHeld(null);
+    if (shouldClearRevealHold(active?.roundId, held?.roundId)) setHeld(null);
   }, [active, held]);
   const heldReveal = !active ? held : null;
 
@@ -286,6 +281,12 @@ export function RoomScreen({
                   onRevealed={holdReveal}
                   onResultsDone={releaseReveal}
                 />
+              ) : null}
+
+              {heldReveal ? (
+                <button type="button" onClick={releaseReveal} className={`${PRIMARY_BUTTON} mt-4`}>
+                  Back to the room
+                </button>
               ) : null}
 
               {viewer.panels.lateDeclare && active ? (
