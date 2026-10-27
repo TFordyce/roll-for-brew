@@ -479,6 +479,9 @@ public class RoundAdvanceTests : IAsyncLifetime
         Assert.Equal("t-1", (string?)payload["brewer_id"]); // the lower layer-1 roll
         Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
         Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+    }
+
+    [Fact]
     public async Task A_tick_persisted_by_an_earlier_round_does_not_collide_when_the_effect_lives_on()
     {
         // 2026-10-22 22:29Z production 500 (round 22fd4e1e; same signature as the
