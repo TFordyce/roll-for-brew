@@ -23,6 +23,7 @@ import {
 import { RoundReplayPrompt } from "@/app/rounds/RoundReplayPrompt";
 import { RoundReveal, type RoundRevealParticipant } from "@/app/rounds/RoundReveal";
 import { shouldClearRevealHold, type HeldReveal } from "@/app/rounds/revealHold";
+import { useDiceReveal } from "@/app/rounds/useDiceReveal";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { RoundMenu } from "@/app/rounds/RoundMenu";
@@ -145,6 +146,7 @@ export function RoomScreen({
   const compelled = viewer.compelledCast;
   const reaction = viewer.reaction;
   const revealRoundId = active?.roundId ?? heldReveal?.roundId ?? null;
+  const die = useDiceReveal(revealRoundId);
 
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
@@ -278,6 +280,7 @@ export function RoomScreen({
                   ownRoll={viewer.layerZeroOwnRoll === null ? null : Number(viewer.layerZeroOwnRoll)}
                   hasOpenReactionWindow={reaction !== null}
                   participants={active ? revealParticipants : (heldReveal?.participants ?? [])}
+                  die={die}
                   onRevealed={holdReveal}
                   onResultsDone={releaseReveal}
                 />
@@ -356,7 +359,11 @@ export function RoomScreen({
           ) : null}
 
           {active && viewer.panels.rollInput && rollInputMode ? (
-            <RollInputPicker mode={rollInputMode} roundId={active.roundId} />
+            <RollInputPicker
+              mode={rollInputMode}
+              roundId={active.roundId}
+              onRollSubmitted={die.rollSubmitted}
+            />
           ) : null}
 
           {isTestRoom && active ? <LiveRollForOthers view={view} /> : null}

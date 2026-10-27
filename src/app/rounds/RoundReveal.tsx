@@ -9,6 +9,9 @@ import { firstNameOrFallback } from "@/lib/game/displayName";
 import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { type HeldReveal } from "@/app/rounds/revealHold";
+import { type DiceRevealController } from "@/app/rounds/useDiceReveal";
+import { LandedDie } from "@/app/rounds/LandedDie";
+import { TumblingDie } from "@/app/rounds/TumblingDie";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { DieIcon } from "@/app/_components/DieIcon";
@@ -33,6 +36,7 @@ export function RoundReveal({
   selfPlayerId,
   ownRoll,
   hasOpenReactionWindow,
+  die,
   onRevealed,
   onResultsDone,
 }: {
@@ -42,6 +46,7 @@ export function RoundReveal({
   selfPlayerId: string;
   ownRoll: number | null;
   hasOpenReactionWindow: boolean;
+  die: DiceRevealController;
   onRevealed?: (reveal: HeldReveal) => void;
   onResultsDone?: () => void;
 }) {
@@ -90,13 +95,19 @@ export function RoundReveal({
     };
   }, [roundId, recapRefreshToken]);
 
+  function handleLayerZeroRolls(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
+    setRolls(revealedRolls);
+    const ownRollRevealed = revealedRolls.find((r) => r.playerId === selfPlayerId);
+    if (ownRollRevealed) die.rollResolved(ownRollRevealed.value);
+  }
+
   useRoomChannel(roomId, roundId, {
     "layer-rolls-revealed": (payload) => {
-      if (payload.layer === 0) setRolls(payload.rolls);
+      if (payload.layer === 0) handleLayerZeroRolls(payload.rolls);
       bumpRecap();
     },
     "round-revealed": (payload: RoundRevealedPayload) => {
-      if (payload.layer === 0) setRolls(payload.rolls);
+      if (payload.layer === 0) handleLayerZeroRolls(payload.rolls);
       bumpRecap();
       setBrewerId(payload.brewerId);
       onRevealed?.({ roundId, participants });
@@ -132,8 +143,15 @@ export function RoundReveal({
     : null;
   const hasRecap = recapModel?.hasContent ?? false;
   const provisional = recapModel?.provisional ?? false;
+  const ownResolverRow = recapModel?.rows.find((r) => r.playerId === selfPlayerId) ?? null;
+
+  useEffect(() => {
+    if (ownResolverRow) die.resolverOutputArrived(ownResolverRow.roll);
+  }, [ownResolverRow?.roll, die.resolverOutputArrived]);
 
   const scrappedGenerations = recap?.scrappedGenerations ?? [];
+
+  const dieState = die.state;
 
   return (
     <>
@@ -180,6 +198,11 @@ export function RoundReveal({
               : [];
             const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
             const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
+            const ownDie =
+              p.playerId === selfPlayerId &&
+              (dieState.phase === "rolling" || dieState.phase === "landed")
+                ? dieState
+                : null;
 
             return (
               <li key={p.playerId} className="py-2">
@@ -203,7 +226,22 @@ export function RoundReveal({
                         Proxy
                       </span>
                     ) : null}
-                    {resolverRow ? (
+                    {ownDie ? (
+                      <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
+                        {ownDie.phase === "rolling" ? (
+                          <TumblingDie />
+                        ) : (
+                          <LandedDie
+                            value={ownDie.value}
+                            entrance={ownDie.entrance}
+                            onDismiss={die.dismiss}
+                          />
+                        )}
+                        {discardedValue !== null ? (
+                          <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
+                        ) : null}
+                      </span>
+                    ) : resolverRow ? (
                       <RollRowExpression row={resolverRow} />
                     ) : value !== null ? (
                       <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
