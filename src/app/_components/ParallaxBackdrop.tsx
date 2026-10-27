@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
+import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 
 const SCENE_WIDTH = 1376;
 const SCENE_HEIGHT = 768;
@@ -78,20 +79,6 @@ function useSceneScale(containerRef: RefObject<HTMLDivElement | null>): number {
   }, [containerRef]);
 
   return scale;
-}
-
-function useReducedMotion(): boolean {
-  const [reduced, setReduced] = useState(false);
-
-  useEffect(() => {
-    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReduced(query.matches);
-    const listener = (event: MediaQueryListEvent) => setReduced(event.matches);
-    query.addEventListener("change", listener);
-    return () => query.removeEventListener("change", listener);
-  }, []);
-
-  return reduced;
 }
 
 function useKettleSteamFrame(reducedMotion: boolean): number | null {
