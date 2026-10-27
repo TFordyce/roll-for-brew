@@ -95,19 +95,19 @@ export function RoundReveal({
     };
   }, [roundId, recapRefreshToken]);
 
+  function handleLayerZeroRolls(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
+    setRolls(revealedRolls);
+    const ownRollRevealed = revealedRolls.find((r) => r.playerId === selfPlayerId);
+    if (ownRollRevealed) die.rollResolved(ownRollRevealed.value);
+  }
+
   useRoomChannel(roomId, roundId, {
     "layer-rolls-revealed": (payload) => {
-      if (payload.layer === 0) {
-        setRolls(payload.rolls);
-        resolveOwnDieRoll(payload.rolls);
-      }
+      if (payload.layer === 0) handleLayerZeroRolls(payload.rolls);
       bumpRecap();
     },
     "round-revealed": (payload: RoundRevealedPayload) => {
-      if (payload.layer === 0) {
-        setRolls(payload.rolls);
-        resolveOwnDieRoll(payload.rolls);
-      }
+      if (payload.layer === 0) handleLayerZeroRolls(payload.rolls);
       bumpRecap();
       setBrewerId(payload.brewerId);
       onRevealed?.({ roundId, participants });
@@ -120,11 +120,6 @@ export function RoundReveal({
       if (!hasOpenReactionWindow) refresh();
     },
   });
-
-  function resolveOwnDieRoll(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
-    const ownRollRevealed = revealedRolls.find((r) => r.playerId === selfPlayerId);
-    if (ownRollRevealed) die.rollResolved(ownRollRevealed.value);
-  }
 
   function dismissKettleModal() {
     setShowKettleModal(false);
@@ -148,8 +143,15 @@ export function RoundReveal({
     : null;
   const hasRecap = recapModel?.hasContent ?? false;
   const provisional = recapModel?.provisional ?? false;
+  const ownResolverRow = recapModel?.rows.find((r) => r.playerId === selfPlayerId) ?? null;
+
+  useEffect(() => {
+    if (ownResolverRow) die.resolverOutputArrived(ownResolverRow.roll);
+  }, [ownResolverRow?.roll, die.resolverOutputArrived]);
 
   const scrappedGenerations = recap?.scrappedGenerations ?? [];
+
+  const dieState = die.state;
 
   return (
     <>
@@ -196,7 +198,6 @@ export function RoundReveal({
               : [];
             const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
             const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
-            const dieState = die.state;
             const ownDie =
               p.playerId === selfPlayerId &&
               (dieState.phase === "rolling" || dieState.phase === "landed")

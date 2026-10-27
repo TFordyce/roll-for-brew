@@ -1,6 +1,6 @@
 "use client";
 
-import { DIE_SIZE_PX, DieFaces } from "./LandedDie";
+import { DIE_SIZE_PX, DieFaces } from "./DieFaces";
 
 export function TumblingDie() {
   return (
