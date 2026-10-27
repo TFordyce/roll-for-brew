@@ -9,8 +9,9 @@ import { firstNameOrFallback } from "@/lib/game/displayName";
 import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { type HeldReveal } from "@/app/rounds/revealHold";
-import { useDiceReveal } from "@/app/rounds/useDiceReveal";
+import { type DiceRevealController } from "@/app/rounds/useDiceReveal";
 import { LandedDie } from "@/app/rounds/LandedDie";
+import { TumblingDie } from "@/app/rounds/TumblingDie";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { DieIcon } from "@/app/_components/DieIcon";
@@ -35,6 +36,7 @@ export function RoundReveal({
   selfPlayerId,
   ownRoll,
   hasOpenReactionWindow,
+  die,
   onRevealed,
   onResultsDone,
 }: {
@@ -44,11 +46,11 @@ export function RoundReveal({
   selfPlayerId: string;
   ownRoll: number | null;
   hasOpenReactionWindow: boolean;
+  die: DiceRevealController;
   onRevealed?: (reveal: HeldReveal) => void;
   onResultsDone?: () => void;
 }) {
   const refresh = useRoomRefresh();
-  const die = useDiceReveal(roundId);
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
   const [showKettleModal, setShowKettleModal] = useState(false);
@@ -195,8 +197,11 @@ export function RoundReveal({
             const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
             const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
             const dieState = die.state;
-            const ownLandedDie =
-              p.playerId === selfPlayerId && dieState.phase === "landed" ? dieState : null;
+            const ownDie =
+              p.playerId === selfPlayerId &&
+              (dieState.phase === "rolling" || dieState.phase === "landed")
+                ? dieState
+                : null;
 
             return (
               <li key={p.playerId} className="py-2">
@@ -220,13 +225,17 @@ export function RoundReveal({
                         Proxy
                       </span>
                     ) : null}
-                    {ownLandedDie ? (
+                    {ownDie ? (
                       <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
-                        <LandedDie
-                          value={ownLandedDie.value}
-                          entrance={ownLandedDie.entrance}
-                          onDismiss={die.dismiss}
-                        />
+                        {ownDie.phase === "rolling" ? (
+                          <TumblingDie />
+                        ) : (
+                          <LandedDie
+                            value={ownDie.value}
+                            entrance={ownDie.entrance}
+                            onDismiss={die.dismiss}
+                          />
+                        )}
                         {discardedValue !== null ? (
                           <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
                         ) : null}

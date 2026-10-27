@@ -53,10 +53,21 @@ const config: Config = {
           "62%": { transform: "translateY(2px) rotateX(10deg) rotateY(-7deg) scale(0.97)" },
           "100%": { transform: "translateY(0) rotateX(0deg) rotateY(0deg) scale(1)", opacity: "1" },
         },
+        // Tumbling held 3D reveal die (issue #603) — spins in place from roll
+        // submit until the reveal broadcast lands it; the machine holds the
+        // state with no timeout, so the animation loops indefinitely. The
+        // unequal rotateX/rotateY rates read as a tumble rather than a spin.
+        // Skipped entirely under reduced motion via motion-reduce:animate-none,
+        // leaving a static held die.
+        "die-tumble": {
+          "0%": { transform: "rotateX(0deg) rotateY(0deg)" },
+          "100%": { transform: "rotateX(360deg) rotateY(720deg)" },
+        },
       },
       animation: {
         "teaspoon-stir": "teaspoon-stir 0.6s ease-in-out infinite",
         "die-land": "die-land 0.85s cubic-bezier(0.34, 1.3, 0.5, 1) both",
+        "die-tumble": "die-tumble 1.6s linear infinite",
       },
     },
   },
