@@ -9,6 +9,8 @@ import { firstNameOrFallback } from "@/lib/game/displayName";
 import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { type HeldReveal } from "@/app/rounds/revealHold";
+import { useDiceReveal } from "@/app/rounds/useDiceReveal";
+import { LandedDie } from "@/app/rounds/LandedDie";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { DieIcon } from "@/app/_components/DieIcon";
@@ -46,6 +48,7 @@ export function RoundReveal({
   onResultsDone?: () => void;
 }) {
   const refresh = useRoomRefresh();
+  const die = useDiceReveal(roundId);
   const [rolls, setRolls] = useState<LayerRollsRevealedPayload["rolls"] | null>(null);
   const [brewerId, setBrewerId] = useState<string | null>(null);
   const [showKettleModal, setShowKettleModal] = useState(false);
@@ -92,11 +95,17 @@ export function RoundReveal({
 
   useRoomChannel(roomId, roundId, {
     "layer-rolls-revealed": (payload) => {
-      if (payload.layer === 0) setRolls(payload.rolls);
+      if (payload.layer === 0) {
+        setRolls(payload.rolls);
+        resolveOwnDieRoll(payload.rolls);
+      }
       bumpRecap();
     },
     "round-revealed": (payload: RoundRevealedPayload) => {
-      if (payload.layer === 0) setRolls(payload.rolls);
+      if (payload.layer === 0) {
+        setRolls(payload.rolls);
+        resolveOwnDieRoll(payload.rolls);
+      }
       bumpRecap();
       setBrewerId(payload.brewerId);
       onRevealed?.({ roundId, participants });
@@ -109,6 +118,11 @@ export function RoundReveal({
       if (!hasOpenReactionWindow) refresh();
     },
   });
+
+  function resolveOwnDieRoll(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
+    const ownRollRevealed = revealedRolls.find((r) => r.playerId === selfPlayerId);
+    if (ownRollRevealed) die.rollResolved(ownRollRevealed.value);
+  }
 
   function dismissKettleModal() {
     setShowKettleModal(false);
@@ -180,6 +194,9 @@ export function RoundReveal({
               : [];
             const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
             const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
+            const dieState = die.state;
+            const ownLandedDie =
+              p.playerId === selfPlayerId && dieState.phase === "landed" ? dieState : null;
 
             return (
               <li key={p.playerId} className="py-2">
@@ -203,7 +220,18 @@ export function RoundReveal({
                         Proxy
                       </span>
                     ) : null}
-                    {resolverRow ? (
+                    {ownLandedDie ? (
+                      <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
+                        <LandedDie
+                          value={ownLandedDie.value}
+                          entrance={ownLandedDie.entrance}
+                          onDismiss={die.dismiss}
+                        />
+                        {discardedValue !== null ? (
+                          <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
+                        ) : null}
+                      </span>
+                    ) : resolverRow ? (
                       <RollRowExpression row={resolverRow} />
                     ) : value !== null ? (
                       <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
