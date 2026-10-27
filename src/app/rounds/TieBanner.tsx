@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRoomChannel } from "@/lib/supabase/useRoomChannel";
 import type { RollInputMode } from "@/lib/supabase/playerSettings";
 import { firstNameOrFallback, joinNames } from "@/lib/game/displayName";
-import { TieRollModal } from "@/app/rounds/TieRollModal";
+import { TieRollBar } from "@/app/rounds/TieRollBar";
 
 export type TiedParticipant = {
   playerId: string;
@@ -52,7 +52,7 @@ export function TieBanner({
       </p>
 
       {isTied ? (
-        <TieRollModal
+        <TieRollBar
           roundId={roundId}
           ownRoll={ownRoll}
           rollInputMode={rollInputMode}
