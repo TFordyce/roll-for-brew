@@ -146,7 +146,7 @@ export function RoomScreen({
   const compelled = viewer.compelledCast;
   const reaction = viewer.reaction;
   const revealRoundId = active?.roundId ?? heldReveal?.roundId ?? null;
-  const die = useDiceReveal(revealRoundId ?? "");
+  const die = useDiceReveal(revealRoundId);
 
   return (
     <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
