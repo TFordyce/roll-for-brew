@@ -124,7 +124,8 @@ public class RoundAdvanceTests : IAsyncLifetime
         // dice_tick row, carrying C#'s deterministic id and rolled value.
         Assert.Equal(1L, await _db.Scalar<long>($"select count(*) from public.spell_casts where round_id = '{roundId}' and cast_inputs ? 'dice_tick'"));
         var castId = await _db.Scalar<string>($"select id::text from public.spell_casts where round_id = '{roundId}' and cast_inputs ? 'dice_tick'");
-        Assert.Equal(Ids.Deterministic($"rfb-dice-tick:{await _db.Scalar<string>($"select id::text from public.spell_casts where round_id = '{roundId}' and effect_kind = 'per_round_dice_tick'")}:0").ToString(), castId);
+        var srcCastId = await _db.Scalar<string>($"select id::text from public.spell_casts where round_id = '{roundId}' and effect_kind = 'per_round_dice_tick'");
+        Assert.Equal(Ids.Deterministic($"rfb-dice-tick:{roundId}:{srcCastId}:0").ToString(), castId);
         Assert.Equal("3", await _db.Scalar<string>($"select effect_params ->> 'rolled' from public.spell_casts where round_id = '{roundId}' and cast_inputs ? 'dice_tick'"));
 
         // SQL wrote its authoritative resolution and the shadow agreed: no diff marker.
@@ -478,6 +479,64 @@ public class RoundAdvanceTests : IAsyncLifetime
         Assert.Equal("t-1", (string?)payload["brewer_id"]); // the lower layer-1 roll
         Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
         Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+    public async Task A_tick_persisted_by_an_earlier_round_does_not_collide_when_the_effect_lives_on()
+    {
+        // 2026-10-22 22:29Z production 500 (round 22fd4e1e; same signature as the
+        // 07:44Z one): the tick salt was rfb-dice-tick:{sourceCastId}:{gen} with
+        // replay_generation 0 in both rounds, so a persistent Calami-Tea effect
+        // living into a second round re-emitted the id its first-round tick
+        // already had, and the pre-write's plain INSERT hit spell_casts_pkey.
+        // The salt is round-scoped now; the earlier round's tick keeps its id.
+        var room = Guid.NewGuid();
+        var roundA = Guid.NewGuid();
+        var roundB = Guid.NewGuid();
+        var instance = Guid.NewGuid();
+        var srcA = Guid.NewGuid();
+        var tickA = Ids.Deterministic($"rfb-dice-tick:{srcA}:0"); // the old, collision-prone scheme
+        await _db.Execute($"""
+            insert into public.players (id, email) values ('t-1', 't-1@x.test'), ('t-2', 't-2@x.test');
+            insert into public.rooms (id, date) values ('{room}', '2026-01-05');
+            insert into public.room_players (room_id, player_id, modifier) values ('{room}', 't-1', 0), ('{room}', 't-2', 0);
+            insert into public.rounds (id, room_id, started_by, status, started_at, closed_at) values
+              ('{roundA}', '{room}', 't-1', 'resolved', '2026-01-05 09:00+00', '2026-01-05 09:10+00'),
+              ('{roundB}', '{room}', 't-1', 'closed',   '2026-01-05 10:00+00', '2026-01-05 10:05+00');
+            insert into public.round_participants (round_id, player_id) values
+              ('{roundA}', 't-1'), ('{roundA}', 't-2'), ('{roundB}', 't-1'), ('{roundB}', 't-2');
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              ('{roundB}', 't-1', 0, 10, 'in_app', 0), ('{roundB}', 't-2', 0, 8, 'in_app', 0);
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{instance}', id, 'in_deck' from public.spell_cards where name = 'Calami-Tea';
+            """);
+        await _db.Execute($$"""
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+              values ('{{srcA}}', '{{roundA}}', 't-2', '{{instance}}', 't-1', 'per_round_dice_tick', '{"die": 4, "sign": -1}');
+            insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params, rounds_remaining)
+              values ('{{Guid.NewGuid()}}', '{{room}}', 't-1', 't-2', '{{srcA}}',
+                      (select id from public.spell_cards where name = 'Calami-Tea'), 'per_round_dice_tick', '{"die": 4, "sign": -1, "max_targets": 3}', 3);
+            """);
+        await _db.Execute($$$"""
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params, cast_inputs, generation, source_cast_id)
+              values ('{{{tickA}}}', '{{{roundA}}}', 't-2', '{{{instance}}}', 't-1', 'per_round_dice_tick',
+                      '{"die": 4, "sign": -1, "rolled": 4}',
+                      '{"dice_tick": true, "roll_transform": {"kind": "per_round_dice_tick", "order": 2, "die": 4, "sign": -1, "rolled": 4, "players": [{"player_id": "t-1", "before": null, "after": null, "warded": false}]}}',
+                      0, '{{{srcA}}}');
+            """);
+        await SeedClosedWindow(roundB);
+        var log = new CapturingLogger();
+
+        var payload = await _store.Advance(Caller, roundB, (round, s) => new ShadowAdvance(new ConstantDieRoller(3))
+            .Run(s, round, ShadowAdvance.Bridge.FinalizeLayer, log));
+
+        Assert.Equal("brewer", (string?)payload!["outcome"]);
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+        var expectedId = Ids.Deterministic($"rfb-dice-tick:{roundB}:{srcA}:0").ToString();
+        Assert.NotEqual(tickA.ToString(), expectedId);
+        Assert.Equal(expectedId, await _db.Scalar<string>(
+            $"select id::text from public.spell_casts where round_id = '{roundB}' and cast_inputs ? 'dice_tick'"));
+        Assert.Equal("3", await _db.Scalar<string>(
+            $"select effect_params ->> 'rolled' from public.spell_casts where round_id = '{roundB}' and cast_inputs ? 'dice_tick'"));
+        Assert.Equal(1L, await _db.Scalar<long>(
+            $"select count(*) from public.spell_casts where id = '{tickA}'")); // round A's tick untouched
     }
 
     private async Task SeedClosedWindow(Guid roundId)

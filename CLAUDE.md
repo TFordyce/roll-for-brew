@@ -11,3 +11,7 @@ Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-
 ### Domain docs
 
 Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+### Parallel worktrees
+
+Sessions implementing features in parallel each work in their own git worktree, never a shared checkout. See `docs/agents/worktrees.md`.
