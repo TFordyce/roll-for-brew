@@ -30,9 +30,9 @@ export function transitionDiceReveal(
     return state.phase === "idle" ? { phase: "rolling" } : state;
   }
   if (event.type === "rollResolved") {
-    return state.phase === "dismissed"
-      ? state
-      : { phase: "landed", value: event.value, entrance: reducedMotion ? "static" : "landing" };
+    return state.phase === "rolling"
+      ? { phase: "landed", value: event.value, entrance: reducedMotion ? "static" : "landing" }
+      : state;
   }
   return state;
 }

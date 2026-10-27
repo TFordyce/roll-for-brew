@@ -7,7 +7,7 @@ type Vec3 = { readonly x: number; readonly y: number; readonly z: number };
 type Basis = { readonly x: Vec3; readonly y: Vec3; readonly z: Vec3 };
 
 const FACE_EDGE_PX = 18;
-const DIE_SIZE_PX = 36;
+export const DIE_SIZE_PX = 36;
 const PENTAGON_RADIUS = 1 / (2 * Math.sin(Math.PI / 5));
 const APEX_RISE = Math.sqrt(1 - PENTAGON_RADIUS * PENTAGON_RADIUS);
 const BAND_RISE = PENTAGON_RADIUS / 2;
@@ -111,6 +111,30 @@ const FACE_STYLES: CSSProperties[] = FACE_PLANES.map(({ basis, inradius }, index
   };
 });
 
+export function DieFaces({ value }: { value?: number }) {
+  return (
+    <>
+      {FACE_STYLES.map((style, index) => (
+        <span key={index} className="absolute block" style={style}>
+          {index === NUMBER_FACE && value !== undefined ? (
+            <span
+              className="absolute font-display font-semibold text-parchment text-[9px]"
+              style={{
+                left: "33%",
+                top: "50%",
+                transform: "translate(-50%, -50%) rotate(90deg)",
+                lineHeight: 1,
+              }}
+            >
+              {value}
+            </span>
+          ) : null}
+        </span>
+      ))}
+    </>
+  );
+}
+
 export function LandedDie({
   value,
   entrance,
@@ -137,23 +161,7 @@ export function LandedDie({
           entrance === "landing" ? "animate-die-land motion-reduce:animate-none" : ""
         }`}
       >
-        {FACE_STYLES.map((style, index) => (
-          <span key={index} className="absolute block" style={style}>
-            {index === NUMBER_FACE ? (
-              <span
-                className="absolute font-display font-semibold text-parchment text-[9px]"
-                style={{
-                  left: "33%",
-                  top: "50%",
-                  transform: "translate(-50%, -50%) rotate(90deg)",
-                  lineHeight: 1,
-                }}
-              >
-                {value}
-              </span>
-            ) : null}
-          </span>
-        ))}
+        <DieFaces value={value} />
       </span>
     </button>
   );

@@ -3,7 +3,13 @@
 import { useState } from "react";
 import { InAppRollForm, ManualRollForm } from "@/app/rounds/RollForms";
 
-export function RollBothPicker({ roundId }: { roundId: string }) {
+export function RollBothPicker({
+  roundId,
+  onRollSubmitted,
+}: {
+  roundId: string;
+  onRollSubmitted?: () => void;
+}) {
   const [choice, setChoice] = useState<"unset" | "in_app" | "manual">("unset");
 
   if (choice === "unset") {
@@ -28,7 +34,7 @@ export function RollBothPicker({ roundId }: { roundId: string }) {
   }
 
   return choice === "in_app" ? (
-    <InAppRollForm roundId={roundId} />
+    <InAppRollForm roundId={roundId} onRollSubmitted={onRollSubmitted} />
   ) : (
     <ManualRollForm roundId={roundId} />
   );

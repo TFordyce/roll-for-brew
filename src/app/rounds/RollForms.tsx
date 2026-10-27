@@ -1,9 +1,19 @@
 import { submitManualRollAction, submitRollAction } from "@/app/rounds/actions";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 
-export function InAppRollForm({ roundId }: { roundId: string }) {
+export function InAppRollForm({
+  roundId,
+  onRollSubmitted,
+}: {
+  roundId: string;
+  onRollSubmitted?: () => void;
+}) {
   return (
-    <form action={submitRollAction} className="mt-3">
+    <form
+      action={submitRollAction}
+      onSubmit={() => onRollSubmitted?.()}
+      className="mt-3"
+    >
       <input type="hidden" name="roundId" value={roundId} />
       <SubmitButton className="w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark">
         Roll
