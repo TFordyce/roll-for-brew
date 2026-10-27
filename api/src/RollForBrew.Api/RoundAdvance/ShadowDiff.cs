@@ -59,13 +59,21 @@ public static class ShadowDiff
             if (candidate.Outcome == "rolloff" != sql.Rolloff) fields.Add("rolloff");
         }
 
-        var candidateTrace = TraceNormaliser.NormaliseTrace(TraceJson.ToNode(candidate.Trace), roster);
-        var sqlTrace = sql.Trace is null ? null : TraceNormaliser.NormaliseTrace((JsonArray)sql.Trace, roster);
-        if (sqlTrace is null || !TraceNormaliser.NodesEqual(candidateTrace, sqlTrace)) fields.Add("trace");
+        // Layer > 0 persists nothing (issue #219): rounds.resolution_trace and
+        // resolution_summary keep their LAYER-0 content, which is not the output
+        // of the resolution being compared — the 2026-10-27 Loose Leaf rolloff
+        // diff compared C#'s fresh layer-1 resolution (no trace, no players)
+        // against layer 0's columns. Only a layer-0 resolution owns them.
+        if (sql.Layer == 0)
+        {
+            var candidateTrace = TraceNormaliser.NormaliseTrace(TraceJson.ToNode(candidate.Trace), roster);
+            var sqlTrace = sql.Trace is null ? null : TraceNormaliser.NormaliseTrace((JsonArray)sql.Trace, roster);
+            if (sqlTrace is null || !TraceNormaliser.NodesEqual(candidateTrace, sqlTrace)) fields.Add("trace");
 
-        var candidateSummary = candidate.Players is null ? null : TraceNormaliser.NormaliseSummary(TraceJson.ToNode(candidate.Players), roster);
-        var sqlSummary = sql.Summary is null ? null : TraceNormaliser.NormaliseSummary((JsonArray)sql.Summary, roster);
-        if (!NodesEqualAllowingNull(candidateSummary, sqlSummary)) fields.Add("players");
+            var candidateSummary = candidate.Players is null ? null : TraceNormaliser.NormaliseSummary(TraceJson.ToNode(candidate.Players), roster);
+            var sqlSummary = sql.Summary is null ? null : TraceNormaliser.NormaliseSummary((JsonArray)sql.Summary, roster);
+            if (!NodesEqualAllowingNull(candidateSummary, sqlSummary)) fields.Add("players");
+        }
 
         return fields;
     }
