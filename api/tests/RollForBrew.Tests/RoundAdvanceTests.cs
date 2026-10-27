@@ -431,6 +431,55 @@ public class RoundAdvanceTests : IAsyncLifetime
         Assert.NotNull(payload);
     }
 
+    [Fact]
+    public async Task A_layer_1_rolloff_resolution_diffs_clean_despite_layer_0_trace_and_summary()
+    {
+        // The 2026-10-27 11:19Z production diff (round f9e9dac2): a Loose Leaf
+        // rolloff carried the round to layer 1, and the resolving advance compared
+        // C#'s fresh layer-1 resolution — no trace, no players — against
+        // rounds.resolution_trace/resolution_summary, which layer 0 had filled and
+        // which layer > 0 never rewrites (issue #219: layer > 0 persists nothing).
+        // The columns are not the layer-1 resolution's output; the comparison at
+        // layer > 0 must not hold the candidate against them.
+        var room = Guid.NewGuid();
+        var round = Guid.NewGuid();
+        var instance = Guid.NewGuid();
+        var rolloffCast = Guid.NewGuid();
+        await _db.Execute($$$"""
+            insert into public.players (id, email) values
+              ('t-1', 't-1@x.test'), ('t-2', 't-2@x.test'), ('t-3', 't-3@x.test'), ('t-4', 't-4@x.test');
+            insert into public.rooms (id, date) values ('{{{room}}}', '2026-01-05');
+            insert into public.room_players (room_id, player_id, modifier) values
+              ('{{{room}}}', 't-1', 0), ('{{{room}}}', 't-2', 0), ('{{{room}}}', 't-3', 0), ('{{{room}}}', 't-4', 0);
+            insert into public.rounds (id, room_id, started_by, status, started_at, closed_at, current_layer, resolution_trace, resolution_summary) values
+              ('{{{round}}}', '{{{room}}}', 't-1', 'closed', '2026-01-05 09:00+00', '2026-01-05 09:05+00', 1,
+               '[{"after":{"type":"status","value":"rolloff"},"index":0,"before":{"type":"status","value":"brewer"},"outcome":"applied","source_cast":{"cast_id":"{{{rolloffCast}}}","card_name":"Loose Leaf","active_effect_id":null,"caster_player_id":"t-2"},"display_kind":"named_tea_maker_rolloff","target_player":"t-2","rolloff_opponent_ids":["t-1"]}]',
+               '[{"nat":null,"roll":10,"total":10,"composed":0,"snapshot":0,"player_id":"t-1","dice_reduced":false},{"nat":null,"roll":5,"total":5,"composed":0,"snapshot":0,"player_id":"t-2","dice_reduced":false},{"nat":null,"roll":17,"total":17,"composed":0,"snapshot":0,"player_id":"t-3","dice_reduced":false},{"nat":null,"roll":19,"total":19,"composed":0,"snapshot":0,"player_id":"t-4","dice_reduced":false}]');
+            insert into public.round_participants (round_id, player_id) values
+              ('{{{round}}}', 't-1'), ('{{{round}}}', 't-2'), ('{{{round}}}', 't-3'), ('{{{round}}}', 't-4');
+            insert into public.round_layer_participants (round_id, layer, player_id) values
+              ('{{{round}}}', 1, 't-1'), ('{{{round}}}', 1, 't-2');
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              ('{{{round}}}', 't-1', 0, 10, 'in_app', 0), ('{{{round}}}', 't-2', 0, 5, 'in_app', 0),
+              ('{{{round}}}', 't-3', 0, 17, 'in_app', 0), ('{{{round}}}', 't-4', 0, 19, 'in_app', 0),
+              ('{{{round}}}', 't-1', 1, 16, 'in_app', 0), ('{{{round}}}', 't-2', 1, 20, 'in_app', 0);
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{{{instance}}}', id, 'in_deck' from public.spell_cards where name = 'Loose Leaf';
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+              values ('{{{rolloffCast}}}', '{{{round}}}', 't-2', '{{{instance}}}', 't-2', 'named_tea_maker_rolloff', '{}');
+            """);
+        await SeedClosedWindow(round);
+        var log = new CapturingLogger();
+
+        var payload = await _store.Advance(Caller, round, (r, s) => new ShadowAdvance(new ConstantDieRoller(3))
+            .Run(s, r, ShadowAdvance.Bridge.AdvanceLayer, log));
+
+        Assert.Equal("brewer", (string?)payload!["outcome"]);
+        Assert.Equal("t-1", (string?)payload["brewer_id"]); // the lower layer-1 roll
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.DiffMarker));
+        Assert.DoesNotContain(log.Records, r => r.Message.Contains(ShadowAdvance.SkipMarker));
+    }
+
     private async Task SeedClosedWindow(Guid roundId)
     {
         await _db.Execute($$"""
