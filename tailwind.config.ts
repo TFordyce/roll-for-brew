@@ -40,9 +40,23 @@ const config: Config = {
           "0%, 100%": { transform: "rotate(-20deg)" },
           "50%": { transform: "rotate(20deg)" },
         },
+        // Landed 3D reveal die (issue #602) — a short drop-and-settle onto
+        // the row (tilted in the air, overshoots the rest pose, stops well
+        // under two seconds). Skipped entirely under reduced motion via
+        // motion-reduce:animate-none and the hook's static entrance.
+        "die-land": {
+          "0%": {
+            transform: "translateY(-14px) rotateX(-48deg) rotateY(28deg) scale(1.12)",
+            opacity: "0",
+          },
+          "35%": { opacity: "1" },
+          "62%": { transform: "translateY(2px) rotateX(10deg) rotateY(-7deg) scale(0.97)" },
+          "100%": { transform: "translateY(0) rotateX(0deg) rotateY(0deg) scale(1)", opacity: "1" },
+        },
       },
       animation: {
         "teaspoon-stir": "teaspoon-stir 0.6s ease-in-out infinite",
+        "die-land": "die-land 0.85s cubic-bezier(0.34, 1.3, 0.5, 1) both",
       },
     },
   },
