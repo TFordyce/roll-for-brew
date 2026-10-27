@@ -10,8 +10,7 @@ import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { type HeldReveal } from "@/app/rounds/revealHold";
 import { type DiceRevealController } from "@/app/rounds/useDiceReveal";
-import { LandedDie } from "@/app/rounds/LandedDie";
-import { TumblingDie } from "@/app/rounds/TumblingDie";
+import { AnimatedDie } from "@/app/rounds/AnimatedDie";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { DieIcon } from "@/app/_components/DieIcon";
@@ -228,15 +227,12 @@ export function RoundReveal({
                     ) : null}
                     {ownDie ? (
                       <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
-                        {ownDie.phase === "rolling" ? (
-                          <TumblingDie />
-                        ) : (
-                          <LandedDie
-                            value={ownDie.value}
-                            entrance={ownDie.entrance}
-                            onDismiss={die.dismiss}
-                          />
-                        )}
+                        <AnimatedDie
+                          phase={ownDie.phase}
+                          value={ownDie.phase === "landed" ? ownDie.value : undefined}
+                          entrance={ownDie.phase === "landed" ? ownDie.entrance : "landing"}
+                          onDismiss={die.dismiss}
+                        />
                         {discardedValue !== null ? (
                           <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
                         ) : null}
