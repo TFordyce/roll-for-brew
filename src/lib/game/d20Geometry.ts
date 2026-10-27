@@ -7,8 +7,12 @@ export type Basis = { readonly x: Vec3; readonly y: Vec3; readonly z: Vec3 };
 const PENTAGON_RADIUS = 1 / (2 * Math.sin(Math.PI / 5));
 const BAND_RISE = PENTAGON_RADIUS / 2;
 const APEX_RISE = Math.sqrt(1 - PENTAGON_RADIUS * PENTAGON_RADIUS);
+const CIRCUMRADIUS = APEX_RISE + BAND_RISE;
 
-export const CIRCUMRADIUS = APEX_RISE + BAND_RISE;
+// The on-screen edge length both consumers render at: DieFaces draws faces at
+// this scale, and dicePhysics converts simulated units to px with it. One
+// constant, so the track can never desync from the rendered die.
+export const EDGE_PX = 18;
 
 function pentagonRing(y: number, offset: number): Vec3[] {
   return Array.from({ length: 5 }, (_, k) => {
@@ -57,8 +61,5 @@ export function faceCenter(vertices: Vec3[], face: [number, number, number]): Ve
 
 // Distance from the center to any face plane — the resting height of the
 // body's center when it lies flat on a face.
-export const INRADIUS = Math.hypot(
-  faceCenter(D20_VERTICES, D20_FACES[0]!).x,
-  faceCenter(D20_VERTICES, D20_FACES[0]!).y,
-  faceCenter(D20_VERTICES, D20_FACES[0]!).z,
-);
+const firstFaceCenter = faceCenter(D20_VERTICES, D20_FACES[0]!);
+export const INRADIUS = Math.hypot(firstFaceCenter.x, firstFaceCenter.y, firstFaceCenter.z);

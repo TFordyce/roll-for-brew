@@ -6,6 +6,7 @@ import {
   type Basis,
   D20_FACES,
   D20_VERTICES,
+  EDGE_PX,
   cross,
   dot,
   faceCenter,
@@ -14,8 +15,7 @@ import {
   subtract,
 } from "@/lib/game/d20Geometry";
 
-const FACE_EDGE_PX = 18;
-export const DIE_SIZE_PX = 36;
+export const DIE_SIZE_PX = EDGE_PX * 2;
 
 const ORIENTED_VERTICES = alignVerticesToFront(D20_VERTICES);
 const FACE_PLANES = D20_FACES.map((face) => {
@@ -51,17 +51,17 @@ function faceBasis(vertices: Vec3[], face: readonly [number, number, number]): B
   return { x, y: cross(z, x), z };
 }
 
-const FACE_WIDTH_PX = (Math.sqrt(3) / 2) * FACE_EDGE_PX;
+const FACE_WIDTH_PX = (Math.sqrt(3) / 2) * EDGE_PX;
 
 const FACE_STYLES: CSSProperties[] = FACE_PLANES.map(({ basis, inradius }, index) => {
   const brightness = 0.58 + 0.42 * Math.max(0, dot(basis.z, LIGHT));
   return {
     width: FACE_WIDTH_PX,
-    height: FACE_EDGE_PX,
+    height: EDGE_PX,
     left: (DIE_SIZE_PX - FACE_WIDTH_PX) / 2,
-    top: (DIE_SIZE_PX - FACE_EDGE_PX) / 2,
+    top: (DIE_SIZE_PX - EDGE_PX) / 2,
     clipPath: "polygon(100% 50%, 0% 100%, 0% 0%)",
-    transform: `matrix3d(${basis.x.x},${basis.x.y},${basis.x.z},0,${basis.y.x},${basis.y.y},${basis.y.z},0,${basis.z.x},${basis.z.y},${basis.z.z},0,0,0,0,1) translateZ(${inradius * FACE_EDGE_PX}px)`,
+    transform: `matrix3d(${basis.x.x},${basis.x.y},${basis.x.z},0,${basis.y.x},${basis.y.y},${basis.y.z},0,${basis.z.x},${basis.z.y},${basis.z.z},0,0,0,0,1) translateZ(${inradius * EDGE_PX}px)`,
     backgroundColor: shaded(index === 0 ? EMBER_BRIGHT : EMBER, brightness),
   };
 });

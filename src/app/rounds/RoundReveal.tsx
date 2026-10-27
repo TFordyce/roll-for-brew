@@ -227,12 +227,7 @@ export function RoundReveal({
                     ) : null}
                     {ownDie ? (
                       <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
-                        <AnimatedDie
-                          phase={ownDie.phase}
-                          value={ownDie.phase === "landed" ? ownDie.value : undefined}
-                          entrance={ownDie.phase === "landed" ? ownDie.entrance : "landing"}
-                          onDismiss={die.dismiss}
-                        />
+                        <AnimatedDie state={ownDie} onDismiss={die.dismiss} />
                         {discardedValue !== null ? (
                           <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
                         ) : null}

@@ -9,7 +9,7 @@ import {
   simulateD20Throw,
   type DiceFlightTrack,
 } from "@/lib/game/dicePhysics";
-import type { DiceRevealEntrance } from "./useDiceReveal";
+import type { DiceRevealState } from "./useDiceReveal";
 import { DIE_SIZE_PX, DieFaces } from "./DieFaces";
 
 // When the die mounts already landed (remount into a landed machine state) the
@@ -30,14 +30,10 @@ function sliceKeyframes(
 }
 
 export function AnimatedDie({
-  phase,
-  value,
-  entrance,
+  state,
   onDismiss,
 }: {
-  phase: "rolling" | "landed";
-  value: number | undefined;
-  entrance: DiceRevealEntrance;
+  state: Extract<DiceRevealState, { phase: "rolling" | "landed" }>;
   onDismiss: () => void;
 }) {
   const reducedMotion = useReducedMotion();
@@ -77,7 +73,9 @@ export function AnimatedDie({
     const track = simulateD20Throw();
     trackRef.current = track;
     const keyframes = flightWaapiKeyframes(track);
-    const fromMs = phase === "landed" ? MOUNTED_LANDED_MS : 0;
+    // keep at least half the flight so a tiny track can never slice to nothing
+    const fromMs =
+      state.phase === "landed" ? Math.min(MOUNTED_LANDED_MS, track.durationMs / 2) : 0;
     const flight = el.animate(sliceKeyframes(keyframes, track.durationMs, fromMs), {
       duration: track.durationMs - fromMs,
       easing: "linear",
@@ -104,23 +102,23 @@ export function AnimatedDie({
     flightRef.current = null;
     settleRef.current?.cancel();
     settledRef.current = true;
-    if (phase === "landed" && value !== undefined) setRevealedValue(value);
-  }, [reducedMotion, phase, value]);
+    if (state.phase === "landed") setRevealedValue(state.value);
+  }, [reducedMotion, state]);
 
   // The machine's resolve: the value is known, but the face waits for the
   // settle moment. A landed correction after settle just swaps the number.
   useEffect(() => {
-    if (phase !== "landed" || value === undefined) return;
-    if (entrance === "static" || settledRef.current) {
-      startSettle(value);
+    if (state.phase !== "landed") return;
+    if (state.entrance === "static" || settledRef.current) {
+      startSettle(state.value);
       return;
     }
-    pendingValueRef.current = value;
+    pendingValueRef.current = state.value;
     const flight = flightRef.current;
-    if (flight === null || flight.playState === "finished") startSettle(value);
-  }, [phase, value, entrance, startSettle]);
+    if (flight === null || flight.playState === "finished") startSettle(state.value);
+  }, [state, startSettle]);
 
-  const landed = phase === "landed";
+  const landed = state.phase === "landed";
   return (
     <button
       type="button"

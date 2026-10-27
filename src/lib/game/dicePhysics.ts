@@ -2,8 +2,13 @@ import { Body, ConvexPolyhedron, Plane, Vec3, World } from "cannon-es";
 import {
   D20_FACES,
   D20_VERTICES,
+  EDGE_PX,
   INRADIUS,
+  cross,
+  dot,
+  faceCenter,
   normalize,
+  subtract,
   type Vec3 as GeometryVec3,
 } from "./d20Geometry";
 
@@ -13,14 +18,14 @@ import {
 // tail (settleWaapiKeyframes) orients the resting body onto the value face.
 //
 // The world runs in CSS axis labels: x right, y DOWN, z toward the viewer, one
-// unit = one icosahedron edge (= FACE_EDGE_PX on screen). Positions in the
-// track are relative to the die's rest position, so playback settles the die
+// unit = one icosahedron edge (= EDGE_PX on screen). Positions in the track
+// are relative to the die's rest position, so playback settles the die
 // exactly into its slot.
 
 export const FLIGHT_BUDGET_MS = 1600;
 export const SETTLE_TAIL_MS = 260;
 
-const PX_PER_UNIT = 18;
+const PX_PER_UNIT = EDGE_PX;
 const STEP_S = 1 / 120;
 const STEPS_PER_SAMPLE = 2; // 60Hz track
 const GRAVITY = 120;
@@ -57,17 +62,8 @@ export type DiceFlightTrack = {
 function outwardFaces(): number[][] {
   return D20_FACES.map((face) => {
     const [a, b, c] = face.map((i) => D20_VERTICES[i]!);
-    const n = {
-      x: (b!.y - a!.y) * (c!.z - a!.z) - (b!.z - a!.z) * (c!.y - a!.y),
-      y: (b!.z - a!.z) * (c!.x - a!.x) - (b!.x - a!.x) * (c!.z - a!.z),
-      z: (b!.x - a!.x) * (c!.y - a!.y) - (b!.y - a!.y) * (c!.x - a!.x),
-    };
-    const centroid = {
-      x: (a!.x + b!.x + c!.x) / 3,
-      y: (a!.y + b!.y + c!.y) / 3,
-      z: (a!.z + b!.z + c!.z) / 3,
-    };
-    const outward = n.x * centroid.x + n.y * centroid.y + n.z * centroid.z > 0;
+    const normal = cross(subtract(b!, a!), subtract(c!, a!));
+    const outward = dot(normal, faceCenter(D20_VERTICES, face)) > 0;
     return outward ? [...face] : [...face].reverse();
   });
 }
