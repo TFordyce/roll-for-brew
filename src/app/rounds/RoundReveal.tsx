@@ -145,6 +145,14 @@ export function RoundReveal({
   const provisional = recapModel?.provisional ?? false;
   const ownResolverRow = recapModel?.rows.find((r) => r.playerId === selfPlayerId) ?? null;
 
+  // Land the die as soon as the roller's own value reaches this client, not at
+  // the round-wide reveal (owner feedback on #600: the tumble was hiding a
+  // number the roller already had). The broadcast resolve below stays as a
+  // harmless confirmation; the machine follows it if the values ever diverge.
+  useEffect(() => {
+    if (ownRoll !== null) die.rollResolved(ownRoll);
+  }, [ownRoll, die.rollResolved]);
+
   useEffect(() => {
     if (ownResolverRow) die.resolverOutputArrived(ownResolverRow.roll);
   }, [ownResolverRow?.roll, die.resolverOutputArrived]);
