@@ -8,6 +8,7 @@ using RollForBrew.Api.Orders;
 using RollForBrew.Api.Problems;
 using RollForBrew.Api.ModifierAdjustments;
 using RollForBrew.Api.Ratings;
+using RollForBrew.Api.RoomEntry;
 using RollForBrew.Api.RoundAdvance;
 using RollForBrew.Api.RoomView;
 
@@ -43,6 +44,7 @@ app.MapActingAs();
 app.MapRatings();
 app.MapOrders();
 app.MapModifierAdjustments();
+app.MapRoomEntry();
 app.MapRoomView();
 app.MapRoundAdvance();
 app.Run();
