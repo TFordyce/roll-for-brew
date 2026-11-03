@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { isPortEnabled } from "@/lib/api/portFlags";
 import { unwrapJoinedPlayer } from "./playerRow";
 import { getRealPlayers, type RealPlayer } from "./players";
 
@@ -11,7 +13,13 @@ export type RosterEntry = {
   isTest: boolean;
 };
 
-export async function enterTodaysRoom(supabase: SupabaseClient): Promise<string> {
+export async function enterTodaysRoom(
+  supabase: SupabaseClient,
+  api: () => Pick<ApiClient, "enterTodaysRoom"> = () => apiClientFor(supabase),
+): Promise<string> {
+  if (await isPortEnabled(supabase, "enterTodaysRoom")) {
+    return (await api().enterTodaysRoom()).roomId;
+  }
   const { data, error } = await supabase.rpc("enter_todays_room");
   if (error) throw error;
   return data as string;

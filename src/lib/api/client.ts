@@ -6,6 +6,9 @@ type ActingAsResponse =
 type OrderResponse =
   paths["/rounds/{roundId}/order"]["get"]["responses"][200]["content"]["application/json"];
 
+type EnterRoomResponse =
+  paths["/rooms/today/entry"]["post"]["responses"][200]["content"]["application/json"];
+
 type RatingIdResponse =
   paths["/brew-ratings/{roundId}"]["put"]["responses"][200]["content"]["application/json"];
 
@@ -35,6 +38,8 @@ export interface ApiClient {
   advanceLayer(roundId: string): Promise<AdvanceOutcomeResponse>;
   finalizeLayer(roundId: string): Promise<AdvanceOutcomeResponse>;
   getRoomView(roomId: string): Promise<RoomViewResponse>;
+  enterTodaysRoom(): Promise<EnterRoomResponse>;
+  setActingAs(targetPlayerId: string): Promise<void>;
 }
 
 export function createApiClient(
@@ -94,6 +99,10 @@ export function createApiClient(
     finalizeLayer: async (roundId) =>
       (await (await call("POST", `/rounds/${roundId}/finalize`)).json()) as AdvanceOutcomeResponse,
     getRoomView: (roomId) => get<RoomViewResponse>(`/rooms/${encodeURIComponent(roomId)}/view`),
+    enterTodaysRoom: async () => (await (await call("POST", "/rooms/today/entry")).json()) as EnterRoomResponse,
+    setActingAs: async (targetPlayerId) => {
+      await call("PUT", "/acting-as", { targetPlayerId });
+    },
   };
 }
 

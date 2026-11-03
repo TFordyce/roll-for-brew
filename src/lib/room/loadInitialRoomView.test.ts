@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 const getRoomView = vi.fn();
-const apiClientFor = vi.fn(() => ({ getRoomView }));
+const enterTodaysRoom = vi.fn();
+const apiClientFor = vi.fn(() => ({ getRoomView, enterTodaysRoom }));
 vi.mock("@/lib/api/client", () => ({ apiClientFor }));
 
-const { loadInitialRoomView } = await import("./loadInitialRoomView");
+const { enterTodaysRoomAndLoadView, loadInitialRoomView } = await import("./loadInitialRoomView");
 
 const supabase = {} as SupabaseClient;
 const view = { version: 3, room: { roomId: "room-1" }, viewer: { playerId: "p1" } };
@@ -26,5 +27,45 @@ describe("loadInitialRoomView", () => {
     getRoomView.mockRejectedValue(new Error("API /rooms/room-1/view failed: 503"));
 
     await expect(loadInitialRoomView(supabase, "room-1")).rejects.toThrow("503");
+  });
+});
+
+describe("enterTodaysRoomAndLoadView", () => {
+  function flagged(enabled: boolean) {
+    const rows = enabled ? [{ room_id: null, enabled: true }] : [];
+    const rpc = vi.fn(async () => ({ data: "room-rpc", error: null }));
+    const from = () => ({ select: () => ({ eq: async () => ({ data: rows, error: null }) }) });
+    return { supabase: { from, rpc } as unknown as SupabaseClient, rpc };
+  }
+
+  it("with the flag on, enters through the API before asking for that room's view", async () => {
+    const { supabase, rpc } = flagged(true);
+    enterTodaysRoom.mockResolvedValue({ roomId: "room-api" });
+    getRoomView.mockResolvedValue(view);
+
+    expect(await enterTodaysRoomAndLoadView(supabase)).toEqual({ roomId: "room-api", initialView: view });
+
+    expect(getRoomView).toHaveBeenCalledWith("room-api");
+    expect(enterTodaysRoom.mock.invocationCallOrder[0]).toBeLessThan(getRoomView.mock.invocationCallOrder[0]!);
+    expect(rpc).not.toHaveBeenCalled();
+  });
+
+  it("with the flag off, enters through the RPC before asking for that room's view", async () => {
+    const { supabase, rpc } = flagged(false);
+    getRoomView.mockResolvedValue(view);
+
+    expect(await enterTodaysRoomAndLoadView(supabase)).toEqual({ roomId: "room-rpc", initialView: view });
+
+    expect(rpc).toHaveBeenCalledWith("enter_todays_room");
+    expect(rpc.mock.invocationCallOrder[0]).toBeLessThan(getRoomView.mock.invocationCallOrder[0]!);
+    expect(enterTodaysRoom).not.toHaveBeenCalled();
+  });
+
+  it("asks for no view when entry fails", async () => {
+    const { supabase } = flagged(true);
+    enterTodaysRoom.mockRejectedValue(new Error("API /rooms/today/entry failed: 503"));
+
+    await expect(enterTodaysRoomAndLoadView(supabase)).rejects.toThrow("503");
+    expect(getRoomView).not.toHaveBeenCalled();
   });
 });

@@ -42,6 +42,45 @@ Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /o
 rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
 
+## Room entry and Acting As flags (#568, human step, not run by the agent)
+
+Slices `enterTodaysRoom` and `setActingAs`. Merging changes nothing for players: with no row, or the row off, both wrappers keep the SQL `.rpc`.
+Endpoints: `POST /rooms/today/entry`, `PUT /acting-as`. Same precondition as `getActingAs`.
+
+Both flags must be global rows. No room id exists before entry, and `setActingAs` has no room, so a room-scoped row is ignored.
+`enterTodaysRoom` also serves the settings and proxy-roll pages, so flipping it moves those too.
+
+Flip `setActingAs` first, outside weekday play hours. Verify as an admin in the Test Room: picking a Test Player moves the Acting As badge, and picking yourself clears it.
+
+```sql
+insert into public.port_flags (slice, enabled) values ('setActingAs', true)
+on conflict (slice, room_id) do update set enabled = true;
+```
+
+Then flip `enterTodaysRoom`. Verify by loading the home page: same room and same seat, and the Network tab or API log shows `POST /rooms/today/entry`.
+
+```sql
+insert into public.port_flags (slice, enabled) values ('enterTodaysRoom', true)
+on conflict (slice, room_id) do update set enabled = true;
+```
+
+Rollback (instant, no deploy). An API failure on room entry surfaces as a page error, so this is the recovery:
+
+```sql
+update public.port_flags set enabled = false where slice in ('setActingAs', 'enterTodaysRoom') and room_id is null;
+```
+
+Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
+
+After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
+
+* `public.enter_todays_room()` and `public.set_acting_as(text)`, with their `authenticated` grants;
+* the `.rpc` branches in `src/lib/supabase/rooms.ts` and `actingAs.ts`;
+* the two `port_flags` rows;
+* before dropping `enter_todays_room`: its direct callers in `tests/integration` (`setup.ts`, `room-auto-creation.test.ts`, `admin-proxy-roll.test.ts`) and the SQL parity tests in `api/tests/RollForBrew.Tests` (`RoomEntryHttpTests`, `SetActingAsHttpTests`, `RfbApiRoleTests`).
+
+`current_player_id` stays until its last SQL caller is gone.
+
 ## `room_view` (slice 1, #539; retired #541)
 
 Both room pages render from the C# API's `GET /rooms/{id}/view`. The `room_view` flag, the legacy per-panel page path and its render-time reads were deleted after the 12-16 Oct 2026 soak (migration `0161`), so there is no flag to flip and no SQL fallback: an API failure on load surfaces as a page error. To roll back, revert the retirement PR.

@@ -4,13 +4,12 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
 import { canAccessTestRoom } from "@/lib/game/testRoomAccess";
-import { enterTodaysRoom } from "@/lib/supabase/rooms";
 import { initialsFrom } from "@/lib/game/initials";
 import { Nav } from "@/app/Nav";
 import { ParallaxBackdrop } from "@/app/_components/ParallaxBackdrop";
 import { SignOutBadge } from "@/app/_components/SignOutBadge";
 import { RoomViewProvider } from "@/lib/room/RoomViewProvider";
-import { loadInitialRoomView } from "@/lib/room/loadInitialRoomView";
+import { enterTodaysRoomAndLoadView } from "@/lib/room/loadInitialRoomView";
 import { RoomScreen } from "@/app/rounds/RoomScreen";
 
 export default async function HomePage() {
@@ -33,9 +32,7 @@ export default async function HomePage() {
   const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
   const showAdminMenu = canAccessTestRoom({ isAdmin, adminModeEnabled });
 
-  const roomId = await enterTodaysRoom(supabase);
-
-  const initialView = await loadInitialRoomView(supabase, roomId);
+  const { roomId, initialView } = await enterTodaysRoomAndLoadView(supabase);
   const signOutName = player?.display_name ?? player?.email ?? user.email ?? "";
   return (
     <RoomViewProvider roomId={roomId} initialView={initialView}>
