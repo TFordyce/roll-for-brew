@@ -61,6 +61,16 @@ describe("round advancement wrappers", () => {
     expect(outcome).toMatchObject({ outcome: "brewer", layer: 0, brewerId: "p2", cupsMade: 1 });
   });
 
+  it("carries the version of an authoritative API commit, and none from the shadow's payload", async () => {
+    const { supabase } = fake([{ slice: "advanceRound", room_id: null, enabled: true }]);
+    const shadow = await advanceLayer(supabase, roundId, api);
+    expect(shadow.version).toBeUndefined();
+
+    const authoritative = api();
+    authoritative.advanceLayer.mockResolvedValue({ ...rawOutcome, version: 7 });
+    expect((await advanceLayer(supabase, roundId, () => authoritative)).version).toBe(7);
+  });
+
   it("a room row scopes the flag to that room", async () => {
     const { supabase, rpc } = fake([{ slice: "advanceRound", room_id: otherRoomId, enabled: true }]);
     const a = api();

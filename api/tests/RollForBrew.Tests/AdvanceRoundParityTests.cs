@@ -325,8 +325,8 @@ public class AdvanceRoundParityTests
                 insert into public.round_participants (round_id, player_id) values ('{{iouRound}}', 'p-a'), ('{{iouRound}}', 'p-b');
                 insert into public.spell_deck_instances (id, card_id, location)
                   select '40000000-0000-4000-8000-000000000001', id, 'in_deck' from public.spell_cards where name = 'Brew IOU';
-                insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind)
-                  values ('50000000-0000-4000-8000-000000000001', '{{iouRound}}', 'p-a', '40000000-0000-4000-8000-000000000001', 'p-a', 'tea_maker_override');
+                insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+                  values ('50000000-0000-4000-8000-000000000001', '{{iouRound}}', 'p-a', '40000000-0000-4000-8000-000000000001', 'p-b', 'tea_maker_override', '{"mode": "chosen"}');
                 update public.rounds set brewer_source = 'brew_iou', brewer_source_cast_id = '50000000-0000-4000-8000-000000000001' where id = '{{iouRound}}';
                 """);
         }, Round, AdvanceRound.Entry.Advance, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
@@ -396,6 +396,7 @@ public class AdvanceRoundParityTests
         await seed(csDb);
 
         var known = await GeneratedIds(sqlDb);
+        var before = await State(sqlDb);
         var fn = entry == AdvanceRound.Entry.Advance ? "advance_layer" : "finalize_layer";
         var sqlPayload = JsonNode.Parse((await sqlDb.Scalar<string>($"select public.{fn}('{roundId}')::text"))!)!.AsObject();
 
@@ -407,8 +408,7 @@ public class AdvanceRoundParityTests
         var csState = Alias(await State(csDb), csAliases);
 
         Assert.Equal(sqlState, csState);
-        var wroteAnything = !string.Equals(sqlState, Alias(await InitialState(seed), []), StringComparison.Ordinal);
-        Assert.Equal(wroteAnything, version is not null);
+        Assert.Equal(!string.Equals(sqlState, before, StringComparison.Ordinal), version is not null);
 
         checkPayload?.Invoke(sqlPayload);
 
@@ -416,13 +416,6 @@ public class AdvanceRoundParityTests
         csPayload.Remove("version");
         Assert.Equal(Canon(Alias(sqlPayload.ToJsonString(), aliases)), Canon(Alias(csPayload.ToJsonString(), csAliases)));
         return csDb;
-    }
-
-    private static async Task<string> InitialState(Func<TestDatabase, Task> seed)
-    {
-        var db = await TestPostgres.CreateDatabase();
-        await seed(db);
-        return await State(db);
     }
 
     private static async Task<(JsonObject Payload, long? Version)> RunCSharp(TestDatabase db, Guid roundId, AdvanceRound.Entry entry, IDieRoller dice)

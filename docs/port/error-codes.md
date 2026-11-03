@@ -7,6 +7,7 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 - **C#-raised errors.** Once ported, the C# rule throws a domain exception carrying the same `code`.
 - **TS side.** Wrappers that test `error.code === 'RFBnn'` today switch to the problem `code` when their endpoint flips. Keep both checks while the flag can still roll back.
 - **New codes.** Ported code may add new named codes. It never reuses or renumbers an `RFBnn`.
+- **API-only codes (no `RFBnn`).** `broadcast_failed` (503): `realtime.send` swallowed a failure, so the command rolled back. Safe to retry.
 
 **HTTP status, by class:**
 
