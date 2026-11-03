@@ -63,8 +63,19 @@ public static class Evaluator
         return new Resolution(
             one ? "brewer" : "tie", layer, one ? tied[0] : null, one ? "default" : null, one ? null : tied,
             ctx.ParticipantCount, null, false, null, null, [], null,
-            new DerivedCastState([], [], new Dictionary<string, int>(), ctx.RoomId, ctx.RoundId, ctx.S.DbNow, []));
+            new DerivedCastState([], [], new Dictionary<string, int>(), ctx.RoomId, ctx.RoundId, ctx.S.DbNow,
+                // The Trace stays empty (#219), but a Tie-Break Reroll Layer's brewer commit
+                // still moves the Heist cards and records the replay, as finalize_layer does.
+                one ? Phase6HeistsAndMarks.Moves(ctx) : [],
+                PendingReplayCaster(ctx)));
     }
+
+    /// <summary>Who a pending Round Replay would be recorded for (record_pending_round_replay).
+    /// Reads the cast flags as the resolution leaves them; only generation 0 can replay.</summary>
+    private static string? PendingReplayCaster(EvalContext ctx) =>
+        ctx.Gen != 0 ? null
+        : ctx.Casts.Where(c => c.EffectKind == "round_replay" && !c.Negated && string.IsNullOrEmpty(c.CastInputs.Text("scrapped")))
+            .OrderBy(c => c.Seq).FirstOrDefault()?.CasterId;
 
     private static void CheckAllRolled(EvalContext ctx)
     {
@@ -82,11 +93,12 @@ public static class Evaluator
             .Where(x => x.Cast.Negated != x.Orig.Negated || x.Cast.RedirectedToCastId != x.Orig.RedirectedToCastId
                 || x.Cast.SeizedByCastId != x.Orig.SeizedByCastId || x.Cast.CopiedCastId != x.Orig.CopiedCastId
                 || x.Cast.TargetPlayerId != x.Orig.TargetPlayerId || x.Cast.TargetRole != x.Orig.TargetRole
-                || x.Cast.TargetPending != x.Orig.TargetPending)
+                || x.Cast.TargetPending != x.Orig.TargetPending
+                || x.Cast.SeizedKept != x.Orig.CastInputs.Flag("seized_kept"))
             .Select(x => x.Cast.Flags()).ToList();
         var derived = new DerivedCastState(flags, ctx.Casts.Where(c => c.Synthesized).Select(c => c.ToRow()).ToList(),
             new Dictionary<string, int>(ctx.RoomPlayerModifierWrites), ctx.RoomId, ctx.RoundId, ctx.S.DbNow,
-            [.. ctx.HeistMoves]);
+            [.. ctx.HeistMoves], PendingReplayCaster(ctx));
 
         return new Resolution(
             ctx.Outcome, 0, ctx.BrewerId, ctx.BrewerSource, ctx.TiedPlayers, ctx.ParticipantCount, ctx.ModifierGain,

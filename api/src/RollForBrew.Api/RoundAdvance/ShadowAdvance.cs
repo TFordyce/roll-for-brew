@@ -76,7 +76,7 @@ public sealed class ShadowAdvance
                 // SQL's own synthesis, whose warded step the candidate's trace does
                 // carry. Leave warded ticks to SQL so both traces keep both steps.
                 if (write.Row.EffectKind == "per_round_dice_tick" && write.Row.Negated) continue;
-                await InsertCast(session, write.Row, ct);
+                await WritePersister.InsertCast(session, write.Row, ct);
                 prewritten.Add(write.Row.Id);
             }
             if (skipReason is null && HasUnappliedShimTransforms(snapshot, roundId))
@@ -130,46 +130,6 @@ public sealed class ShadowAdvance
         snapshot.SpellCasts.Any(c => c.RoundId == roundId
             && c.EffectKind is "forced_reroll" or "roll_flip" or "roll_swap" or "roll_pair_transform"
             && (c.CastInputs is not { } ci || ci.ValueKind != JsonValueKind.Object || !ci.TryGetProperty("roll_transform", out _)));
-
-    private static async Task InsertCast(StoreSession session, SpellCastRow row, CancellationToken ct)
-    {
-        const string sql = """
-            insert into public.spell_casts
-              (id, round_id, caster_id, card_instance_id, target_player_id, target_pending, effect_kind,
-               effect_params, parent_cast_id, cast_at, reaction_window_id, negated, target_role, cast_inputs,
-               redirected_to_cast_id, seized_by_cast_id, copied_cast_id, generation, source_cast_id)
-            values (@id, @round_id, @caster_id, @card_instance_id, @target_player_id, @target_pending, @effect_kind,
-                    @effect_params, @parent_cast_id, @cast_at, @reaction_window_id, @negated, @target_role, @cast_inputs,
-                    @redirected_to_cast_id, @seized_by_cast_id, @copied_cast_id, @generation, @source_cast_id)
-            """;
-        // seq stays identity-assigned (the rows are inserted in Commit order, so the
-        // resolver's seq ordering matches the candidate's); the flag columns ride along
-        // exactly as the candidate computed them, and SQL's own idempotency guards
-        // (is_copy / dice_tick + generation) make a re-run a no-op.
-        await using var cmd = new NpgsqlCommand(sql, session.Connection, session.Transaction);
-        cmd.Parameters.AddWithValue("id", row.Id);
-        cmd.Parameters.AddWithValue("round_id", row.RoundId);
-        cmd.Parameters.AddWithValue("caster_id", row.CasterId);
-        cmd.Parameters.AddWithValue("card_instance_id", row.CardInstanceId);
-        cmd.Parameters.AddWithValue("target_player_id", (object?)row.TargetPlayerId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("target_pending", row.TargetPending);
-        cmd.Parameters.AddWithValue("effect_kind", (object?)row.EffectKind ?? DBNull.Value);
-        cmd.Parameters.Add(new NpgsqlParameter("effect_params", NpgsqlTypes.NpgsqlDbType.Jsonb)
-            { Value = row.EffectParams is { } ep ? ep.GetRawText() : DBNull.Value });
-        cmd.Parameters.AddWithValue("parent_cast_id", (object?)row.ParentCastId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("cast_at", row.CastAt);
-        cmd.Parameters.AddWithValue("reaction_window_id", (object?)row.ReactionWindowId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("negated", row.Negated);
-        cmd.Parameters.AddWithValue("target_role", (object?)row.TargetRole ?? DBNull.Value);
-        cmd.Parameters.Add(new NpgsqlParameter("cast_inputs", NpgsqlTypes.NpgsqlDbType.Jsonb)
-            { Value = row.CastInputs is { } ci ? ci.GetRawText() : DBNull.Value });
-        cmd.Parameters.AddWithValue("redirected_to_cast_id", (object?)row.RedirectedToCastId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("seized_by_cast_id", (object?)row.SeizedByCastId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("copied_cast_id", (object?)row.CopiedCastId ?? DBNull.Value);
-        cmd.Parameters.AddWithValue("generation", row.Generation);
-        cmd.Parameters.AddWithValue("source_cast_id", (object?)row.SourceCastId ?? DBNull.Value);
-        await cmd.ExecuteNonQueryAsync(ct);
-    }
 
     /// <summary>Removes the pre-writes by the exact ids they were inserted with,
     /// inside the bridge's transaction: a non-finalizing outcome must leave nothing

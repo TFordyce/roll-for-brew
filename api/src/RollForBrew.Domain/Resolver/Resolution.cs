@@ -33,14 +33,15 @@ public sealed record DerivedCastState(
     Guid RoomId,
     Guid RoundId,
     DateTimeOffset DbNow,
-    IReadOnlyList<HeistMove> HeistMoves)
+    IReadOnlyList<HeistMove> HeistMoves,
+    string? PendingReplayCaster = null)
 {
     public static readonly DerivedCastState Empty = new([], [], new Dictionary<string, int>(), Guid.Empty, Guid.Empty, DateTimeOffset.MinValue, []);
 }
 
 public sealed record CastFlags(
     Guid CastId, bool Negated, Guid? RedirectedToCastId, Guid? SeizedByCastId, Guid? CopiedCastId,
-    string? TargetPlayerId, string? TargetRole, bool TargetPending);
+    string? TargetPlayerId, string? TargetRole, bool TargetPending, bool SeizedKept = false);
 
 public sealed class ResolveException(string code, string message) : Exception(message)
 {
