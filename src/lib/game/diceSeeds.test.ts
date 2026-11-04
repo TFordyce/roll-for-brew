@@ -88,3 +88,41 @@ describe("deriveThrowTrack", () => {
     expect(deriveThrowTrack("round-1", 0, "player-79")).toBe(newest);
   });
 });
+
+describe("deriveThrowTrack with the table's other dice (issue #613)", () => {
+  it("is the same on every client given the same table", () => {
+    clearThrowTrackCache();
+    const obstacles = [
+      { x: 40, z: 0 },
+      { x: -40, z: 0 },
+    ];
+    const first = deriveThrowTrack("round-1", 0, "player-a", obstacles);
+    clearThrowTrackCache();
+
+    expect(deriveThrowTrack("round-1", 0, "player-a", obstacles)).toEqual(first);
+  });
+
+  it("throws differently when there is a die in the way", () => {
+    clearThrowTrackCache();
+    const open = deriveThrowTrack("round-1", 0, "player-a");
+    clearThrowTrackCache();
+    const blocked = deriveThrowTrack("round-1", 0, "player-a", [{ x: 0, z: 0 }]);
+
+    expect(blocked).not.toEqual(open);
+  });
+
+  it("does not hand back a cached track for a different table", () => {
+    clearThrowTrackCache();
+    const near = deriveThrowTrack("round-1", 0, "player-a", [{ x: 36, z: 0 }]);
+    const far = deriveThrowTrack("round-1", 0, "player-a", [{ x: 200, z: 0 }]);
+
+    expect(far).not.toEqual(near);
+  });
+
+  it("still comes to rest with a die in the way", () => {
+    clearThrowTrackCache();
+    const track = deriveThrowTrack("round-1", 0, "player-a", [{ x: 0, z: 0 }]);
+
+    expect(track.restAchieved).toBe(true);
+  });
+});

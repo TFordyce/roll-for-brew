@@ -131,7 +131,7 @@ One participant's resting place on the Dice Table, assigned from a canonical `pl
 _Avoid_: position, anchor (that's the backdrop props' fixed points), lane.
 
 **Shared Dice**:
-Every revealed layer-0 roll's die, thrown on every client at the reveal. Derived, never transmitted: the throw is a pure function of `(roundId, layer, playerId)`, so the roller's own die and every other client's die take the identical path and rest in the same slot. Each roll plays exactly once per client per reveal — a duplicate reveal message, a room-view refetch or a late join never replays one. Manual and Proxy Roll dice are Shared Dice too; only the viewer's own die may be click-to-dismiss.
+Every revealed layer-0 roll's die, thrown on every client at the reveal. Derived, never transmitted: the throw is a pure function of `(roundId, layer, playerId)` and of the round's Dice Table layout, which each client derives from the same participant list. On a given screen the roller's own die and every other die for that roll take the identical path and rest in the same slot; the only variation between clients is the table geometry their viewport can show, so a phone and a wide desktop can carom differently. Each roll plays exactly once per client per reveal — a duplicate reveal message, a room-view refetch or a late join never replays one. Manual and Proxy Roll dice are Shared Dice too; only the viewer's own die may be click-to-dismiss.
 _Avoid_: broadcast dice, mirrored dice, synced physics, replay.
 
 **Own Die Landing**:

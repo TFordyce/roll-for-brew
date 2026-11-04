@@ -11,6 +11,7 @@
 // the same round out identically no matter what order the roster arrived in.
 
 import { DIE_SIZE_PX } from "./d20Geometry";
+import type { DiceObstacle } from "./dicePhysics";
 import { type ViewportSize, sceneVisibleHeight } from "./sceneGeometry";
 
 export const DIE_MIN_PX = 28;
@@ -134,4 +135,23 @@ export function computeTableLayout({
   });
 
   return { dieSizePx: dieSize, gapPx: gap, tableHeightPx, rows, perRow, slots };
+}
+
+// The dice this one can carom off, as offsets from its own slot, in die-space
+// pixels. The track is authored in die-space and scaled with the die on screen,
+// so a slot distance in viewport pixels has to be divided by that same scale.
+//
+// Every other participant's slot counts, not only the rolls revealed so far:
+// the viewer's own die is thrown before the reveal and still has to take the
+// same path as everyone else's later throw.
+export function tableObstacles(
+  layout: DiceTableLayout,
+  playerId: string,
+): DiceObstacle[] {
+  const slot = layout.slots.find((s) => s.playerId === playerId);
+  if (!slot) return [];
+  const scale = layout.dieSizePx / DIE_SIZE_PX;
+  return layout.slots
+    .filter((other) => other.playerId !== playerId)
+    .map((other) => ({ x: (other.x - slot.x) / scale, z: (other.y - slot.y) / scale }));
 }

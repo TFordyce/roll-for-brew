@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DiceTableLayout, DiceTableSlot } from "@/lib/game/diceTable";
+import { type DiceTableLayout, type DiceTableSlot, tableObstacles } from "@/lib/game/diceTable";
 import { deriveThrowTrack } from "@/lib/game/diceSeeds";
+import type { DiceObstacle } from "@/lib/game/dicePhysics";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
 import { type LiveDieState } from "./useDiceReveal";
 import { AnimatedDie } from "./AnimatedDie";
@@ -19,9 +20,10 @@ export type SharedDie = {
 // The round's dice, resting on the pixel-art scene's plank.
 //
 // Every revealed layer-0 roll gets the same derived throw on every client
-// (#607) — the roller's own die is simply the one that may also land early.
-// The table is pointer-transparent so it never blocks the room, and only the
-// viewer's own die takes clicks.
+// (#607) — the roller's own die is simply the one that may also land early —
+// and each throw is played against the round's other dice (#613). The table is
+// pointer-transparent so it never blocks the room, and only the viewer's own
+// die takes clicks.
 export function DiceTable({
   layout,
   roundId,
@@ -38,10 +40,14 @@ export function DiceTable({
   sharedDice: readonly SharedDie[];
   onDismiss: () => void;
 }) {
+  const reducedMotion = useReducedMotion();
   const slotByPlayerId = new Map(layout.slots.map((slot) => [slot.playerId, slot]));
 
   const selfSlot = selfDie ? slotByPlayerId.get(selfPlayerId) : undefined;
-  const selfTrack = selfDie ? deriveThrowTrack(roundId, 0, selfPlayerId) : null;
+  const selfTrack =
+    selfDie && selfSlot
+      ? deriveThrowTrack(roundId, 0, selfPlayerId, tableObstacles(layout, selfPlayerId))
+      : null;
 
   const shared = sharedDice
     .filter((die) => !(selfDie && die.playerId === selfPlayerId))
@@ -59,11 +65,12 @@ export function DiceTable({
         const isSelf = die.playerId === selfPlayerId;
         return (
           <Slot key={die.playerId} slot={slot} layout={layout}>
-            {die.owesThrow ? (
+            {die.owesThrow && !reducedMotion ? (
               <SharedDiePlayback
                 roundId={roundId}
                 playerId={die.playerId}
                 value={die.value}
+                obstacles={tableObstacles(layout, die.playerId)}
                 interactive={isSelf}
                 onDismiss={isSelf ? onDismiss : undefined}
               />
@@ -121,37 +128,34 @@ function Slot({
 }
 
 // A die that owes the viewer its throw: it mounts with the whole batch, plays
-// its derived track, then settles onto the value. Reduced-motion clients skip
-// straight to the settled face at the same moment.
+// its derived track against the table's other dice, then settles onto the
+// value. Reduced-motion clients never get here — they render a settled face.
 function SharedDiePlayback({
   roundId,
   playerId,
   value,
+  obstacles,
   interactive,
   onDismiss,
 }: {
   roundId: string;
   playerId: string;
   value: number;
+  obstacles: readonly DiceObstacle[];
   interactive: boolean;
   onDismiss?: () => void;
 }) {
-  const reducedMotion = useReducedMotion();
-  const track = deriveThrowTrack(roundId, 0, playerId);
+  const track = deriveThrowTrack(roundId, 0, playerId, obstacles);
   const [landed, setLanded] = useState(false);
 
   useEffect(() => {
-    // Nothing is animating to wait for; go straight to the settled face.
-    if (reducedMotion) return;
     const timer = setTimeout(() => setLanded(true), track.durationMs);
     return () => clearTimeout(timer);
-  }, [track, reducedMotion]);
-
-  const settled = reducedMotion || landed;
+  }, [track]);
 
   return (
     <AnimatedDie
-      state={settled ? { phase: "landed", value, entrance: "landing" } : { phase: "rolling" }}
+      state={landed ? { phase: "landed", value, entrance: "landing" } : { phase: "rolling" }}
       track={track}
       interactive={interactive}
       onDismiss={onDismiss}

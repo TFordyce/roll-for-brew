@@ -6,6 +6,7 @@ import {
   TABLE_BOTTOM_PAD_PX,
   canonicalParticipantOrder,
   computeTableLayout,
+  tableObstacles,
 } from "./diceTable";
 import { DIE_SIZE_PX } from "./d20Geometry";
 import { sceneVisibleHeight } from "./sceneGeometry";
@@ -179,5 +180,39 @@ describe("computeTableLayout", () => {
       expect(slot.y - half).toBeGreaterThanOrEqual(0);
       expect(slot.y + half).toBeLessThanOrEqual(568);
     }
+  });
+});
+
+describe("tableObstacles (issue #613)", () => {
+  it("lists every other slot as an offset from this die's", () => {
+    const layout = layoutFor(3, 1376, 900);
+
+    expect(tableObstacles(layout, "player-01")).toHaveLength(2);
+  });
+
+  it("never includes the die's own slot", () => {
+    const layout = layoutFor(1, 1376, 900);
+
+    expect(tableObstacles(layout, "player-00")).toEqual([]);
+  });
+
+  it("returns nothing for a player with no slot", () => {
+    const layout = layoutFor(2, 1376, 900);
+
+    expect(tableObstacles(layout, "not-on-the-table")).toEqual([]);
+  });
+
+  it("converts viewport pixels into die-space, so a shrunk die still lines up", () => {
+    // A big roster on a small phone shrinks the die below its authored size.
+    const layout = layoutFor(24, 320, 568);
+    const scale = layout.dieSizePx / DIE_SIZE_PX;
+    expect(scale).toBeLessThan(1);
+
+    const slot = layout.slots.find((s) => s.playerId === "player-00")!;
+    const neighbour = layout.slots.find((s) => s.playerId === "player-01")!;
+    const [obstacle] = tableObstacles(layout, "player-00");
+
+    expect(obstacle!.x).toBeCloseTo((neighbour.x - slot.x) / scale);
+    expect(obstacle!.z).toBeCloseTo((neighbour.y - slot.y) / scale);
   });
 });

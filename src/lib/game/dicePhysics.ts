@@ -1,4 +1,4 @@
-import { Body, ConvexPolyhedron, Plane, Vec3, World } from "cannon-es";
+import { Body, ConvexPolyhedron, Plane, Sphere, Vec3, World } from "cannon-es";
 import {
   D20_FACES,
   D20_VERTICES,
@@ -55,6 +55,9 @@ export type DiceFlightTrack = {
   readonly durationMs: number;
   readonly restQuaternion: readonly [number, number, number, number];
   readonly restAchieved: boolean;
+  // Where the die came to rest, in world units. The samples above are relative
+  // to it; this is what lets a caller reason about the bodies it was thrown at.
+  readonly restPosition: { readonly x: number; readonly y: number; readonly z: number };
 };
 
 // cannon-es derives face normals from winding; the icosahedron's index triples
@@ -75,7 +78,59 @@ function randomUnitAxis(random: () => number): GeometryVec3 {
   }
 }
 
-export function simulateD20Throw(random: () => number = Math.random): DiceFlightTrack {
+// A die already on the table, as an offset **in die-space pixels** (the die is
+// DIE_SIZE_PX across) from where this throw settles: `x` across the table, `z`
+// in depth. The table is a plane, so a resting die sits exactly where its slot
+// is.
+export type DiceObstacle = {
+  readonly x: number;
+  readonly z: number;
+};
+
+// Where the landing die's slot is in the world, so the obstacles can be placed
+// against it. The throw's own resting point is only known after simulating, so
+// callers that care pass the anchor measured from an obstacle-free run.
+export type DiceTableAnchor = {
+  readonly x: number;
+  readonly z: number;
+};
+
+const NO_ANCHOR: DiceTableAnchor = { x: 0, z: 0 };
+
+// A resting die is a static body, so a landing die can carom off it but can
+// never move it — which is what keeps every rest pose slot-assigned and every
+// value where it was shown. A sphere of the die's inradius stands in for the
+// shape: enough to stop a throw passing through, and it never needs re-facing.
+const OBSTACLE_RADIUS = INRADIUS;
+
+function addObstacles(
+  world: World,
+  obstacles: readonly DiceObstacle[],
+  anchor: DiceTableAnchor,
+): void {
+  if (obstacles.length === 0) return;
+  const shape = new Sphere(OBSTACLE_RADIUS);
+  for (const obstacle of obstacles) {
+    world.addBody(
+      new Body({
+        mass: 0,
+        shape,
+        // Same height as a die at rest: the floor is y=0 and the die is above it.
+        position: new Vec3(
+          anchor.x + obstacle.x / PX_PER_UNIT,
+          -INRADIUS,
+          anchor.z + obstacle.z / PX_PER_UNIT,
+        ),
+      }),
+    );
+  }
+}
+
+export function simulateD20Throw(
+  random: () => number = Math.random,
+  obstacles: readonly DiceObstacle[] = [],
+  anchor: DiceTableAnchor = NO_ANCHOR,
+): DiceFlightTrack {
   const world = new World({ gravity: new Vec3(0, GRAVITY, 0) });
   world.defaultContactMaterial.restitution = RESTITUTION;
   world.defaultContactMaterial.friction = FRICTION;
@@ -83,6 +138,9 @@ export function simulateD20Throw(random: () => number = Math.random): DiceFlight
   const ground = new Body({ shape: new Plane() });
   ground.quaternion.setFromEuler(Math.PI / 2, 0, 0); // plane normal +z → -y, out of the floor
   world.addBody(ground);
+  // Added before the die, and without consuming any randomness, so a throw with
+  // no obstacles is bit-for-bit what it always was.
+  addObstacles(world, obstacles, anchor);
 
   const die = new Body({
     mass: 1,
@@ -159,6 +217,7 @@ export function simulateD20Throw(random: () => number = Math.random): DiceFlight
     durationMs: raw.at(-1)!.tMs,
     restQuaternion,
     restAchieved,
+    restPosition: { x: rest.x, y: rest.y, z: rest.z },
   };
 }
 
