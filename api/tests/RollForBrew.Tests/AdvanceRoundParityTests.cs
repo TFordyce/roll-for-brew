@@ -47,11 +47,11 @@ public class AdvanceRoundParityTests
     // captures its snapshots after the shim has run.
     // ------------------------------------------------------------------
 
-    private static readonly Guid Room = Guid.Parse("10000000-0000-4000-8000-000000000001");
-    private static readonly Guid Round = Guid.Parse("20000000-0000-4000-8000-000000000001");
-    private static readonly Guid Window = Guid.Parse("30000000-0000-4000-8000-000000000001");
+    internal static readonly Guid Room = Guid.Parse("10000000-0000-4000-8000-000000000001");
+    internal static readonly Guid Round = Guid.Parse("20000000-0000-4000-8000-000000000001");
+    internal static readonly Guid Window = Guid.Parse("30000000-0000-4000-8000-000000000001");
 
-    private static async Task SeedThree(TestDatabase db, int a = 17, int b = 6, int c = 12, bool window = true)
+    internal static async Task SeedThree(TestDatabase db, int a = 17, int b = 6, int c = 12, bool window = true)
     {
         await db.Execute($"""
             insert into public.players (id, email) values ('p-a', 'a@x.test'), ('p-b', 'b@x.test'), ('p-c', 'c@x.test');
@@ -70,7 +70,7 @@ public class AdvanceRoundParityTests
                 """);
     }
 
-    private static Task SeedShimCast(TestDatabase db, string kind, string card, string caster = "p-c", string? target = null,
+    internal static Task SeedShimCast(TestDatabase db, string kind, string card, string caster = "p-c", string? target = null,
         string effectParams = "{}", string castInputs = "{}", int id = 1, bool attached = true) =>
         db.Execute($$"""
             insert into public.spell_deck_instances (id, card_id, location)
@@ -497,7 +497,7 @@ public class AdvanceRoundParityTests
     private static string Alias(string text, Dictionary<string, string> aliases) =>
         aliases.Aggregate(text, (t, kv) => t.Replace(kv.Key, kv.Value, StringComparison.OrdinalIgnoreCase));
 
-    private static string Canon(string json) => TraceJson(JsonNode.Parse(json));
+    internal static string Canon(string json) => TraceJson(JsonNode.Parse(json));
 
     private static string TraceJson(JsonNode? node) => node switch
     {
@@ -510,7 +510,7 @@ public class AdvanceRoundParityTests
     /// <summary>Every row either engine can touch, jsonb-normalised as Postgres stores it, and
     /// compared to the byte. Only a timestamp set by now() is masked, because the two databases
     /// run at different moments: seeded dates stay, and null versus set still differs.</summary>
-    private static async Task<string> State(TestDatabase db) => NowStamp().Replace((await db.Scalar<string>("""
+    internal static async Task<string> State(TestDatabase db) => NowStamp().Replace((await db.Scalar<string>("""
         select jsonb_pretty(jsonb_build_object(
           'rounds', (select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') from public.rounds t),
           'rolls', (select coalesce(jsonb_agg(to_jsonb(t) order by t.round_id, t.layer, t.player_id), '[]') from public.rolls t),
@@ -532,7 +532,7 @@ public class AdvanceRoundParityTests
 
     /// <summary>Loads a golden's snapshot rows as they are, foreign keys off: a snapshot is a
     /// slice of the database and may not satisfy them.</summary>
-    private static async Task SeedGolden(TestDatabase db, string name, bool closedWindow)
+    internal static async Task SeedGolden(TestDatabase db, string name, bool closedWindow)
     {
         var root = JsonNode.Parse(File.ReadAllText(Path.Combine(GoldenFixture.SnapshotsDir(), "inputs", name + ".input.json")))!;
         var snapshot = root["snapshot"]!.AsObject();

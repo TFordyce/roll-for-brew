@@ -33,6 +33,12 @@ public sealed class RoomStore
     public Task<T> Read<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: true, work, ct);
 
+    /// <summary>A read whose statements all see one moment, in a transaction the database
+    /// refuses to write in. What a preview runs in: it takes no lock, so it never waits on
+    /// a round being finalized, and it sees that commit whole or not at all.</summary>
+    public Task<T> ReadConsistent<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
+        InTransaction(actor, readOnly: true, work, ct, IsolationLevel.RepeatableRead);
+
     public Task<T> Filler<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: false, work, ct);
 
@@ -124,12 +130,13 @@ public sealed class RoomStore
 
     /// <summary>The shared transaction shell: open → begin → claims GUC → work →
     /// commit (rollback when read-only), with the SQL error translation. Kept minimal.</summary>
-    private async Task<T> InTransaction<T>(Caller actor, bool readOnly, Func<StoreSession, Task<T>> work, CancellationToken ct)
+    private async Task<T> InTransaction<T>(
+        Caller actor, bool readOnly, Func<StoreSession, Task<T>> work, CancellationToken ct, IsolationLevel isolation = IsolationLevel.ReadCommitted)
     {
         try
         {
             await using var conn = await _dataSource.OpenConnectionAsync(ct);
-            await using var tx = await conn.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+            await using var tx = await conn.BeginTransactionAsync(isolation, ct);
             await SetClaimsGuc(conn, tx, actor, ct);
             if (readOnly)
             {

@@ -41,9 +41,19 @@ public static class Evaluator
     public static Resolution Evaluate(RoundSnapshot snapshot, Guid roundId, IDieRoller dice)
     {
         var round = snapshot.Rounds.FirstOrDefault(r => r.Id == roundId) ?? throw ResolveException.RoundNotFound();
-        var ctx = new EvalContext(snapshot, round, dice);
+        return Run(new EvalContext(snapshot, round, dice));
+    }
 
-        if (round.CurrentLayer > 0) return TieLayer(ctx);
+    /// <summary>The Provisional Recap (ADR 0010): the resolver with no persister and no dice.</summary>
+    public static Resolution Preview(RoundSnapshot snapshot, Guid roundId)
+    {
+        var round = snapshot.Rounds.FirstOrDefault(r => r.Id == roundId) ?? throw ResolveException.RoundNotFound();
+        return Run(new EvalContext(snapshot, round, new NoDiceRoller()) { IsPreview = true });
+    }
+
+    private static Resolution Run(EvalContext ctx)
+    {
+        if (ctx.Round.CurrentLayer > 0) return TieLayer(ctx);
 
         CheckAllRolled(ctx);
         foreach (var phase in Pipeline) phase.Run(ctx);
