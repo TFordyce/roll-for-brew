@@ -88,7 +88,7 @@ public sealed class RoomStore
     // AdvanceRound needs two: open the window through its bridge, then read whether it closed.
     private const int MaxDecidePasses = 3;
 
-    private static async Task<long> BumpAndBroadcast(StoreSession session, Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct)
+    internal static async Task<long> BumpAndBroadcast(StoreSession session, Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct)
     {
         await using var bump = new NpgsqlCommand(
             "update public.rooms set version = version + 1 where id = @room returning version", session.Connection, session.Transaction);

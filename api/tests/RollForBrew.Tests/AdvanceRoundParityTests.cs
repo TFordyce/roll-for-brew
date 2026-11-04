@@ -530,6 +530,8 @@ public class AdvanceRoundParityTests
 
     private static Regex NowStamp() => NowStampPattern;
 
+    internal static string MaskNow(string text) => NowStamp().Replace(text, "<now>");
+
     /// <summary>Loads a golden's snapshot rows as they are, foreign keys off: a snapshot is a
     /// slice of the database and may not satisfy them.</summary>
     internal static async Task SeedGolden(TestDatabase db, string name, bool closedWindow)

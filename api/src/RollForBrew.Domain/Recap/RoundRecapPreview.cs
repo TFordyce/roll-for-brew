@@ -17,7 +17,8 @@ public static class RoundRecapPreview
 {
     /// <summary>The holds a Provisional Recap shows through (#466). A Revolt Pick is ignored
     /// because the resolver reports it itself, as pick_pending. A compelled Action cast is
-    /// ignored because it stops all rolling, so the roll count holds the Recap back first.</summary>
+    /// ignored because it stops all rolling, so the roll count holds the Recap back first.
+    /// The exception is a Layer with nobody left to roll, which shows the Recap early.</summary>
     public static readonly IReadOnlySet<LayerHoldKind> IgnoredHolds =
         new HashSet<LayerHoldKind> { LayerHoldKind.RevoltPick, LayerHoldKind.CompelledCast };
 

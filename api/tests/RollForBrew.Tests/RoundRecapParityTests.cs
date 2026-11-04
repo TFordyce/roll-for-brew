@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using Npgsql;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Data;
+using RollForBrew.Api.Problems;
 using RollForBrew.Api.RoundRecap;
 using RollForBrew.Tests.Harness;
 using static RollForBrew.Tests.AdvanceRoundParityTests;
@@ -216,6 +217,67 @@ public class RoundRecapParityTests
         var (db, viewer) = await Exempt("p-a,p-b,p-c", rolled: false);
         await SeedHold(db, "compel_cast", inputs: OwesAction);
         Assert.True((bool)(await Same(db, Round, viewer))["provisional"]!);
+    }
+
+    [Fact]
+    public async Task A_spectator_in_the_room_may_read_and_nobody_else()
+    {
+        var (db, _) = await Three();
+        var spectator = await db.AddUser("g-spectator");
+        await db.Execute($"insert into public.room_players (room_id, player_id) values ('{Room}', 'g-spectator')");
+        await Same(db, Round, spectator);
+
+        var stranger = await db.AddUser("g-stranger");
+        var error = await Assert.ThrowsAsync<PostgresException>(() => SqlRecap(db, Round, stranger));
+        Assert.Equal("get_round_recap: caller is not in this round's room", error.MessageText);
+        var problem = await Assert.ThrowsAsync<ProblemException>(() => CSharpRecap(db, Round, stranger));
+        Assert.Equal("recap_not_in_room", problem.Code);
+        Assert.Equal(403, problem.Status);
+    }
+
+    [Fact]
+    public async Task A_missing_round_is_refused_by_both()
+    {
+        var (db, viewer) = await Three();
+        var missing = Guid.NewGuid();
+        var error = await Assert.ThrowsAsync<PostgresException>(() => SqlRecap(db, missing, viewer));
+        Assert.Equal("get_round_recap: round not found", error.MessageText);
+        var problem = await Assert.ThrowsAsync<ProblemException>(() => CSharpRecap(db, missing, viewer));
+        Assert.Equal("round_not_found", problem.Code);
+    }
+
+    [Fact]
+    public async Task An_admin_acting_as_a_player_in_the_test_room_reads_as_that_player()
+    {
+        var (db, _) = await Three();
+        var admin = await db.AddUser("g-admin", admin: true);
+        await db.Execute($"""
+            update public.rooms set is_test = true, date = null where id = '{Room}';
+            insert into public.admin_acting_as (admin_player_id, acting_as_player_id) values ('g-admin', 'p-a');
+            """);
+        Assert.True((bool)(await Same(db, Round, admin))["provisional"]!);
+    }
+
+    [Fact]
+    public async Task A_recap_reads_a_scrapped_generation_through_untouched()
+    {
+        var (db, viewer) = await Three();
+        await db.Execute($$"""
+            update public.rounds
+               set scrapped_generations = '[{"generation": 0, "brewer_id": "p-b", "cups_made": 3, "resolution_trace": [], "rolls": [], "layer_participants": [], "x": 1.50}]'
+             where id = '{{Round}}';
+            """);
+        var recap = await Same(db, Round, viewer);
+        Assert.Contains("1.50", recap["scrapped_generations"]!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task A_preview_bumps_no_version_and_sends_nothing()
+    {
+        var (db, viewer) = await Three();
+        await CSharpRecap(db, Round, viewer);
+        Assert.Equal(0L, await db.Scalar<long>($"select version from public.rooms where id = '{Room}'"));
+        Assert.Equal(0L, await db.Scalar<long>("select count(*) from realtime.messages"));
     }
 
     [Fact]

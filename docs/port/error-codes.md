@@ -7,7 +7,7 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 - **C#-raised errors.** Once ported, the C# rule throws a domain exception carrying the same `code`.
 - **TS side.** Wrappers that test `error.code === 'RFBnn'` today switch to the problem `code` when their endpoint flips. Keep both checks while the flag can still roll back.
 - **New codes.** Ported code may add new named codes. It never reuses or renumbers an `RFBnn`.
-- **API-only codes (no `RFBnn`).** `broadcast_failed` (503): `realtime.send` swallowed a failure, so the command rolled back. Safe to retry.
+- **API-only codes (no `RFBnn`).** `broadcast_failed` (503): `realtime.send` swallowed a failure, so the command rolled back. Safe to retry. `recap_not_in_room` (403): the caller is not in the round's room, which SQL raised as a plain `P0001`. `backfill_not_resolvable` (422): an empty backfill roster reached `resolve_round`'s or `advance_round_layer`'s plain `P0001`; `detail` carries SQL's message.
 
 **HTTP status, by class:**
 
@@ -40,7 +40,7 @@ Generated 2026-10-08 from `supabase/migrations` + `db/sql/functions` (scan: ever
 | RFB15 | `adjustment_undo_window_passed` | 409 | delete_modifier_adjustment | the 5 minute undo window has passed |
 | RFB16 | `admin_required_delete_round` | 403 | admin_delete_round | caller is not an admin |
 | RFB17 | `delete_round_reason_required` | 400 | admin_delete_round | reason is required |
-| RFB18 | `round_not_found` | 404 | admin_delete_round | round not found |
+| RFB18 | `round_not_found` | 404 | admin_delete_round; `GET /rounds/{id}/recap` | round not found |
 | RFB19 | `admin_required_delete_adjustment` | 403 | admin_delete_modifier_adjustment | caller is not an admin |
 | RFB20 | `delete_adjustment_reason_required` | 400 | admin_delete_modifier_adjustment | reason is required |
 | RFB21 | `adjustment_not_found` | 404 | admin_delete_modifier_adjustment | adjustment not found |

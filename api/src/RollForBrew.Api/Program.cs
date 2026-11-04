@@ -9,6 +9,7 @@ using RollForBrew.Api.Problems;
 using RollForBrew.Api.ModifierAdjustments;
 using RollForBrew.Api.Ratings;
 using RollForBrew.Api.RoundAdvance;
+using RollForBrew.Api.RoundBackfill;
 using RollForBrew.Api.RoundRecap;
 using RollForBrew.Api.RoomView;
 
@@ -47,6 +48,7 @@ app.MapModifierAdjustments();
 app.MapRoomView();
 app.MapRoundAdvance();
 app.MapRoundRecap();
+app.MapRoundBackfill();
 app.Run();
 
 public partial class Program;
