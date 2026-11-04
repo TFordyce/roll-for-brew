@@ -77,6 +77,7 @@ internal sealed class EvalContext
     public Guid RoomId { get; }
     public int Gen { get; }
     public IDieRoller Dice { get; }
+    public bool IsPreview { get; init; }
 
     public Dictionary<Guid, WorkingCast> AllCasts { get; }
     public List<WorkingCast> Casts { get; }

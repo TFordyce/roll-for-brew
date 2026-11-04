@@ -2,14 +2,12 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { adminBackfillRound, type BackfillLayer } from "@/lib/supabase/adminBackfill";
+import { adminBackfillRound, backfillFailureMessage, type BackfillLayer } from "@/lib/supabase/adminBackfill";
 
 export type BackfillRoundState =
   | { status: "idle" }
   | { status: "error"; message: string }
   | { status: "success"; roundId: string };
-
-const KNOWN_ERROR_CODES = new Set(["RFB33", "RFB34", "RFB35", "RFB36", "RFB37", "RFB38", "RFB39", "RFB40"]);
 
 export async function backfillRoundAction(
   _prevState: BackfillRoundState,
@@ -38,15 +36,8 @@ export async function backfillRoundAction(
     revalidatePath("/stats");
     return { status: "success", roundId };
   } catch (error) {
-    const code = (error as { code?: string } | null)?.code;
-    if (code && KNOWN_ERROR_CODES.has(code)) {
-      const rawMessage = (error as { message?: string } | null)?.message ?? "";
-      const message = rawMessage.replace(/^admin_backfill_round:\s*/, "");
-      return {
-        status: "error",
-        message: message ? message.charAt(0).toUpperCase() + message.slice(1) + "." : "Could not backfill that round.",
-      };
-    }
+    const message = backfillFailureMessage(error);
+    if (message) return { status: "error", message };
     throw error;
   }
 }
