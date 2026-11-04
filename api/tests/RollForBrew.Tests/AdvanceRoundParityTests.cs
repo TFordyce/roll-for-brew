@@ -309,6 +309,25 @@ public class AdvanceRoundParityTests
         await Parity(_ => Task.CompletedTask, Guid.Parse("20000000-0000-4000-8000-000000000099"), AdvanceRound.Entry.Advance);
 
     [Fact]
+    public async Task A_seize_keeps_the_seized_cast_and_records_that_it_did()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db);
+            await SeedShimCast(db, "flat_modifier", "Yorkshire Terror", caster: "p-a", target: "p-b",
+                effectParams: """{"delta": -2}""", attached: false);
+            await db.Execute($$"""
+                insert into public.spell_deck_instances (id, card_id, location)
+                  select '40000000-0000-4000-8000-000000000002', id, 'in_deck' from public.spell_cards where name = 'Brew-merang';
+                insert into public.spell_casts (id, round_id, caster_id, card_instance_id, parent_cast_id, cast_inputs, reaction_window_id)
+                  values ('50000000-0000-4000-8000-000000000002', '{{Round}}', 'p-b', '40000000-0000-4000-8000-000000000002',
+                          '50000000-0000-4000-8000-000000000001', '{"seized_cast_id": "50000000-0000-4000-8000-000000000001"}', '{{Window}}');
+                """);
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.True(await csharp.Scalar<bool>("select (cast_inputs ->> 'seized_kept')::boolean from public.spell_casts where id = '50000000-0000-4000-8000-000000000001'"));
+    }
+
+    [Fact]
     public async Task A_brew_debt_from_another_room_makes_this_a_debt_round()
     {
         // The IOU cast sits in yesterday's room: nothing today's room holds points at it.
@@ -505,7 +524,11 @@ public class AdvanceRoundParityTests
         ))
         """))!, "<now>");
 
-    private static Regex NowStamp() => new($@"{DateTime.UtcNow:yyyy-MM-dd}T[0-9:.]+\+00:00");
+    // Today or tomorrow, so a run crossing UTC midnight still masks both databases alike.
+    private static readonly Regex NowStampPattern = new(
+        $@"({DateTime.UtcNow:yyyy-MM-dd}|{DateTime.UtcNow.AddDays(1):yyyy-MM-dd})T[0-9:.]+\+00:00");
+
+    private static Regex NowStamp() => NowStampPattern;
 
     /// <summary>Loads a golden's snapshot rows as they are, foreign keys off: a snapshot is a
     /// slice of the database and may not satisfy them.</summary>
