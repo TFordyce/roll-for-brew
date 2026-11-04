@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRoomView, useRoomViewStore } from "@/lib/room/roomViewContext";
 import type { RoomView } from "@/lib/room/roomViewStore";
 import { lastDripNotice } from "@/lib/game/lastDrip";
@@ -24,9 +24,11 @@ import { RoundReplayPrompt } from "@/app/rounds/RoundReplayPrompt";
 import { RoundReveal, type RoundRevealParticipant } from "@/app/rounds/RoundReveal";
 import { shouldClearRevealHold, type HeldReveal } from "@/app/rounds/revealHold";
 import { useDiceReveal, liveDieState } from "@/app/rounds/useDiceReveal";
-import { DiceTable } from "@/app/rounds/DiceTable";
+import { DiceTable, type SharedDie } from "@/app/rounds/DiceTable";
 import { computeTableLayout } from "@/lib/game/diceTable";
+import { createPlaybackLedger, type PlaybackLedger } from "@/lib/game/revealPlayback";
 import { useViewportSize } from "@/lib/hooks/useViewportSize";
+import type { LayerRollsRevealedPayload } from "@/lib/supabase/realtime";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { RoundMenu } from "@/app/rounds/RoundMenu";
@@ -60,12 +62,14 @@ export function RoomScreen({
   afterTopPanels,
   bottom,
   raterInitials = "",
+  holdOwnDieUntilReveal = false,
 }: {
   variant: "home" | "testRoom";
   top: ReactNode;
   afterTopPanels: ReactNode;
   bottom: ReactNode;
   raterInitials?: string;
+  holdOwnDieUntilReveal?: boolean;
 }) {
   const view = useRoomView();
   const store = useRoomViewStore();
@@ -165,7 +169,64 @@ export function RoomScreen({
     participantIds: tableParticipants.map((p) => p.playerId),
     viewport,
   });
-  const selfDie = liveDieState(die.state);
+  // Held: the viewer's own die waits and joins the shared batch at the reveal.
+  const selfDie = holdOwnDieUntilReveal ? null : liveDieState(die.state);
+
+  // Every revealed layer-0 roll gets exactly one throw per client. The ledger
+  // is what makes a duplicate reveal message — `layer-rolls-revealed` and
+  // `round-revealed` carry the same rolls — a no-op rather than a second throw.
+  const ledgerRef = useRef<PlaybackLedger | null>(null);
+  if (ledgerRef.current === null) ledgerRef.current = createPlaybackLedger();
+  const sharedDiceRef = useRef<SharedDie[]>([]);
+  const sharedRoundRef = useRef<string | null>(null);
+  const [sharedDice, setSharedDice] = useState<SharedDie[]>([]);
+
+  useEffect(() => {
+    sharedRoundRef.current = null;
+    sharedDiceRef.current = [];
+    setSharedDice([]);
+  }, [revealRoundId]);
+
+  const recordLayerZeroRolls = useCallback(
+    (rolls: LayerRollsRevealedPayload["rolls"]) => {
+      if (revealRoundId === null) return;
+      if (sharedRoundRef.current !== revealRoundId) {
+        sharedRoundRef.current = revealRoundId;
+        sharedDiceRef.current = [];
+      }
+      // When the viewer's own die has already been on the table — rolling,
+      // landed, or dismissed — it owns the slot for this round and must not be
+      // recorded here, or a later duplicate reveal would put it back. A manual
+      // roll never starts the controller, so its die joins the shared batch.
+      // With the hold preference on the controller is ignored entirely.
+      const controllerOwnsSelf = !holdOwnDieUntilReveal && die.state.phase !== "idle";
+      let changed = false;
+      for (const roll of rolls) {
+        if (sharedDiceRef.current.some((d) => d.playerId === roll.playerId)) continue;
+        if (roll.playerId === selfPlayerId && controllerOwnsSelf) continue;
+        const play = ledgerRef.current!.claim({
+          roundId: revealRoundId,
+          layer: 0,
+          playerId: roll.playerId,
+        });
+        sharedDiceRef.current = [
+          ...sharedDiceRef.current,
+          { playerId: roll.playerId, value: roll.value, owesThrow: play },
+        ];
+        changed = true;
+      }
+      if (changed) setSharedDice([...sharedDiceRef.current]);
+    },
+    [revealRoundId, selfPlayerId, holdOwnDieUntilReveal, die.state],
+  );
+
+  const dismissSelfDie = useCallback(() => {
+    die.dismiss();
+    // A manual or proxy roll's own die lives in the shared batch, so dismissing
+    // it has to drop the record as well as the controller.
+    sharedDiceRef.current = sharedDiceRef.current.filter((d) => d.playerId !== selfPlayerId);
+    setSharedDice([...sharedDiceRef.current]);
+  }, [die.dismiss, selfPlayerId]);
 
   return (
     <main
@@ -178,12 +239,14 @@ export function RoomScreen({
     >
       {top}
 
-      {tableVisible ? (
+      {tableVisible && revealRoundId ? (
         <DiceTable
           layout={tableLayout}
+          roundId={revealRoundId}
           selfPlayerId={selfPlayerId}
           selfDie={selfDie}
-          onDismiss={die.dismiss}
+          sharedDice={sharedDice}
+          onDismiss={dismissSelfDie}
         />
       ) : null}
 
@@ -316,6 +379,7 @@ export function RoomScreen({
                   hasOpenReactionWindow={reaction !== null}
                   participants={active ? revealParticipants : (heldReveal?.participants ?? [])}
                   die={die}
+                  onLayerZeroRolls={recordLayerZeroRolls}
                   onRevealed={holdReveal}
                   onResultsDone={releaseReveal}
                 />

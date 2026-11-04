@@ -35,6 +35,7 @@ export function RoundReveal({
   ownRoll,
   hasOpenReactionWindow,
   die,
+  onLayerZeroRolls,
   onRevealed,
   onResultsDone,
 }: {
@@ -45,6 +46,8 @@ export function RoundReveal({
   ownRoll: number | null;
   hasOpenReactionWindow: boolean;
   die: DiceRevealController;
+  /** Every layer-0 roll the moment it is revealed, for the dice table. */
+  onLayerZeroRolls?: (rolls: LayerRollsRevealedPayload["rolls"]) => void;
   onRevealed?: (reveal: HeldReveal) => void;
   onResultsDone?: () => void;
 }) {
@@ -95,6 +98,7 @@ export function RoundReveal({
 
   function handleLayerZeroRolls(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
     setRolls(revealedRolls);
+    onLayerZeroRolls?.(revealedRolls);
     const ownRollRevealed = revealedRolls.find((r) => r.playerId === selfPlayerId);
     if (ownRollRevealed) die.rollResolved(ownRollRevealed.value);
   }

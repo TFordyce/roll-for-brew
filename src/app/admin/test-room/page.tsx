@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
+import { getHoldOwnDieUntilReveal } from "@/lib/supabase/diceLanding";
 import { canAccessTestRoom } from "@/lib/game/testRoomAccess";
 import { getTestRoomId } from "@/lib/supabase/rooms";
 import { ActingAsSwitcher, type ActingAsOption } from "@/app/admin/test-room/ActingAsSwitcher";
@@ -23,6 +24,7 @@ export default async function TestRoomPage() {
 
   const isAdmin = await getIsAdmin(supabase, realPlayerId);
   const adminModeEnabled = await getAdminModeEnabled();
+  const holdOwnDieUntilReveal = await getHoldOwnDieUntilReveal();
 
   if (!canAccessTestRoom({ isAdmin, adminModeEnabled })) {
     redirect("/");
@@ -67,6 +69,7 @@ export default async function TestRoomPage() {
     <RoomViewProvider roomId={roomId} initialView={initialView}>
       <RoomScreen
         variant="testRoom"
+        holdOwnDieUntilReveal={holdOwnDieUntilReveal}
         top={
           <h1 className="font-display text-2xl font-semibold uppercase tracking-widest text-gilt-bright">
             Test Room

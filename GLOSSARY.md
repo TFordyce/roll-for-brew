@@ -130,6 +130,14 @@ _Avoid_: tray, overlay, dice layer, dice area.
 One participant's resting place on the Dice Table, assigned from a canonical `playerId`-sorted participant order so every client lays the same round out identically whatever order the roster arrived in. Slots are collision-free; a landing die may carom off the dice already sitting in the other slots but always settles into its own, which is what keeps its value from moving after it is shown.
 _Avoid_: position, anchor (that's the backdrop props' fixed points), lane.
 
+**Shared Dice**:
+Every revealed layer-0 roll's die, thrown on every client at the reveal. Derived, never transmitted: the throw is a pure function of `(roundId, layer, playerId)`, so the roller's own die and every other client's die take the identical path and rest in the same slot. Each roll plays exactly once per client per reveal — a duplicate reveal message, a room-view refetch or a late join never replays one. Manual and Proxy Roll dice are Shared Dice too; only the viewer's own die may be click-to-dismiss.
+_Avoid_: broadcast dice, mirrored dice, synced physics, replay.
+
+**Own Die Landing**:
+The per-browser, cookie-backed preference for when the viewer's own die lands: early, as soon as their own value reaches them (the default), or held so it lands with the Shared Dice at the reveal. It changes only the viewer's own die timing — never whether Shared Dice play, and never another client's view.
+_Avoid_: dice speed, animation preference, roll animation setting.
+
 **Modifier Jitter**:
 A purely visual cue on `RollCalculation`'s modifier term: a shake animation that fades in once a player's live `room_players.modifier` crosses +8, intensifying to full at +14. No DB backing — display-only. Thresholds are provisional, pending player feedback.
 _Avoid_: danger cue, warning animation.
