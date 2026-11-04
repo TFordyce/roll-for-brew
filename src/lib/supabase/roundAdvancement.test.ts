@@ -66,8 +66,7 @@ describe("round advancement wrappers", () => {
     const shadow = await advanceLayer(supabase, roundId, api);
     expect(shadow.version).toBeUndefined();
 
-    const authoritative = api();
-    authoritative.advanceLayer.mockResolvedValue({ ...rawOutcome, version: 7 });
+    const authoritative = { advanceLayer: vi.fn(async () => ({ ...rawOutcome, version: 7 })) } as unknown as ApiClient;
     expect((await advanceLayer(supabase, roundId, () => authoritative)).version).toBe(7);
   });
 
