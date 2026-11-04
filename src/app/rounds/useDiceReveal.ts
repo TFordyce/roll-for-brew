@@ -19,6 +19,14 @@ export type DiceRevealEvent =
 
 export const initialDiceRevealState: DiceRevealState = { phase: "idle" };
 
+// The phases where a die is on screen. Shared by the die components, the table
+// and the room screen so they all agree on when a die exists.
+export type LiveDieState = Extract<DiceRevealState, { phase: "rolling" | "landed" }>;
+
+export function liveDieState(state: DiceRevealState): LiveDieState | null {
+  return state.phase === "rolling" || state.phase === "landed" ? state : null;
+}
+
 export function transitionDiceReveal(
   state: DiceRevealState,
   event: DiceRevealEvent,

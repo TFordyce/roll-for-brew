@@ -14,6 +14,10 @@ const CIRCUMRADIUS = APEX_RISE + BAND_RISE;
 // constant, so the track can never desync from the rendered die.
 export const EDGE_PX = 18;
 
+// The whole die's on-screen box. One constant shared by the renderer, the
+// physics track and the dice table's rows, so none of them can drift apart.
+export const DIE_SIZE_PX = EDGE_PX * 2;
+
 function pentagonRing(y: number, offset: number): Vec3[] {
   return Array.from({ length: 5 }, (_, k) => {
     const angle = offset + (k * 2 * Math.PI) / 5;

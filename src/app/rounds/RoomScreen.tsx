@@ -23,7 +23,10 @@ import {
 import { RoundReplayPrompt } from "@/app/rounds/RoundReplayPrompt";
 import { RoundReveal, type RoundRevealParticipant } from "@/app/rounds/RoundReveal";
 import { shouldClearRevealHold, type HeldReveal } from "@/app/rounds/revealHold";
-import { useDiceReveal } from "@/app/rounds/useDiceReveal";
+import { useDiceReveal, liveDieState } from "@/app/rounds/useDiceReveal";
+import { DiceTable } from "@/app/rounds/DiceTable";
+import { computeTableLayout } from "@/lib/game/diceTable";
+import { useViewportSize } from "@/lib/hooks/useViewportSize";
 import { RollInputPicker } from "@/app/rounds/RollInputPicker";
 import { OrderPicker } from "@/app/rounds/OrderPicker";
 import { RoundMenu } from "@/app/rounds/RoundMenu";
@@ -41,6 +44,10 @@ import { PlayerTile } from "@/app/_components/PlayerTile";
 import { SubmitButton } from "@/app/_components/SubmitButton";
 import { BrewRatingPanel } from "@/app/_components/BrewRatingPanel";
 import { LiveRollForOthers } from "@/app/admin/test-room/LiveRollForOthers";
+
+// The main element's `p-8`. Kept as a number because the inline bottom padding
+// below replaces that edge to make room for the dice table.
+const MAIN_PADDING_PX = 32;
 
 const PRIMARY_BUTTON =
   "w-full rounded-md border-2 border-gilt bg-ember px-4 py-2 font-display text-sm uppercase tracking-widest text-parchment hover:bg-ember-bright disabled:cursor-not-allowed disabled:border-gilt-dark disabled:bg-tavern-panel-dark disabled:text-parchment-dim disabled:hover:bg-tavern-panel-dark";
@@ -148,9 +155,37 @@ export function RoomScreen({
   const revealRoundId = active?.roundId ?? heldReveal?.roundId ?? null;
   const die = useDiceReveal(revealRoundId);
 
+  // The dice table owns the bottom of the screen while a reveal is showing:
+  // it reserves that strip so no card ever sits under a die. It appears with
+  // the reveal hold and clears when the hold ends — never during "Who's In?".
+  const viewport = useViewportSize();
+  const tableVisible = revealRoundId !== null && (showClosed || heldReveal !== null);
+  const tableParticipants = active ? revealParticipants : (heldReveal?.participants ?? []);
+  const tableLayout = computeTableLayout({
+    participantIds: tableParticipants.map((p) => p.playerId),
+    viewport,
+  });
+  const selfDie = liveDieState(die.state);
+
   return (
-    <main className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8">
+    <main
+      className="relative isolate flex min-h-screen flex-col items-center gap-6 bg-tavern-plank p-8"
+      style={
+        tableVisible && tableLayout.tableHeightPx > 0
+          ? { paddingBottom: MAIN_PADDING_PX + tableLayout.tableHeightPx }
+          : undefined
+      }
+    >
       {top}
+
+      {tableVisible ? (
+        <DiceTable
+          layout={tableLayout}
+          selfPlayerId={selfPlayerId}
+          selfDie={selfDie}
+          onDismiss={die.dismiss}
+        />
+      ) : null}
 
       {!isTestRoom ? (
         <BrewRatingPanel

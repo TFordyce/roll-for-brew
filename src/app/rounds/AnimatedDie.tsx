@@ -9,7 +9,7 @@ import {
   simulateD20Throw,
   type DiceFlightTrack,
 } from "@/lib/game/dicePhysics";
-import type { DiceRevealState } from "./useDiceReveal";
+import type { LiveDieState } from "./useDiceReveal";
 import { DIE_SIZE_PX, DieFaces } from "./DieFaces";
 
 // When the die mounts already landed (remount into a landed machine state) the
@@ -33,7 +33,7 @@ export function AnimatedDie({
   state,
   onDismiss,
 }: {
-  state: Extract<DiceRevealState, { phase: "rolling" | "landed" }>;
+  state: LiveDieState;
   onDismiss: () => void;
 }) {
   const reducedMotion = useReducedMotion();

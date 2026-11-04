@@ -122,6 +122,14 @@ _Avoid_: reaction-window finalize (Layers above 0 finalize with no window), reso
 A player's ordered sequence of rolls across a round's Layers, from the original layer-0 roll through every Tie-Break Reroll that followed it. Rendered in `RoundReveal` as a nested, indented row per layer.
 _Avoid_: reroll history, layer history (that's the raw `get_round_layer_history` data this is built from).
 
+**Dice Table**:
+The strip along the bottom of the room where a round's dice land — drawn over the pixel-art scene's plank, above the room's cards, and reserved while a reveal is showing so no card sits under a die. Presentation only: it never decides a result and it is not the record of one. The reveal row stays the readable, accessible source of every value, and a die is only ever the flourish that confirms it.
+_Avoid_: tray, overlay, dice layer, dice area.
+
+**Dice Table Slot**:
+One participant's resting place on the Dice Table, assigned from a canonical `playerId`-sorted participant order so every client lays the same round out identically whatever order the roster arrived in. Slots are collision-free; a landing die may carom off the dice already sitting in the other slots but always settles into its own, which is what keeps its value from moving after it is shown.
+_Avoid_: position, anchor (that's the backdrop props' fixed points), lane.
+
 **Modifier Jitter**:
 A purely visual cue on `RollCalculation`'s modifier term: a shake animation that fades in once a player's live `room_players.modifier` crosses +8, intensifying to full at +14. No DB backing — display-only. Thresholds are provisional, pending player feedback.
 _Avoid_: danger cue, warning animation.
