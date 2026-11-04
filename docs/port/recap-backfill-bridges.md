@@ -49,7 +49,7 @@ Two things the dry run did that `Evaluate` has to match, both only under `IsPrev
 - **The Calami-Tea die is not rolled.** The step carries `rolled: null` and moves nothing, and a warded tick's `would_be_after` is 1 (`greatest(1, null)`).
 - **A counter does not end a Roll Exemption until the window closes.** A resolving round's window has already closed, so only a preview can see the difference.
 
-An uncountered, all-exempt, nobody-immune round previews no brewer, as SQL does. `Phase 5` read `tied[0]` there and crashed.
+A round with everyone exempt and nobody immune previews no brewer, as SQL does. Phase 5 used to read `tied[0]` there and crash.
 
 ### Holds (#466)
 
