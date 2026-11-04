@@ -41,7 +41,11 @@ export type LayerOutcome = (
       windowClosed: boolean;
       finalization: FinalizationOutcome | null;
     }
-) & { layerRolls?: LayerRolls };
+) & {
+  layerRolls?: LayerRolls;
+  /** rooms.version of an authoritative API commit, which has already broadcast. Absent on the SQL paths and on a noop. */
+  version?: number;
+};
 
 type RawRoll = { player_id: string; value: number; discarded_value: number | null; entered_by_admin: boolean };
 
@@ -60,7 +64,7 @@ type RawFinalizationOutcome =
 type RawLayerOutcome = (
   | RawFinalizationOutcome
   | { outcome: "windowOpened"; layer: number; window_closed: boolean; finalization: RawFinalizationOutcome | null }
-) & { layer_rolls?: { layer: number; rolls: RawRoll[] } };
+) & { layer_rolls?: { layer: number; rolls: RawRoll[] }; version?: number };
 
 function toRevealedRolls(rolls: RawRoll[]): RevealedRoll[] {
   return rolls.map((r) => ({
@@ -102,13 +106,14 @@ function toLayerOutcome(raw: RawLayerOutcome): LayerOutcome {
   if (raw.layer_rolls) {
     outcome.layerRolls = { layer: raw.layer_rolls.layer, rolls: toRevealedRolls(raw.layer_rolls.rolls) };
   }
+  if (raw.version !== undefined) outcome.version = raw.version;
   return outcome;
 }
 
-// The evaluator shadow (#546): the API runs C# Evaluate beside SQL and returns
-// SQL's own outcome payload, in the same shape the RPC returns today. Rollout is
-// the 'advanceRound' flag row: a Test Room row first, then the global flip; with
-// no row (or a read error) the .rpc path runs, unchanged.
+// The 'advanceRound' flag row routes these wrappers to the API: a Test Room row
+// first, then the global flip; with no row (or a read error) the .rpc path runs,
+// unchanged. What the API does then is its own flag: the evaluator shadow (#546,
+// SQL decides) or authoritative C# (#547), both in the shape the RPC returns.
 //
 // The flag read costs exactly one small port_flags select while no room-scoped
 // row exists (the global row — or no row — decides every room). Only when a

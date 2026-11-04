@@ -50,6 +50,9 @@ export async function advanceRound(
   deps: AdvanceRoundDeps = defaultDeps,
 ): Promise<LayerOutcome> {
   const outcome = await runEntryPoint(supabase, roundId, event, deps);
+  // An authoritative API commit sent its broadcasts in its own transaction (ADR 0011).
+  if (outcome.version !== undefined) return outcome;
+
   const finalization = outcome.outcome === "windowOpened" ? outcome.finalization : outcome;
   const finalized = finalization !== null && finalization.outcome !== "noop";
   const awaitingRevoltPick = outcome.outcome === "noop" && outcome.reason === "revolt_pick_pending";

@@ -1,8 +1,11 @@
 using System.Data;
+using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Problems;
+using RollForBrew.Domain.Commands;
+using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Api.Data;
 
@@ -47,9 +50,80 @@ public sealed class RoomStore
             return await work(round, session);
         }, ct);
 
+    /// <summary>The write path every ported command uses (ADR 0012), in one transaction:
+    /// round-row <c>for update</c>, snapshot, decide, write batch, <c>rooms.version</c>
+    /// bump, broadcast. <paramref name="decide"/> sees a null snapshot when the round does
+    /// not exist. No writes means no bump and no broadcast; the version comes back null.</summary>
+    public Task<CommandOutcome<T>> Command<T>(
+        Guid roundId, Caller actor, Func<RoundSnapshot?, Decision<T>> decide, CancellationToken ct = default) =>
+        InTransaction(actor, readOnly: false, async session =>
+        {
+            var round = await LockRound(session, roundId);
+            var snapshot = round is null ? null : await session.Load(round.RoomId, ct);
+            var wrote = false;
+            var events = new List<RoomEvent>();
+
+            for (var pass = 1; ; pass++)
+            {
+                var decision = decide(snapshot);
+                foreach (var write in decision.Writes)
+                    await WritePersister.Apply(session, write, ct);
+                wrote |= decision.Writes.Count > 0;
+                events.AddRange(decision.Events);
+
+                if (!decision.ReloadAfterWrite)
+                    return new CommandOutcome<T>(decision.Result, wrote ? await BumpAndBroadcast(session, round!.RoomId, events, ct) : null);
+                if (pass == MaxDecidePasses || round is null)
+                    throw new InvalidOperationException($"a decision asked to reload after {pass} pass(es) on round {roundId}");
+                snapshot = await session.Load(round.RoomId, ct);
+            }
+        }, ct);
+
+    // AdvanceRound needs two: open the window through its bridge, then read whether it closed.
+    private const int MaxDecidePasses = 3;
+
+    private static async Task<long> BumpAndBroadcast(StoreSession session, Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct)
+    {
+        await using var bump = new NpgsqlCommand(
+            "update public.rooms set version = version + 1 where id = @room returning version", session.Connection, session.Transaction);
+        bump.Parameters.AddWithValue("room", roomId);
+        var version = (long)(await bump.ExecuteScalarAsync(ct))!;
+
+        // realtime.send swallows every failure as a WARNING (ADR 0011). Unwatched, a failed
+        // send would commit with nobody told.
+        string? swallowed = null;
+        void Watch(object sender, NpgsqlNoticeEventArgs e)
+        {
+            if (e.Notice.MessageText.Contains("SendingBroadcastMessage", StringComparison.Ordinal))
+                swallowed = e.Notice.MessageText;
+        }
+
+        session.Connection.Notice += Watch;
+        try
+        {
+            foreach (var e in events)
+            {
+                var payload = (JsonObject)e.Payload.DeepClone();
+                payload["version"] = version;
+                await using var send = new NpgsqlCommand(
+                    "select public.rfb_broadcast(@topic, @event, @payload)", session.Connection, session.Transaction);
+                send.Parameters.AddWithValue("topic", $"room:{roomId}");
+                send.Parameters.AddWithValue("event", e.Name);
+                send.Parameters.Add(new NpgsqlParameter("payload", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = payload.ToJsonString() });
+                await send.ExecuteNonQueryAsync(ct);
+                if (swallowed is not null)
+                    throw new ProblemException("broadcast_failed", ProblemClass.Unavailable, "The change could not be announced, so it was not applied.", swallowed);
+            }
+        }
+        finally
+        {
+            session.Connection.Notice -= Watch;
+        }
+        return version;
+    }
+
     /// <summary>The shared transaction shell: open → begin → claims GUC → work →
-    /// commit (rollback when read-only), with the SQL error translation. Kept minimal;
-    /// slice 2b's <c>Command</c> entry point replaces it.</summary>
+    /// commit (rollback when read-only), with the SQL error translation. Kept minimal.</summary>
     private async Task<T> InTransaction<T>(Caller actor, bool readOnly, Func<StoreSession, Task<T>> work, CancellationToken ct)
     {
         try
@@ -102,6 +176,10 @@ public sealed class RoomStore
 
 public sealed record RoundLock(Guid RoundId, Guid RoomId, string Status, int CurrentLayer);
 
+/// <summary>What a command returns; <paramref name="Version"/> is the bumped
+/// <c>rooms.version</c>, or null when it wrote nothing.</summary>
+public sealed record CommandOutcome<T>(T Result, long? Version);
+
 public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
 {
     private RfbDbContext? _db;
@@ -110,6 +188,23 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
     public NpgsqlTransaction Transaction { get; } = transaction;
 
     public RfbDbContext Db => _db ??= CreateDb();
+
+    /// <summary>Whether C# decides this round's advancement (#547). A room row beats the
+    /// global row; no row means off. An unknown round reads the global row, and either path
+    /// answers it with the same noop.</summary>
+    public async Task<bool> AdvanceIsAuthoritative(Guid roundId, CancellationToken ct = default)
+    {
+        await using var cmd = new NpgsqlCommand("""
+            select f.enabled
+              from public.port_flags f
+             where f.slice = 'advanceRoundAuthoritative'
+               and (f.room_id is null or f.room_id = (select room_id from public.rounds where id = @round))
+             order by f.room_id nulls last
+             limit 1
+            """, Connection, Transaction);
+        cmd.Parameters.AddWithValue("round", roundId);
+        return await cmd.ExecuteScalarAsync(ct) is true;
+    }
 
     public async Task<string> CurrentPlayerId(Guid? roundId = null, Guid? roomId = null, CancellationToken ct = default)
     {

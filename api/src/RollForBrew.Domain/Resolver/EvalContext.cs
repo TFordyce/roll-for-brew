@@ -48,7 +48,7 @@ internal sealed class WorkingCast
         ParentCastId, CastAt, ReactionWindowId, Negated, Seq, TargetRole, CastInputs, RedirectedToCastId,
         SeizedByCastId, CopiedCastId, Generation, SourceCastId);
 
-    public CastFlags Flags() => new(Id, Negated, RedirectedToCastId, SeizedByCastId, CopiedCastId, TargetPlayerId, TargetRole, TargetPending);
+    public CastFlags Flags() => new(Id, Negated, RedirectedToCastId, SeizedByCastId, CopiedCastId, TargetPlayerId, TargetRole, TargetPending, SeizedKept);
 }
 
 internal sealed record Ward(

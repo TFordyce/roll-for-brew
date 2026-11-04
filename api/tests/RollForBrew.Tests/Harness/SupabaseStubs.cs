@@ -22,5 +22,21 @@ public static class SupabaseStubs
           select (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub')::uuid
         $f$;
         grant usage on schema auth to anon, authenticated, service_role;
+
+        -- Same shape as Supabase: a committed insert is what gets delivered, so a row here
+        -- means "delivered on commit". rfb_api gets no usage, as on hosted.
+        create schema if not exists realtime;
+        create table realtime.messages (
+          seq bigint generated always as identity primary key,
+          topic text not null,
+          event text not null,
+          payload jsonb not null,
+          private boolean not null
+        );
+        create function realtime.send(payload jsonb, event text, topic text, private boolean default true)
+        returns void language plpgsql as $f$
+        begin
+          insert into realtime.messages (topic, event, payload, private) values (topic, event, payload, private);
+        end $f$;
         """;
 }
