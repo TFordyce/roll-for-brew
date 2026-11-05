@@ -79,6 +79,9 @@ internal sealed class EvalContext
     public IDieRoller Dice { get; }
     public bool IsPreview { get; init; }
 
+    /// <summary>A counter can itself be countered until Layer 0's window closes.</summary>
+    public bool Layer0WindowClosed => S.Windows.Any(w => w.RoundId == RoundId && w.Layer == 0 && w.Status == "closed");
+
     public Dictionary<Guid, WorkingCast> AllCasts { get; }
     public List<WorkingCast> Casts { get; }
     private long _nextSeq;
