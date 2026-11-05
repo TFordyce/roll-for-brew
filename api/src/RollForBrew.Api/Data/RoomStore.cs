@@ -5,6 +5,7 @@ using Npgsql;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Problems;
 using RollForBrew.Domain.Commands;
+using RollForBrew.Domain.Resolver;
 using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Api.Data;
@@ -156,6 +157,10 @@ public sealed class RoomStore
         catch (DbUpdateException e) when (e.InnerException is PostgresException pe)
         {
             throw Translate(pe);
+        }
+        catch (ResolveException e)
+        {
+            throw ProblemCatalog.FromResolveException(e);
         }
     }
 
