@@ -9,6 +9,8 @@ Two C# paths sit behind `POST /rounds/{id}/advance` and `/finalize`, and a flag 
 
 The `advanceRound` flag is separate. It only routes the TS wrappers to the API. It is on globally in production and means "shadow" until the new flag is flipped.
 
+The flag is read in the call's own transaction, under the round lock, so the choice and the decision see the same moment and a call costs no extra transaction.
+
 ## Flip and rollback (human steps, outside play hours)
 
 Precondition: the `advanceRound` flag is on, which it is. With it off the wrappers call `.rpc` and never reach this choice.
@@ -84,6 +86,8 @@ The SQL copies (`_layer_is_complete`, `is_expected_layer_roller`, `admin_proxy_r
 `AdvanceRoundParityTests` is the oracle. Each of the 72 golden scenarios, through each entry point, and the handwritten shim, advancement and hold scenarios run through SQL in one database and C# in another from identical rows. SQL rolls first and C# is scripted with SQL's dice. The payload and every row either engine can touch must match to the byte, with only `now()` timestamps and the random ids SQL gives rows it generates masked.
 
 The snapshot loader gained two things for this path: `reaction_windows`, and the Brew IOU cast a round's `brewer_source_cast_id` points at, which a debt from another room needs.
+
+It also leaves out every round's `resolution_trace` and `resolution_summary`. It spans the players' whole history and no rule reads them, while they were most of its bytes (3.2 MB to 503 KB at 300 past rounds). `RoundRecapReader` reads the one round's pair beside its room id, in the statement it already ran.
 
 ## The shadow in detail (#546)
 

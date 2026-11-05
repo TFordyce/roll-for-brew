@@ -47,8 +47,8 @@ public sealed class RoomStore
     /// A write transaction that takes the round-row <c>for update</c> lock before the
     /// snapshot (ADR 0012). The lock is handed to <paramref name="work"/> as
     /// <c>null</c> when the round does not exist, so callers can answer with SQL's own
-    /// noop shape instead of a 404. Slice 2a's minimal write path; slice 2b's
-    /// <c>Command</c> entry point replaces it.
+    /// noop shape instead of a 404. Slice 2a's minimal write path, kept while the flag can
+    /// still pick the shadow: the choice is read under this lock, then either path runs.
     /// </summary>
     public Task<T> Advance<T>(Caller actor, Guid roundId, Func<RoundLock?, StoreSession, Task<T>> work, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: false, async session =>
@@ -64,27 +64,31 @@ public sealed class RoomStore
     public Task<CommandOutcome<T>> Command<T>(
         Guid roundId, Caller actor, Func<RoundSnapshot?, Decision<T>> decide, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: false, async session =>
+            await CommandUnderLock(session, await LockRound(session, roundId), decide, ct), ct);
+
+    /// <summary><see cref="Command"/> from the point the lock is held.</summary>
+    internal static async Task<CommandOutcome<T>> CommandUnderLock<T>(
+        StoreSession session, RoundLock? round, Func<RoundSnapshot?, Decision<T>> decide, CancellationToken ct)
+    {
+        var snapshot = round is null ? null : await session.Load(round.RoomId, ct);
+        var wrote = false;
+        var events = new List<RoomEvent>();
+
+        for (var pass = 1; ; pass++)
         {
-            var round = await LockRound(session, roundId);
-            var snapshot = round is null ? null : await session.Load(round.RoomId, ct);
-            var wrote = false;
-            var events = new List<RoomEvent>();
+            var decision = decide(snapshot);
+            foreach (var write in decision.Writes)
+                await WritePersister.Apply(session, write, ct);
+            wrote |= decision.Writes.Count > 0;
+            events.AddRange(decision.Events);
 
-            for (var pass = 1; ; pass++)
-            {
-                var decision = decide(snapshot);
-                foreach (var write in decision.Writes)
-                    await WritePersister.Apply(session, write, ct);
-                wrote |= decision.Writes.Count > 0;
-                events.AddRange(decision.Events);
-
-                if (!decision.ReloadAfterWrite)
-                    return new CommandOutcome<T>(decision.Result, wrote ? await BumpAndBroadcast(session, round!.RoomId, events, ct) : null);
-                if (pass == MaxDecidePasses || round is null)
-                    throw new InvalidOperationException($"a decision asked to reload after {pass} pass(es) on round {roundId}");
-                snapshot = await session.Load(round.RoomId, ct);
-            }
-        }, ct);
+            if (!decision.ReloadAfterWrite)
+                return new CommandOutcome<T>(decision.Result, wrote ? await BumpAndBroadcast(session, round!.RoomId, events, ct) : null);
+            if (pass == MaxDecidePasses || round is null)
+                throw new InvalidOperationException($"a decision asked to reload after {pass} pass(es) on round {round?.RoundId}");
+            snapshot = await session.Load(round.RoomId, ct);
+        }
+    }
 
     // AdvanceRound needs two: open the window through its bridge, then read whether it closed.
     private const int MaxDecidePasses = 3;

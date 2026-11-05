@@ -96,6 +96,18 @@ public class RoundSnapshotLoaderTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task The_snapshot_leaves_out_every_rounds_trace_and_summary()
+    {
+        await Seed();
+        await _db.Execute($$"""update public.rounds set resolution_trace = '[{"marker":"trace-marker"}]', resolution_summary = '[{"marker":"summary-marker"}]' where id in ('{{EarlierRound}}', '{{NowRound}}')""");
+
+        var json = await _store.Read(Caller, s => s.LoadJson(Guid.Parse(RoomB)));
+
+        Assert.DoesNotContain("trace-marker", json);
+        Assert.DoesNotContain("summary-marker", json);
+    }
+
+    [Fact]
     public async Task Load_is_a_single_round_trip()
     {
         await Seed();
