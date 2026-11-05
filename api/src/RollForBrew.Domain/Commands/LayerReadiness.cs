@@ -6,7 +6,7 @@ namespace RollForBrew.Domain.Commands;
 
 public enum LayerHoldKind { PendingDie, DeferredTarget, CompelledCast, RevoltPick }
 
-/// <summary>One thing keeping a rolled Layer from resolving, and who it waits on. A Revolt
+/// <summary>One thing keeping a rolled Layer from finalizing, and who it waits on. A Revolt
 /// Pick waits on nobody until everyone has rolled, because the picker is the lowest roller.</summary>
 public sealed record LayerHold(LayerHoldKind Kind, IReadOnlyList<string> WaitingOn);
 

@@ -102,7 +102,7 @@ public sealed class AdvanceRound(IDieRoller dice)
         var writes = new List<Write>(shimWrites);
         writes.AddRange(Committer.Commit(resolution));
 
-        // A plain tie commits no title; a roll-off and a brewer do (_rr_apply_earl_title).
+        // A plain tie commits no title; a roll-off and a Tea Maker do (_rr_apply_earl_title).
         if (resolution.Outcome != "tie" && OlderEarlTitles(shimmed, round, resolution) is { Count: > 0 } ended)
             writes.Add(new EndEarlTitles(round.Id, ended));
 

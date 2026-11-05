@@ -47,7 +47,7 @@ If the API itself is broken, turn off `advanceRound` too, which sends the wrappe
 3. `WritePersister` applies the writes, one statement per case.
 4. Opening Layer 0's window takes two passes. The first runs the bridges below with `ReloadAfterWrite`, and the second reads the reloaded snapshot to see whether the window closed on the spot.
 5. If anything was written, `rooms.version` is bumped once and every event is sent through `rfb_broadcast` with that version. No writes means no bump and no broadcast.
-6. The response is the RPC's payload shape plus `version` when the call committed. The TS action skips its own `httpSend` when `version` is present. A noop has none, so TS still sends the unversioned `room-changed` for `revolt_pick_pending`.
+6. The response is the RPC's payload shape plus `version` when the call committed. `version` sits beside the payload's own keys, not in a wrapper, so the TS parser reads either path's response. The TS action skips its own `httpSend` when `version` is present. A noop has none, so TS still sends the unversioned `room-changed` for `revolt_pick_pending`.
 
 An exception rolls the whole call back and the API returns an error: a resolver refusal (`resolve_round_*`, see `error-codes.md`) as its problem, anything else as `internal_error`. Unlike the shadow, the authoritative path has no SQL result to fall back on, so an `Evaluate` failure stops the round from advancing until the flag is rolled back.
 

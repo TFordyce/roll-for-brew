@@ -74,7 +74,7 @@ public static class Evaluator
             one ? "brewer" : "tie", layer, one ? tied[0] : null, one ? "default" : null, one ? null : tied,
             ctx.ParticipantCount, null, false, null, null, [], null,
             new DerivedCastState([], [], new Dictionary<string, int>(), ctx.RoomId, ctx.RoundId, ctx.S.DbNow,
-                // The Trace stays empty (#219), but a Tie-Break Reroll Layer's brewer commit
+                // The Trace stays empty (#219), but a Tie-Break Reroll Layer's Tea Maker commit
                 // still moves the Heist cards and records the replay, as finalize_layer does.
                 one ? Phase6HeistsAndMarks.Moves(ctx) : [],
                 PendingReplayCaster(ctx)));

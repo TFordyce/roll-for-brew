@@ -258,7 +258,7 @@ internal sealed class Phase5TeaMaker : EvalPhase
             else
             {
                 // Empty only in a preview: everyone exempt, nobody immune and the override
-                // that exempted them countered in a window still open. SQL reads no brewer too.
+                // that exempted them countered in a window still open. SQL reads no Tea Maker too.
                 brewer = tied.FirstOrDefault();
                 brewerSource = "default";
                 tied = null;

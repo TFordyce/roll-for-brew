@@ -24,7 +24,7 @@ public static class RoundRecapEndpoints
 public static class RoundRecapReader
 {
     public static Task<JsonObject> Read(RoomStore store, Caller caller, Guid roundId, CancellationToken ct = default) =>
-        store.ReadConsistent(caller, async session =>
+        store.Read(caller, async session =>
         {
             var viewer = await session.CurrentPlayerId(roundId, ct: ct);
             var (roomId, stored) = await RoundHead(session, roundId, ct)
