@@ -9,9 +9,9 @@ Spec #533's exit 1 asks that each existing TS integration test for a slice's RPC
 | Kind | Tests | Meaning |
 |---|---|---|
 | `golden` | 245 | A corpus scenario pins the same behaviour through both engines |
-| `test` | 110 | A named C# test pins it, or the named tests pin the same branch |
+| `test` | 123 | A named C# test pins it, or the named tests pin the same branch |
 | `elsewhere` | 48 | The test's point is another RPC from a later slice, and the slice 2b RPC is only how the round ends |
-| `GAP` | 13 | No C# equivalent yet, listed below |
+| `GAP` | 0 | No C# equivalent yet. The 13 the audit left open are closed, listed below |
 
 The mapping is a reading of each test's title and seed, not a mechanical proof. `test` rows that name a sibling branch are the weakest and say so.
 
@@ -19,23 +19,27 @@ The mapping is a reading of each test's title and seed, not a mechanical proof. 
 
 **Regenerating a scenario.** `tests/integration/trace-snapshot.test.ts` writes a new golden, and `EMIT_INPUT_FIXTURES=1` writes its input. That flag rewrites every input, so restore the existing ones afterwards: they predate `rooms.version`.
 
-## Open gaps (13)
+## Closed gaps (13)
 
-| TS file | Test | Why it is open |
+Each gap is now a handwritten case in `AdvanceRoundParityTests.Gaps.cs`. Each one seeds the rows the TS test seeds, runs them through SQL and C# from identical databases with `Parity`, and asserts the TS test's own outcome on the C# side. For the three ward-transfer cards, the seed is the rows `cast_spell_card` wrote for that cast, ward block included, captured once from a live stack. None of them found a difference between the engines.
+
+| TS file | Test | C# equivalent |
 |---|---|---|
-| `brew-iou.test.ts` | no debt when Brew IOU's target goes on to a Loose Leaf roll-off | No golden has Brew IOU and a roll-off together |
-| `brew-iou.test.ts` | a debt from a real room is not paid in the Test Room | `Rules.BrewDebtDue` Test Room scoping has no C# test |
-| `effect-invocation.test.ts` | a block_copy ward blocks the seize -- card burned, source resolves normally | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
-| `effect-invocation.test.ts` | a Brew-merang seizing a Brew-merang terminates and resolves coherently | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
-| `last-drip.test.ts` | reads the most recent resolved round, ignoring older and cancelled ones | Past-round selection among older and cancelled rounds has no golden |
-| `last-drip.test.ts` | breaks a full tie (roll and snapshot) on the lowest player id | Same code path as the snapshot tie-break, one comparison further |
-| `last-drip.test.ts` | an immune fall-through target is still handled by Brewer Immunity: the default pick stands | Immunity filter on this rung, covered for other rungs by `05-brewer-immunity-override-falls-through` |
-| `last-drip.test.ts` | Genie in the Teapot can invoke it: the previous winner brews with no gain | Genie invoking this card has no golden |
-| `tea-heist.test.ts` | lands the loot as a keep-or-swap choice when the thief picked up a card mid-round | Heist branch with no golden |
-| `tea-maker-override-modifier-gain.test.ts` | a reserved mode (no card slice yet) stays out of the override contest instead of failing the round | A reserved override mode staying out of the contest has no golden |
-| `ward-transfer-interaction.test.ts` | a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | Ward against a transfer card at cast time has no golden of its own |
-| `ward-transfer-interaction.test.ts` | a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | Ward against a transfer card at cast time has no golden of its own |
-| `ward-transfer-interaction.test.ts` | a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | Ward against a transfer card at cast time has no golden of its own |
+| `brew-iou.test.ts` | no debt when Brew IOU's target goes on to a Loose Leaf roll-off | `Brew_IOU_whose_target_goes_to_a_Loose_Leaf_roll_off_ties_without_a_debt` and `Brew_IOU_target_who_loses_the_Loose_Leaf_roll_off_brews_with_no_debt` |
+| `brew-iou.test.ts` | a debt from a real room is not paid in the Test Room | `A_brew_debt_from_a_real_room_is_not_paid_in_the_Test_Room` |
+| `effect-invocation.test.ts` | a block_copy ward blocks the seize -- card burned, source resolves normally | `A_block_copy_ward_blocks_a_seize_and_the_source_resolves_on_its_target` |
+| `effect-invocation.test.ts` | a Brew-merang seizing a Brew-merang terminates and resolves coherently | `A_Brew_merang_seizing_a_Brew_merang_terminates_with_the_inner_one_seized` |
+| `last-drip.test.ts` | reads the most recent resolved round, ignoring older and cancelled ones | `Last_Drip_reads_the_most_recent_resolved_round_ignoring_older_and_cancelled_ones` |
+| `last-drip.test.ts` | breaks a full tie (roll and snapshot) on the lowest player id | `Last_Drip_breaks_a_full_tie_on_roll_and_snapshot_on_the_lowest_player_id` |
+| `last-drip.test.ts` | an immune fall-through target is still handled by Brewer Immunity: the default pick stands | `Last_Drip_falling_through_to_an_immune_player_leaves_the_default_pick` |
+| `last-drip.test.ts` | Genie in the Teapot can invoke it: the previous winner brews with no gain | `Genie_invoking_Last_Drip_makes_the_previous_winner_brew_with_no_gain` |
+| `tea-heist.test.ts` | lands the loot as a keep-or-swap choice when the thief picked up a card mid-round | `A_heist_lands_as_keep_or_swap_when_the_thief_picked_up_a_card_mid_round` |
+| `tea-maker-override-modifier-gain.test.ts` | a reserved mode (no card slice yet) stays out of the override contest instead of failing the round | `A_prev_round_highest_override_with_no_previous_round_stays_out_of_the_contest`. The test seeds `prev_round_highest`, which Last Drip has since shipped, so what it pins now is an inert override with no earlier round |
+| `ward-transfer-interaction.test.ts` | a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | `A_ward_on_the_losing_side_blocks_both_sides_of_a_Chai_nge_swap`. That the card is spent is decided at cast time, outside slice 2b |
+| `ward-transfer-interaction.test.ts` | a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | `A_warded_Tea_Leaf_target_keeps_their_modifier_and_the_caster_gets_no_bonus` |
+| `ward-transfer-interaction.test.ts` | a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | `A_warded_Spillage_target_keeps_their_modifier` and `An_unwarded_Spillage_still_moves_half_the_targets_modifier` |
+
+The audit also dropped `6-heist-already-moved-reads-moved` after it failed in the TS corpus run, undiagnosed, and its seed was not kept. It was rebuilt from its name: a Tea Heist cast with `cast_inputs.heist_moved` and the loot already in the thief's hand. The first rebuild failed in the seed, not the resolver. It force-held the loot for the thief before `seedCast` force-held Tea Heist for the same thief as donor, which breaks `spell_deck_instances_one_held_per_player`. That is the likely cause of the original failure, though it is not proven. Seeding the loot with the victim and moving it to the thief after the cast fixes it. The scenario passes in both engines and takes the corpus to 104.
 
 ## Every test
 
@@ -74,10 +78,10 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | no debt when the override didn't pick the Tea Maker > an immune target: the override falls through to the default pick, no debt | advance | test | `05-pg-tipped-redirected-onto-caster`-style ladder goldens; `Phase5BrewDebtTests` for the debt read |
 | the Debtor's next round resolves at close to them: no rolls, no window, normal gain | advance | golden | `05-brew-debt-round-paid` |
 | active effects still age through a debt round | advance | test | `Phase5BrewDebtTests`, `05-brew-debt-round-paid` |
-| no debt when Brew IOU's target goes on to a Loose Leaf roll-off | advance | GAP | No golden has Brew IOU and a roll-off together |
+| no debt when Brew IOU's target goes on to a Loose Leaf roll-off | advance | test | `Brew_IOU_whose_target_goes_to_a_Loose_Leaf_roll_off_ties_without_a_debt` and `Brew_IOU_target_who_loses_the_Loose_Leaf_roll_off_brews_with_no_debt` in `AdvanceRoundParityTests.Gaps.cs` |
 | nobody can roll in a debt round | advance | golden | `05-brew-debt-round-paid` |
 | the debt survives into another room (another day), and is paid there | advance | test | AdvanceRoundParityTests.A_brew_debt_from_another_room_makes_this_a_debt_round |
-| a debt from a real room is not paid in the Test Room | advance | GAP | `Rules.BrewDebtDue` Test Room scoping has no C# test |
+| a debt from a real room is not paid in the Test Room | advance | test | `A_brew_debt_from_a_real_room_is_not_paid_in_the_Test_Room` in `AdvanceRoundParityTests.Gaps.cs` |
 | an immune Debtor plays the round normally and still owes | advance | test | `Phase5BrewDebtTests.An_immune_debtor_plays_normally_and_the_debt_stays_owed` |
 | targeting the Earl: the title passes to the caster, the debt is created and waits | advance | golden | `05-earl-override-transfers-title`, `05-brew-iou-creates-debt` |
 | several Debtors: the oldest debt pays, the others stay owed; an immune Debtor is skipped | advance | test | `Phase5BrewDebtTests.An_immune_debtor_plays_normally_and_the_debt_stays_owed` |
@@ -187,9 +191,9 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | retargets the seized cast to its own caster | resolve | test | AdvanceRoundParityTests.A_seize_keeps_the_seized_cast_and_records_that_it_did |
 | a multi-target seized cast collapses to just the caster | resolve | test | AdvanceRoundParityTests.A_seize_keeps_the_seized_cast_and_records_that_it_did |
 | countering the Brew-merang undoes the seize | resolve | golden | `0-seize-countered-is-undone` |
-| a block_copy ward blocks the seize -- card burned, source resolves normally | resolve | GAP | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
+| a block_copy ward blocks the seize -- card burned, source resolves normally | resolve | test | `A_block_copy_ward_blocks_a_seize_and_the_source_resolves_on_its_target` in `AdvanceRoundParityTests.Gaps.cs` |
 | resolve_round is idempotent over an invocation round | resolve | test | `EvaluatePipelineTests.Evaluate_is_deterministic_and_leaves_the_snapshot_untouched` |
-| a Brew-merang seizing a Brew-merang terminates and resolves coherently | resolve | GAP | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
+| a Brew-merang seizing a Brew-merang terminates and resolves coherently | resolve | test | `A_Brew_merang_seizing_a_Brew_merang_terminates_with_the_inner_one_seized` in `AdvanceRoundParityTests.Gaps.cs` |
 
 ### `fixed-roll.test.ts` (7)
 
@@ -208,18 +212,18 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | Test | RPC | Kind | C# equivalent |
 |---|---|---|---|
 | the previous round's highest roller brews and gains no modifier | resolve, finalize | golden | `05-tea-maker-override-prev-round-highest` |
-| reads the most recent resolved round, ignoring older and cancelled ones | resolve | GAP | Past-round selection among older and cancelled rounds has no golden |
+| reads the most recent resolved round, ignoring older and cancelled ones | resolve | test | `Last_Drip_reads_the_most_recent_resolved_round_ignoring_older_and_cancelled_ones` in `AdvanceRoundParityTests.Gaps.cs` |
 | breaks a tie for highest on the lowest modifier snapshot | resolve | golden | `05-last-drip-tie-breaks-on-lowest-snapshot` |
-| breaks a full tie (roll and snapshot) on the lowest player id | resolve | GAP | Same code path as the snapshot tie-break, one comparison further |
+| breaks a full tie (roll and snapshot) on the lowest player id | resolve | test | `Last_Drip_breaks_a_full_tie_on_roll_and_snapshot_on_the_lowest_player_id` in `AdvanceRoundParityTests.Gaps.cs` |
 | does nothing when there's no previous resolved round: a no-op step, and the default pick stands | resolve, finalize | golden | `05-tea-maker-override-prev-round-highest-inert` |
 | falls through an absent previous winner to the next-highest previous roller, with no gain | resolve | golden | `05-tea-maker-override-prev-round-highest-falls-through` |
 | falls through a Roll-Exempt previous winner the same way | resolve | golden | `05-last-drip-falls-through-exempt-previous-winner` |
 | is inert only when nobody in the previous round's roll list qualifies | resolve | golden | `05-tea-maker-override-prev-round-highest-inert` |
-| an immune fall-through target is still handled by Brewer Immunity: the default pick stands | resolve | GAP | Immunity filter on this rung, covered for other rungs by `05-brewer-immunity-override-falls-through` |
+| an immune fall-through target is still handled by Brewer Immunity: the default pick stands | resolve | test | `Last_Drip_falling_through_to_an_immune_player_leaves_the_default_pick` in `AdvanceRoundParityTests.Gaps.cs` |
 | a later override beats it (last cast wins) | resolve | golden | `05-last-drip-later-override-wins` |
 | beats an earlier override when it's cast last | resolve | golden | `05-last-drip-later-override-wins` |
 | an inert Last Drip cast last lets the earlier override stand | resolve | golden | `05-last-drip-inert-lets-earlier-override-stand` |
-| Genie in the Teapot can invoke it: the previous winner brews with no gain | resolve | GAP | Genie invoking this card has no golden |
+| Genie in the Teapot can invoke it: the previous winner brews with no gain | resolve | test | `Genie_invoking_Last_Drip_makes_the_previous_winner_brew_with_no_gain` in `AdvanceRoundParityTests.Gaps.cs` |
 | a declared number outranks it | resolve | golden | `05-brewer-immunity-declared-number`, `05-declared-number-tea-maker` |
 
 ### `liquid-courage.test.ts` (8)
@@ -526,7 +530,7 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | fizzles when the victim plays the targeted card before rolling | finalize | golden | `6-heist-fizzled-victim-played-first` |
 | fizzles (not countered) when the victim counters with the targeted card itself | finalize | golden | `6-heist-countered` |
 | a repeated finalize is a no-op and doesn't double-move | finalize | test | AdvanceRoundParityTests.A_resolved_round_noops |
-| lands the loot as a keep-or-swap choice when the thief picked up a card mid-round | finalize | GAP | Heist branch with no golden |
+| lands the loot as a keep-or-swap choice when the thief picked up a card mid-round | finalize | test | `A_heist_lands_as_keep_or_swap_when_the_thief_picked_up_a_card_mid_round` in `AdvanceRoundParityTests.Gaps.cs` |
 | fizzles when the thief's hand has no free slot (held + keep-or-swap) | finalize | test | `CommitTests.A_thief_with_a_full_hand_fizzles_the_heist` |
 | a Time for Brew replay returns the stolen card to the victim; Tea Heist stays spent | finalize | elsewhere | Scrap and replay are `confirm_round_replay`, not slice 2b; the replayed round runs through the goldens as any other |
 | a replay sends the card back to the deck when the victim's hand has refilled both slots | finalize | elsewhere | Scrap and replay are `confirm_round_replay`, not slice 2b; the replayed round runs through the goldens as any other |
@@ -541,7 +545,7 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | an override's modifier_gain is used as given and finalize_layer commits it to brewer_modifier_gain | resolve, finalize | golden | `05-tea-maker-override-prev-round-highest`, `05-loaf-of-lipton-skips-roll` |
 | the 4-arg resolve_round write takes a modifier gain number: null is cups_made, 0 is none, else as given | resolve | test | Not ported on purpose: these write overloads go at #549 (`docs/port/recap-backfill-bridges.md`). `CommitTests` pins the one write |
 | the boolean no-modifier-gain write stays as a compat alias | resolve | test | Not ported on purpose: these write overloads go at #549 (`docs/port/recap-backfill-bridges.md`). `CommitTests` pins the one write |
-| a reserved mode (no card slice yet) stays out of the override contest instead of failing the round | resolve | GAP | A reserved override mode staying out of the contest has no golden |
+| a reserved mode (no card slice yet) stays out of the override contest instead of failing the round | resolve | test | `A_prev_round_highest_override_with_no_previous_round_stays_out_of_the_contest` in `AdvanceRoundParityTests.Gaps.cs` |
 
 ### `tea-party-revolt.test.ts` (4)
 
@@ -657,11 +661,11 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 
 | Test | RPC | Kind | C# equivalent |
 |---|---|---|---|
-| a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | resolve | GAP | Ward against a transfer card at cast time has no golden of its own |
+| a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | resolve | test | `A_ward_on_the_losing_side_blocks_both_sides_of_a_Chai_nge_swap` in `AdvanceRoundParityTests.Gaps.cs` |
 | an unwarded Chai-nge swap still applies (control) | resolve | golden | `4b-persistent-modifier-transfer-rest-of-day` |
 | the block is idempotent — a second resolve reproduces the caches and the Trace | resolve | test | `Phase4bTests` |
-| a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | resolve | GAP | Ward against a transfer card at cast time has no golden of its own |
-| a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | resolve | GAP | Ward against a transfer card at cast time has no golden of its own |
+| a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | resolve | test | `A_warded_Tea_Leaf_target_keeps_their_modifier_and_the_caster_gets_no_bonus` in `AdvanceRoundParityTests.Gaps.cs` |
+| a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | resolve | test | `A_warded_Spillage_target_keeps_their_modifier` and `An_unwarded_Spillage_still_moves_half_the_targets_modifier` in `AdvanceRoundParityTests.Gaps.cs` |
 | Bes-Tea against a block_copy holder resolves blocked — the caster's round modifier is unchanged | resolve | golden | `2-cast-time-ward-block-marker` |
 | a Bitter Leech tick landing on a warded victim is skipped; a later tick after the ward expires still applies | resolve | test | `Phase4bTests.A_warded_tick_negates_the_pair_and_reverts_both_caches` |
 
