@@ -23,6 +23,26 @@ export type AdvanceOutcomeResponse =
 export type RoomViewResponse =
   paths["/rooms/{roomId}/view"]["get"]["responses"][200]["content"]["application/json"];
 
+export type RoundRecapResponse =
+  paths["/rounds/{roundId}/recap"]["get"]["responses"][200]["content"]["application/json"];
+
+type BackfillResponse =
+  paths["/rounds/backfill"]["post"]["responses"][200]["content"]["application/json"];
+
+/** A refusal from the API: its problem+json `code` and `detail`, for wrappers that switch on them. */
+export class ApiError extends Error {
+  constructor(
+    path: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly detail?: string,
+    title?: string,
+  ) {
+    super(`API ${path} failed: ${status} ${code ?? title ?? ""}`.trim());
+    this.name = "ApiError";
+  }
+}
+
 export interface ApiClient {
   getActingAs(): Promise<ActingAsResponse>;
   submitBrewRating(roundId: string, score: number): Promise<RatingIdResponse>;
@@ -40,6 +60,11 @@ export interface ApiClient {
   getRoomView(roomId: string): Promise<RoomViewResponse>;
   enterTodaysRoom(): Promise<EnterRoomResponse>;
   setActingAs(targetPlayerId: string): Promise<void>;
+  getRoundRecap(roundId: string): Promise<RoundRecapResponse>;
+  adminBackfillRound(
+    participantIds: string[],
+    layers: { playerId: string; value: number }[][],
+  ): Promise<BackfillResponse>;
 }
 
 export function createApiClient(
@@ -62,7 +87,7 @@ export function createApiClient(
     });
     if (!res.ok) {
       const problem = await res.json().catch(() => null);
-      throw new Error(`API ${path} failed: ${res.status} ${problem?.code ?? problem?.title ?? ""}`.trim());
+      throw new ApiError(path, res.status, problem?.code, problem?.detail, problem?.title);
     }
     return res;
   }
@@ -103,6 +128,9 @@ export function createApiClient(
     setActingAs: async (targetPlayerId) => {
       await call("PUT", "/acting-as", { targetPlayerId });
     },
+    getRoundRecap: (roundId) => get<RoundRecapResponse>(`/rounds/${roundId}/recap`),
+    adminBackfillRound: async (participantIds, layers) =>
+      (await (await call("POST", "/rounds/backfill", { participantIds, layers })).json()) as BackfillResponse,
   };
 }
 

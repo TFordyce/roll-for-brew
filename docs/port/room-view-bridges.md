@@ -34,7 +34,7 @@ The pure `RoomViewProjector` (Domain) turns those into the view. All derivations
 | `get_room_active_effects(room)` | `room.roster[].effectBadges` | polarity not null |
 | `current_player_id(round, room)` | the viewer (granted in `0157`) | n/a |
 
-Not bridged on purpose: Round Recap bodies. `get_round_recap` takes a row lock (`for share`), which a READ ONLY transaction rejects, and its provisional path dry-runs the resolver. The view carries only the **history entries** (round id, resolved at, cups, brewer). Recap bodies stay on the existing lazy `getRoundRecap` rpc until the resolver port (slice 7) gives the view a write-capable path. #539 must keep `RoundRecapHistory` / `RoundReveal` fetching recaps themselves.
+Not bridged, and not in the view: Round Recap bodies. The view carries only the **history entries** (round id, resolved at, cups, brewer). `RoundRecapHistory` and `RoundReveal` fetch a body when they need one, from `GET /rounds/{id}/recap` behind the `getRoundRecap` flag or from the old rpc with it off. See `recap-backfill-bridges.md`.
 
 ## Mapping of today's page reads (src/app/page.tsx, admin/test-room/page.tsx)
 

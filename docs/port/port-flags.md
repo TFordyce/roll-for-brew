@@ -83,6 +83,14 @@ Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /o
 rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
 
+## Round advancement flags (#546, #547; human steps, not run by the agent)
+
+Two rows, read in different places. `advanceRound` routes the TS wrappers to the API (on globally since the shadow went live). `advanceRoundAuthoritative` is read by the API on each call and makes C# decide instead of the shadow. It is seeded off. Flip and rollback steps are in `docs/port/advance-round-bridges.md`.
+
+## Round Recap and Round Backfill flags (#548; human steps, not run by the agent)
+
+`getRoundRecap` and `adminBackfillRound`, both seeded off by migration `0165`. Each routes one TS wrapper to the API and neither depends on `advanceRoundAuthoritative`. Flip and rollback steps are in `docs/port/recap-backfill-bridges.md`.
+
 ## `room_view` (slice 1, #539; retired #541)
 
 Both room pages render from the C# API's `GET /rooms/{id}/view`. The `room_view` flag, the legacy per-panel page path and its render-time reads were deleted after the 12-16 Oct 2026 soak (migration `0161`), so there is no flag to flip and no SQL fallback: an API failure on load surfaces as a page error. To roll back, revert the retirement PR.

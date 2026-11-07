@@ -22,7 +22,7 @@ public class CommitTests
         Assert.Equal(
         [
             typeof(SetRoundTraceAndSummary), typeof(SetRoundResolution), typeof(IncrementRoomPlayerModifier),
-            typeof(MoveHeistCard), typeof(RecordPendingReplay),
+            typeof(MoveHeistCard),
         ], writes.Select(w => w.GetType()));
 
         var traceWrite = (SetRoundTraceAndSummary)writes.Single(w => w is SetRoundTraceAndSummary);

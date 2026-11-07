@@ -10,7 +10,6 @@ import { getRoundRecap, type RoundRecapData } from "@/lib/supabase/roundRecap";
 import { buildRerollChain, buildRoundRecap } from "@/lib/game/roundRecap";
 import { type HeldReveal } from "@/app/rounds/revealHold";
 import { type DiceRevealController } from "@/app/rounds/useDiceReveal";
-import { AnimatedDie } from "@/app/rounds/AnimatedDie";
 import { CardFrame } from "@/app/_components/CardFrame";
 import { RollRowExpression } from "@/app/_components/RollRowExpression";
 import { DieIcon } from "@/app/_components/DieIcon";
@@ -36,6 +35,7 @@ export function RoundReveal({
   ownRoll,
   hasOpenReactionWindow,
   die,
+  onLayerZeroRolls,
   onRevealed,
   onResultsDone,
 }: {
@@ -46,6 +46,8 @@ export function RoundReveal({
   ownRoll: number | null;
   hasOpenReactionWindow: boolean;
   die: DiceRevealController;
+  /** Every layer-0 roll the moment it is revealed, for the dice table. */
+  onLayerZeroRolls?: (rolls: LayerRollsRevealedPayload["rolls"]) => void;
   onRevealed?: (reveal: HeldReveal) => void;
   onResultsDone?: () => void;
 }) {
@@ -83,7 +85,7 @@ export function RoundReveal({
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
-    getRoundRecap(supabase, roundId)
+    getRoundRecap(supabase, roundId, roomId)
       .then((data) => {
         if (!cancelled) setRecap(data);
       })
@@ -92,10 +94,11 @@ export function RoundReveal({
     return () => {
       cancelled = true;
     };
-  }, [roundId, recapRefreshToken]);
+  }, [roomId, roundId, recapRefreshToken]);
 
   function handleLayerZeroRolls(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
     setRolls(revealedRolls);
+    onLayerZeroRolls?.(revealedRolls);
     const ownRollRevealed = revealedRolls.find((r) => r.playerId === selfPlayerId);
     if (ownRollRevealed) die.rollResolved(ownRollRevealed.value);
   }
@@ -158,8 +161,6 @@ export function RoundReveal({
 
   const scrappedGenerations = recap?.scrappedGenerations ?? [];
 
-  const dieState = die.state;
-
   return (
     <>
       {showKettleModal && brewer ? (
@@ -205,11 +206,6 @@ export function RoundReveal({
               : [];
             const resolverRow = recapModel?.rows.find((r) => r.playerId === p.playerId) ?? null;
             const shownBadge = resolverRow ? (resolverRow.badgeValue ?? "—") : "?";
-            const ownDie =
-              p.playerId === selfPlayerId &&
-              (dieState.phase === "rolling" || dieState.phase === "landed")
-                ? dieState
-                : null;
 
             return (
               <li key={p.playerId} className="py-2">
@@ -233,17 +229,14 @@ export function RoundReveal({
                         Proxy
                       </span>
                     ) : null}
-                    {ownDie ? (
-                      <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
-                        <AnimatedDie state={ownDie} onDismiss={die.dismiss} />
-                        {discardedValue !== null ? (
-                          <span className="text-parchment-dim/60 line-through">{discardedValue}</span>
-                        ) : null}
-                      </span>
-                    ) : resolverRow ? (
+                    {resolverRow ? (
                       <RollRowExpression row={resolverRow} />
                     ) : value !== null ? (
-                      <span className="flex items-center gap-1 font-mono text-sm text-parchment-dim">
+                      // A fixed 36px slot, so swapping in a value never moves
+                      // the row. The value lives here, not on the die: the
+                      // table's die is the flourish, this is the readable
+                      // record (and what assistive tech gets).
+                      <span className="flex h-9 items-center gap-1 font-mono text-sm text-parchment-dim">
                         <DieIcon shape="d20" value={value} className="h-5 w-5" />
                         {discardedValue !== null ? (
                           <span className="text-parchment-dim/60 line-through">{discardedValue}</span>

@@ -10,7 +10,7 @@ public sealed record RoundRow(
     DateTimeOffset? ResolvedAt, DateTimeOffset? ClosedAt, string? BrewerId, int? CupsMade,
     int CurrentLayer, int BrewerModifierGain, int ReplayGeneration,
     IReadOnlyList<string> ReplayFrozenRollers, string? BrewerSource, Guid? BrewerSourceCastId,
-    JsonElement? ScrappedGenerations);
+    JsonElement? ScrappedGenerations, JsonElement? ResolutionTrace = null, JsonElement? ResolutionSummary = null);
 
 public sealed record RoundParticipantRow(Guid RoundId, string PlayerId, DateTimeOffset DeclaredAt, DateTimeOffset? ExcludedAt);
 
@@ -42,3 +42,5 @@ public sealed record SpellCardEffectRow(Guid Id, Guid CardId, string TargetRole,
 public sealed record RoomPlayerRow(Guid RoomId, string PlayerId, int Modifier);
 
 public sealed record ModifierAdjustmentRow(Guid Id, Guid RoomId, string TargetPlayerId, string ActorPlayerId, int Delta, string Reason, DateTimeOffset CreatedAt);
+
+public sealed record ReactionWindowRow(Guid Id, Guid RoundId, int Layer, string Status);

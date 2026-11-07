@@ -20,7 +20,8 @@ internal sealed class Phase3PreDiceTick : EvalPhase
                     && t.CastInputs.Flag("dice_tick") && t.Generation == ctx.Gen))
                 continue;
 
-            var rolled = ctx.Dice.Roll(die);
+            // A preview never rolls: the step reads as pending and the die moves nothing.
+            int? rolled = ctx.IsPreview ? null : ctx.Dice.Roll(die);
             var ward = Rules.WardHit(ctx, e.TargetPlayerId, "roll", "negative", null);
             var victim = e.TargetPlayerId;
 
@@ -57,7 +58,7 @@ internal sealed class Phase3PreDiceTick : EvalPhase
             decimal? roll = ctx.S.Rolls.FirstOrDefault(r => r.RoundId == ctx.RoundId && r.Layer == 0 && r.PlayerId == victim)?.Value;
             ctx.Emit("warded", new SourceCast(null, null, "Calami-Tea", e.CasterId), victim, TraceValue.Roll(roll), TraceValue.Roll(roll),
                 ("blocked_cast_id", null), ("ward_cast_id", ward.WardCastId), ("ward_card_name", ward.WardCardName),
-                ("target", victim), ("would_be_before", roll), ("would_be_after", roll is null ? null : Math.Max(1, roll.Value + sign * rolled)),
+                ("target", victim), ("would_be_before", roll), ("would_be_after", rolled is null ? 1 : roll is null ? null : Math.Max(1, roll.Value + sign * rolled.Value)),
                 ("outcome", "blocked"));
         }
     }

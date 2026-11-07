@@ -7,6 +7,7 @@ import {
   D20_FACES,
   D20_VERTICES,
   EDGE_PX,
+  DIE_SIZE_PX,
   cross,
   dot,
   faceCenter,
@@ -15,7 +16,7 @@ import {
   subtract,
 } from "@/lib/game/d20Geometry";
 
-export const DIE_SIZE_PX = EDGE_PX * 2;
+export { DIE_SIZE_PX };
 
 const ORIENTED_VERTICES = alignVerticesToFront(D20_VERTICES);
 const FACE_PLANES = D20_FACES.map((face) => {
