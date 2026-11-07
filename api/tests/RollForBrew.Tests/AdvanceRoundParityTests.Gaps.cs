@@ -232,4 +232,31 @@ public partial class AdvanceRoundParityTests
         Assert.Equal("p-b", await TraceStep(csharp, "s ->> 'display_kind' = 'tea_maker_override' and s ->> 'outcome' = 'applied'", "s ->> 'target_player'"));
         Assert.Equal(0, await csharp.Scalar<int>($"select brewer_modifier_gain from public.rounds where id = '{Round}'"));
     }
+
+    // ------------------------------------------------------------------
+    // tea-heist.test.ts
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_heist_lands_as_keep_or_swap_when_the_thief_picked_up_a_card_mid_round()
+    {
+        var loot = Id(4, 2);
+        var drawn = Id(4, 3);
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 5, b: 6, c: 12);
+            // The thief's crit draw refilled their hand after they cast Tea Heist.
+            await db.Execute($"""
+                insert into public.spell_deck_instances (id, card_id, location, held_by_player)
+                  select '{loot}', id, 'held', 'p-b' from public.spell_cards where name = 'Lucky Sip';
+                insert into public.spell_deck_instances (id, card_id, location, held_by_player)
+                  select '{drawn}', id, 'held', 'p-a' from public.spell_cards where name = 'Tannin Tantrum';
+                """);
+            await SeedCast(db, 1, "Tea Heist", "p-a", "p-b", "card_heist", castInputs: $$"""{"stolen_instance_id": "{{loot}}"}""");
+        }, Round, AdvanceRound.Entry.Finalize, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
+        async Task<string?> At(string id) =>
+            await csharp.Scalar<string>($"select location || ':' || coalesce(held_by_player, '') from public.spell_deck_instances where id = '{id}'");
+        Assert.Equal("held:p-a", await At(drawn));
+        Assert.Equal("pending_swap:p-a", await At(loot));
+    }
 }
