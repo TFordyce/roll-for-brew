@@ -1,5 +1,6 @@
 using Npgsql;
 using RollForBrew.Api.Data;
+using RollForBrew.Api.ModifierAdjustments;
 using RollForBrew.Api.Orders;
 using RollForBrew.Api.RoomEntry;
 using RollForBrew.Tests.Harness;
@@ -102,5 +103,51 @@ public class VisibleWriteBroadcastTests : IAsyncLifetime
 
         Assert.Equal(0L, await _db.Messages());
         Assert.Equal(0L, await _db.Scalar<long>("select count(*) from public.orders"));
+    }
+
+    private async Task<(TestUser Actor, TestUser Admin, Guid Room)> TodayRoomWithTarget()
+    {
+        var actor = await _db.AddUser("vw-actor");
+        var admin = await _db.AddUser("vw-admin", admin: true);
+        await _db.Execute($"""
+            insert into public.rooms (date) values ({Today});
+            insert into public.room_players (room_id, player_id, modifier) select id, 'vw-actor', 0 from public.rooms where date = {Today};
+            """);
+        return (actor, admin, await _db.Scalar<Guid>($"select id from public.rooms where date = {Today}"));
+    }
+
+    private Task<Guid> Adjust(TestUser u, int delta) =>
+        _store.Filler(CallerOf(u), s => ModAdjRules.Log(s, "vw-actor", delta, "spilled the milk", default));
+
+    private Task<int> Undo(TestUser u, Guid id) =>
+        _store.Filler(CallerOf(u), async s => { await ModAdjRules.Undo(s, id, default); return 0; });
+
+    private Task<int> AdminDelete(TestUser u, Guid id) =>
+        _store.Filler(CallerOf(u), async s => { await ModAdjRules.AdminDelete(s, id, "not fair", default); return 0; });
+
+    [Fact]
+    public async Task Each_modifier_adjustment_write_announces_the_roster_change()
+    {
+        var (actor, admin, room) = await TodayRoomWithTarget();
+
+        await Undo(actor, await Adjust(actor, 2));
+        await AdminDelete(admin, await Adjust(actor, -1));
+
+        Assert.Equal(new[] { 1L, 2L, 3L, 4L }, await _db.RoomChangedVersions(room));
+    }
+
+    [Fact]
+    public async Task A_modifier_adjustment_write_that_fails_at_commit_announces_nothing()
+    {
+        var (actor, admin, room) = await TodayRoomWithTarget();
+        var id = await Adjust(actor, 2);
+        await _db.FailCommitsThatBroadcast();
+
+        await Assert.ThrowsAsync<PostgresException>(() => Adjust(actor, 1));
+        await Assert.ThrowsAsync<PostgresException>(() => Undo(actor, id));
+        await Assert.ThrowsAsync<PostgresException>(() => AdminDelete(admin, id));
+
+        Assert.Equal(new[] { 1L }, await _db.RoomChangedVersions(room));
+        Assert.Equal(2, await _db.Scalar<int>($"select modifier from public.room_players where room_id = '{room}'"));
     }
 }

@@ -29,7 +29,7 @@ public static class ModAdjRules
         var row = new ModAdjRow { RoomId = roomId, TargetPlayerId = targetPlayerId, ActorPlayerId = actor, Delta = delta, Reason = trimmed };
         db.Set<ModAdjRow>().Add(row);
         await db.SaveChangesAsync(ct);
-        await Bump(db, roomId, targetPlayerId, delta, ct);
+        await Shift(s, roomId, targetPlayerId, delta, ct);
         return row.Id;
     }
 
@@ -50,7 +50,7 @@ public static class ModAdjRules
         q.Parameters.AddWithValue("id", id);
         if ((bool)(await q.ExecuteScalarAsync(ct))!) throw Problem("RFB15");
 
-        await Bump(db, row.RoomId, row.TargetPlayerId, -row.Delta, ct);
+        await Shift(s, row.RoomId, row.TargetPlayerId, -row.Delta, ct);
         await db.Set<ModAdjRow>().Where(r => r.Id == id).ExecuteDeleteAsync(ct);
     }
 
@@ -72,11 +72,15 @@ public static class ModAdjRules
             ActorPlayerId = caller, Reason = trimmed,
         });
         await db.SaveChangesAsync(ct);
-        await Bump(db, row.RoomId, row.TargetPlayerId, -row.Delta, ct);
+        await Shift(s, row.RoomId, row.TargetPlayerId, -row.Delta, ct);
         await db.Set<ModAdjRow>().Where(r => r.Id == id).ExecuteDeleteAsync(ct);
     }
 
-    private static Task<int> Bump(RfbDbContext db, Guid roomId, string playerId, int by, CancellationToken ct) =>
-        db.Set<ModAdjRoomPlayer>().Where(p => p.RoomId == roomId && p.PlayerId == playerId)
+    // The modifier shows on everyone's roster, so every shift announces itself.
+    private static async Task Shift(StoreSession s, Guid roomId, string playerId, int by, CancellationToken ct)
+    {
+        await s.Db.Set<ModAdjRoomPlayer>().Where(p => p.RoomId == roomId && p.PlayerId == playerId)
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Modifier, p => p.Modifier + by), ct);
+        await s.BumpAndAnnounce(roomId, ct);
+    }
 }
