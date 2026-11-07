@@ -202,8 +202,10 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
         return version;
     }
 
-    /// <summary>For a Filler that writes core tables: one <c>rooms.version</c> bump and no broadcast.</summary>
-    public Task<long> BumpRoomVersion(Guid roomId, CancellationToken ct = default) => BumpAndBroadcast(roomId, [], ct);
+    /// <summary>For a Filler whose write changes what another player sees: one <c>rooms.version</c>
+    /// bump and a <c>room-changed</c> carrying it, sent in this transaction (ADR 0011).</summary>
+    public Task<long> BumpAndAnnounce(Guid roomId, CancellationToken ct = default) =>
+        BumpAndBroadcast(roomId, [new RoomEvent("room-changed", [])], ct);
 
     /// <summary>Whether C# decides this round's advancement (#547). A room row beats the
     /// global row; no row means off. An unknown round reads the global row, and either path
