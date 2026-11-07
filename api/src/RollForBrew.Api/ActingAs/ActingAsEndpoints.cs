@@ -40,7 +40,7 @@ public static class ActingAsEndpoints
     private static async Task Set(StoreSession s, string? target, CancellationToken ct)
     {
         var me = await s.CurrentPlayerId(ct: ct);
-        var players = s.Db.Set<ModAdjPlayer>().AsNoTracking();
+        var players = s.Db.Set<PlayerAdminFlag>().AsNoTracking();
         if (!await players.AnyAsync(p => p.Id == me && p.IsAdmin, ct))
             throw new ProblemException("admin_required_set_acting_as", ProblemClass.Auth, "Only an admin can set Acting As.");
         if (target is not null && !await players.AnyAsync(p => p.Id == target, ct))

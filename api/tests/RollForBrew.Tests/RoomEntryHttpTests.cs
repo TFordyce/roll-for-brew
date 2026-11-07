@@ -23,21 +23,11 @@ public class RoomEntryHttpTests(ApiHost api) : IClassFixture<ApiHost>
     private Task<long> Seats(Guid room, string playerId) =>
         api.Db.Scalar<long>($"select count(*) from public.room_players where room_id = '{room}' and player_id = '{playerId}'");
 
-    private async Task<Guid> EnterViaSql(TestUser u)
+    private Task<Guid> EnterViaSql(TestUser u) => api.Db.AsCaller(u, async (conn, tx) =>
     {
-        await using var conn = new NpgsqlConnection(api.Db.AdminConnectionString);
-        await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
-        await using (var set = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx))
-        {
-            set.Parameters.AddWithValue("c", $$"""{"sub":"{{u.AuthId}}","role":"authenticated"}""");
-            await set.ExecuteNonQueryAsync();
-        }
         await using var fn = new NpgsqlCommand("select public.enter_todays_room()", conn, tx);
-        var id = (Guid)(await fn.ExecuteScalarAsync())!;
-        await tx.CommitAsync();
-        return id;
-    }
+        return (Guid)(await fn.ExecuteScalarAsync())!;
+    });
 
     [Fact]
     public async Task Entry_requires_a_token()

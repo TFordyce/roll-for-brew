@@ -43,21 +43,12 @@ public class SetActingAsHttpTests(ApiHost api) : IClassFixture<ApiHost>
     private Task Seat(Guid room, string playerId) =>
         api.Db.Execute($"insert into public.room_players (room_id, player_id) values ('{room}', '{playerId}')");
 
-    private async Task SetViaSql(TestUser u, string? target)
+    private Task SetViaSql(TestUser u, string? target) => api.Db.AsCaller(u, async (conn, tx) =>
     {
-        await using var conn = new NpgsqlConnection(api.Db.AdminConnectionString);
-        await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
-        await using (var set = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx))
-        {
-            set.Parameters.AddWithValue("c", $$"""{"sub":"{{u.AuthId}}","role":"authenticated"}""");
-            await set.ExecuteNonQueryAsync();
-        }
         await using var fn = new NpgsqlCommand("select public.set_acting_as(@t)", conn, tx);
         fn.Parameters.Add(new NpgsqlParameter("t", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)target ?? DBNull.Value });
-        await fn.ExecuteNonQueryAsync();
-        await tx.CommitAsync();
-    }
+        return await fn.ExecuteNonQueryAsync();
+    });
 
     [Fact]
     public async Task Set_requires_a_token()

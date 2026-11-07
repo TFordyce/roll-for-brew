@@ -58,7 +58,7 @@ public static class ModAdjRules
     {
         var caller = await s.CurrentPlayerId(ct: ct);
         var db = s.Db;
-        var isAdmin = await db.Set<ModAdjPlayer>().Where(p => p.Id == caller).Select(p => p.IsAdmin).SingleOrDefaultAsync(ct);
+        var isAdmin = await db.Set<PlayerAdminFlag>().Where(p => p.Id == caller).Select(p => p.IsAdmin).SingleOrDefaultAsync(ct);
         if (!isAdmin) throw Problem("RFB19");
         var trimmed = (reason ?? "").Trim();
         if (trimmed.Length == 0) throw Problem("RFB20");

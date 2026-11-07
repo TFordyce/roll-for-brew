@@ -35,13 +35,6 @@ update public.port_flags set enabled = false where slice = 'getActingAs' and roo
 
 Per-room scoping works by inserting `(slice, room_id)` rows (a room row overrides the global one); no wrapper passes a room id since `room_view` was retired (#541).
 
-## Orders slice flags (#565, human step, not run by the agent)
-
-Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows; wrappers have no room id).
-Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /orders/latest`. Same precondition and
-rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
-The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
-
 ## Room entry and Acting As flags (#568, human step, not run by the agent)
 
 Slices `enterTodaysRoom` and `setActingAs`. Merging changes nothing for players: with no row, or the row off, both wrappers keep the SQL `.rpc`.
@@ -72,6 +65,8 @@ update public.port_flags set enabled = false where slice in ('setActingAs', 'ent
 
 Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
 
+Room entry does not bump `rooms.version`, on either path. A new seat reaches other clients on their next refetch.
+
 After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
 
 * `public.enter_todays_room()` and `public.set_acting_as(text)`, with their `authenticated` grants;
@@ -80,6 +75,13 @@ After a 5-play-day soak with no rollback (separate human-gated step; #568 stays 
 * before dropping `enter_todays_room`: its direct callers in `tests/integration` (`setup.ts`, `room-auto-creation.test.ts`, `admin-proxy-roll.test.ts`) and the SQL parity tests in `api/tests/RollForBrew.Tests` (`RoomEntryHttpTests`, `SetActingAsHttpTests`, `RfbApiRoleTests`).
 
 `current_player_id` stays until its last SQL caller is gone.
+
+## Orders slice flags (#565, human step, not run by the agent)
+
+Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows; wrappers have no room id).
+Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /orders/latest`. Same precondition and
+rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
+The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
 
 ## `room_view` (slice 1, #539; retired #541)
 

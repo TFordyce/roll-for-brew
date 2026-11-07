@@ -93,6 +93,22 @@ public sealed class TestDatabase(NpgsqlConnectionStringBuilder admin, string nam
             Password = TestPostgres.ApiRolePassword,
         }.ConnectionString;
 
+    /// <summary>Runs SQL as the user would through PostgREST: their claims set, committed at the end.</summary>
+    public async Task<T> AsCaller<T>(TestUser u, Func<NpgsqlConnection, NpgsqlTransaction, Task<T>> work)
+    {
+        await using var conn = new NpgsqlConnection(AdminConnectionString);
+        await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        await using (var set = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx))
+        {
+            set.Parameters.AddWithValue("c", $$"""{"sub":"{{u.AuthId}}","role":"authenticated"}""");
+            await set.ExecuteNonQueryAsync();
+        }
+        var result = await work(conn, tx);
+        await tx.CommitAsync();
+        return result;
+    }
+
     public async Task Execute(string sql)
     {
         await using var conn = new NpgsqlConnection(AdminConnectionString);

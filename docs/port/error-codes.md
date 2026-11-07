@@ -6,6 +6,7 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 - **SQL-raised errors.** While a function is still SQL, `RoomStore` translates a SQL-raised `RFBnn` (`PostgresException.SqlState`) into the same problem. Raw SQLSTATE never leaks.
 - **C#-raised errors.** Once ported, the C# rule throws a domain exception carrying the same `code`.
 - **TS side.** Wrappers that test `error.code === 'RFBnn'` today switch to the problem `code` when their endpoint flips. Keep both checks while the flag can still roll back.
+- **API-only codes for Acting As (no `RFBnn`).** `admin_required_set_acting_as` (403): the caller is not an admin. `acting_as_target_not_found` (404): the target player does not exist. The SQL they replace raises a plain exception.
 - **New codes.** Ported code may add new named codes. It never reuses or renumbers an `RFBnn`.
 
 **HTTP status, by class:**
@@ -80,12 +81,3 @@ Generated 2026-10-08 from `supabase/migrations` + `db/sql/functions` (scan: ever
 | RFB56 | `no_courage_token_play` | 422 | spend_courage_token | no roll this round to add to / no Courage Token to spend |
 | RFB57 | `stale_biscuit_choice_required` | 409 | admin_allocate_spell_card | the target has a live Stale Biscuit mark; choose where the card lands (detail = beneficiary id) |
 | RFB58 | `stale_biscuit_mark_gone` | 409 | admin_allocate_spell_card | the Stale Biscuit mark is no longer live |
-
-## Codes with no RFBnn
-
-Raised only by C#. The SQL these replace raises a plain exception with no `RFBnn`.
-
-| code | status | raised by | meaning |
-|---|---|---|---|
-| `admin_required_set_acting_as` | 403 | `PUT /acting-as` | the caller is not an admin |
-| `acting_as_target_not_found` | 404 | `PUT /acting-as` | the target player does not exist |
