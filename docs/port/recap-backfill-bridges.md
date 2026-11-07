@@ -68,7 +68,7 @@ A round with everyone exempt and nobody immune previews no Tea Maker, as SQL doe
 
 Each refusal's `detail` is SQL's message, because the form shows it. `backfillFailureMessage` reads the rpc's `RFBnn` and the API's problem code to the same sentence.
 
-**Added on the API path:** one `rooms.version` bump, per the command contract. It sends no broadcast, as today. It is a `Filler` writing core tables with raw SQL, which ADR 0012 records, and its `room_players.modifier` read is SQL parity, which ADR 0010 records.
+**Added on the API path:** one `rooms.version` bump and a `room-changed` carrying it, sent in the transaction (spec #533, 7 Nov 2026: visible writes announce themselves). SQL sent nothing. It is a `Filler` writing core tables with raw SQL, which ADR 0012 records, and its `room_players.modifier` read is SQL parity, which ADR 0010 records.
 
 ### The guards `AdvanceRound` dropped (#547)
 

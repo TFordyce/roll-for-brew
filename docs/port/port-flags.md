@@ -67,7 +67,7 @@ update public.port_flags set enabled = false where slice in ('setActingAs', 'ent
 
 Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
 
-Room entry does not bump `rooms.version`, on either path. A new seat reaches other clients on their next refetch.
+On the API path, room entry that creates a seat bumps `rooms.version` and sends `room-changed` in its transaction (spec #533, 7 Nov 2026). Re-entering creates nothing and sends nothing. The SQL path still sends nothing: there a new seat reaches other clients on their next refetch.
 
 After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
 
@@ -84,6 +84,7 @@ Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows;
 Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /orders/latest`. Same precondition and
 rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
+On the API path, `PUT /rounds/{roundId}/order` bumps `rooms.version` and sends `room-changed` in its transaction (ADR 0011). The client's follow-up `notifyOrderChangedAction` still sends an unversioned `room-changed` for the SQL path. Remove it with the `.rpc` branch when `submit_order` retires.
 
 ## Round advancement flags (#546, #547; human steps, not run by the agent)
 
