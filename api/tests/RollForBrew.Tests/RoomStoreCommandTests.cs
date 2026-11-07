@@ -51,6 +51,20 @@ public class RoomStoreCommandTests : IAsyncLifetime
         [new RoomEvent("room-changed", [])],
         result);
 
+    [Theory]
+    [InlineData("resolve_round_not_participant", 422)]
+    [InlineData("resolve_round_not_all_rolled", 409)]
+    [InlineData("resolve_round_not_found", 404)]
+    public async Task A_resolver_refusal_becomes_a_problem_and_rolls_back(string code, int status)
+    {
+        var ex = await Assert.ThrowsAsync<ProblemException>(() => _store.Command<string>(_round, _caller,
+            _ => throw new ResolveException(code, "resolve_round: the message")));
+
+        Assert.Equal(code, ex.Code);
+        Assert.Equal(status, ex.Status);
+        Assert.Equal("resolve_round: the message", ex.ProblemDetail);
+    }
+
     [Fact]
     public async Task A_committed_write_bumps_the_version_and_delivers_the_event_with_it()
     {

@@ -54,7 +54,7 @@ internal sealed class Phase6HeistsAndMarks : EvalPhase
         }
     }
 
-    /// <summary>The card moves alone, with no Trace: what a Tie-Break Reroll Layer's brewer
+    /// <summary>The card moves alone, with no Trace: what a Tie-Break Reroll Layer's Tea Maker
     /// commit owes for the Heists cast before the tie.</summary>
     internal static IReadOnlyList<HeistMove> Moves(EvalContext ctx) =>
         [.. HeistOutcomes(ctx)

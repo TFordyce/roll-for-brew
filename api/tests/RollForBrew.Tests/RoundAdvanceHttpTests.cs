@@ -149,6 +149,31 @@ public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(0L, await SentFor(round));
     }
 
+    [Fact]
+    public async Task A_tea_maker_outside_the_round_is_a_422_problem_and_writes_nothing()
+    {
+        var u = await api.Db.AddUser("g-stray");
+        var round = await SeedFinalizableRound("g-stray", "g-stray-2");
+        await api.Db.Execute($"""
+            insert into public.port_flags (slice, room_id, enabled) select 'advanceRoundAuthoritative', room_id, true from public.rounds where id = '{round}';
+            insert into public.players (id, email) values ('g-stray-out', 'g-stray-out@example.test');
+            update public.rounds set current_layer = 1 where id = '{round}';
+            insert into public.round_layer_participants (round_id, layer, player_id) values ('{round}', 1, 'g-stray'), ('{round}', 1, 'g-stray-out');
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              ('{round}', 'g-stray', 1, 17, 'in_app', 0), ('{round}', 'g-stray-out', 1, 2, 'in_app', 0);
+            """);
+
+        var res = await api.Client(api.Token(u)).PostAsync($"/rounds/{round}/advance", null);
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, res.StatusCode);
+        var problem = await Problem(res);
+        Assert.Equal("resolve_round_not_participant", problem.GetProperty("code").GetString());
+        Assert.Equal("resolve_round: brewer is not a participant in this round", problem.GetProperty("detail").GetString());
+        Assert.Equal("closed", await api.Db.Scalar<string>($"select status from public.rounds where id = '{round}'"));
+        Assert.Equal(0L, await RoomVersion(round));
+        Assert.Equal(0L, await SentFor(round));
+    }
+
     private Task<long> RoomVersion(Guid round) =>
         api.Db.Scalar<long>($"select rm.version from public.rooms rm join public.rounds r on r.room_id = rm.id where r.id = '{round}'");
 

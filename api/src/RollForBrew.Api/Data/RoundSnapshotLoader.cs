@@ -39,7 +39,11 @@ public static class RoundSnapshotLoader
                                            where rp.player_id in (select player_id from participants)))
         ),
         rnds as (
-          select r.* from public.rounds r
+          -- Not the Trace or Summary: a player's whole history comes through here, and no rule reads them.
+          select r.id, r.room_id, r.started_by, r.status, r.started_at, r.resolved_at, r.closed_at, r.brewer_id,
+                 r.cups_made, r.current_layer, r.brewer_modifier_gain, r.replay_generation, r.replay_frozen_rollers,
+                 r.brewer_source, r.brewer_source_cast_id, r.scrapped_generations
+            from public.rounds r
            where r.room_id = @room
               or r.id in (select round_id from public.round_participants where player_id in (select player_id from participants))
               or r.id in (select round_id from casts)

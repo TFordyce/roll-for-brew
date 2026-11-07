@@ -1,0 +1,78 @@
+{
+  "scenario": "05-last-drip-falls-through-exempt-previous-winner",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "next-highest",
+  "brewerSource": "tea_maker_override:prev_round_highest",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": true,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "skipped"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "rolls"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Tea Cosy",
+        "active_effect_id": null,
+        "caster_player_id": "P:exempt-winner"
+      },
+      "display_kind": "roll_exemption",
+      "target_player": "P:exempt-winner"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer (no modifier gain)"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "passed_over": [
+        {
+          "reason": "roll_exempt",
+          "player_id": "P:exempt-winner"
+        }
+      ],
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Last Drip",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:next-highest"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 5,
+      "total": 5,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "next-highest",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

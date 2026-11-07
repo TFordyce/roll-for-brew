@@ -66,8 +66,8 @@ internal static class Rules
     public static List<(string Player, Guid CastId, string CardName)> RollExemptions(EvalContext ctx, List<ClrRow> clr)
     {
         // A counter can itself be countered until the window closes. Only a preview can run
-        // before that; a resolving round's window has closed, or it never had one.
-        if (ctx.IsPreview && !ctx.S.Windows.Any(w => w.RoundId == ctx.RoundId && w.Layer == 0 && w.Status == "closed")) clr = [];
+        // before that; a finalizing round's window has closed, or it never had one.
+        if (ctx.IsPreview && !ctx.Layer0WindowClosed) clr = [];
         var participants = ctx.S.RoundParticipants.Where(p => p.RoundId == ctx.RoundId).Select(p => p.PlayerId).ToHashSet();
         var result = new List<(string, Guid, string)>();
         var seen = new HashSet<string>();

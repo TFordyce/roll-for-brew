@@ -1,0 +1,40 @@
+{
+  "scenario": "05-earl-second-title-ends-the-older",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "low",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 3,
+  "noModifierGain": false,
+  "trace": [],
+  "players": [
+    {
+      "player": "low",
+      "nat": null,
+      "roll": 5,
+      "total": 5,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "new-earl",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "old-earl",
+      "nat": null,
+      "roll": 17,
+      "total": 17,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

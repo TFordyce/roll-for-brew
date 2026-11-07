@@ -4,6 +4,8 @@
 `isPortEnabled(supabase, slice, roomId?)` in `src/lib/api/portFlags.ts` reads it: a room row beats the global row
 (`room_id` null); no row or a read error means off (`.rpc`). A wrapper with no room id sees only the global row.
 
+The API reads `advanceRoundAuthoritative` itself, with the same room-beats-global rule and no row meaning off. A read error there is not treated as off: the call fails and rolls back, because the flag is read in the call's own transaction.
+
 ## Adding a flagged wrapper (#538, #565-568)
 
 1. Add the endpoint in `api/` with `.Produces<T>()` and `.WithName("<wrapperName>")`.

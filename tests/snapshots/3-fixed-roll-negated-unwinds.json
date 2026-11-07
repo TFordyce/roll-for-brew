@@ -1,0 +1,31 @@
+{
+  "scenario": "3-fixed-roll-negated-unwinds",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "caster",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 8,
+      "total": 8,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "target",
+      "nat": null,
+      "roll": 17,
+      "total": 17,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

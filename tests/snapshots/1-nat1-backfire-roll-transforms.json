@@ -1,0 +1,117 @@
+{
+  "scenario": "1-nat1-backfire-roll-transforms",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "caster",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "dc": 10,
+      "after": {
+        "type": "status",
+        "value": "backfired"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 1,
+      "outcome": "backfired",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Saving Steep",
+        "active_effect_id": null,
+        "caster_player_id": "P:reactor"
+      },
+      "display_kind": "contested_negate",
+      "target_player": "P:reactor"
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": 19
+      },
+      "index": 1,
+      "before": {
+        "type": "roll",
+        "value": 15
+      },
+      "outcome": "applied",
+      "backfire": true,
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Saving Steep",
+        "active_effect_id": null,
+        "caster_player_id": "P:reactor"
+      },
+      "display_kind": "advantage",
+      "target_player": "P:reactor"
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": 7
+      },
+      "index": 2,
+      "before": {
+        "type": "roll",
+        "value": 19
+      },
+      "outcome": "applied",
+      "backfire": true,
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Saving Steep",
+        "active_effect_id": null,
+        "caster_player_id": "P:reactor"
+      },
+      "display_kind": "forced_reroll",
+      "target_player": "P:reactor"
+    },
+    {
+      "after": {
+        "type": "roll",
+        "value": 14
+      },
+      "index": 3,
+      "before": {
+        "type": "roll",
+        "value": 7
+      },
+      "outcome": "applied",
+      "backfire": true,
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Saving Steep",
+        "active_effect_id": null,
+        "caster_player_id": "P:reactor"
+      },
+      "display_kind": "roll_flip",
+      "target_player": "P:reactor"
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 10,
+      "total": 10,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "reactor",
+      "nat": null,
+      "roll": 14,
+      "total": 14,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "scenario": "1-counter-of-counter-depth-3",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "c1",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 4,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "dc": 2,
+      "after": {
+        "type": "status",
+        "value": "countered"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 15,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c1"
+      },
+      "display_kind": "contested_negate",
+      "target_player": "P:victim"
+    },
+    {
+      "dc": 2,
+      "after": {
+        "type": "status",
+        "value": "countered"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 15,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c2"
+      },
+      "display_kind": "contested_negate",
+      "target_player": null
+    },
+    {
+      "dc": 2,
+      "after": {
+        "type": "status",
+        "value": "negated target"
+      },
+      "index": 2,
+      "before": {
+        "type": "status",
+        "value": "cast"
+      },
+      "dc_d20": 15,
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#3",
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c3"
+      },
+      "display_kind": "contested_negate",
+      "target_player": null
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "negated"
+      },
+      "index": 3,
+      "before": {
+        "type": "status",
+        "value": "negated"
+      },
+      "negated": true,
+      "outcome": "no-op",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Tannin Tantrum",
+        "active_effect_id": null,
+        "caster_player_id": "P:c1"
+      },
+      "display_kind": "contested_negate",
+      "target_player": null
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 10
+      },
+      "index": 4,
+      "before": {
+        "type": "modifier",
+        "value": 0
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#4",
+        "card_name": "Lucky Sip",
+        "active_effect_id": null,
+        "caster_player_id": "P:victim"
+      },
+      "display_kind": "flat_modifier",
+      "target_player": "P:victim"
+    }
+  ],
+  "players": [
+    {
+      "player": "c1",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "c2",
+      "nat": null,
+      "roll": 13,
+      "total": 13,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "c3",
+      "nat": null,
+      "roll": 14,
+      "total": 14,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "victim",
+      "nat": null,
+      "roll": 5,
+      "total": 15,
+      "composed": 10,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

@@ -27,19 +27,18 @@ public static class RoundAdvanceEndpoints
     private static async Task<IResult> Run(
         RoomStore store, ILogger log, ShadowAdvance.Bridge bridge, Guid roundId, HttpContext http, CancellationToken ct)
     {
-        var caller = http.GetCaller();
-        if (await store.Read(caller, s => s.AdvanceIsAuthoritative(roundId, ct), ct))
+        var payload = await store.Advance(http.GetCaller(), roundId, async (round, s) =>
         {
+            if (!await s.AdvanceIsAuthoritative(roundId, ct))
+                return await new ShadowAdvance().Run(s, round, bridge, log, ct);
+
             var advance = new AdvanceRound(new RandomDieRoller());
             var entry = bridge == ShadowAdvance.Bridge.AdvanceLayer ? AdvanceRound.Entry.Advance : AdvanceRound.Entry.Finalize;
-            var outcome = await store.Command(roundId, caller, s => advance.Decide(s, roundId, entry), ct);
+            var outcome = await RoomStore.CommandUnderLock(s, round, snapshot => advance.Decide(snapshot, roundId, entry), ct);
             // Present only when this call committed: it tells the TS action the broadcasts have gone.
             if (outcome.Version is { } version) outcome.Result["version"] = version;
-            return Results.Json(outcome.Result);
-        }
-
-        var shadow = new ShadowAdvance();
-        var payload = await store.Advance(caller, roundId, (round, s) => shadow.Run(s, round, bridge, log, ct), ct);
+            return (JsonNode?)outcome.Result;
+        }, ct);
         return Results.Json(payload);
     }
 }

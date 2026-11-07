@@ -1,0 +1,58 @@
+{
+  "scenario": "2-ward-block-earned-modifier-zeroes-gain",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "warded",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": true,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer (no modifier gain)"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "target": "P:warded",
+      "outcome": "blocked",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Eternal Steep",
+        "active_effect_id": null,
+        "caster_player_id": null
+      },
+      "display_kind": "warded",
+      "ward_cast_id": "cast#1",
+      "target_player": "P:warded",
+      "ward_card_name": "Eternal Steep",
+      "would_be_after": "brewer (no modifier gain)",
+      "blocked_cast_id": null,
+      "would_be_before": "brewer"
+    }
+  ],
+  "players": [
+    {
+      "player": "other",
+      "nat": null,
+      "roll": 15,
+      "total": 15,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "warded",
+      "nat": null,
+      "roll": 3,
+      "total": 3,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

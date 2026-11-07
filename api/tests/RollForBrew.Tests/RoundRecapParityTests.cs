@@ -287,6 +287,39 @@ public class RoundRecapParityTests
         Assert.True((bool)(await Same(db, Round, viewer))["provisional"]!);
     }
 
+    [Fact]
+    public async Task A_recap_read_does_not_wait_on_a_round_being_finalized()
+    {
+        var (db, viewer) = await Three();
+        await using var conn = new NpgsqlConnection(db.AdminConnectionString);
+        await conn.OpenAsync();
+        await using var tx = await conn.BeginTransactionAsync();
+        await using (var hold = new NpgsqlCommand($"select 1 from public.rounds where id = '{Round}' for update", conn, tx))
+            await hold.ExecuteScalarAsync();
+
+        var read = CSharpRecap(db, Round, viewer);
+        var first = await Task.WhenAny(read, Task.Delay(TimeSpan.FromSeconds(10)));
+
+        Assert.Same(read, first);
+        Assert.True((bool)(await read)["provisional"]!);
+    }
+
+    [Fact]
+    public async Task A_resolved_round_with_no_stored_summary_reads_the_same()
+    {
+        var (db, viewer) = await Three();
+        await db.Execute($"""
+            update public.rounds set status = 'resolved', resolved_at = now(), brewer_id = 'p-b', cups_made = 3,
+                   resolution_trace = null, resolution_summary = null where id = '{Round}'
+            """);
+
+        var recap = await Same(db, Round, viewer);
+
+        Assert.False((bool)recap["provisional"]!);
+        Assert.Null(recap["players"]);
+        Assert.Empty(recap["trace"]!.AsArray());
+    }
+
     internal static async Task<JsonObject> Same(TestDatabase db, Guid roundId, TestUser viewer)
     {
         var before = await State(db);

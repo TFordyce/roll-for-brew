@@ -1,0 +1,339 @@
+{
+  "scenario": "0-copy-blocked-by-block-copy-ward",
+  "roster": {
+    "p-apprentice": "apprentice",
+    "p-src-caster": "src-caster",
+    "p-target": "target"
+  },
+  "as_of_round_id": "00000000-0000-4000-8000-000000000003",
+  "snapshot": {
+    "room_id": "00000000-0000-4000-8000-000000000001",
+    "db_now": "2026-01-01T00:00:13.000000+00:00",
+    "rooms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "is_test": false,
+        "version": 0
+      }
+    ],
+    "rounds": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-src-caster",
+        "status": "resolved",
+        "started_at": "2026-01-01T00:00:01.000000+00:00",
+        "resolved_at": "2026-01-01T00:00:00.000000+00:00",
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": null,
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-src-caster",
+        "status": "closed",
+        "started_at": "2026-01-01T00:00:04.000000+00:00",
+        "resolved_at": null,
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": "2026-01-01T00:00:07.000000+00:00",
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      }
+    ],
+    "round_participants": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-apprentice",
+        "declared_at": "2026-01-01T00:00:06.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-src-caster",
+        "declared_at": "2026-01-01T00:00:04.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-target",
+        "declared_at": "2026-01-01T00:00:05.000000+00:00",
+        "excluded_at": null
+      }
+    ],
+    "round_layer_participants": [],
+    "rolls": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-apprentice",
+        "layer": 0,
+        "value": 10,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:10.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-src-caster",
+        "layer": 0,
+        "value": 10,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:08.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "player_id": "p-target",
+        "layer": 0,
+        "value": 10,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:09.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      }
+    ],
+    "spell_casts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-src-caster",
+        "card_instance_id": "00000000-0000-4000-8000-000000000005",
+        "target_player_id": "p-src-caster",
+        "target_pending": false,
+        "effect_kind": "ward",
+        "effect_params": {
+          "domain": [
+            "modifier"
+          ],
+          "polarity": [
+            "positive",
+            "negative"
+          ],
+          "block_copy": true
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:02.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 1,
+        "target_role": null,
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "caster_id": "p-src-caster",
+        "card_instance_id": "00000000-0000-4000-8000-000000000007",
+        "target_player_id": "p-target",
+        "target_pending": false,
+        "effect_kind": "flat_modifier",
+        "effect_params": {
+          "delta": 6
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:11.000000+00:00",
+        "reaction_window_id": "00000000-0000-4000-8000-000000000008",
+        "negated": false,
+        "seq": 2,
+        "target_role": "TARGET",
+        "cast_inputs": null,
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000009",
+        "round_id": "00000000-0000-4000-8000-000000000003",
+        "caster_id": "p-apprentice",
+        "card_instance_id": "00000000-0000-4000-8000-000000000010",
+        "target_player_id": null,
+        "target_pending": false,
+        "effect_kind": null,
+        "effect_params": {},
+        "parent_cast_id": "00000000-0000-4000-8000-000000000006",
+        "cast_at": "2026-01-01T00:00:12.000000+00:00",
+        "reaction_window_id": "00000000-0000-4000-8000-000000000008",
+        "negated": false,
+        "seq": 3,
+        "target_role": "CARD",
+        "cast_inputs": {
+          "copy_inputs": {},
+          "copied_cast_id": "00000000-0000-4000-8000-000000000006"
+        },
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      }
+    ],
+    "active_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000011",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "target_player_id": "p-src-caster",
+        "caster_id": "p-src-caster",
+        "source_cast_id": "00000000-0000-4000-8000-000000000004",
+        "card_id": "00000000-0000-4000-8000-000000000012",
+        "effect_kind": "ward",
+        "effect_params": {
+          "domain": [
+            "modifier"
+          ],
+          "polarity": [
+            "positive",
+            "negative"
+          ],
+          "block_copy": true
+        },
+        "rounds_remaining": null,
+        "created_at": "2026-01-01T00:00:03.000000+00:00",
+        "is_undispellable": false,
+        "ended_in_round_id": null
+      }
+    ],
+    "deck_instances": [
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "card_id": "00000000-0000-4000-8000-000000000012",
+        "location": "in_deck",
+        "held_by_player": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "card_id": "00000000-0000-4000-8000-000000000013",
+        "location": "in_deck",
+        "held_by_player": null
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000010",
+        "card_id": "00000000-0000-4000-8000-000000000014",
+        "location": "in_deck",
+        "held_by_player": null
+      }
+    ],
+    "spell_cards": [
+      {
+        "id": "00000000-0000-4000-8000-000000000012",
+        "name": "Bag for Life",
+        "casting_time": "A",
+        "target": "SELF",
+        "tier": "rare",
+        "effect_text": "Your modifier cannot be reduced, copied, or affected by any card for the rest of the day. You still gain modifier from making tea as normal.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000013",
+        "name": "Lucky Sip",
+        "casting_time": "A",
+        "target": "SELF",
+        "tier": "common",
+        "effect_text": "Add +3 to your roll this round.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000014",
+        "name": "Saucerer's Apprentice",
+        "casting_time": "R",
+        "target": "CARD",
+        "tier": "rare",
+        "effect_text": "Copy that card's effect. The original effect still resolves; your copy resolves immediately afterwards.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      }
+    ],
+    "spell_card_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000015",
+        "card_id": "00000000-0000-4000-8000-000000000012",
+        "target_role": "CASTER",
+        "effect_kind": "ward",
+        "effect_params": {
+          "domain": [
+            "modifier"
+          ],
+          "polarity": [
+            "positive",
+            "negative"
+          ],
+          "block_copy": true
+        },
+        "ordinal": 0
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000016",
+        "card_id": "00000000-0000-4000-8000-000000000013",
+        "target_role": "CASTER",
+        "effect_kind": "flat_modifier",
+        "effect_params": {
+          "delta": 3
+        },
+        "ordinal": 0
+      }
+    ],
+    "room_players": [
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-apprentice",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-src-caster",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-target",
+        "modifier": 0
+      }
+    ],
+    "modifier_adjustments": []
+  },
+  "expected": {
+    "live_effect_ids": [
+      "00000000-0000-4000-8000-000000000011"
+    ]
+  }
+}
