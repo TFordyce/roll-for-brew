@@ -149,4 +149,87 @@ public partial class AdvanceRoundParityTests
         }, Round, AdvanceRound.Entry.Finalize);
         Assert.Equal(Id(5, 3), await csharp.Scalar<string>($"select seized_by_cast_id::text from public.spell_casts where id = '{Id(5, 2)}'"));
     }
+
+    // ------------------------------------------------------------------
+    // last-drip.test.ts
+    // ------------------------------------------------------------------
+
+    private const string LastDripParams = """{"mode": "prev_round_highest", "modifier_gain": 0}""";
+
+    /// <summary>An earlier round in this room, as <c>seedPastRound</c> seeds it. Rolls are
+    /// (player, value, modifier snapshot).</summary>
+    private static Task SeedPastRound(TestDatabase db, int n, string startedAt, string status, params (string Player, int Value, int Snapshot)[] rolls) =>
+        db.Execute($"""
+            insert into public.rounds (id, room_id, started_by, status, started_at, resolved_at)
+              values ('{Id(2, n)}', '{Room}', '{rolls[0].Player}', '{status}', '{startedAt}', {(status == "resolved" ? $"'{startedAt}'" : "null")});
+            insert into public.round_participants (round_id, player_id) values
+              {string.Join(", ", rolls.Select(r => $"('{Id(2, n)}', '{r.Player}')"))};
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              {string.Join(", ", rolls.Select(r => $"('{Id(2, n)}', '{r.Player}', 0, {r.Value}, 'manual', {r.Snapshot})"))};
+            """);
+
+    private static async Task<string?> Brewer(TestDatabase db) =>
+        await db.Scalar<string>($"select brewer_id from public.rounds where id = '{Round}'");
+
+    [Fact]
+    public async Task Last_Drip_reads_the_most_recent_resolved_round_ignoring_older_and_cancelled_ones()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 2, b: 11, c: 12);
+            await SeedPastRound(db, 3, "2026-01-01 07:30+00", "resolved", ("p-a", 5, 0), ("p-b", 19, 0), ("p-c", 4, 0));
+            await SeedPastRound(db, 4, "2026-01-01 08:00+00", "resolved", ("p-a", 5, 0), ("p-b", 6, 0), ("p-c", 17, 0));
+            await SeedPastRound(db, 5, "2026-01-01 08:30+00", "cancelled", ("p-a", 5, 0), ("p-b", 20, 0));
+            await SeedCast(db, 1, "Last Drip", "p-a", null, "tea_maker_override", LastDripParams);
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.Equal("p-c", await Brewer(csharp));
+    }
+
+    [Fact]
+    public async Task Last_Drip_breaks_a_full_tie_on_roll_and_snapshot_on_the_lowest_player_id()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 2, b: 11, c: 12);
+            await SeedPastRound(db, 3, "2026-01-01 08:00+00", "resolved", ("p-a", 3, 0), ("p-b", 14, 2), ("p-c", 14, 2));
+            await SeedCast(db, 1, "Last Drip", "p-a", null, "tea_maker_override", LastDripParams);
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.Equal("p-b", await Brewer(csharp));
+    }
+
+    [Fact]
+    public async Task Last_Drip_falling_through_to_an_immune_player_leaves_the_default_pick()
+    {
+        var csharp = await Parity(async db =>
+        {
+            // p-d won last round but is not in this one, so Last Drip falls through to p-b, who is immune.
+            await SeedThree(db, a: 15, b: 14, c: 4);
+            await db.Execute($"""
+                insert into public.players (id, email) values ('p-d', 'd@x.test');
+                insert into public.room_players (room_id, player_id, modifier) values ('{Room}', 'p-d', 0);
+                """);
+            await SeedRoomEffect(db, 6, "The Last Cuppa", "p-b", "brewer_immunity",
+                """{"mode": "last_cuppa", "persist": true, "override_proof": true}""");
+            await SeedPastRound(db, 3, "2026-01-01 08:00+00", "resolved", ("p-d", 19, 0), ("p-b", 12, 0), ("p-a", 5, 0));
+            await SeedCast(db, 1, "Last Drip", "p-a", null, "tea_maker_override", LastDripParams);
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.Equal("p-c", await Brewer(csharp));
+        Assert.Null(await TraceStep(csharp, "s ->> 'display_kind' = 'tea_maker_override' and s ->> 'outcome' = 'applied'", "s ->> 'target_player'"));
+        Assert.Equal("p-b", await TraceStep(csharp, "s ->> 'display_kind' = 'brewer_immunity'", "s ->> 'target_player'"));
+    }
+
+    [Fact]
+    public async Task Genie_invoking_Last_Drip_makes_the_previous_winner_brew_with_no_gain()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 10, b: 15, c: 3);
+            await SeedPastRound(db, 3, "2026-01-01 08:00+00", "resolved", ("p-a", 9, 0), ("p-b", 18, 0), ("p-c", 2, 0));
+            await SeedCast(db, 1, "Genie in the Teapot", "p-a", null, "tea_maker_override", LastDripParams,
+                castInputs: """{"invoked_card": "Last Drip"}""");
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.Equal("p-b", await Brewer(csharp));
+        Assert.Equal("p-b", await TraceStep(csharp, "s ->> 'display_kind' = 'tea_maker_override' and s ->> 'outcome' = 'applied'", "s ->> 'target_player'"));
+        Assert.Equal(0, await csharp.Scalar<int>($"select brewer_modifier_gain from public.rounds where id = '{Round}'"));
+    }
 }
