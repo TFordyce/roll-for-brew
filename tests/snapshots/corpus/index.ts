@@ -1329,6 +1329,28 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: thief.client };
     },
   },
+  {
+    name: "6-heist-already-moved-reads-moved",
+    phases: ["5", "6"],
+    note: "A Tea Heist an earlier commit already moved (cast_inputs.heist_moved) still traces moved, with the loot in the thief's hand.",
+    async seed(ctx) {
+      const thief = await ctx.signUp("thief");
+      const victim = await ctx.signUp("victim");
+      const roundId = await ctx.openAndCloseRound(thief, [victim]);
+      await ctx.seedRoll(roundId, thief.googleSub, 5);
+      await ctx.seedRoll(roundId, victim.googleSub, 12);
+      // Victim first, so the Tea Heist donor hold doesn't give the thief two held cards.
+      const loot = await ctx.forceHold(victim.googleSub, "Lucky Sip");
+      await ctx.seedCast(roundId, thief.googleSub, "Tea Heist", {
+        effectKind: "card_heist",
+        effectParams: {},
+        targetPlayerId: victim.googleSub,
+        castInputs: { stolen_instance_id: loot, heist_moved: true },
+      });
+      await ctx.forceHold(thief.googleSub, "Lucky Sip");
+      return { roundId, resolveWith: thief.client };
+    },
+  },
   // Issue #436: Marked for Brew. The mark is placed in its cast round and
   // fires at roll time (_apply_crit_redirect); the resolver's final phase
   // only traces what was recorded.
