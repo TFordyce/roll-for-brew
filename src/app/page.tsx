@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
+import { getHoldOwnDieUntilReveal } from "@/lib/supabase/diceLanding";
 import { canAccessTestRoom } from "@/lib/game/testRoomAccess";
 import { enterTodaysRoom } from "@/lib/supabase/rooms";
 import { initialsFrom } from "@/lib/game/initials";
@@ -32,6 +33,7 @@ export default async function HomePage() {
   const isAdmin = await getIsAdmin(supabase, playerId);
   const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
   const showAdminMenu = canAccessTestRoom({ isAdmin, adminModeEnabled });
+  const holdOwnDieUntilReveal = await getHoldOwnDieUntilReveal();
 
   const roomId = await enterTodaysRoom(supabase);
 
@@ -41,6 +43,7 @@ export default async function HomePage() {
     <RoomViewProvider roomId={roomId} initialView={initialView}>
       <RoomScreen
         variant="home"
+        holdOwnDieUntilReveal={holdOwnDieUntilReveal}
         raterInitials={initialsFrom(player?.display_name ?? null, player?.email ?? user.email ?? "")}
         top={
           <>

@@ -6,10 +6,9 @@ import {
   SETTLE_TAIL_MS,
   flightWaapiKeyframes,
   settleWaapiKeyframes,
-  simulateD20Throw,
   type DiceFlightTrack,
 } from "@/lib/game/dicePhysics";
-import type { DiceRevealState } from "./useDiceReveal";
+import type { LiveDieState } from "./useDiceReveal";
 import { DIE_SIZE_PX, DieFaces } from "./DieFaces";
 
 // When the die mounts already landed (remount into a landed machine state) the
@@ -29,12 +28,19 @@ function sliceKeyframes(
     .map((k) => ({ offset: (k.offset - start) / (1 - start), transform: k.transform }));
 }
 
+// Plays one die's throw track. The track is handed in rather than generated
+// here, so the roller's early die and every other client's shared die can be
+// driven by the very same samples — which is what makes their rests agree.
 export function AnimatedDie({
   state,
+  track,
   onDismiss,
+  interactive = true,
 }: {
-  state: Extract<DiceRevealState, { phase: "rolling" | "landed" }>;
-  onDismiss: () => void;
+  state: LiveDieState;
+  track: DiceFlightTrack;
+  onDismiss?: () => void;
+  interactive?: boolean;
 }) {
   const reducedMotion = useReducedMotion();
   const spinRef = useRef<HTMLSpanElement | null>(null);
@@ -56,9 +62,9 @@ export function AnimatedDie({
     // the value rides the face through the settle snap: the reveal moment
     setRevealedValue(settled);
     const el = spinRef.current;
-    const track = trackRef.current;
-    if (!el || !track) return;
-    settleRef.current = el.animate(settleWaapiKeyframes(track), {
+    const currentTrack = trackRef.current;
+    if (!el || !currentTrack) return;
+    settleRef.current = el.animate(settleWaapiKeyframes(currentTrack), {
       duration: SETTLE_TAIL_MS,
       fill: "both",
     });
@@ -70,7 +76,6 @@ export function AnimatedDie({
   useEffect(() => {
     const el = spinRef.current;
     if (!el || window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    const track = simulateD20Throw();
     trackRef.current = track;
     const keyframes = flightWaapiKeyframes(track);
     // keep at least half the flight so a tiny track can never slice to nothing
@@ -119,12 +124,33 @@ export function AnimatedDie({
   }, [state, startSettle]);
 
   const landed = state.phase === "landed";
+  const face = (
+    <span
+      ref={spinRef}
+      className="absolute inset-0 block [transform-style:preserve-3d]"
+    >
+      <DieFaces value={revealedValue} />
+    </span>
+  );
+
+  if (!interactive) {
+    return (
+      <span
+        aria-hidden="true"
+        className="relative block shrink-0 [perspective:220px]"
+        style={{ width: DIE_SIZE_PX, height: DIE_SIZE_PX }}
+      >
+        {face}
+      </span>
+    );
+  }
+
   return (
     <button
       type="button"
       onClick={(event) => {
         event.stopPropagation();
-        if (landed) onDismiss();
+        if (landed) onDismiss?.();
       }}
       disabled={!landed}
       aria-hidden={landed ? undefined : true}
@@ -133,9 +159,7 @@ export function AnimatedDie({
       className={`relative block shrink-0 [perspective:220px] ${landed ? "cursor-pointer" : "cursor-default"}`}
       style={{ width: DIE_SIZE_PX, height: DIE_SIZE_PX }}
     >
-      <span ref={spinRef} className="absolute inset-0 block [transform-style:preserve-3d]">
-        <DieFaces value={revealedValue} />
-      </span>
+      {face}
     </button>
   );
 }
