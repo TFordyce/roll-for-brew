@@ -19,7 +19,7 @@ public static class RoomEntryEndpoints
     private const string LondonToday = "(now() at time zone 'Europe/London')::date";
 
     // SQL enter_todays_room (0027). No room argument to CurrentPlayerId, so the seat is always the real caller's.
-    private static async Task<Guid> Enter(StoreSession s, CancellationToken ct)
+    public static async Task<Guid> Enter(StoreSession s, CancellationToken ct)
     {
         var me = await s.CurrentPlayerId(ct: ct);
         var db = s.Db.Database;
@@ -28,8 +28,10 @@ public static class RoomEntryEndpoints
         var roomId = await db
             .SqlQueryRaw<Guid>($"select id as \"Value\" from public.rooms where date = {LondonToday} and not is_test")
             .SingleAsync(ct);
-        await db.ExecuteSqlInterpolatedAsync(
+        var seated = await db.ExecuteSqlInterpolatedAsync(
             $"insert into public.room_players (room_id, player_id) values ({roomId}, {me}) on conflict (room_id, player_id) do nothing", ct);
+        // A new seat shows on everyone's roster; re-entering changes nothing, so it stays quiet.
+        if (seated > 0) await s.BumpAndAnnounce(roomId, ct);
         return roomId;
     }
 }

@@ -67,7 +67,7 @@ update public.port_flags set enabled = false where slice in ('setActingAs', 'ent
 
 Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
 
-Room entry does not bump `rooms.version`, on either path. A new seat reaches other clients on their next refetch.
+On the API path, room entry that creates a seat bumps `rooms.version` and sends `room-changed` in its transaction (spec #533, 7 Nov 2026). Re-entering creates nothing and sends nothing. The SQL path still sends nothing: there a new seat reaches other clients on their next refetch.
 
 After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
 
