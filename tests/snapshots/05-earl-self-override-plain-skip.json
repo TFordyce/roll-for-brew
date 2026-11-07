@@ -1,0 +1,54 @@
+{
+  "scenario": "05-earl-self-override-plain-skip",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "low",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "immune"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Earl of Earl Grey",
+        "active_effect_id": "fx#1",
+        "caster_player_id": "P:earl"
+      },
+      "display_kind": "brewer_immunity",
+      "immunity_tier": "tea_maker_override",
+      "target_player": "P:earl",
+      "skipped_card_name": "Drip Tray"
+    }
+  ],
+  "players": [
+    {
+      "player": "earl",
+      "nat": null,
+      "roll": 17,
+      "total": 17,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "low",
+      "nat": null,
+      "roll": 5,
+      "total": 5,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    }
+  ]
+}

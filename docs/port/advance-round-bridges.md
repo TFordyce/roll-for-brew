@@ -83,7 +83,7 @@ The SQL copies (`_layer_is_complete`, `is_expected_layer_roller`, `admin_proxy_r
 
 ## Parity
 
-`AdvanceRoundParityTests` is the oracle. Each of the 72 golden scenarios, through each entry point, and the handwritten shim, advancement and hold scenarios run through SQL in one database and C# in another from identical rows. SQL rolls first and C# is scripted with SQL's dice. The payload and every row either engine can touch must match to the byte, with only `now()` timestamps and the random ids SQL gives rows it generates masked.
+`AdvanceRoundParityTests` is the oracle. Each of the 91 golden scenarios, through each entry point, and the handwritten shim, advancement and hold scenarios run through SQL in one database and C# in another from identical rows. SQL rolls first and C# is scripted with SQL's dice. The payload and every row either engine can touch must match to the byte, with only `now()` timestamps and the random ids SQL gives rows it generates masked.
 
 The snapshot loader gained two things for this path: `reaction_windows`, and the Brew IOU cast a round's `brewer_source_cast_id` points at, which a debt from another room needs.
 
