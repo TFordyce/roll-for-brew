@@ -28,8 +28,8 @@ public partial class AdvanceRoundParityTests
     /// <summary>A Room Effect from a resolved earlier round, as <c>seedActiveEffect</c> seeds it.</summary>
     private static Task SeedRoomEffect(TestDatabase db, int n, string card, string holder, string kind, string effectParams) =>
         db.Execute($$"""
-            insert into public.rounds (id, room_id, started_by, status, resolved_at)
-              values ('{{Id(2, n)}}', '{{Room}}', '{{holder}}', 'resolved', '2026-01-01 08:00+00');
+            insert into public.rounds (id, room_id, started_by, status, started_at, resolved_at)
+              values ('{{Id(2, n)}}', '{{Room}}', '{{holder}}', 'resolved', '2026-01-01 07:00+00', '2026-01-01 07:00+00');
             insert into public.spell_deck_instances (id, card_id, location)
               select '{{Id(4, n)}}', id, 'in_deck' from public.spell_cards where name = '{{card.Replace("'", "''")}}';
             insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
@@ -258,5 +258,141 @@ public partial class AdvanceRoundParityTests
             await csharp.Scalar<string>($"select location || ':' || coalesce(held_by_player, '') from public.spell_deck_instances where id = '{id}'");
         Assert.Equal("held:p-a", await At(drawn));
         Assert.Equal("pending_swap:p-a", await At(loot));
+    }
+
+    // ------------------------------------------------------------------
+    // tea-maker-override-modifier-gain.test.ts
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_prev_round_highest_override_with_no_previous_round_stays_out_of_the_contest()
+    {
+        // The TS test calls this mode reserved; Last Drip has since shipped it. With no earlier
+        // round it is inert, so the default pick stands and the round does not fail.
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 3, b: 15, c: 12);
+            await SeedCast(db, 1, "Drip Tray", "p-a", null, "tea_maker_override", LastDripParams);
+        }, Round, AdvanceRound.Entry.Finalize, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
+        Assert.Equal("p-a", await Brewer(csharp));
+        Assert.Null(await TraceStep(csharp, "s ->> 'display_kind' = 'tea_maker_override' and s ->> 'outcome' = 'applied'", "s ->> 'target_player'"));
+    }
+
+    // ------------------------------------------------------------------
+    // ward-transfer-interaction.test.ts. The transfer cards write their rows at cast time,
+    // a ward's block included, so each seed is what cast_spell_card wrote for that cast.
+    // ------------------------------------------------------------------
+
+    /// <summary>Two players with logged base modifiers, rolled into a closed round.</summary>
+    private static Task SeedTwo(TestDatabase db, (int Roll, int Mod) a, (int Roll, int Mod) b) =>
+        db.Execute($"""
+            insert into public.players (id, email) values ('p-a', 'a@x.test'), ('p-b', 'b@x.test');
+            insert into public.rooms (id, date) values ('{Room}', '2026-01-01');
+            insert into public.rounds (id, room_id, started_by, status, started_at, closed_at) values
+              ('{Round}', '{Room}', 'p-a', 'closed', '2026-01-01 09:00+00', '2026-01-01 09:01+00');
+            insert into public.round_participants (round_id, player_id) values ('{Round}', 'p-a'), ('{Round}', 'p-b');
+            insert into public.room_players (room_id, player_id, modifier) values ('{Room}', 'p-a', {a.Mod}), ('{Room}', 'p-b', {b.Mod});
+            insert into public.modifier_adjustments (room_id, target_player_id, actor_player_id, delta, reason, created_at)
+              select '{Room}', p, p, d, 'test baseline', '2026-01-01 08:30+00' from (values ('p-a', {a.Mod}), ('p-b', {b.Mod})) v(p, d) where d <> 0;
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
+              ('{Round}', 'p-a', 0, {a.Roll}, 'manual', {a.Mod}), ('{Round}', 'p-b', 0, {b.Roll}, 'manual', {b.Mod});
+            insert into public.spell_reaction_windows (id, round_id, layer, status, poll_round, opened_at, closed_at)
+              values ('{Window}', '{Round}', 0, 'closed', 1, now(), now());
+            """);
+
+    private sealed record Emitted(string Target, string Kind, string? Role, string Params, string Inputs, bool Negated, bool FromFirst = false);
+
+    /// <summary>One card's emitted rows, cast by p-a on the closed window.</summary>
+    private static Task SeedEmitted(TestDatabase db, string card, params Emitted[] rows) =>
+        db.Execute($"""
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{Id(4, 1)}', id, 'in_deck' from public.spell_cards where name = '{card}';
+            """ + string.Concat(rows.Select((r, i) => $"""
+
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, target_role, effect_params, cast_inputs, negated, source_cast_id, reaction_window_id)
+              values ('{Id(5, i + 1)}', '{Round}', 'p-a', '{Id(4, 1)}', '{r.Target}', '{r.Kind}', {Sql(r.Role)}, '{r.Params}', '{r.Inputs}', {r.Negated}, {Sql(r.FromFirst ? Id(5, 1) : null)}, '{Window}');
+            """)));
+
+    /// <summary>The block a ward from <see cref="SeedRoomEffect"/> n = 6 records on the row at cast time.</summary>
+    private static string WardBlock(string target, string card, int before, int after) =>
+        $"\"ward_target\": \"{target}\", \"ward_card_name\": \"{card}\", \"ward_blocked_by\": \"{Id(5, 6)}\", \"would_be_before\": {before}, \"would_be_after\": {after}";
+
+    private static Task<long> Steps(TestDatabase db, string where) =>
+        db.Scalar<long>($"select count(*) from public.rounds r, jsonb_array_elements(r.resolution_trace) s where r.id = '{Round}' and {where}");
+
+    [Fact]
+    public async Task A_ward_on_the_losing_side_blocks_both_sides_of_a_Chai_nge_swap()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedTwo(db, (10, 8), (11, 2));
+            await SeedRoomEffect(db, 6, "Cast-Iron Kettle", "p-a", "ward", """{"polarity": ["negative"], "domain": ["modifier", "roll"]}""");
+            await SeedEmitted(db, "Chai-nge of Heart",
+                new("p-a", "persistent_modifier_transfer", null, """{"delta": -6}""",
+                    "{\"caster_modifier\": 8, \"target_modifier\": 2, " + WardBlock("p-a", "Cast-Iron Kettle", 8, 2) + "}", true),
+                new("p-b", "persistent_modifier_transfer", null, """{"delta": 6}""", """{"caster_modifier": 8, "target_modifier": 2}""", true, FromFirst: true));
+        }, Round, AdvanceRound.Entry.Finalize, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
+        Assert.Equal(8, await csharp.Scalar<int>("select modifier from public.room_players where player_id = 'p-a'"));
+        // p-b brews, so their cache moves only by the brewer's own gain.
+        Assert.Equal(2, await csharp.Scalar<int>($"select rp.modifier - r.brewer_modifier_gain from public.room_players rp, public.rounds r where rp.player_id = 'p-b' and r.id = '{Round}' and r.brewer_id = 'p-b'"));
+        Assert.Equal(1, await Steps(csharp, "s ->> 'display_kind' = 'warded'"));
+        Assert.Equal(1, await Steps(csharp, $"""
+            s ->> 'display_kind' = 'warded' and s ->> 'target_player' = 'p-a' and s ->> 'outcome' = 'blocked'
+              and s ->> 'ward_cast_id' = '{Id(5, 6)}' and s ->> 'ward_card_name' = 'Cast-Iron Kettle'
+            """));
+    }
+
+    [Fact]
+    public async Task A_warded_Tea_Leaf_target_keeps_their_modifier_and_the_caster_gets_no_bonus()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedTwo(db, (10, 0), (2, 6));
+            await SeedRoomEffect(db, 6, "Eternal Steep", "p-b", "ward", """{"polarity": ["positive", "negative"], "domain": ["modifier"]}""");
+            await SeedEmitted(db, "Tea Leaf",
+                new("p-b", "set_modifier", "TARGET", """{"value": 0}""", "{\"stolen_amount\": 6, " + WardBlock("p-b", "Eternal Steep", 6, 0) + "}", true),
+                new("p-a", "flat_modifier", "CASTER", """{"delta": 6}""", """{"stolen_amount": 6}""", true));
+        }, Round, AdvanceRound.Entry.Finalize, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
+        // p-b keeps 2 + 6 = 8 and p-a keeps 10 + 0, so p-b brews.
+        Assert.Equal("p-b", await Brewer(csharp));
+        Assert.Equal(0, await Steps(csharp, "s ->> 'display_kind' in ('set_modifier', 'flat_modifier')"));
+        Assert.Equal(1, await Steps(csharp, "s ->> 'display_kind' = 'warded'"));
+        Assert.Equal(1, await Steps(csharp, """
+            s ->> 'display_kind' = 'warded' and s ->> 'target_player' = 'p-b' and s ->> 'outcome' = 'blocked'
+              and s ->> 'ward_card_name' = 'Eternal Steep' and (s ->> 'would_be_before')::int = 6 and (s ->> 'would_be_after')::int = 0
+            """));
+    }
+
+    [Fact]
+    public async Task A_warded_Spillage_target_keeps_their_modifier()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedTwo(db, (12, 0), (3, 8));
+            await SeedRoomEffect(db, 6, "Jinxed Biscuit", "p-b", "ward", """{"polarity": ["negative"], "domain": ["modifier"]}""");
+            await SeedEmitted(db, "Spillage",
+                new("p-b", "flat_modifier", "TARGET", """{"delta": -4}""", "{\"stolen_amount\": 4, " + WardBlock("p-b", "Jinxed Biscuit", 8, 4) + "}", true),
+                new("p-a", "flat_modifier", "CASTER", """{"delta": 4}""", """{"stolen_amount": 4}""", true));
+        }, Round, AdvanceRound.Entry.Finalize, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
+        // Kept: 3 + 8 = 11 is under 12 + 0.
+        Assert.Equal("p-b", await Brewer(csharp));
+        Assert.Equal(1, await Steps(csharp, "s ->> 'display_kind' = 'warded'"));
+        Assert.Equal(0, await Steps(csharp, "s ->> 'display_kind' = 'flat_modifier'"));
+    }
+
+    [Fact]
+    public async Task An_unwarded_Spillage_still_moves_half_the_targets_modifier()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedTwo(db, (10, 0), (3, 8));
+            await SeedEmitted(db, "Spillage",
+                new("p-b", "flat_modifier", "TARGET", """{"delta": -4}""", """{"stolen_amount": 4}""", false),
+                new("p-a", "flat_modifier", "CASTER", """{"delta": 4}""", """{"stolen_amount": 4}""", false));
+        }, Round, AdvanceRound.Entry.Finalize, payload => Assert.Equal("brewer", (string?)payload["outcome"]));
+        // floor(8 / 2) = 4 moves: p-b 3 + 4 = 7 and p-a 10 + 4 = 14.
+        Assert.Equal("p-b", await Brewer(csharp));
+        Assert.Equal(0, await Steps(csharp, "s ->> 'display_kind' = 'warded'"));
+        Assert.Equal(2, await Steps(csharp, "s ->> 'display_kind' = 'flat_modifier'"));
     }
 }
