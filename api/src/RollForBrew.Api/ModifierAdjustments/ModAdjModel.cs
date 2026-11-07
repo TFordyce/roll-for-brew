@@ -1,3 +1,4 @@
+using RollForBrew.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace RollForBrew.Api.ModifierAdjustments;
@@ -40,7 +41,7 @@ public static class ModAdjModel
             e.Property(x => x.PlayerId).HasColumnName("player_id");
             e.Property(x => x.Modifier).HasColumnName("modifier");
         });
-        b.Entity<ModAdjPlayer>(e =>
+        b.Entity<PlayerAdminFlag>(e =>
         {
             e.ToTable("players", "public", t => t.ExcludeFromMigrations());
             e.HasKey(x => x.Id);
@@ -79,10 +80,4 @@ public sealed class ModAdjRoomPlayer
     public Guid RoomId { get; set; }
     public string PlayerId { get; set; } = "";
     public int Modifier { get; set; }
-}
-
-public sealed class ModAdjPlayer
-{
-    public string Id { get; set; } = "";
-    public bool IsAdmin { get; set; }
 }

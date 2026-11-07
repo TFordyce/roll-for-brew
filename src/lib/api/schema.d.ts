@@ -78,7 +78,7 @@ export interface paths {
             cookie?: never;
         };
         get: operations["getActingAs"];
-        put?: never;
+        put: operations["setActingAs"];
         post?: never;
         delete?: never;
         options?: never;
@@ -224,6 +224,22 @@ export interface paths {
         get?: never;
         put?: never;
         post: operations["adminDeleteModifierAdjustment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rooms/today/entry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enterTodaysRoom"];
         delete?: never;
         options?: never;
         head?: never;
@@ -389,6 +405,10 @@ export interface components {
             polarity: string;
             /** Format: int32 */
             roundsRemaining: null | number | string;
+        };
+        EnterRoomResponse: {
+            /** Format: uuid */
+            roomId: string;
         };
         HeldCard: {
             /** Format: uuid */
@@ -585,6 +605,9 @@ export interface components {
             /** Format: int32 */
             score: null | number | string;
         };
+        SetActingAsRequest: {
+            targetPlayerId: null | string;
+        };
         SkipVoteRow: {
             /** Format: date-time */
             pollRoundStartedAt: string;
@@ -681,6 +704,28 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["ActingAsResponse"];
                 };
+            };
+        };
+    };
+    setActingAs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetActingAsRequest"];
+            };
+        };
+        responses: {
+            /** @description No Content */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -951,6 +996,26 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    enterTodaysRoom: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnterRoomResponse"];
+                };
             };
         };
     };

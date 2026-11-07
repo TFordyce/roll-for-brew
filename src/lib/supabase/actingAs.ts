@@ -14,7 +14,15 @@ export async function getActingAsPlayerId(
   return (data as string | null) ?? null;
 }
 
-export async function setActingAs(supabase: SupabaseClient, targetPlayerId: string): Promise<void> {
+export async function setActingAs(
+  supabase: SupabaseClient,
+  targetPlayerId: string,
+  api: () => Pick<ApiClient, "setActingAs"> = () => apiClientFor(supabase),
+): Promise<void> {
+  if (await isPortEnabled(supabase, "setActingAs")) {
+    await api().setActingAs(targetPlayerId);
+    return;
+  }
   const { error } = await supabase.rpc("set_acting_as", { p_target_player_id: targetPlayerId });
   if (error) throw error;
 }

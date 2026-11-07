@@ -46,6 +46,13 @@ public class RfbApiRoleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Role_has_no_execute_on_the_room_entry_functions_the_API_replaced()
+    {
+        Assert.False(await Flag("select has_function_privilege('rfb_api', 'public.enter_todays_room()', 'execute')"));
+        Assert.False(await Flag("select has_function_privilege('rfb_api', 'public.set_acting_as(text)', 'execute')"));
+    }
+
+    [Fact]
     public async Task Role_has_execute_on_the_round_advance_bridges()
     {
         Assert.True(await Flag("select has_function_privilege('rfb_api', 'public.advance_layer(uuid)', 'execute')"));

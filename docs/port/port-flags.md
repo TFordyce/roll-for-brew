@@ -37,6 +37,47 @@ update public.port_flags set enabled = false where slice = 'getActingAs' and roo
 
 Per-room scoping works by inserting `(slice, room_id)` rows (a room row overrides the global one); no wrapper passes a room id since `room_view` was retired (#541).
 
+## Room entry and Acting As flags (#568, human step, not run by the agent)
+
+Slices `enterTodaysRoom` and `setActingAs`. Merging changes nothing for players: with no row, or the row off, both wrappers keep the SQL `.rpc`.
+Endpoints: `POST /rooms/today/entry`, `PUT /acting-as`. Same precondition as `getActingAs`.
+
+Both flags must be global rows. No room id exists before entry, and `setActingAs` has no room, so a room-scoped row is ignored.
+`enterTodaysRoom` also serves the settings and proxy-roll pages, so flipping it moves those too.
+
+Flip `setActingAs` first, outside weekday play hours. Verify as an admin in the Test Room: picking a Test Player moves the Acting As badge, and picking yourself clears it.
+
+```sql
+insert into public.port_flags (slice, enabled) values ('setActingAs', true)
+on conflict (slice, room_id) do update set enabled = true;
+```
+
+Then flip `enterTodaysRoom`. Verify by loading the home page: same room and same seat, and the Network tab or API log shows `POST /rooms/today/entry`.
+
+```sql
+insert into public.port_flags (slice, enabled) values ('enterTodaysRoom', true)
+on conflict (slice, room_id) do update set enabled = true;
+```
+
+Rollback (instant, no deploy). An API failure on room entry surfaces as a page error, so this is the recovery:
+
+```sql
+update public.port_flags set enabled = false where slice in ('setActingAs', 'enterTodaysRoom') and room_id is null;
+```
+
+Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
+
+Room entry does not bump `rooms.version`, on either path. A new seat reaches other clients on their next refetch.
+
+After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
+
+* `public.enter_todays_room()` and `public.set_acting_as(text)`, with their `authenticated` grants;
+* the `.rpc` branches in `src/lib/supabase/rooms.ts` and `actingAs.ts`;
+* the two `port_flags` rows;
+* before dropping `enter_todays_room`: its direct callers in `tests/integration` (`setup.ts`, `room-auto-creation.test.ts`, `admin-proxy-roll.test.ts`) and the SQL parity tests in `api/tests/RollForBrew.Tests` (`RoomEntryHttpTests`, `SetActingAsHttpTests`, `RfbApiRoleTests`).
+
+`current_player_id` stays until its last SQL caller is gone.
+
 ## Orders slice flags (#565, human step, not run by the agent)
 
 Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows; wrappers have no room id).
