@@ -1,6 +1,8 @@
 using System.Data;
 using System.Text.Json.Nodes;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Problems;
@@ -13,8 +15,13 @@ namespace RollForBrew.Api.Data;
 public sealed class RoomStore
 {
     private readonly NpgsqlDataSource _dataSource;
+    private readonly ILogger _log;
 
-    public RoomStore(NpgsqlDataSource dataSource) => _dataSource = dataSource;
+    public RoomStore(NpgsqlDataSource dataSource, ILogger<RoomStore>? log = null)
+    {
+        _dataSource = dataSource;
+        _log = (ILogger?)log ?? NullLogger.Instance;
+    }
 
     public static string ApplyPoolerSettings(string connectionString)
     {
@@ -106,7 +113,7 @@ public sealed class RoomStore
                 await ro.ExecuteNonQueryAsync(ct);
             }
 
-            await using var session = new StoreSession(conn, tx);
+            await using var session = new StoreSession(conn, tx, _log);
             var result = await work(session);
             if (readOnly) await tx.RollbackAsync(ct); else await tx.CommitAsync(ct);
             return result;
@@ -147,13 +154,22 @@ public sealed class RoomStore
             : e;
 }
 
+/// <summary>What a swallowed <c>realtime.send</c> failure does to the write (ADR 0011).</summary>
+public enum Announce
+{
+    /// <summary>Roll the write back and answer 503 <c>broadcast_failed</c>.</summary>
+    Required,
+    /// <summary>Log <c>rfb-broadcast-unsent</c> and commit anyway.</summary>
+    BestEffort,
+}
+
 public sealed record RoundLock(Guid RoundId, Guid RoomId, string Status, int CurrentLayer);
 
 /// <summary>What a command returns; <paramref name="Version"/> is the bumped
 /// <c>rooms.version</c>, or null when it wrote nothing.</summary>
 public sealed record CommandOutcome<T>(T Result, long? Version);
 
-public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction transaction) : IAsyncDisposable
+public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction transaction, ILogger? log = null) : IAsyncDisposable
 {
     private RfbDbContext? _db;
 
@@ -162,7 +178,10 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
 
     public RfbDbContext Db => _db ??= CreateDb();
 
-    internal async Task<long> BumpAndBroadcast(Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct)
+    private readonly ILogger _log = log ?? NullLogger.Instance;
+
+    internal async Task<long> BumpAndBroadcast(
+        Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct, Announce announce = Announce.Required)
     {
         await using var bump = new NpgsqlCommand(
             "update public.rooms set version = version + 1 where id = @room returning version", Connection, Transaction);
@@ -191,8 +210,12 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
                 send.Parameters.AddWithValue("event", e.Name);
                 send.Parameters.Add(new NpgsqlParameter("payload", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = payload.ToJsonString() });
                 await send.ExecuteNonQueryAsync(ct);
-                if (swallowed is not null)
+                if (swallowed is null) continue;
+                if (announce == Announce.Required)
                     throw new ProblemException("broadcast_failed", ProblemClass.Unavailable, "The change could not be announced, so it was not applied.", swallowed);
+                _log.LogWarning("rfb-broadcast-unsent room {RoomId} event {Event} version {Version}: {Notice}",
+                    roomId, e.Name, version, swallowed);
+                break;
             }
         }
         finally
@@ -202,8 +225,12 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
         return version;
     }
 
-    /// <summary>For a Filler that writes core tables: one <c>rooms.version</c> bump and no broadcast.</summary>
-    public Task<long> BumpRoomVersion(Guid roomId, CancellationToken ct = default) => BumpAndBroadcast(roomId, [], ct);
+    /// <summary>For a Filler whose write changes what another player sees: one <c>rooms.version</c>
+    /// bump and a <c>room-changed</c> carrying it, sent in this transaction (ADR 0011). With
+    /// <see cref="Announce.BestEffort"/> a swallowed send is logged and the write still commits;
+    /// the bumped version reaches other clients on their next refetch.</summary>
+    public Task<long> BumpAndAnnounce(Guid roomId, Announce announce, CancellationToken ct = default) =>
+        BumpAndBroadcast(roomId, [new RoomEvent("room-changed", [])], ct, announce);
 
     /// <summary>Whether C# decides this round's advancement (#547). A room row beats the
     /// global row; no row means off. An unknown round reads the global row, and either path

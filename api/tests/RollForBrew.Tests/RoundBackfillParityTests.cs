@@ -201,13 +201,26 @@ public class RoundBackfillParityTests
     }
 
     [Fact]
-    public async Task A_backfilled_round_commits_a_version_and_sends_nothing()
+    public async Task A_backfilled_round_announces_its_version_on_commit()
     {
         var db = await Seed();
         var result = await CSharp(db, Boss, [A, B], Layers(L((A, 5), (B, 12))));
         Assert.Null(result.Error);
         Assert.Equal(1L, await db.Scalar<long>($"select version from public.rooms where date = {Today}"));
-        Assert.Equal(0L, await db.Scalar<long>("select count(*) from realtime.messages"));
+        var room = await db.Scalar<Guid>($"select id from public.rooms where date = {Today}");
+        Assert.Equal(new[] { 1L }, await db.RoomChangedVersions(room));
+        Assert.Equal(1L, await db.Messages());
+    }
+
+    [Fact]
+    public async Task A_backfill_that_fails_at_commit_announces_nothing()
+    {
+        var db = await Seed();
+        await db.FailCommitsThatBroadcast();
+        var result = await CSharp(db, Boss, [A, B], Layers(L((A, 5), (B, 12))));
+        Assert.NotNull(result.Error);
+        Assert.Equal(0L, await db.Messages());
+        Assert.Equal(0L, await db.Scalar<long>("select count(*) from public.rounds"));
     }
 
     [Fact]
