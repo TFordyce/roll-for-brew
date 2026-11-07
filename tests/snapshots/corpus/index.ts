@@ -2394,4 +2394,376 @@ export const CORPUS: Scenario[] = [
       return { roundId, resolveWith: loaf.client };
     },
   },
+
+  // The same audit, led by C# line coverage: resolver branches no golden reached.
+  {
+    name: "5-replay-frozen-roller-step",
+    phases: ["5"],
+    note: "A replayed round's frozen roller gets a roll_frozen step and keeps their roll.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("frozen");
+      const p2 = await ctx.signUp("other");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5);
+      await ctx.seedRoll(roundId, p2.googleSub, 9);
+      const { error } = await ctx.admin
+        .from("rounds")
+        .update({ replay_generation: 1, replay_frozen_rollers: [p1.googleSub] })
+        .eq("id", roundId);
+      if (error) throw error;
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "3-persistent-advantage-from-active-effect",
+    phases: ["3", "5"],
+    note: "A carried advantage with no cast this round: the step comes from the active effect, over the discarded die.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("holder");
+      const p2 = await ctx.signUp("other");
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p1.googleSub,
+        cardName: "Prophe-Tea",
+        effectKind: "advantage",
+        effectParams: { persist: true },
+        roundsRemaining: null,
+      });
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 17);
+      await ctx.seedRoll(roundId, p2.googleSub, 12);
+      const { error } = await ctx.admin
+        .from("rolls")
+        .update({ discarded_value: 9 })
+        .eq("round_id", roundId)
+        .eq("player_id", p1.googleSub);
+      if (error) throw error;
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "4a-carried-set-modifier-from-active-effect",
+    phases: ["4a", "5"],
+    note: "A carried set_modifier with no cast this round composes from the active effect.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("crashed");
+      const p2 = await ctx.signUp("other");
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p2.googleSub,
+        cardName: "Caffeine Crash",
+        effectKind: "set_modifier",
+        effectParams: { value: -1 },
+        roundsRemaining: 2,
+      });
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10, 4);
+      await ctx.seedRoll(roundId, p2.googleSub, 10, 0);
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "1-nat1-backfire-flat-with-recorded-payload",
+    phases: ["1", "4a", "5"],
+    note: "A nat-1 backfire with a recorded payload re-applies the victim's flat_modifier onto the reactor.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("reactor");
+      const p3 = await ctx.signUp("victim-target");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5);
+      await ctx.seedRoll(roundId, p2.googleSub, 5);
+      await ctx.seedRoll(roundId, p3.googleSub, 5);
+      const { castId: victimId } = await ctx.seedCast(roundId, p1.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 10 },
+        targetPlayerId: p3.googleSub,
+      });
+      await ctx.seedCast(roundId, p2.googleSub, "Saving Steep", {
+        effectKind: "contested_negate",
+        effectParams: { dc: 10 },
+        targetPlayerId: null,
+        parentCastId: victimId,
+        castInputs: { dc_d20: 1, dc: 10, backfire: { transforms: [], dice_rolls: {} } },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "1-nat1-backfire-roll-transforms",
+    phases: ["1", "3", "5"],
+    note: "A nat-1 backfire walks recorded advantage, forced_reroll and flip transforms onto the reactor's roll.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("reactor");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 15);
+      const { castId: victimId } = await ctx.seedCast(roundId, p1.googleSub, "Sugar Rush", {
+        effectKind: "advantage",
+        effectParams: {},
+        targetPlayerId: p2.googleSub,
+      });
+      await ctx.seedCast(roundId, p2.googleSub, "Saving Steep", {
+        effectKind: "contested_negate",
+        effectParams: { dc: 10 },
+        targetPlayerId: null,
+        parentCastId: victimId,
+        castInputs: {
+          dc_d20: 1,
+          dc: 10,
+          backfire: {
+            transforms: [
+              { kind: "advantage", order: 1, extra_dice: [18, 19] },
+              { kind: "forced_reroll", order: 2, extra_dice: [7] },
+              { kind: "roll_flip", order: 3 },
+            ],
+            dice_rolls: {},
+          },
+        },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "0-copy-of-countered-source-is-noop",
+    phases: ["0a", "0b", "1", "5"],
+    note: "Copying a cast that was countered is a no-op step, and nothing lands on the copier.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("reactor");
+      const p2 = await ctx.signUp("src-caster");
+      const p3 = await ctx.signUp("apprentice");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 10);
+      await ctx.seedRoll(roundId, p3.googleSub, 10);
+      const win = await ctx.openWindow(roundId);
+      const { castId: srcCast } = await ctx.seedCast(roundId, p2.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 6 },
+        targetPlayerId: p2.googleSub,
+        reactionWindowId: win,
+        extra: { target_role: "TARGET" },
+      });
+      await ctx.seedCast(roundId, p1.googleSub, "Tannin Tantrum", {
+        effectKind: "contested_negate",
+        effectParams: {},
+        targetPlayerId: null,
+        reactionWindowId: win,
+        parentCastId: srcCast,
+        extra: { target_role: "CARD" },
+        castInputs: { dc_d20: 20, dc: 10 },
+      });
+      await ctx.seedCast(roundId, p3.googleSub, "Saucerer's Apprentice", {
+        effectKind: null as unknown as string,
+        effectParams: {},
+        targetPlayerId: null,
+        reactionWindowId: win,
+        parentCastId: srcCast,
+        extra: { target_role: "CARD" },
+        castInputs: { copied_cast_id: srcCast, copy_inputs: {} },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "0-copy-blocked-by-block-copy-ward",
+    phases: ["0a", "0b", "4a", "5"],
+    note: "A block_copy ward on the source's caster blocks the copy: the card is burned and the outcome is blocked.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("src-caster");
+      const p2 = await ctx.signUp("target");
+      const p3 = await ctx.signUp("apprentice");
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p1.googleSub,
+        cardName: "Bag for Life",
+        effectKind: "ward",
+        effectParams: { polarity: ["positive", "negative"], domain: ["modifier"], block_copy: true },
+        roundsRemaining: null,
+      });
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 10);
+      await ctx.seedRoll(roundId, p3.googleSub, 10);
+      const win = await ctx.openWindow(roundId);
+      const { castId: srcCast } = await ctx.seedCast(roundId, p1.googleSub, "Lucky Sip", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 6 },
+        targetPlayerId: p2.googleSub,
+        reactionWindowId: win,
+        extra: { target_role: "TARGET" },
+      });
+      await ctx.seedCast(roundId, p3.googleSub, "Saucerer's Apprentice", {
+        effectKind: null as unknown as string,
+        effectParams: {},
+        targetPlayerId: null,
+        reactionWindowId: win,
+        parentCastId: srcCast,
+        extra: { target_role: "CARD" },
+        castInputs: { copied_cast_id: srcCast, copy_inputs: {} },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "0-seize-countered-is-undone",
+    phases: ["0a", "0b", "1", "4a", "5"],
+    note: "Countering the Brew-merang undoes the seize: the source lands on its original target.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("src-caster");
+      const p2 = await ctx.signUp("reactor");
+      const p3 = await ctx.signUp("seizer");
+      const roundId = await ctx.openAndCloseRound(p1, [p2, p3]);
+      await ctx.seedRoll(roundId, p1.googleSub, 10);
+      await ctx.seedRoll(roundId, p2.googleSub, 10);
+      await ctx.seedRoll(roundId, p3.googleSub, 10);
+      const win = await ctx.openWindow(roundId);
+      const { castId: srcCast } = await ctx.seedCast(roundId, p1.googleSub, "Brewer's Blessing", {
+        effectKind: "flat_modifier",
+        effectParams: { delta: 5 },
+        targetPlayerId: p2.googleSub,
+        reactionWindowId: win,
+        extra: { target_role: "TARGET" },
+      });
+      const { castId: bmCast } = await ctx.seedCast(roundId, p3.googleSub, "Brew-merang", {
+        effectKind: null as unknown as string,
+        effectParams: {},
+        targetPlayerId: null,
+        reactionWindowId: win,
+        parentCastId: srcCast,
+        extra: { target_role: "CARD" },
+        castInputs: { seized_cast_id: srcCast },
+      });
+      await ctx.seedCast(roundId, p2.googleSub, "Tannin Tantrum", {
+        effectKind: "contested_negate",
+        effectParams: {},
+        targetPlayerId: null,
+        reactionWindowId: win,
+        parentCastId: bmCast,
+        extra: { target_role: "CARD" },
+        castInputs: { dc_d20: 20, dc: 10 },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "2-ward-negative-blocks-lowering-set-and-multiplier",
+    phases: ["2", "4a", "5"],
+    note: "Polarity is derived: a set_modifier and a multiplier that lower the target are negative, so a negative ward blocks them.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("warded");
+      const p2 = await ctx.signUp("caster");
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p1.googleSub,
+        cardName: "Cast-Iron Kettle",
+        effectKind: "ward",
+        effectParams: { polarity: ["negative"], domain: ["modifier"] },
+        roundsRemaining: null,
+      });
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5, 4);
+      await ctx.seedRoll(roundId, p2.googleSub, 12, 0);
+      await ctx.seedCast(roundId, p2.googleSub, "Mug Shot", {
+        effectKind: "set_modifier",
+        effectParams: { value: 0 },
+        targetPlayerId: p1.googleSub,
+      });
+      await ctx.seedCast(roundId, p2.googleSub, "Double Shot", {
+        effectKind: "modifier_multiplier",
+        effectParams: { multiplier: 0 },
+        targetPlayerId: p1.googleSub,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "2-ward-positive-blocks-raising-set-and-multiplier",
+    phases: ["2", "4a", "5"],
+    note: "The mirror: a set_modifier and a multiplier that raise the target are positive, so a positive ward blocks them.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("warded");
+      const p2 = await ctx.signUp("caster");
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p2.googleSub,
+        cardName: "Jinxed Biscuit",
+        effectKind: "ward",
+        effectParams: { polarity: ["positive"], domain: ["modifier"] },
+        roundsRemaining: null,
+      });
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5, 2);
+      await ctx.seedRoll(roundId, p2.googleSub, 12, 0);
+      await ctx.seedCast(roundId, p2.googleSub, "Mug Shot", {
+        effectKind: "set_modifier",
+        effectParams: { value: 9 },
+        targetPlayerId: p1.googleSub,
+      });
+      await ctx.seedCast(roundId, p2.googleSub, "Double Shot", {
+        effectKind: "modifier_multiplier",
+        effectParams: { multiplier: 2 },
+        targetPlayerId: p1.googleSub,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "2-cast-time-ward-block-marker",
+    phases: ["2", "5"],
+    note: "A cast the ward stopped at cast time (Bes-Tea on a block_copy holder) traces one blocked step, naming the holder.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("caster");
+      const p2 = await ctx.signUp("holder");
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 8, 0);
+      await ctx.seedRoll(roundId, p2.googleSub, 8, 9);
+      await ctx.seedCast(roundId, p1.googleSub, "Bes-Tea", {
+        effectKind: "set_modifier",
+        effectParams: { value: 9 },
+        targetPlayerId: p1.googleSub,
+        castInputs: {
+          ward_blocked_by: "00000000-0000-0000-0000-0000000000ab",
+          ward_card_name: "Bag for Life",
+          ward_target: p2.googleSub,
+          would_be_before: 0,
+          would_be_after: 9,
+        },
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
+  {
+    name: "05-highest-modifier-skips-cloud-of-cream-holder",
+    phases: ["5"],
+    note: "A Cloud of Cream holder is skipped by the highest_modifier override; the next-highest snapshot brews.",
+    async seed(ctx) {
+      const p1 = await ctx.signUp("holder");
+      const p2 = await ctx.signUp("next");
+      await ctx.seedActiveEffect({
+        roomId: p1.roomId,
+        targetPlayerId: p1.googleSub,
+        casterId: p1.googleSub,
+        cardName: "Cloud of Cream",
+        effectKind: "targeting_skip",
+        effectParams: {},
+        roundsRemaining: 2,
+      });
+      const roundId = await ctx.openAndCloseRound(p1, [p2]);
+      await ctx.seedRoll(roundId, p1.googleSub, 5, 8);
+      await ctx.seedRoll(roundId, p2.googleSub, 5, 3);
+      await ctx.seedCast(roundId, p1.googleSub, "Sugar Rush", {
+        effectKind: "tea_maker_override",
+        effectParams: { mode: "highest_modifier" },
+        targetPlayerId: null,
+      });
+      return { roundId, resolveWith: p1.client };
+    },
+  },
 ];

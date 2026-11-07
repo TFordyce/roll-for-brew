@@ -8,41 +8,34 @@ Spec #533's exit 1 asks that each existing TS integration test for a slice's RPC
 
 | Kind | Tests | Meaning |
 |---|---|---|
-| `golden` | 230 | A corpus scenario pins the same behaviour through both engines |
-| `test` | 118 | A named C# test pins it, or the named tests pin the same branch |
+| `golden` | 245 | A corpus scenario pins the same behaviour through both engines |
+| `test` | 110 | A named C# test pins it, or the named tests pin the same branch |
 | `elsewhere` | 48 | The test's point is another RPC from a later slice, and the slice 2b RPC is only how the round ends |
-| `GAP` | 20 | No C# equivalent yet, listed below |
+| `GAP` | 13 | No C# equivalent yet, listed below |
 
 The mapping is a reading of each test's title and seed, not a mechanical proof. `test` rows that name a sibling branch are the weakest and say so.
 
-**What the audit added.** 19 corpus scenarios for branches only the TS suite reached, taking the corpus from 72 to 91. Each passed through C# `Evaluate`, both advance entry points and the Recap on its first run, so the audit found no rule difference between the engines. It also added `A_recap_read_does_not_wait_on_a_round_being_finalized` and `A_resolved_round_with_no_stored_summary_reads_the_same`.
+**What the audit added.** 31 corpus scenarios for branches only the TS suite reached, taking the corpus from 72 to 103. 19 came from reading the tests and 12 from C# line coverage after a full run, which showed that some title-based mappings were wrong: `roll_frozen`, carried advantage and carried modifiers, the block_copy and countered-seize branches, and the polarity arms had run in no C# test. Each scenario passed through C# `Evaluate`, both advance entry points and the Recap, and the audit found no rule difference between the engines. It found one stored-byte difference: with a fractional multiplier, SQL stores `2.0` in `resolution_trace` where C# stores `2`. JSON parsing reads both as 2, and the only catalog multiplier is Double Shot's 2, so play can't reach it today. The scenario uses a multiplier of 0 to stay exact. It also added `A_recap_read_does_not_wait_on_a_round_being_finalized` and `A_resolved_round_with_no_stored_summary_reads_the_same`.
 
 **Regenerating a scenario.** `tests/integration/trace-snapshot.test.ts` writes a new golden, and `EMIT_INPUT_FIXTURES=1` writes its input. That flag rewrites every input, so restore the existing ones afterwards: they predate `rooms.version`.
 
-## Open gaps (20)
+## Open gaps (13)
 
 | TS file | Test | Why it is open |
 |---|---|---|
 | `brew-iou.test.ts` | no debt when Brew IOU's target goes on to a Loose Leaf roll-off | No golden has Brew IOU and a roll-off together |
 | `brew-iou.test.ts` | a debt from a real room is not paid in the Test Room | `Rules.BrewDebtDue` Test Room scoping has no C# test |
-| `effect-invocation.test.ts` | copying a negated / broken-chain cast is a no-op | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
-| `effect-invocation.test.ts` | a block_copy ward blocks the copy -- card burned, outcome blocked | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
-| `effect-invocation.test.ts` | countering the Brew-merang undoes the seize | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
-| `effect-invocation.test.ts` | a block_copy ward blocks the seize -- card burned, source resolves normally | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
-| `effect-invocation.test.ts` | a Brew-merang seizing a Brew-merang terminates and resolves coherently | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
+| `effect-invocation.test.ts` | a block_copy ward blocks the seize -- card burned, source resolves normally | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
+| `effect-invocation.test.ts` | a Brew-merang seizing a Brew-merang terminates and resolves coherently | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
 | `last-drip.test.ts` | reads the most recent resolved round, ignoring older and cancelled ones | Past-round selection among older and cancelled rounds has no golden |
 | `last-drip.test.ts` | breaks a full tie (roll and snapshot) on the lowest player id | Same code path as the snapshot tie-break, one comparison further |
 | `last-drip.test.ts` | an immune fall-through target is still handled by Brewer Immunity: the default pick stands | Immunity filter on this rung, covered for other rungs by `05-brewer-immunity-override-falls-through` |
 | `last-drip.test.ts` | Genie in the Teapot can invoke it: the previous winner brews with no gain | Genie invoking this card has no golden |
-| `targeting-skip.test.ts` | a Cloud of Cream holder is skipped by tea_maker_override 'highest_modifier'; the next-highest snapshot roller brews | The `highest_modifier` rung's targeting skip has no golden of its own |
 | `tea-heist.test.ts` | lands the loot as a keep-or-swap choice when the thief picked up a card mid-round | Heist branch with no golden |
 | `tea-maker-override-modifier-gain.test.ts` | a reserved mode (no card slice yet) stays out of the override contest instead of failing the round | A reserved override mode staying out of the contest has no golden |
-| `ward-phase.test.ts` | a negative-polarity modifier ward does not block a positive buff | Ward polarity branch with no golden of its own |
-| `ward-phase.test.ts` | a set_modifier that lowers the target is negative-polarity and is blocked by a negative ward | Ward polarity branch with no golden of its own |
-| `ward-transfer-interaction.test.ts` | a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | Ward against a transfer or copy card has no golden of its own |
-| `ward-transfer-interaction.test.ts` | a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | Ward against a transfer or copy card has no golden of its own |
-| `ward-transfer-interaction.test.ts` | a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | Ward against a transfer or copy card has no golden of its own |
-| `ward-transfer-interaction.test.ts` | Bes-Tea against a block_copy holder resolves blocked — the caster's round modifier is unchanged | Ward against a transfer or copy card has no golden of its own |
+| `ward-transfer-interaction.test.ts` | a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | Ward against a transfer card at cast time has no golden of its own |
+| `ward-transfer-interaction.test.ts` | a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | Ward against a transfer card at cast time has no golden of its own |
+| `ward-transfer-interaction.test.ts` | a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | Ward against a transfer card at cast time has no golden of its own |
 
 ## Every test
 
@@ -189,14 +182,14 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 |---|---|---|---|
 | copies a stack cast onto the Apprentice caster; the original still resolves | resolve | golden | `0-spell-copy-onto-apprentice-caster` |
 | the copy draws its own RNG -- a copied dice_modifier re-rolls independently | resolve | golden | `0-spell-copy-onto-apprentice-caster` |
-| copying a negated / broken-chain cast is a no-op | resolve | GAP | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
-| a block_copy ward blocks the copy -- card burned, outcome blocked | resolve | GAP | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
+| copying a negated / broken-chain cast is a no-op | resolve | golden | `0-copy-of-countered-source-is-noop` |
+| a block_copy ward blocks the copy -- card burned, outcome blocked | resolve | golden | `0-copy-blocked-by-block-copy-ward` |
 | retargets the seized cast to its own caster | resolve | test | AdvanceRoundParityTests.A_seize_keeps_the_seized_cast_and_records_that_it_did |
 | a multi-target seized cast collapses to just the caster | resolve | test | AdvanceRoundParityTests.A_seize_keeps_the_seized_cast_and_records_that_it_did |
-| countering the Brew-merang undoes the seize | resolve | GAP | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
-| a block_copy ward blocks the seize -- card burned, source resolves normally | resolve | GAP | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
+| countering the Brew-merang undoes the seize | resolve | golden | `0-seize-countered-is-undone` |
+| a block_copy ward blocks the seize -- card burned, source resolves normally | resolve | GAP | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
 | resolve_round is idempotent over an invocation round | resolve | test | `EvaluatePipelineTests.Evaluate_is_deterministic_and_leaves_the_snapshot_untouched` |
-| a Brew-merang seizing a Brew-merang terminates and resolves coherently | resolve | GAP | Invocation edge case with no golden. Phase 0 runs in `A_seize` and the copy golden, this branch does not |
+| a Brew-merang seizing a Brew-merang terminates and resolves coherently | resolve | GAP | Invocation edge case with no golden. Line coverage reaches its branch through the block_copy and seize goldens, but not this combination |
 
 ### `fixed-roll.test.ts` (7)
 
@@ -280,12 +273,12 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 
 | Test | RPC | Kind | C# equivalent |
 |---|---|---|---|
-| carries advantage across three consecutive rounds via the projection | resolve | test | `3-advantage-adopts-kept-high-die`; projection via `ActiveEffectsTests` |
-| resolve_round emits an advantage Trace step sourced from the projection row | resolve | test | `3-advantage-adopts-kept-high-die`; projection via `ActiveEffectsTests` |
-| stacks before a reaction-window transform on the same roller (advantage step first, not zero-impact) | resolve | test | `3-advantage-adopts-kept-high-die`; projection via `ActiveEffectsTests` |
+| carries advantage across three consecutive rounds via the projection | resolve | golden | `3-persistent-advantage-from-active-effect` |
+| resolve_round emits an advantage Trace step sourced from the projection row | resolve | golden | `3-persistent-advantage-from-active-effect` |
+| stacks before a reaction-window transform on the same roller (advantage step first, not zero-impact) | resolve | golden | `3-persistent-advantage-from-active-effect` |
 | negating the originating cast re-projects the advantage away | resolve | test | `ActiveEffectsTests`, `GoldenLivenessTests` |
 | a dispel cast ends the persistent advantage from that round onward | resolve | test | `ActiveEffectsTests`, `GoldenLivenessTests` |
-| a modifier-domain ward on the caster does not touch the roll-domain advantage | resolve | test | `3-advantage-adopts-kept-high-die`; projection via `ActiveEffectsTests` |
+| a modifier-domain ward on the caster does not touch the roll-domain advantage | resolve | golden | `3-persistent-advantage-from-active-effect` |
 
 ### `persistent-modifier-cards.test.ts` (7)
 
@@ -387,7 +380,7 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | redirect retargets a modifier cast onto the original caster, from recorded state (no in-place UPDATE) | resolve | golden | `1-redirect-retargets-modifier-cast` |
 | Phase 1 is idempotent: re-resolving a round with a counter chain yields an identical Trace | resolve | test | `EvaluatePipelineTests.Evaluate_is_deterministic_and_leaves_the_snapshot_untouched`; `Phase4bTests` |
 | a negated forced_reroll unwinds to the recorded before value (issue #308) | resolve | test | `3-fixed-roll-negated-unwinds` (the same unwind branch for another kind) |
-| a nat-1 backfire leaves the victim to resolve and re-applies its flat_modifier onto the reactor, outcome 'backfired' | resolve | golden | `1-nat1-backfire-reapplies-onto-reactor` |
+| a nat-1 backfire leaves the victim to resolve and re-applies its flat_modifier onto the reactor, outcome 'backfired' | resolve | golden | `1-nat1-backfire-flat-with-recorded-payload` |
 | a nat-1 backfire re-applies a disadvantage onto the reactor as a third-die-lowest roll step | resolve | golden | `1-nat1-backfire-disadvantage-third-die` |
 | redirect on a multi-target countered cast moves only the reactor's own row; the other target still hits | resolve | golden | `1-redirect-moves-only-the-reactors-row` |
 | Saving Steep {dc:10}: d20 >= 10 negates the whole victim group | resolve | golden | `1-contested-negate-succeeds` |
@@ -462,9 +455,9 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | decline keeps the resolved round standing and clears the pending decision | resolve | elsewhere | Scrap and replay are `confirm_round_replay`, not slice 2b; the replayed round runs through the goldens as any other |
 | a countered Time for Brew never becomes a pending decision | resolve | golden | `5-replay-scrapped-generation-summary` |
 | auto_decline_stalled_round_replays clears a decision left past the 5-minute window | resolve | elsewhere | Scrap and replay are `confirm_round_replay`, not slice 2b; the replayed round runs through the goldens as any other |
-| carries a negative roll-domain ward holder's layer-0 roll into generation 1 and emits a roll_frozen Trace step | resolve | test | `EvaluatePipelineTests` (frozen rollers); carrying the roll over is `confirm_round_replay`, not slice 2b |
-| does not carry a roll over for 'Jinxed Biscuit (positive roll-domain)' | resolve | test | `EvaluatePipelineTests` (frozen rollers); carrying the roll over is `confirm_round_replay`, not slice 2b |
-| does not carry a roll over for 'Eternal Steep (modifier-only)' | resolve | test | `EvaluatePipelineTests` (frozen rollers); carrying the roll over is `confirm_round_replay`, not slice 2b |
+| carries a negative roll-domain ward holder's layer-0 roll into generation 1 and emits a roll_frozen Trace step | resolve | golden | `5-replay-frozen-roller-step` |
+| does not carry a roll over for 'Jinxed Biscuit (positive roll-domain)' | resolve | golden | `5-replay-frozen-roller-step` |
+| does not carry a roll over for 'Eternal Steep (modifier-only)' | resolve | golden | `5-replay-frozen-roller-step` |
 
 ### `round-scoped-modifier-cards.test.ts` (3)
 
@@ -478,7 +471,7 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 
 | Test | RPC | Kind | C# equivalent |
 |---|---|---|---|
-| Caffeine Crash composes into the modifier bucket for exactly its 2 remaining rounds, then expires | resolve | test | `ActiveEffectsTests`, `GoldenLivenessTests` |
+| Caffeine Crash composes into the modifier bucket for exactly its 2 remaining rounds, then expires | resolve | golden | `4a-carried-set-modifier-from-active-effect` |
 
 ### `stale-biscuit.test.ts` (1)
 
@@ -509,7 +502,7 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | a Cloud of Cream holder is skipped as a lowest_gains_highest_modifier beneficiary; the next-lowest roller is lifted instead | resolve | golden | `4c-targeting-skip-excludes-holder` |
 | a Cloud of Cream holder is skipped as the highest-modifier source; the lift value comes from the next-highest roller's composed modifier | resolve | golden | `4c-targeting-skip-excludes-holder` |
 | with no Cloud of Cream, lowest_gains_highest_modifier still lifts the tied-lowest roller (control) | resolve | golden | `4c-lowest-gains-highest-modifier` |
-| a Cloud of Cream holder is skipped by tea_maker_override 'highest_modifier'; the next-highest snapshot roller brews | resolve | GAP | The `highest_modifier` rung's targeting skip has no golden of its own |
+| a Cloud of Cream holder is skipped by tea_maker_override 'highest_modifier'; the next-highest snapshot roller brews | resolve | golden | `05-highest-modifier-skips-cloud-of-cream-holder` |
 | the flag does not change the default lowest-roll brewer pick or emit a skip step | resolve | golden | `05-default-pick-empty-trace` |
 
 ### `tea-cosy.test.ts` (7)
@@ -647,8 +640,8 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 | Test | RPC | Kind | C# equivalent |
 |---|---|---|---|
 | a positive-polarity modifier ward blocks a positive flat_modifier: the cast row stays, the effect is removed, and a warded step is emitted | resolve | golden | `2-ward-blocks-modifier-cast` |
-| a negative-polarity modifier ward does not block a positive buff | resolve | GAP | Ward polarity branch with no golden of its own |
-| a set_modifier that lowers the target is negative-polarity and is blocked by a negative ward | resolve | GAP | Ward polarity branch with no golden of its own |
+| a negative-polarity modifier ward does not block a positive buff | resolve | golden | `2-ward-positive-blocks-raising-set-and-multiplier` |
+| a set_modifier that lowers the target is negative-polarity and is blocked by a negative ward | resolve | golden | `2-ward-negative-blocks-lowering-set-and-multiplier` |
 | block_earned_modifier ward on the selected brewer zeroes their tea-making gain | resolve | golden | `2-ward-block-earned-modifier-zeroes-gain` |
 | a warded tied-lowest roller is excluded from lowest_gains_highest_modifier; an unwarded tied-lowest roller is still lifted | resolve | golden | `4c-warded-tied-lowest-not-lifted` |
 | the warded Trace step carries blocked_cast_id / ward_cast_id / ward_card_name / would_be_before / would_be_after | resolve | golden | `2-ward-blocks-modifier-cast` |
@@ -664,12 +657,12 @@ The RPC column names what the test really called. `golden` names a corpus scenar
 
 | Test | RPC | Kind | C# equivalent |
 |---|---|---|---|
-| a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | resolve | GAP | Ward against a transfer or copy card has no golden of its own |
+| a ward on the losing side blocks both sides of a Chai-nge swap; the card is still spent | resolve | GAP | Ward against a transfer card at cast time has no golden of its own |
 | an unwarded Chai-nge swap still applies (control) | resolve | golden | `4b-persistent-modifier-transfer-rest-of-day` |
 | the block is idempotent — a second resolve reproduces the caches and the Trace | resolve | test | `Phase4bTests` |
-| a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | resolve | GAP | Ward against a transfer or copy card has no golden of its own |
-| a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | resolve | GAP | Ward against a transfer or copy card has no golden of its own |
-| Bes-Tea against a block_copy holder resolves blocked — the caster's round modifier is unchanged | resolve | GAP | Ward against a transfer or copy card has no golden of its own |
+| a warded Tea Leaf target keeps their modifier and the caster gets no roll bonus | resolve | GAP | Ward against a transfer card at cast time has no golden of its own |
+| a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | resolve | GAP | Ward against a transfer card at cast time has no golden of its own |
+| Bes-Tea against a block_copy holder resolves blocked — the caster's round modifier is unchanged | resolve | golden | `2-cast-time-ward-block-marker` |
 | a Bitter Leech tick landing on a warded victim is skipped; a later tick after the ward expires still applies | resolve | test | `Phase4bTests.A_warded_tick_negates_the_pair_and_reverts_both_caches` |
 
 ### `yorkshire-terror.test.ts` (2)
