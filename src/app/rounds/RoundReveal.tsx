@@ -85,7 +85,7 @@ export function RoundReveal({
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
-    getRoundRecap(supabase, roundId)
+    getRoundRecap(supabase, roundId, roomId)
       .then((data) => {
         if (!cancelled) setRecap(data);
       })
@@ -94,7 +94,7 @@ export function RoundReveal({
     return () => {
       cancelled = true;
     };
-  }, [roundId, recapRefreshToken]);
+  }, [roomId, roundId, recapRefreshToken]);
 
   function handleLayerZeroRolls(revealedRolls: LayerRollsRevealedPayload["rolls"]) {
     setRolls(revealedRolls);

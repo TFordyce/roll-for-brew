@@ -48,7 +48,7 @@ internal sealed class WorkingCast
         ParentCastId, CastAt, ReactionWindowId, Negated, Seq, TargetRole, CastInputs, RedirectedToCastId,
         SeizedByCastId, CopiedCastId, Generation, SourceCastId);
 
-    public CastFlags Flags() => new(Id, Negated, RedirectedToCastId, SeizedByCastId, CopiedCastId, TargetPlayerId, TargetRole, TargetPending);
+    public CastFlags Flags() => new(Id, Negated, RedirectedToCastId, SeizedByCastId, CopiedCastId, TargetPlayerId, TargetRole, TargetPending, SeizedKept);
 }
 
 internal sealed record Ward(
@@ -77,6 +77,7 @@ internal sealed class EvalContext
     public Guid RoomId { get; }
     public int Gen { get; }
     public IDieRoller Dice { get; }
+    public bool IsPreview { get; init; }
 
     public Dictionary<Guid, WorkingCast> AllCasts { get; }
     public List<WorkingCast> Casts { get; }

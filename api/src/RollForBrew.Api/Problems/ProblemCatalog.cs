@@ -7,6 +7,7 @@ public enum ProblemClass
     Input = 400,
     Auth = 403,
     Missing = 404,
+    Unavailable = 503,
 }
 
 public sealed record ProblemInfo(string SqlState, string Code, ProblemClass Class, string Title);

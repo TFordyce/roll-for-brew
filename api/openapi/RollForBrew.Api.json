@@ -500,6 +500,67 @@
           }
         }
       }
+    },
+    "/rounds/{roundId}/recap": {
+      "get": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "getRoundRecap",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JsonObject"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/backfill": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "adminBackfillRound",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackfillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BackfillResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -608,6 +669,72 @@
               "null",
               "string"
             ]
+          }
+        }
+      },
+      "BackfillEntry": {
+        "required": [
+          "playerId",
+          "value"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "value": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "BackfillRequest": {
+        "required": [
+          "participantIds",
+          "layers"
+        ],
+        "type": "object",
+        "properties": {
+          "participantIds": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "layers": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/BackfillEntry"
+              }
+            }
+          }
+        }
+      },
+      "BackfillResponse": {
+        "required": [
+          "roundId"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
           }
         }
       },

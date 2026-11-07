@@ -34,6 +34,9 @@ public static class RoundSnapshotLoader
               or c.id in (select source_cast_id from eff)
               or (c.effect_kind = 'dispel' and c.effect_params ->> 'ended_effect_id' in (select id::text from eff))
               or c.cast_inputs ->> 'courage_token_cast_id' in (select source_cast_id::text from eff)
+              or c.id in (select r.brewer_source_cast_id from public.rounds r
+                           where r.id in (select rp.round_id from public.round_participants rp
+                                           where rp.player_id in (select player_id from participants)))
         ),
         rnds as (
           select r.* from public.rounds r
@@ -68,6 +71,8 @@ public static class RoundSnapshotLoader
           'spell_card_effects', (select coalesce(jsonb_agg(to_jsonb(t) order by t.id), '[]') from public.spell_card_effects t),
           'room_players', (select coalesce(jsonb_agg(to_jsonb(t) order by t.player_id), '[]')
               from public.room_players t where t.room_id = @room),
+          'reaction_windows', (select coalesce(jsonb_agg(to_jsonb(t) order by t.round_id, t.layer, t.id), '[]')
+              from public.spell_reaction_windows t where t.round_id in (select id from room_rounds)),
           'modifier_adjustments', (select coalesce(jsonb_agg(to_jsonb(t) order by t.created_at, t.id), '[]')
               from public.modifier_adjustments t where t.room_id = @room)
         )::text

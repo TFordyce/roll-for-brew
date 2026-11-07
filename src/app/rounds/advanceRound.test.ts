@@ -138,6 +138,24 @@ describe("advanceRound", () => {
     expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
   });
 
+  it("an outcome the API already committed and broadcast sends nothing more", async () => {
+    const deps = fakeDeps({
+      outcome: "windowOpened",
+      layer: 0,
+      windowClosed: true,
+      finalization: { ...brewer, replayPending: true },
+      layerRolls: { layer: 0, rolls: rawRolls },
+      version: 7,
+    });
+
+    await advanceRound(supabase, "round-1", "layerRolled", deps);
+
+    expect(deps.getRoundRoomId).not.toHaveBeenCalled();
+    expect(deps.broadcastLayerRollsRevealed).not.toHaveBeenCalled();
+    expect(deps.broadcastRoundRevealed).not.toHaveBeenCalled();
+    expect(deps.broadcastRoomChanged).not.toHaveBeenCalled();
+  });
+
   it("a noop sends no broadcast and skips the room lookup", async () => {
     const deps = fakeDeps(noop);
 

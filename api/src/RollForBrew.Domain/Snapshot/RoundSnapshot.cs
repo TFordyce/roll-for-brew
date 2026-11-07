@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace RollForBrew.Domain.Snapshot;
 
@@ -16,8 +17,13 @@ public sealed record RoundSnapshot(
     IReadOnlyList<SpellCardRow> SpellCards,
     IReadOnlyList<SpellCardEffectRow> SpellCardEffects,
     IReadOnlyList<RoomPlayerRow> RoomPlayers,
-    IReadOnlyList<ModifierAdjustmentRow> ModifierAdjustments)
+    IReadOnlyList<ModifierAdjustmentRow> ModifierAdjustments,
+    IReadOnlyList<ReactionWindowRow>? ReactionWindows = null)
 {
+    /// <summary>The golden fixtures predate this table, so it may be absent.</summary>
+    [JsonIgnore]
+    public IReadOnlyList<ReactionWindowRow> Windows => ReactionWindows ?? [];
+
     public static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,

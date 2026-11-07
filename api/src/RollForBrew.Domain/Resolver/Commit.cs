@@ -13,8 +13,14 @@ public sealed record IncrementRoomPlayerModifier(Guid RoomId, string PlayerId, i
 public sealed record MoveHeistCard(Guid CastId, Guid InstanceId, string Location, string ThiefPlayerId, string VictimPlayerId) : Write;
 public sealed record TransferEarlTitle(Guid RoundId, Guid FromEffectId, Guid ToEffectId, string FromPlayerId, string ToPlayerId, Guid CastId) : Write;
 public sealed record SetBrewerSource(Guid RoundId, string Source, Guid? CastId) : Write;
-public sealed record RecordPendingReplay(Guid RoundId) : Write;
+public sealed record RecordPendingReplay(Guid RoundId, Guid RoomId, string CasterId) : Write;
 public sealed record AdvanceTieLayer(Guid RoundId, IReadOnlyList<string> TiedPlayerIds) : Write;
+public sealed record EndEarlTitles(Guid RoundId, IReadOnlyList<Guid> EffectIds) : Write;
+public sealed record SetRollValue(Guid RoundId, int Layer, string PlayerId, int Value) : Write;
+public sealed record SetCastRollTransform(Guid CastId, string RollTransformJson) : Write;
+
+/// <summary>A still-SQL write, run in order with the rest (ADR 0012: bridges are data).</summary>
+public sealed record Bridge(string Function, params object[] Args) : Write;
 
 public static class Committer
 {
@@ -51,7 +57,8 @@ public static class Committer
                 writes.Add(new MoveHeistCard(move.CastId, move.InstanceId, move.Location, move.ThiefPlayerId, move.VictimPlayerId));
             if (resolution.BrewerRecord is { } record)
                 writes.Add(new SetBrewerSource(d.RoundId, record.Source, record.CastId));
-            writes.Add(new RecordPendingReplay(d.RoundId));
+            if (d.PendingReplayCaster is { } caster)
+                writes.Add(new RecordPendingReplay(d.RoundId, d.RoomId, caster));
         }
         else if (resolution.TiedPlayerIds is { } tied)
         {

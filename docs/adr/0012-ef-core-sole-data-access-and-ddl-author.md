@@ -13,7 +13,7 @@ accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/T
   - the `rooms.version` bump and `realtime.send`;
   - `RFBnn` → problem-code mapping.
 
-  `Decision<T>(Writes, Events, Result, ReloadAfterWrite)` is the whole command contract. `Writes` is a closed set of typed cases, each with exactly one statement inside `RoomStore`. Bridges are data too: `Write.Bridge("fn", args)` and `ReadPlan` entries.
+  `Decision<T>(Writes, Events, Result, ReloadAfterWrite)` is the whole command contract. `Writes` is a closed set of typed cases, each with exactly one statement inside `RoomStore`. Bridges are data too: `Write.Bridge("fn", args)` and `ReadPlan` entries. `ReloadAfterWrite` applies the writes, re-reads the snapshot in the same transaction and calls `decide` again, which is how a decision reads what a bridge wrote. The last pass's result wins, and all passes share one version bump.
 - **During the port:**
   - **Dapper** is a port-time tool, used only inside `RoomStore` for core tables.
   - **EF Core** handles the Filler tables (`orders`, `brew_ratings`, `spell_card_ratings`, `modifier_adjustments`, `admin_acting_as`) and authors their migrations. A build step scripts each migration into the next numbered `supabase/migrations` file, so there is still one runner and one deploy path.

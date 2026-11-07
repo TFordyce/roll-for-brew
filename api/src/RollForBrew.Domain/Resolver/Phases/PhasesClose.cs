@@ -54,6 +54,13 @@ internal sealed class Phase6HeistsAndMarks : EvalPhase
         }
     }
 
+    /// <summary>The card moves alone, with no Trace: what a Tie-Break Reroll Layer's brewer
+    /// commit owes for the Heists cast before the tie.</summary>
+    internal static IReadOnlyList<HeistMove> Moves(EvalContext ctx) =>
+        [.. HeistOutcomes(ctx)
+            .Where(h => h.Outcome == "moved" && h.Slot is not null)
+            .Select(h => new HeistMove(h.CastId, h.InstanceId, h.Slot!, h.CasterId, h.VictimId!))];
+
     private sealed record HeistRow(
         Guid CastId, string CasterId, string? VictimId, Guid InstanceId, string CardName, string Outcome, string? Reason, string? Slot);
 
