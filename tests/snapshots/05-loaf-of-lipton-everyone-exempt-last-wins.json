@@ -1,0 +1,73 @@
+{
+  "scenario": "05-loaf-of-lipton-everyone-exempt-last-wins",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "last-loaf",
+  "brewerSource": "tea_maker_override:chosen",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "skipped"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "rolls"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Loaf of Lipton",
+        "active_effect_id": null,
+        "caster_player_id": "P:first-loaf"
+      },
+      "display_kind": "roll_exemption",
+      "target_player": "P:first-loaf"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "skipped"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "rolls"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Loaf of Lipton",
+        "active_effect_id": null,
+        "caster_player_id": "P:last-loaf"
+      },
+      "display_kind": "roll_exemption",
+      "target_player": "P:last-loaf"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 2,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#2",
+        "card_name": "Loaf of Lipton",
+        "active_effect_id": null,
+        "caster_player_id": "P:last-loaf"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:last-loaf"
+    }
+  ],
+  "players": []
+}

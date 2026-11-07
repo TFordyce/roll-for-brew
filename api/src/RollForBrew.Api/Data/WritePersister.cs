@@ -162,11 +162,7 @@ internal static class WritePersister
         foreach (var (name, value) in json)
             cmd.Parameters.Add(new NpgsqlParameter(name, NpgsqlDbType.Jsonb) { Value = value });
         foreach (var (name, value) in args)
-        {
-            // A null has no CLR type for Npgsql to infer, so the column's type has to be named.
-            if (value is null) cmd.Parameters.Add(new NpgsqlParameter(name, name is "redirected" or "seized" or "copied" or "cast" ? NpgsqlDbType.Uuid : NpgsqlDbType.Text) { Value = DBNull.Value });
-            else cmd.Parameters.AddWithValue(name, value);
-        }
+            cmd.Parameters.AddWithValue(name, value ?? DBNull.Value);
         await cmd.ExecuteNonQueryAsync(ct);
     }
 }

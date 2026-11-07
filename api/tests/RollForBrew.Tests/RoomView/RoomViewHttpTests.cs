@@ -127,12 +127,22 @@ public class RoomViewHttpTests(ApiHost api) : IClassFixture<ApiHost>
 
         var (res, body) = await View(ann, room);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        var text = body.GetRawText();
         Assert.Equal(6, body.GetProperty("viewer").GetProperty("ownRoll").GetInt32());
         Assert.Equal(new[] { ann.PlayerId, bob.PlayerId }.Order(),
             body.GetProperty("room").GetProperty("activeRound").GetProperty("rolledPlayerIds").EnumerateArray().Select(x => x.GetString()).Order());
-        Assert.DoesNotContain("19", System.Text.RegularExpressions.Regex.Matches(text, @"(?<![\w-])19(?![\w-])").Select(m => m.Value));
-        Assert.False(Leaves(body).Contains(19), "bob's roll leaked into ann's view");
+        // Leaves, not the raw JSON: a timestamp can hold ":19" without it being anyone's roll.
+        Assert.False(Leaves(body).Contains(19), "bob's roll leaked into ann's view as a number");
+        Assert.False(StringLeaves(body).Contains("19"), "bob's roll leaked into ann's view as a string");
+    }
+
+    private static IEnumerable<string> StringLeaves(JsonElement e)
+    {
+        switch (e.ValueKind)
+        {
+            case JsonValueKind.String: yield return e.GetString()!; break;
+            case JsonValueKind.Object: foreach (var p in e.EnumerateObject()) foreach (var s in StringLeaves(p.Value)) yield return s; break;
+            case JsonValueKind.Array: foreach (var i in e.EnumerateArray()) foreach (var s in StringLeaves(i)) yield return s; break;
+        }
     }
 
     private static IEnumerable<long> Leaves(JsonElement e)

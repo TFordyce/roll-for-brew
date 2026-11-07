@@ -8,6 +8,9 @@ namespace RollForBrew.Domain.Recap;
 
 public sealed record ReactionSkip(string PlayerId, string Reason);
 
+/// <summary>The round's stored Trace and Summary. Not in the snapshot, which spans history.</summary>
+public sealed record StoredResolution(JsonElement? Trace, JsonElement? Summary);
+
 /// <summary>
 /// The Round Recap (the Ledger): what get_round_recap returned, key for key, so the TS parser
 /// reads either. A live round whose Layer 0 is ready gets its Trace and Summary from the
@@ -22,9 +25,9 @@ public static class RoundRecapPreview
     public static readonly IReadOnlySet<LayerHoldKind> IgnoredHolds =
         new HashSet<LayerHoldKind> { LayerHoldKind.RevoltPick, LayerHoldKind.CompelledCast };
 
-    public static bool IsProvisional(RoundSnapshot s, RoundRow round)
+    public static bool IsProvisional(RoundSnapshot s, RoundRow round, StoredResolution stored)
     {
-        if (round.Status != "closed" || round.CurrentLayer != 0 || round.ResolutionSummary is not null) return false;
+        if (round.Status != "closed" || round.CurrentLayer != 0 || stored.Summary is not null) return false;
         var layer = LayerReadiness.Of(s, round.Id, 0);
         return layer.RolledIds.Count >= layer.ExpectedRollerIds.Count && layer.Holds.All(h => IgnoredHolds.Contains(h.Kind));
     }
@@ -34,11 +37,11 @@ public static class RoundRecapPreview
         s.RoundParticipants.Any(p => p.RoundId == round.Id && p.PlayerId == playerId)
         || s.RoomPlayers.Any(p => p.RoomId == round.RoomId && p.PlayerId == playerId);
 
-    public static JsonObject Build(RoundSnapshot s, RoundRow round, IReadOnlyList<ReactionSkip> skips)
+    public static JsonObject Build(RoundSnapshot s, RoundRow round, StoredResolution stored, IReadOnlyList<ReactionSkip> skips)
     {
-        JsonNode? trace = Stored(round.ResolutionTrace) ?? new JsonArray();
-        var summary = Stored(round.ResolutionSummary);
-        var provisional = IsProvisional(s, round);
+        JsonNode? trace = Stored(stored.Trace) ?? new JsonArray();
+        var summary = Stored(stored.Summary);
+        var provisional = IsProvisional(s, round, stored);
         if (provisional)
         {
             var preview = Evaluator.Preview(s, round.Id);

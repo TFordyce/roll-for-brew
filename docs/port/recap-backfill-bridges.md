@@ -38,7 +38,7 @@ A Recap read writes nothing, so there is nothing to carry over. A round backfill
 
 ## The Recap
 
-`RoundRecapReader` runs in a `REPEATABLE READ READ ONLY` transaction (`RoomStore.ReadConsistent`), then `RoundRecapPreview.Build` works from the snapshot. The response carries the rpc's exact keys, so the TS parser reads either.
+`RoundRecapReader` runs in a `REPEATABLE READ READ ONLY` transaction (`RoomStore.Read`), then `RoundRecapPreview.Build` works from the snapshot. The response carries the rpc's exact keys, so the TS parser reads either.
 
 - **Provisional path:** `Evaluator.Preview` is `Evaluate` with no persister and `NoDiceRoller`. The savepoint dry run is not used on this path.
 - **No writes, by construction:** the database refuses a write in this transaction. There is no version bump and no broadcast.
@@ -47,9 +47,9 @@ A Recap read writes nothing, so there is nothing to carry over. A round backfill
 Two things the dry run did that `Evaluate` has to match, both only under `IsPreview`:
 
 - **The Calami-Tea die is not rolled.** The step carries `rolled: null` and moves nothing, and a warded tick's `would_be_after` is 1 (`greatest(1, null)`).
-- **A counter does not end a Roll Exemption until the window closes.** A resolving round's window has already closed, so only a preview can see the difference.
+- **A counter does not end a Roll Exemption until the window closes.** A finalizing round's window has already closed, so only a preview can see the difference.
 
-A round with everyone exempt and nobody immune previews no brewer, as SQL does. Phase 5 used to read `tied[0]` there and crash.
+A round with everyone exempt and nobody immune previews no Tea Maker, as SQL does. Phase 5 used to read `tied[0]` there and crash.
 
 ### Holds (#466)
 
@@ -68,7 +68,7 @@ A round with everyone exempt and nobody immune previews no brewer, as SQL does. 
 
 Each refusal's `detail` is SQL's message, because the form shows it. `backfillFailureMessage` reads the rpc's `RFBnn` and the API's problem code to the same sentence.
 
-**Added on the API path:** one `rooms.version` bump, per the command contract. It sends no broadcast, as today.
+**Added on the API path:** one `rooms.version` bump, per the command contract. It sends no broadcast, as today. It is a `Filler` writing core tables with raw SQL, which ADR 0012 records, and its `room_players.modifier` read is SQL parity, which ADR 0010 records.
 
 ### The guards `AdvanceRound` dropped (#547)
 

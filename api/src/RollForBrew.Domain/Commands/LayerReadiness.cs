@@ -6,7 +6,7 @@ namespace RollForBrew.Domain.Commands;
 
 public enum LayerHoldKind { PendingDie, DeferredTarget, CompelledCast, RevoltPick }
 
-/// <summary>One thing keeping a rolled Layer from resolving, and who it waits on. A Revolt
+/// <summary>One thing keeping a rolled Layer from finalizing, and who it waits on. A Revolt
 /// Pick waits on nobody until everyone has rolled, because the picker is the lowest roller.</summary>
 public sealed record LayerHold(LayerHoldKind Kind, IReadOnlyList<string> WaitingOn);
 
@@ -87,8 +87,7 @@ public static class LayerReadiness
 
         // A counter can itself be countered until the window closes, so a countered exemption
         // only ends once it has: the caster rolls late from then on.
-        var windowClosed = ctx.S.Windows.Any(w => w.RoundId == ctx.RoundId && w.Layer == 0 && w.Status == "closed");
-        var exempt = Rules.RollExemptions(ctx, windowClosed ? clr : []).Select(e => e.Player).ToHashSet();
+        var exempt = Rules.RollExemptions(ctx, ctx.Layer0WindowClosed ? clr : []).Select(e => e.Player).ToHashSet();
         return [.. ctx.S.RoundParticipants
             .Where(p => p.RoundId == ctx.RoundId && p.ExcludedAt is null && !exempt.Contains(p.PlayerId))
             .Select(p => p.PlayerId).Order(StringComparer.Ordinal)];

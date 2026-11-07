@@ -27,6 +27,12 @@ accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/T
   - Filler tables are checked by `has-pending-model-changes` plus a scripted-SQL comparison;
   - after consolidation, a `supabase/migrations` file without the `-- ef-scripted` header is rejected.
 
+### As built in slice 2b (#547, #548)
+
+- **`Read` takes a work function, and every read sees one moment.** `Read(actor, work)` runs in a `REPEATABLE READ READ ONLY` transaction. `ReadPlan` has not been built: the bridged reads live in loaders such as `RoomViewLoader`.
+- **`Advance` is a temporary fourth entry point.** While the `advanceRoundAuthoritative` flag can still pick the shadow, it takes the round lock and hands over. Under that lock the call reads the flag, then runs either the shadow or the same steps as `Command`. It goes with the shadow at #549.
+- **Round Backfill is a `Filler` that writes core tables with raw SQL.** It is the exception to Filler meaning Filler tables. It has no existing round to lock or evaluate, so `Command` doesn't fit: the round is created in the same transaction. Its statements stay in `RoundBackfillRules` beside its checks, in statement order with `admin_backfill_round`, and it uses `WritePersister` for the writes `AdvanceRound` shares. It takes its version bump through `StoreSession.BumpRoomVersion`, so the bump stays behind `RoomStore`. It goes through Npgsql, as `RoomStore` does, not Dapper. The exception ends when the port's data access is consolidated.
+
 ## Considered
 
 - **EF Core for everything from slice 0.** Rejected: plpgsql still reads the core tables, so EF would become a second DDL author beside hand-written SQL. The rules core is also bridge-heavy and writes from a pure write list with no change tracking.

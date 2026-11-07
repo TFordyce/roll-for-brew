@@ -7,7 +7,7 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 - **C#-raised errors.** Once ported, the C# rule throws a domain exception carrying the same `code`.
 - **TS side.** Wrappers that test `error.code === 'RFBnn'` today switch to the problem `code` when their endpoint flips. Keep both checks while the flag can still roll back.
 - **New codes.** Ported code may add new named codes. It never reuses or renumbers an `RFBnn`.
-- **API-only codes (no `RFBnn`).** `broadcast_failed` (503): `realtime.send` swallowed a failure, so the command rolled back. Safe to retry. `recap_not_in_room` (403): the caller is not in the round's room, which SQL raised as a plain `P0001`. `backfill_not_resolvable` (422): an empty backfill roster reached `resolve_round`'s or `advance_round_layer`'s plain `P0001`; `detail` carries SQL's message.
+- **API-only codes (no `RFBnn`).** `broadcast_failed` (503): `realtime.send` swallowed a failure, so the command rolled back. Safe to retry. `recap_not_in_room` (403): the caller is not in the round's room, which SQL raised as a plain `P0001`. `backfill_not_resolvable` (422): an empty backfill roster reached `resolve_round`'s or `advance_round_layer`'s plain `P0001`; `detail` carries SQL's message. `resolve_round_not_participant` (422), `resolve_round_not_all_rolled` (409), `resolve_round_not_found` (404): the resolver refused on the authoritative advance path, and the command rolled back. SQL raises these as a plain `P0001`, which the shadow path (flag off) still surfaces as `internal_error`.
 
 **HTTP status, by class:**
 
@@ -18,6 +18,7 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 | input | **400** | a bad value |
 | auth | **403** | the caller lacks the right |
 | missing | **404** | the thing isn't there |
+| unavailable | **503** | the change could not be completed and rolled back; safe to retry |
 
 Generated 2026-10-08 from `supabase/migrations` + `db/sql/functions` (scan: every `raise exception ... errcode = 'RFBnn'`).
 

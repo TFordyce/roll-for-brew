@@ -79,7 +79,7 @@ public static class RoundBackfillRules
             }
 
             // Nothing is sent, as today: an admin tool, and nobody is watching a round that never ran live.
-            await RoomStore.BumpAndBroadcast(s, roomId, [], ct);
+            await s.BumpRoomVersion(roomId, ct);
             return roundId;
         }, ct);
 

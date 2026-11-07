@@ -1,0 +1,84 @@
+{
+  "scenario": "2-ward-negative-blocks-lowering-set-and-multiplier",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "warded",
+  "brewerSource": "default",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "modifier",
+        "value": 0
+      },
+      "index": 0,
+      "before": {
+        "type": "modifier",
+        "value": 4
+      },
+      "target": "P:warded",
+      "outcome": "blocked",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Mug Shot",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "warded",
+      "ward_cast_id": "cast#2",
+      "target_player": "P:warded",
+      "ward_card_name": "Cast-Iron Kettle",
+      "would_be_after": 0,
+      "blocked_cast_id": "cast#1",
+      "would_be_before": 4
+    },
+    {
+      "after": {
+        "type": "modifier",
+        "value": 0
+      },
+      "index": 1,
+      "before": {
+        "type": "modifier",
+        "value": 4
+      },
+      "target": "P:warded",
+      "outcome": "blocked",
+      "source_cast": {
+        "cast_id": "cast#3",
+        "card_name": "Double Shot",
+        "active_effect_id": null,
+        "caster_player_id": "P:caster"
+      },
+      "display_kind": "warded",
+      "ward_cast_id": "cast#2",
+      "target_player": "P:warded",
+      "ward_card_name": "Cast-Iron Kettle",
+      "would_be_after": 0,
+      "blocked_cast_id": "cast#3",
+      "would_be_before": 4
+    }
+  ],
+  "players": [
+    {
+      "player": "caster",
+      "nat": null,
+      "roll": 12,
+      "total": 12,
+      "composed": 0,
+      "snapshot": 0,
+      "dice_reduced": false
+    },
+    {
+      "player": "warded",
+      "nat": null,
+      "roll": 5,
+      "total": 9,
+      "composed": 4,
+      "snapshot": 4,
+      "dice_reduced": false
+    }
+  ]
+}

@@ -5,6 +5,7 @@ using Npgsql;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Problems;
 using RollForBrew.Domain.Commands;
+using RollForBrew.Domain.Resolver;
 using RollForBrew.Domain.Snapshot;
 
 namespace RollForBrew.Api.Data;
@@ -30,14 +31,11 @@ public sealed class RoomStore
     public static NpgsqlDataSource BuildDataSource(string connectionString) =>
         new NpgsqlDataSourceBuilder(ApplyPoolerSettings(connectionString)).Build();
 
+    /// <summary>A read whose statements all see one moment, in a transaction the database
+    /// refuses to write in. It takes no lock, so it never waits on a round being finalized,
+    /// and it sees that commit whole or not at all.</summary>
     public Task<T> Read<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: true, work, ct);
-
-    /// <summary>A read whose statements all see one moment, in a transaction the database
-    /// refuses to write in. What a preview runs in: it takes no lock, so it never waits on
-    /// a round being finalized, and it sees that commit whole or not at all.</summary>
-    public Task<T> ReadConsistent<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
-        InTransaction(actor, readOnly: true, work, ct, IsolationLevel.RepeatableRead);
 
     public Task<T> Filler<T>(Caller actor, Func<StoreSession, Task<T>> work, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: false, work, ct);
@@ -46,8 +44,8 @@ public sealed class RoomStore
     /// A write transaction that takes the round-row <c>for update</c> lock before the
     /// snapshot (ADR 0012). The lock is handed to <paramref name="work"/> as
     /// <c>null</c> when the round does not exist, so callers can answer with SQL's own
-    /// noop shape instead of a 404. Slice 2a's minimal write path; slice 2b's
-    /// <c>Command</c> entry point replaces it.
+    /// noop shape instead of a 404. Slice 2a's minimal write path, kept while the flag can
+    /// still pick the shadow: the choice is read under this lock, then either path runs.
     /// </summary>
     public Task<T> Advance<T>(Caller actor, Guid roundId, Func<RoundLock?, StoreSession, Task<T>> work, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: false, async session =>
@@ -63,80 +61,44 @@ public sealed class RoomStore
     public Task<CommandOutcome<T>> Command<T>(
         Guid roundId, Caller actor, Func<RoundSnapshot?, Decision<T>> decide, CancellationToken ct = default) =>
         InTransaction(actor, readOnly: false, async session =>
+            await CommandUnderLock(session, await LockRound(session, roundId), decide, ct), ct);
+
+    /// <summary><see cref="Command"/> from the point the lock is held.</summary>
+    internal static async Task<CommandOutcome<T>> CommandUnderLock<T>(
+        StoreSession session, RoundLock? round, Func<RoundSnapshot?, Decision<T>> decide, CancellationToken ct)
+    {
+        var snapshot = round is null ? null : await session.Load(round.RoomId, ct);
+        var wrote = false;
+        var events = new List<RoomEvent>();
+
+        for (var pass = 1; ; pass++)
         {
-            var round = await LockRound(session, roundId);
-            var snapshot = round is null ? null : await session.Load(round.RoomId, ct);
-            var wrote = false;
-            var events = new List<RoomEvent>();
+            var decision = decide(snapshot);
+            foreach (var write in decision.Writes)
+                await WritePersister.Apply(session, write, ct);
+            wrote |= decision.Writes.Count > 0;
+            events.AddRange(decision.Events);
 
-            for (var pass = 1; ; pass++)
-            {
-                var decision = decide(snapshot);
-                foreach (var write in decision.Writes)
-                    await WritePersister.Apply(session, write, ct);
-                wrote |= decision.Writes.Count > 0;
-                events.AddRange(decision.Events);
-
-                if (!decision.ReloadAfterWrite)
-                    return new CommandOutcome<T>(decision.Result, wrote ? await BumpAndBroadcast(session, round!.RoomId, events, ct) : null);
-                if (pass == MaxDecidePasses || round is null)
-                    throw new InvalidOperationException($"a decision asked to reload after {pass} pass(es) on round {roundId}");
-                snapshot = await session.Load(round.RoomId, ct);
-            }
-        }, ct);
+            if (!decision.ReloadAfterWrite)
+                return new CommandOutcome<T>(decision.Result, wrote ? await session.BumpAndBroadcast(round!.RoomId, events, ct) : null);
+            if (pass == MaxDecidePasses || round is null)
+                throw new InvalidOperationException($"a decision asked to reload after {pass} pass(es) on round {round?.RoundId}");
+            snapshot = await session.Load(round.RoomId, ct);
+        }
+    }
 
     // AdvanceRound needs two: open the window through its bridge, then read whether it closed.
     private const int MaxDecidePasses = 3;
 
-    internal static async Task<long> BumpAndBroadcast(StoreSession session, Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct)
-    {
-        await using var bump = new NpgsqlCommand(
-            "update public.rooms set version = version + 1 where id = @room returning version", session.Connection, session.Transaction);
-        bump.Parameters.AddWithValue("room", roomId);
-        var version = (long)(await bump.ExecuteScalarAsync(ct))!;
-
-        // realtime.send swallows every failure as a WARNING (ADR 0011). Unwatched, a failed
-        // send would commit with nobody told.
-        string? swallowed = null;
-        void Watch(object sender, NpgsqlNoticeEventArgs e)
-        {
-            if (e.Notice.MessageText.Contains("SendingBroadcastMessage", StringComparison.Ordinal))
-                swallowed = e.Notice.MessageText;
-        }
-
-        session.Connection.Notice += Watch;
-        try
-        {
-            foreach (var e in events)
-            {
-                var payload = (JsonObject)e.Payload.DeepClone();
-                payload["version"] = version;
-                await using var send = new NpgsqlCommand(
-                    "select public.rfb_broadcast(@topic, @event, @payload)", session.Connection, session.Transaction);
-                send.Parameters.AddWithValue("topic", $"room:{roomId}");
-                send.Parameters.AddWithValue("event", e.Name);
-                send.Parameters.Add(new NpgsqlParameter("payload", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = payload.ToJsonString() });
-                await send.ExecuteNonQueryAsync(ct);
-                if (swallowed is not null)
-                    throw new ProblemException("broadcast_failed", ProblemClass.Unavailable, "The change could not be announced, so it was not applied.", swallowed);
-            }
-        }
-        finally
-        {
-            session.Connection.Notice -= Watch;
-        }
-        return version;
-    }
-
     /// <summary>The shared transaction shell: open → begin → claims GUC → work →
     /// commit (rollback when read-only), with the SQL error translation. Kept minimal.</summary>
     private async Task<T> InTransaction<T>(
-        Caller actor, bool readOnly, Func<StoreSession, Task<T>> work, CancellationToken ct, IsolationLevel isolation = IsolationLevel.ReadCommitted)
+        Caller actor, bool readOnly, Func<StoreSession, Task<T>> work, CancellationToken ct)
     {
         try
         {
             await using var conn = await _dataSource.OpenConnectionAsync(ct);
-            await using var tx = await conn.BeginTransactionAsync(isolation, ct);
+            await using var tx = await conn.BeginTransactionAsync(readOnly ? IsolationLevel.RepeatableRead : IsolationLevel.ReadCommitted, ct);
             await SetClaimsGuc(conn, tx, actor, ct);
             if (readOnly)
             {
@@ -156,6 +118,10 @@ public sealed class RoomStore
         catch (DbUpdateException e) when (e.InnerException is PostgresException pe)
         {
             throw Translate(pe);
+        }
+        catch (ResolveException e)
+        {
+            throw ProblemCatalog.FromResolveException(e);
         }
     }
 
@@ -195,6 +161,49 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
     public NpgsqlTransaction Transaction { get; } = transaction;
 
     public RfbDbContext Db => _db ??= CreateDb();
+
+    internal async Task<long> BumpAndBroadcast(Guid roomId, IReadOnlyList<RoomEvent> events, CancellationToken ct)
+    {
+        await using var bump = new NpgsqlCommand(
+            "update public.rooms set version = version + 1 where id = @room returning version", Connection, Transaction);
+        bump.Parameters.AddWithValue("room", roomId);
+        var version = (long)(await bump.ExecuteScalarAsync(ct))!;
+
+        // realtime.send swallows every failure as a WARNING (ADR 0011). Unwatched, a failed
+        // send would commit with nobody told.
+        string? swallowed = null;
+        void Watch(object sender, NpgsqlNoticeEventArgs e)
+        {
+            if (e.Notice.MessageText.Contains("SendingBroadcastMessage", StringComparison.Ordinal))
+                swallowed = e.Notice.MessageText;
+        }
+
+        Connection.Notice += Watch;
+        try
+        {
+            foreach (var e in events)
+            {
+                var payload = (JsonObject)e.Payload.DeepClone();
+                payload["version"] = version;
+                await using var send = new NpgsqlCommand(
+                    "select public.rfb_broadcast(@topic, @event, @payload)", Connection, Transaction);
+                send.Parameters.AddWithValue("topic", $"room:{roomId}");
+                send.Parameters.AddWithValue("event", e.Name);
+                send.Parameters.Add(new NpgsqlParameter("payload", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = payload.ToJsonString() });
+                await send.ExecuteNonQueryAsync(ct);
+                if (swallowed is not null)
+                    throw new ProblemException("broadcast_failed", ProblemClass.Unavailable, "The change could not be announced, so it was not applied.", swallowed);
+            }
+        }
+        finally
+        {
+            Connection.Notice -= Watch;
+        }
+        return version;
+    }
+
+    /// <summary>For a Filler that writes core tables: one <c>rooms.version</c> bump and no broadcast.</summary>
+    public Task<long> BumpRoomVersion(Guid roomId, CancellationToken ct = default) => BumpAndBroadcast(roomId, [], ct);
 
     /// <summary>Whether C# decides this round's advancement (#547). A room row beats the
     /// global row; no row means off. An unknown round reads the global row, and either path

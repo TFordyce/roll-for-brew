@@ -1,3 +1,5 @@
+using RollForBrew.Domain.Resolver;
+
 namespace RollForBrew.Api.Problems;
 
 public enum ProblemClass
@@ -82,4 +84,14 @@ public static class ProblemCatalog
 
     public static ProblemInfo? FromSqlState(string? sqlState) =>
         sqlState is not null && BySqlState.TryGetValue(sqlState, out var p) ? p : null;
+
+    /// <summary>The resolver's refusals. SQL raises these as a plain P0001, so they have no
+    /// RFBnn; the code is the resolver's and the detail its message.</summary>
+    public static ProblemException FromResolveException(ResolveException e) => e.Code switch
+    {
+        "resolve_round_not_found" => new(e.Code, ProblemClass.Missing, "Round not found.", e.Message),
+        "resolve_round_not_all_rolled" => new(e.Code, ProblemClass.State, "Not everyone has rolled yet.", e.Message),
+        "resolve_round_not_participant" => new(e.Code, ProblemClass.Rule, "The tea maker is not in this round.", e.Message),
+        _ => throw new InvalidOperationException($"no problem mapping for resolver code {e.Code}", e),
+    };
 }

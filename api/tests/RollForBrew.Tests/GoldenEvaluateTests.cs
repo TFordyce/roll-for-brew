@@ -49,7 +49,7 @@ public class GoldenEvaluateTests(ITestOutputHelper output)
         var passing = all.Count - PendingGoldens.Names.Count;
         output.WriteLine($"golden scenarios: {all.Count}; passing: {passing}; pending: {PendingGoldens.Names.Count}");
         foreach (var n in PendingGoldens.Names.Order(StringComparer.Ordinal)) output.WriteLine($"  pending: {n}");
-        Assert.Equal(72, all.Count);
+        Assert.Equal(103, all.Count);
     }
 
     [Theory]

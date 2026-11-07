@@ -11,9 +11,12 @@ accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/T
 - **State is one snapshot.** Each state-changing operation starts a transaction and takes `select ... for update` on the **round row**. It then loads one immutable, Room-keyed `RoundSnapshot` in a single batched round trip at READ COMMITTED. Draws keep `for update skip locked` claims. There are no advisory locks and no SERIALIZABLE. `spell_active_effects` stays stored rows, and "live as of round R" is a pure C# function over the snapshot. `room_players.modifier` and the Cast-Log flags are **output-only** caches: the domain never reads them as input.
 - **`Evaluate(RoundSnapshot, IDieRoller) -> Resolution` is pure.** `Resolution` holds the Outcome, the Trace, the Resolution Summary and derived cast state. It runs as a phase pipeline over a private working copy, and phase order is pinned by a test. Preview is `Evaluate` with no persister, so the `RRDRY` savepoint trick disappears. Randomness comes in through `IDieRoller`, and existing tick rows in the snapshot mean only missing ticks roll.
 - **`Commit(Resolution) -> Writes` is pure.** A dumb persister applies the write list. The `resolve_round` write overloads and `finalize_layer` collapse into one C# `AdvanceRound`.
+- **A preview differs from a resolution in two ways, both named `IsPreview`.** `Evaluator.Preview` is `Evaluate` with `NoDiceRoller` and `EvalContext.IsPreview` set. It leaves the Calami-Tea die unrolled, and a counter does not end a Roll Exemption until the window closes, because that is what the SQL dry run did. Nothing else may branch on it (`docs/port/recap-backfill-bridges.md`).
 - **Trace and Summary jsonb are frozen for the port.** Typed C# models serialise to exactly today's keys, step kinds and order. TS parsers stay unchanged, and goldens compare serialised JSON. Shape changes come after the port as a separate decision (parked `#468`, `#469`).
 - **Tie layers port as-is** (early return, empty trace).
 - **Stall enforcement is a lazy pure check.** `StallCheck(snapshot, dbNow)` runs on every snapshot load, with no scheduler. The room view carries `nextStallDeadline` for one client timer, and a GET may upgrade to a write when a stall fires.
+
+The output-only rule is about `Evaluate`. Round Backfill reads `room_players.modifier` for each roll's `modifier_snapshot` because `admin_backfill_round` does and its rows must match. It runs no `Evaluate`, and the value it reads is copied into a roll rather than used to decide anything.
 
 ## Considered
 

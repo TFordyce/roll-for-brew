@@ -10,7 +10,7 @@ public sealed record RoundRow(
     DateTimeOffset? ResolvedAt, DateTimeOffset? ClosedAt, string? BrewerId, int? CupsMade,
     int CurrentLayer, int BrewerModifierGain, int ReplayGeneration,
     IReadOnlyList<string> ReplayFrozenRollers, string? BrewerSource, Guid? BrewerSourceCastId,
-    JsonElement? ScrappedGenerations, JsonElement? ResolutionTrace = null, JsonElement? ResolutionSummary = null);
+    JsonElement? ScrappedGenerations);
 
 public sealed record RoundParticipantRow(Guid RoundId, string PlayerId, DateTimeOffset DeclaredAt, DateTimeOffset? ExcludedAt);
 

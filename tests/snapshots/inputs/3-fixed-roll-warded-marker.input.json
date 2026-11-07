@@ -1,0 +1,176 @@
+{
+  "scenario": "3-fixed-roll-warded-marker",
+  "roster": {
+    "p-caster": "caster",
+    "p-warded-target": "warded-target"
+  },
+  "as_of_round_id": "00000000-0000-4000-8000-000000000002",
+  "snapshot": {
+    "room_id": "00000000-0000-4000-8000-000000000001",
+    "db_now": "2026-01-01T00:00:06.000000+00:00",
+    "rooms": [
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "is_test": false,
+        "version": 0
+      }
+    ],
+    "rounds": [
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "started_by": "p-caster",
+        "status": "closed",
+        "started_at": "2026-01-01T00:00:00.000000+00:00",
+        "resolved_at": null,
+        "brewer_id": null,
+        "cups_made": null,
+        "current_layer": 0,
+        "closed_at": "2026-01-01T00:00:02.000000+00:00",
+        "brewer_modifier_gain": 0,
+        "backfilled_by": null,
+        "backfilled_at": null,
+        "replay_generation": 0,
+        "resolution_trace": null,
+        "scrapped_generations": [],
+        "replay_frozen_rollers": [],
+        "resolution_summary": null,
+        "brewer_source": null,
+        "brewer_source_cast_id": null
+      }
+    ],
+    "round_participants": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-caster",
+        "declared_at": "2026-01-01T00:00:00.000000+00:00",
+        "excluded_at": null
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-warded-target",
+        "declared_at": "2026-01-01T00:00:01.000000+00:00",
+        "excluded_at": null
+      }
+    ],
+    "round_layer_participants": [],
+    "rolls": [
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-caster",
+        "layer": 0,
+        "value": 4,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:03.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      },
+      {
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "player_id": "p-warded-target",
+        "layer": 0,
+        "value": 17,
+        "input_mode": "manual",
+        "modifier_snapshot": 0,
+        "rolled_at": "2026-01-01T00:00:04.000000+00:00",
+        "discarded_value": null,
+        "entered_by_admin": false,
+        "generation": 0
+      }
+    ],
+    "spell_casts": [
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "round_id": "00000000-0000-4000-8000-000000000002",
+        "caster_id": "p-caster",
+        "card_instance_id": "00000000-0000-4000-8000-000000000004",
+        "target_player_id": "p-warded-target",
+        "target_pending": false,
+        "effect_kind": "fixed_roll",
+        "effect_params": {
+          "value": 1
+        },
+        "parent_cast_id": null,
+        "cast_at": "2026-01-01T00:00:05.000000+00:00",
+        "reaction_window_id": null,
+        "negated": false,
+        "seq": 1,
+        "target_role": null,
+        "cast_inputs": {
+          "roll_transform": {
+            "kind": "fixed_roll",
+            "order": 0,
+            "players": [
+              {
+                "after": 17,
+                "before": 17,
+                "warded": true,
+                "player_id": "p-warded-target",
+                "ward_cast_id": "00000000-0000-4000-8000-000000000005",
+                "ward_card_name": "Cast-Iron Kettle",
+                "would_be_after": 1
+              }
+            ]
+          }
+        },
+        "redirected_to_cast_id": null,
+        "seized_by_cast_id": null,
+        "copied_cast_id": null,
+        "generation": 0,
+        "source_cast_id": null
+      }
+    ],
+    "active_effects": [],
+    "deck_instances": [
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "card_id": "00000000-0000-4000-8000-000000000006",
+        "location": "in_deck",
+        "held_by_player": null
+      }
+    ],
+    "spell_cards": [
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "name": "Sleeping Camomile",
+        "casting_time": "A",
+        "target": "OPPONENT",
+        "tier": "rare",
+        "effect_text": "Target does not roll this round; their result counts as a natural 1.",
+        "duration_rounds": null,
+        "polarity": null,
+        "edition": "4th"
+      }
+    ],
+    "spell_card_effects": [
+      {
+        "id": "00000000-0000-4000-8000-000000000007",
+        "card_id": "00000000-0000-4000-8000-000000000006",
+        "target_role": "TARGET",
+        "effect_kind": "fixed_roll",
+        "effect_params": {
+          "value": 1
+        },
+        "ordinal": 0
+      }
+    ],
+    "room_players": [
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-caster",
+        "modifier": 0
+      },
+      {
+        "room_id": "00000000-0000-4000-8000-000000000001",
+        "player_id": "p-warded-target",
+        "modifier": 0
+      }
+    ],
+    "modifier_adjustments": []
+  },
+  "expected": {
+    "live_effect_ids": []
+  }
+}

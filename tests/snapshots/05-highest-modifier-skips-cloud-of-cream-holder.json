@@ -1,0 +1,72 @@
+{
+  "scenario": "05-highest-modifier-skips-cloud-of-cream-holder",
+  "outcome": "brewer",
+  "layer": 0,
+  "brewer": "next",
+  "brewerSource": "tea_maker_override:highest_modifier",
+  "tiedPlayers": [],
+  "cupsMade": 2,
+  "noModifierGain": false,
+  "trace": [
+    {
+      "after": {
+        "type": "status",
+        "value": "skipped"
+      },
+      "index": 0,
+      "before": {
+        "type": "status",
+        "value": "targetable"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": null,
+        "card_name": "Cloud of Cream",
+        "active_effect_id": "fx#1",
+        "caster_player_id": "P:holder"
+      },
+      "display_kind": "targeting_skip",
+      "target_player": "P:holder"
+    },
+    {
+      "after": {
+        "type": "status",
+        "value": "brewer"
+      },
+      "index": 1,
+      "before": {
+        "type": "status",
+        "value": "pending"
+      },
+      "outcome": "applied",
+      "source_cast": {
+        "cast_id": "cast#1",
+        "card_name": "Sugar Rush",
+        "active_effect_id": null,
+        "caster_player_id": "P:holder"
+      },
+      "display_kind": "tea_maker_override",
+      "target_player": "P:next"
+    }
+  ],
+  "players": [
+    {
+      "player": "holder",
+      "nat": null,
+      "roll": 5,
+      "total": 13,
+      "composed": 8,
+      "snapshot": 8,
+      "dice_reduced": false
+    },
+    {
+      "player": "next",
+      "nat": null,
+      "roll": 5,
+      "total": 8,
+      "composed": 3,
+      "snapshot": 3,
+      "dice_reduced": false
+    }
+  ]
+}
