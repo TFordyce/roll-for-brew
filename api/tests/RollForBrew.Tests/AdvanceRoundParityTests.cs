@@ -17,7 +17,7 @@ namespace RollForBrew.Tests;
 /// the same. SQL rolls first and C# is scripted with SQL's dice, so nothing is normalised
 /// away except timestamps and the random ids SQL gives rows it synthesizes.
 /// </summary>
-public class AdvanceRoundParityTests
+public partial class AdvanceRoundParityTests
 {
     public static TheoryData<string> Goldens => new(GoldenFixture.AllNames());
 
