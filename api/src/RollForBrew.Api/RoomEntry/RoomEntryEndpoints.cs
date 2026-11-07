@@ -31,7 +31,7 @@ public static class RoomEntryEndpoints
         var seated = await db.ExecuteSqlInterpolatedAsync(
             $"insert into public.room_players (room_id, player_id) values ({roomId}, {me}) on conflict (room_id, player_id) do nothing", ct);
         // A new seat shows on everyone's roster; re-entering changes nothing, so it stays quiet.
-        if (seated > 0) await s.BumpAndAnnounce(roomId, ct);
+        if (seated > 0) await s.BumpAndAnnounce(roomId, Announce.BestEffort, ct);
         return roomId;
     }
 }

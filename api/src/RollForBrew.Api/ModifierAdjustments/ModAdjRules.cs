@@ -81,6 +81,6 @@ public static class ModAdjRules
     {
         await s.Db.Set<ModAdjRoomPlayer>().Where(p => p.RoomId == roomId && p.PlayerId == playerId)
             .ExecuteUpdateAsync(u => u.SetProperty(p => p.Modifier, p => p.Modifier + by), ct);
-        await s.BumpAndAnnounce(roomId, ct);
+        await s.BumpAndAnnounce(roomId, Announce.BestEffort, ct);
     }
 }

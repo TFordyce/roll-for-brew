@@ -78,7 +78,7 @@ public static class RoundBackfillRules
                 }
             }
 
-            await s.BumpAndAnnounce(roomId, ct);
+            await s.BumpAndAnnounce(roomId, Announce.Required, ct);
             return roundId;
         }, ct);
 

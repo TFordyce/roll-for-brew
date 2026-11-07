@@ -2,6 +2,8 @@ using Npgsql;
 using RollForBrew.Api.Data;
 using RollForBrew.Api.ModifierAdjustments;
 using RollForBrew.Api.Orders;
+using RollForBrew.Api.Problems;
+using RollForBrew.Api.RoundBackfill;
 using RollForBrew.Api.RoomEntry;
 using RollForBrew.Tests.Harness;
 using static RollForBrew.Tests.RoundRecapParityTests;
@@ -149,5 +151,46 @@ public class VisibleWriteBroadcastTests : IAsyncLifetime
 
         Assert.Equal(new[] { 1L }, await _db.RoomChangedVersions(room));
         Assert.Equal(2, await _db.Scalar<int>($"select modifier from public.room_players where room_id = '{room}'"));
+    }
+
+    // Hosted realtime.send catches every failure and RAISEs a WARNING instead (ADR 0011).
+    private Task SwallowSends() => _db.Execute("""
+        create or replace function realtime.send(payload jsonb, event text, topic text, private boolean default true)
+        returns void language plpgsql as $f$
+        begin raise warning 'ErrorSendingBroadcastMessage: boom'; end $f$;
+        """);
+
+    [Fact]
+    public async Task A_swallowed_send_still_saves_seats_orders_and_adjustments()
+    {
+        var (u, room, round) = await OpenRound();
+        var (actor, _, today) = await TodayRoomWithTarget();
+        await SwallowSends();
+
+        await Order(u, round, "tea");
+        await Adjust(actor, 2);
+        await Enter(await _db.AddUser("vw-late"));
+
+        Assert.Equal(1L, await _db.Scalar<long>("select count(*) from public.orders"));
+        Assert.Equal(1L, await Version(room));
+        Assert.Equal(2, await _db.Scalar<int>($"select modifier from public.room_players where room_id = '{today}' and player_id = 'vw-actor'"));
+        Assert.Equal(1L, await _db.Scalar<long>($"select count(*) from public.room_players where room_id = '{today}' and player_id = 'vw-late'"));
+        Assert.Equal(2L, await Version(today));
+        Assert.Equal(0L, await _db.Messages());
+    }
+
+    [Fact]
+    public async Task A_swallowed_send_rolls_a_backfill_back()
+    {
+        var (_, admin, today) = await TodayRoomWithTarget();
+        await _db.AddUser("vw-b");
+        await SwallowSends();
+
+        var ex = await Assert.ThrowsAsync<ProblemException>(() => RoundBackfillRules.Run(_store, CallerOf(admin),
+            new BackfillRequest(["vw-actor", "vw-b"], [[new BackfillEntry("vw-actor", 3), new BackfillEntry("vw-b", 12)]])));
+
+        Assert.Equal("broadcast_failed", ex.Code);
+        Assert.Equal(0L, await _db.Scalar<long>("select count(*) from public.rounds"));
+        Assert.Equal(0L, await Version(today));
     }
 }

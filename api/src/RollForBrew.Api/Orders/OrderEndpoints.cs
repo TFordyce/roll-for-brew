@@ -75,7 +75,7 @@ public static class OrderRules
         }
         await s.Db.SaveChangesAsync(ct);
         // The round's menu lists every participant's order, so the whole room sees this one.
-        await s.BumpAndAnnounce(round!.RoomId, ct);
+        await s.BumpAndAnnounce(round!.RoomId, Announce.BestEffort, ct);
     }
 
     private static ProblemException Problem(string sqlState) =>
