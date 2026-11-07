@@ -14,13 +14,36 @@ public partial class AdvanceRoundParityTests
 
     /// <summary>A card instance and its cast in this round, on the closed window.</summary>
     private static Task SeedCast(TestDatabase db, int n, string card, string caster, string? target, string kind,
-        string effectParams = "{}", string castInputs = "{}", string? parent = null) =>
+        string effectParams = "{}", string? castInputs = null, int? parent = null, string? role = null) =>
         db.Execute($$"""
             insert into public.spell_deck_instances (id, card_id, location)
-              select '{{Id(4, n)}}', id, 'in_deck' from public.spell_cards where name = '{{card}}';
-            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params, cast_inputs, parent_cast_id, reaction_window_id)
-              values ('{{Id(5, n)}}', '{{Round}}', '{{caster}}', '{{Id(4, n)}}', {{(target is null ? "null" : $"'{target}'")}},
-                      {{(kind == "" ? "null" : $"'{kind}'")}}, '{{effectParams}}', '{{castInputs}}', {{(parent is null ? "null" : $"'{parent}'")}}, '{{Window}}');
+              select '{{Id(4, n)}}', id, 'in_deck' from public.spell_cards where name = '{{card.Replace("'", "''")}}';
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params, cast_inputs, parent_cast_id, target_role, reaction_window_id)
+              values ('{{Id(5, n)}}', '{{Round}}', '{{caster}}', '{{Id(4, n)}}', {{Sql(target)}}, {{Sql(kind)}}, '{{effectParams}}', {{Sql(castInputs)}},
+                      {{Sql(parent is null ? null : Id(5, parent.Value))}}, {{Sql(role)}}, '{{Window}}');
+            """);
+
+    private static string Sql(string? value) => value is null ? "null" : $"'{value}'";
+
+    /// <summary>A Room Effect from a resolved earlier round, as <c>seedActiveEffect</c> seeds it.</summary>
+    private static Task SeedRoomEffect(TestDatabase db, int n, string card, string holder, string kind, string effectParams) =>
+        db.Execute($$"""
+            insert into public.rounds (id, room_id, started_by, status, resolved_at)
+              values ('{{Id(2, n)}}', '{{Room}}', '{{holder}}', 'resolved', '2026-01-01 08:00+00');
+            insert into public.spell_deck_instances (id, card_id, location)
+              select '{{Id(4, n)}}', id, 'in_deck' from public.spell_cards where name = '{{card.Replace("'", "''")}}';
+            insert into public.spell_casts (id, round_id, caster_id, card_instance_id, target_player_id, effect_kind, effect_params)
+              values ('{{Id(5, n)}}', '{{Id(2, n)}}', '{{holder}}', '{{Id(4, n)}}', '{{holder}}', '{{kind}}', '{{effectParams}}');
+            insert into public.spell_active_effects (id, room_id, target_player_id, caster_id, source_cast_id, card_id, effect_kind, effect_params)
+              values ('{{Id(6, n)}}', '{{Room}}', '{{holder}}', '{{holder}}', '{{Id(5, n)}}',
+                      (select id from public.spell_cards where name = '{{card}}'), '{{kind}}', '{{effectParams}}');
+            """);
+
+    /// <summary>One value off the first stored Trace step matching <paramref name="where"/>.</summary>
+    private static Task<string?> TraceStep(TestDatabase db, string where, string value) =>
+        db.Scalar<string>($"""
+            select {value} from public.rounds r, jsonb_array_elements(r.resolution_trace) s
+             where r.id = '{Round}' and {where} limit 1
             """);
 
     // ------------------------------------------------------------------
@@ -88,5 +111,42 @@ public partial class AdvanceRoundParityTests
         // The round is played: the lowest roller brews, and the debt is still owed.
         Assert.Equal("p-b", await csharp.Scalar<string>($"select brewer_id from public.rounds where id = '{Round}'"));
         Assert.Null(await csharp.Scalar<string>($"select brewer_source from public.rounds where id = '{Round}'"));
+    }
+
+    // ------------------------------------------------------------------
+    // effect-invocation.test.ts
+    // ------------------------------------------------------------------
+
+    [Fact]
+    public async Task A_block_copy_ward_blocks_a_seize_and_the_source_resolves_on_its_target()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 10, b: 10, c: 10);
+            await SeedRoomEffect(db, 3, "Bag for Life", "p-a", "ward",
+                """{"polarity": ["positive", "negative"], "domain": ["modifier"], "block_copy": true}""");
+            await SeedCast(db, 1, "Brewer's Blessing", "p-a", "p-b", "flat_modifier", """{"delta": 5}""", role: "TARGET");
+            await SeedCast(db, 2, "Brew-merang", "p-c", null, null,
+                castInputs: $$"""{"seized_cast_id": "{{Id(5, 1)}}"}""", parent: 1, role: "CARD");
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.Equal("blocked", await TraceStep(csharp, "s ->> 'display_kind' = 'warded' and s ->> 'invocation_kind' = 'seize'", "s ->> 'outcome'"));
+        Assert.Equal("5", await TraceStep(csharp, "s ->> 'display_kind' = 'flat_modifier' and s ->> 'target_player' = 'p-b'", "s -> 'after' ->> 'value'"));
+        Assert.Null(await csharp.Scalar<string>($"select seized_by_cast_id::text from public.spell_casts where id = '{Id(5, 1)}'"));
+    }
+
+    [Fact]
+    public async Task A_Brew_merang_seizing_a_Brew_merang_terminates_with_the_inner_one_seized()
+    {
+        var csharp = await Parity(async db =>
+        {
+            await SeedThree(db, a: 10, b: 10, c: 10);
+            await SeedCast(db, 1, "Brewer's Blessing", "p-a", "p-b", "flat_modifier", """{"delta": 5}""", role: "TARGET");
+            await SeedCast(db, 2, "Brew-merang", "p-b", null, null,
+                castInputs: $$"""{"seized_cast_id": "{{Id(5, 1)}}"}""", parent: 1, role: "CARD");
+            // The deck has one Brew-merang, so the outer seize rides a donor instance.
+            await SeedCast(db, 3, "Lucky Sip", "p-c", null, null,
+                castInputs: $$"""{"seized_cast_id": "{{Id(5, 2)}}"}""", parent: 2, role: "CARD");
+        }, Round, AdvanceRound.Entry.Finalize);
+        Assert.Equal(Id(5, 3), await csharp.Scalar<string>($"select seized_by_cast_id::text from public.spell_casts where id = '{Id(5, 2)}'"));
     }
 }
