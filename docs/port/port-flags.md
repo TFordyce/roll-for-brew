@@ -84,6 +84,7 @@ Slices `submitOrder`, `getMyOrderForRound`, `getMyMostRecentOrder` (global rows;
 Endpoints: `PUT /rounds/{roundId}/order`, `GET /rounds/{roundId}/order`, `GET /orders/latest`. Same precondition and
 rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rules live in C# on that path).
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
+On the API path, `PUT /rounds/{roundId}/order` bumps `rooms.version` and sends `room-changed` in its transaction (ADR 0011). The client's follow-up `notifyOrderChangedAction` still sends an unversioned `room-changed` for the SQL path. Remove it with the `.rpc` branch when `submit_order` retires.
 
 ## Round advancement flags (#546, #547; human steps, not run by the agent)
 
