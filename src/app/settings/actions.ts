@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { ROLL_INPUT_MODES, setRollInputMode, type RollInputMode } from "@/lib/supabase/playerSettings";
 import { setAdminModeEnabled } from "@/lib/supabase/adminMode";
+import { setHoldOwnDieUntilReveal } from "@/lib/supabase/diceLanding";
 import { deleteModifierAdjustment, logModifierAdjustment } from "@/lib/supabase/modifierAdjustments";
 import {
   DRINK_TYPES,
@@ -83,6 +84,18 @@ export async function setAdminModeAction(formData: FormData): Promise<void> {
   }
 
   await setAdminModeEnabled(formData.get("adminMode") === "true");
+  revalidatePath("/settings");
+  revalidatePath("/");
+}
+
+export async function setHoldOwnDieUntilRevealAction(formData: FormData): Promise<void> {
+  const supabase = await createClient();
+  const current = await getCurrentPlayer(supabase);
+  if (!current) {
+    throw new Error("setHoldOwnDieUntilRevealAction: not authenticated");
+  }
+
+  await setHoldOwnDieUntilReveal(formData.get("holdOwnDie") === "true");
   revalidatePath("/settings");
   revalidatePath("/");
 }

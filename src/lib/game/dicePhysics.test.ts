@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { EDGE_PX, INRADIUS } from "./d20Geometry";
 import {
   FLIGHT_BUDGET_MS,
   SETTLE_TAIL_MS,
@@ -207,5 +208,84 @@ describe("settleWaapiKeyframes", () => {
 
     // the mid pose overshoots identity along the same snap, not a new direction
     expect(rotationAngle(midParsed)).toBeLessThan(rotationAngle(first));
+  });
+});
+describe("simulateD20Throw obstacles (issue #613)", () => {
+  const ownSlot = { x: 0, z: 0 };
+
+  it("leaves an obstacle-free throw bit-for-bit unchanged", () => {
+    expect(simulateD20Throw(mulberry32(7), [])).toEqual(simulateD20Throw(mulberry32(7)));
+  });
+
+  it("is deterministic with obstacles in the world", () => {
+    const anchor = { x: 0.25, z: -0.5 };
+    const obstacles = [
+      { x: 40, z: 0 },
+      { x: -40, z: 12 },
+    ];
+
+    expect(simulateD20Throw(mulberry32(11), obstacles, anchor)).toEqual(
+      simulateD20Throw(mulberry32(11), obstacles, anchor),
+    );
+  });
+
+  it("caroms off a die resting in the landing slot", () => {
+    const clear = simulateD20Throw(mulberry32(3));
+    const blocked = simulateD20Throw(mulberry32(3), [ownSlot], clear.restPosition);
+
+    expect(blocked.samples).not.toEqual(clear.samples);
+
+    // Pushed clear of the obstacle rather than resting inside it.
+    const displacement =
+      Math.hypot(
+        blocked.restPosition.x - clear.restPosition.x,
+        blocked.restPosition.z - clear.restPosition.z,
+      ) * EDGE_PX;
+    expect(displacement).toBeGreaterThan(2 * INRADIUS * EDGE_PX * 0.5);
+  });
+
+  it("never passes through a resting die's volume", () => {
+    const clear = simulateD20Throw(mulberry32(5));
+    const blocked = simulateD20Throw(mulberry32(5), [ownSlot], clear.restPosition);
+
+    // Where the obstacle ended up, relative to where the blocked throw rested.
+    const obstacleX = (clear.restPosition.x - blocked.restPosition.x) * EDGE_PX;
+    const obstacleZ = (clear.restPosition.z - blocked.restPosition.z) * EDGE_PX;
+
+    let closest = Infinity;
+    for (const sample of blocked.samples) {
+      closest = Math.min(
+        closest,
+        Math.hypot(sample.x - obstacleX, sample.y, sample.z - obstacleZ),
+      );
+    }
+
+    // The two inradii, less the contact penetration the solver allows.
+    expect(closest).toBeGreaterThan(2 * INRADIUS * EDGE_PX * 0.9);
+  });
+
+  it("is only displaced while the die is not resting on the obstacle", () => {
+    // A die in the landing slot is pathological; a real table's dice are a
+    // slot away, and a throw must not be disturbed by them.
+    const clear = simulateD20Throw(mulberry32(23));
+    const neighbour = simulateD20Throw(mulberry32(23), [{ x: 48, z: 0 }], clear.restPosition);
+
+    expect(neighbour).toEqual(clear);
+  });
+
+  it("still settles the throw with an obstacle present", () => {
+    const clear = simulateD20Throw(mulberry32(13));
+    const track = simulateD20Throw(mulberry32(13), [ownSlot], clear.restPosition);
+
+    expect(track.restAchieved).toBe(true);
+    expect(track.durationMs + SETTLE_TAIL_MS).toBeLessThan(2000);
+  });
+
+  it("keeps the opening throw airborne with obstacles present", () => {
+    const clear = simulateD20Throw(mulberry32(17));
+    const track = simulateD20Throw(mulberry32(17), [ownSlot], clear.restPosition);
+
+    expect(track.samples[0]!.y).toBeLessThan(-40);
+    expect(track.durationMs).toBeLessThanOrEqual(FLIGHT_BUDGET_MS);
   });
 });

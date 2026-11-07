@@ -4,11 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentPlayer, getIsAdmin } from "@/lib/supabase/players";
 import { getRollInputMode } from "@/lib/supabase/playerSettings";
 import { getAdminModeEnabled } from "@/lib/supabase/adminMode";
+import { getHoldOwnDieUntilReveal } from "@/lib/supabase/diceLanding";
 import { enterTodaysRoom, getRoomRoster } from "@/lib/supabase/rooms";
 import { getTodaysModifierAdjustments } from "@/lib/supabase/modifierAdjustments";
 import { getUsualDrinks } from "@/lib/supabase/usualDrinks";
 import { SettingsForm } from "@/app/settings/SettingsForm";
 import { AdminModeToggle } from "@/app/settings/AdminModeToggle";
+import { HoldDieToggle } from "@/app/settings/HoldDieToggle";
 import { ModifierAdjustmentForm } from "@/app/settings/ModifierAdjustmentForm";
 import { ModifierAdjustmentList } from "@/app/settings/ModifierAdjustmentList";
 import { UsualForm } from "@/app/settings/UsualForm";
@@ -27,6 +29,7 @@ export default async function SettingsPage() {
   const usualDrinks = await getUsualDrinks(supabase, current.playerId);
   const isAdmin = await getIsAdmin(supabase, current.playerId);
   const adminModeEnabled = isAdmin ? await getAdminModeEnabled() : false;
+  const holdOwnDieUntilReveal = await getHoldOwnDieUntilReveal();
 
   const roomId = await enterTodaysRoom(supabase);
   const [roster, adjustments] = await Promise.all([
@@ -50,6 +53,12 @@ export default async function SettingsPage() {
       <section className="w-full max-w-sm">
         <CardFrame title="Usual">
           <UsualForm usualDrinks={usualDrinks} />
+        </CardFrame>
+      </section>
+
+      <section className="w-full max-w-sm">
+        <CardFrame title="Dice">
+          <HoldDieToggle held={holdOwnDieUntilReveal} />
         </CardFrame>
       </section>
 

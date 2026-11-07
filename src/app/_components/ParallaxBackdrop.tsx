@@ -3,9 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { getSlotAssignments, type PropKey } from "@/lib/backdropShuffle";
 import { useReducedMotion } from "@/lib/hooks/useReducedMotion";
-
-const SCENE_WIDTH = 1376;
-const SCENE_HEIGHT = 768;
+import { SCENE_HEIGHT, SCENE_WIDTH, computeSceneScale } from "@/lib/game/sceneGeometry";
 
 export const PROP_IMAGES: Record<PropKey, string> = {
   kettle: "/backdrop/props/kettle.png",
@@ -51,11 +49,6 @@ const STEAM_FRAMES = [1, 2, 3, 4, 5].map((n) => `/backdrop/steam/steam-${n}.png`
 const STEAM_FRAME_MS = 500;
 const STEAM_MIN_DELAY_MS = 45_000;
 const STEAM_MAX_DELAY_MS = 90_000;
-
-export function computeSceneScale(containerWidth: number): number {
-  if (containerWidth <= 0) return 1;
-  return containerWidth / SCENE_WIDTH;
-}
 
 function useSceneScale(containerRef: RefObject<HTMLDivElement | null>): number {
   const [scale, setScale] = useState(1);

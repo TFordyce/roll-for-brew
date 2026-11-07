@@ -122,6 +122,22 @@ _Avoid_: reaction-window finalize (Layers above 0 finalize with no window), reso
 A player's ordered sequence of rolls across a round's Layers, from the original layer-0 roll through every Tie-Break Reroll that followed it. Rendered in `RoundReveal` as a nested, indented row per layer.
 _Avoid_: reroll history, layer history (that's the raw `get_round_layer_history` data this is built from).
 
+**Dice Table**:
+The strip along the bottom of the room where a round's dice land — drawn over the pixel-art scene's plank, above the room's cards, and reserved while a reveal is showing so no card sits under a die. Presentation only: it never decides a result and it is not the record of one. The reveal row stays the readable, accessible source of every value, and a die is only ever the flourish that confirms it.
+_Avoid_: tray, overlay, dice layer, dice area.
+
+**Dice Table Slot**:
+One participant's resting place on the Dice Table, assigned from a canonical `playerId`-sorted participant order so every client lays the same round out identically whatever order the roster arrived in. Slots are collision-free; a landing die may carom off the dice already sitting in the other slots but always settles into its own, which is what keeps its value from moving after it is shown.
+_Avoid_: position, anchor (that's the backdrop props' fixed points), lane.
+
+**Shared Dice**:
+Every revealed layer-0 roll's die, thrown on every client at the reveal. Derived, never transmitted: the throw is a pure function of `(roundId, layer, playerId)` and of the round's Dice Table layout, which each client derives from the same participant list. On a given screen the roller's own die and every other die for that roll take the identical path and rest in the same slot; the only variation between clients is the table geometry their viewport can show, so a phone and a wide desktop can carom differently. Each roll plays exactly once per client per reveal — a duplicate reveal message, a room-view refetch or a late join never replays one. Manual and Proxy Roll dice are Shared Dice too; only the viewer's own die may be click-to-dismiss.
+_Avoid_: broadcast dice, mirrored dice, synced physics, replay.
+
+**Own Die Landing**:
+The per-browser, cookie-backed preference for when the viewer's own die lands: early, as soon as their own value reaches them (the default), or held so it lands with the Shared Dice at the reveal. It changes only the viewer's own die timing — never whether Shared Dice play, and never another client's view.
+_Avoid_: dice speed, animation preference, roll animation setting.
+
 **Modifier Jitter**:
 A purely visual cue on `RollCalculation`'s modifier term: a shake animation that fades in once a player's live `room_players.modifier` crosses +8, intensifying to full at +14. No DB backing — display-only. Thresholds are provisional, pending player feedback.
 _Avoid_: danger cue, warning animation.
