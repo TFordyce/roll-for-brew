@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { ApiError, apiClientFor, type ApiClient } from "@/lib/api/client";
-import { isPortEnabled } from "@/lib/api/portFlags";
 import {
   parseResolutionTrace,
   type CompletedLayer,
@@ -170,35 +169,22 @@ function parseScrappedGeneration(raw: RawScrappedGeneration): ScrappedGeneration
   };
 }
 
-// What the rpc raises as a plain P0001: a Recap the caller simply doesn't get, not a fault.
+// The API's refusals that mean "no Recap for this caller", not a fault.
 const EXPECTED_REFUSALS = new Set(["round_not_found", "recap_not_in_room"]);
 
 export async function getRoundRecap(
   supabase: SupabaseClient,
   roundId: string,
-  roomId?: string,
   api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<RoundRecapData | null> {
-  if (await isPortEnabled(supabase, "getRoundRecap", roomId)) {
-    try {
-      return parseRoundRecap((await api().getRoundRecap(roundId)) as unknown as RawRoundRecap);
-    } catch (error) {
-      if (!(error instanceof ApiError && error.code && EXPECTED_REFUSALS.has(error.code))) {
-        console.error("getRoundRecap failed", error);
-      }
-      return null;
-    }
-  }
-
-  const { data, error } = await supabase.rpc("get_round_recap", { p_round_id: roundId });
-  if (error || !data) {
-    if (error && error.code !== "P0001") {
+  try {
+    return parseRoundRecap((await api().getRoundRecap(roundId)) as unknown as RawRoundRecap);
+  } catch (error) {
+    if (!(error instanceof ApiError && error.code && EXPECTED_REFUSALS.has(error.code))) {
       console.error("getRoundRecap failed", error);
     }
     return null;
   }
-
-  return parseRoundRecap(data as RawRoundRecap);
 }
 
 function parseRoundRecap(raw: RawRoundRecap): RoundRecapData {

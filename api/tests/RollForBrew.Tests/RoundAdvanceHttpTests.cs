@@ -6,9 +6,9 @@ using RollForBrew.Tests.Harness;
 namespace RollForBrew.Tests;
 
 /// <summary>
-/// Seam 3 for the evaluator shadow (#546): the endpoints validate the JWT, resolve
+/// Seam 3 for AdvanceRound (#546, #547): the endpoints validate the JWT, resolve
 /// the actor server-side (the request carries no player identity at all), return
-/// SQL's payload unchanged, and speak problem+json on failure.
+/// the outcome payload, and speak problem+json on failure.
 /// </summary>
 public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
 {
@@ -39,7 +39,7 @@ public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
     }
 
     [Fact]
-    public async Task Advance_on_a_missing_round_returns_sqls_noop_payload()
+    public async Task Advance_on_a_missing_round_returns_a_noop_payload()
     {
         var u = await api.Db.AddUser("g-adv-http");
         var res = await api.Client(api.Token(u)).PostAsync($"/rounds/{Guid.NewGuid()}/advance", null);
@@ -50,7 +50,7 @@ public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
     }
 
     [Fact]
-    public async Task Finalize_runs_the_shadow_bridge_and_passes_sqls_outcome_through()
+    public async Task Finalize_commits_the_resolution_and_returns_the_outcome()
     {
         var u = await api.Db.AddUser("g-adv-fin");
         var round = await SeedFinalizableRound("g-adv-fin", "g-adv-fin-2");
@@ -74,25 +74,10 @@ public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
     }
 
     [Fact]
-    public async Task With_the_authority_flag_off_the_shadow_runs_and_nothing_changes_for_players()
-    {
-        var u = await api.Db.AddUser("g-off");
-        var round = await SeedFinalizableRound("g-off", "g-off-2");
-        var res = await api.Client(api.Token(u)).PostAsync($"/rounds/{round}/finalize", null);
-        var payload = await res.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("brewer", payload.GetProperty("outcome").GetString());
-        Assert.False(payload.TryGetProperty("version", out _));
-        Assert.Equal(0L, await RoomVersion(round));
-        Assert.Equal(0L, await SentFor(round));
-    }
-
-    [Fact]
-    public async Task A_room_row_makes_c_sharp_authoritative_for_that_room_only()
+    public async Task Finalize_commits_bumps_the_room_version_and_broadcasts_the_reveal()
     {
         var u = await api.Db.AddUser("g-on");
         var round = await SeedFinalizableRound("g-on", "g-on-2");
-        var other = await SeedFinalizableRound("g-on", "g-on-3");
-        await api.Db.Execute($"insert into public.port_flags (slice, room_id, enabled) select 'advanceRoundAuthoritative', room_id, true from public.rounds where id = '{round}'");
 
         var res = await api.Client(api.Token(u)).PostAsync($"/rounds/{round}/finalize", null);
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
@@ -104,45 +89,14 @@ public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal("g-on-2", await api.Db.Scalar<string>($"select brewer_id from public.rounds where id = '{round}'"));
         Assert.Equal(1L, await SentFor(round));
         Assert.Equal("round-revealed", await api.Db.Scalar<string>($"select m.event from realtime.messages m join public.rounds r on m.topic = 'room:' || r.room_id where r.id = '{round}'"));
-
-        var otherRes = await api.Client(api.Token(u)).PostAsync($"/rounds/{other}/finalize", null);
-        Assert.False((await otherRes.Content.ReadFromJsonAsync<JsonElement>()).TryGetProperty("version", out _));
-        Assert.Equal(0L, await RoomVersion(other));
     }
 
     [Fact]
-    public async Task Rolling_the_flag_back_mid_round_returns_the_next_call_to_the_shadow()
-    {
-        var u = await api.Db.AddUser("g-back");
-        var round = await SeedFinalizableRound("g-back", "g-back-2", v1: 6, v2: 6);
-        await api.Db.Execute($"insert into public.port_flags (slice, room_id, enabled) select 'advanceRoundAuthoritative', room_id, true from public.rounds where id = '{round}'");
-
-        var tie = await (await api.Client(api.Token(u)).PostAsync($"/rounds/{round}/finalize", null)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("tie", tie.GetProperty("outcome").GetString());
-        Assert.Equal(1, tie.GetProperty("version").GetInt64());
-
-        await api.Db.Execute($"""
-            update public.port_flags set enabled = false where slice = 'advanceRoundAuthoritative' and room_id = (select room_id from public.rounds where id = '{round}');
-            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
-              ('{round}', 'g-back', 1, 3, 'in_app', 0), ('{round}', 'g-back-2', 1, 9, 'in_app', 0);
-            """);
-
-        var done = await (await api.Client(api.Token(u)).PostAsync($"/rounds/{round}/advance", null)).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("brewer", done.GetProperty("outcome").GetString());
-        Assert.Equal("g-back", done.GetProperty("brewer_id").GetString());
-        Assert.False(done.TryGetProperty("version", out _));
-        Assert.Equal(1L, await RoomVersion(round));
-    }
-
-    [Fact]
-    public async Task A_noop_under_authority_carries_no_version_so_the_ts_action_still_sends()
+    public async Task A_noop_carries_no_version_so_the_ts_action_still_sends()
     {
         var u = await api.Db.AddUser("g-noop");
         var round = await SeedFinalizableRound("g-noop", "g-noop-2");
-        await api.Db.Execute($"""
-            insert into public.port_flags (slice, room_id, enabled) select 'advanceRoundAuthoritative', room_id, true from public.rounds where id = '{round}';
-            update public.rounds set status = 'resolved', brewer_id = 'g-noop' where id = '{round}';
-            """);
+        await api.Db.Execute($"update public.rounds set status = 'resolved', brewer_id = 'g-noop' where id = '{round}'");
         var payload = await (await api.Client(api.Token(u)).PostAsync($"/rounds/{round}/advance", null)).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("round_not_closed", payload.GetProperty("reason").GetString());
         Assert.False(payload.TryGetProperty("version", out _));
@@ -155,7 +109,6 @@ public class RoundAdvanceHttpTests(ApiHost api) : IClassFixture<ApiHost>
         var u = await api.Db.AddUser("g-stray");
         var round = await SeedFinalizableRound("g-stray", "g-stray-2");
         await api.Db.Execute($"""
-            insert into public.port_flags (slice, room_id, enabled) select 'advanceRoundAuthoritative', room_id, true from public.rounds where id = '{round}';
             insert into public.players (id, email) values ('g-stray-out', 'g-stray-out@example.test');
             update public.rounds set current_layer = 1 where id = '{round}';
             insert into public.round_layer_participants (round_id, layer, player_id) values ('{round}', 1, 'g-stray'), ('{round}', 1, 'g-stray-out');

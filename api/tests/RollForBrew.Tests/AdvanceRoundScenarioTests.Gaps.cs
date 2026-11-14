@@ -1,14 +1,15 @@
 using RollForBrew.Domain.Commands;
+using RollForBrew.Domain.Dice;
 using RollForBrew.Tests.Harness;
 
 namespace RollForBrew.Tests;
 
 /// <summary>
 /// The slice 2b parity audit's open gaps (docs/port/slice-2b-parity-audit.md): TS integration
-/// tests with no C# equivalent, each seeded the way the TS test seeds it and run through both
-/// engines by <see cref="Parity"/>.
+/// tests with no C# equivalent, each seeded the way the TS test seeds it and run through the
+/// C# advance by <c>Run</c>.
 /// </summary>
-public partial class AdvanceRoundParityTests
+public partial class AdvanceRoundScenarioTests
 {
     private static string Id(int prefix, int n) => $"{prefix}0000000-0000-4000-8000-{n:D12}";
 
@@ -61,7 +62,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task Brew_IOU_whose_target_goes_to_a_Loose_Leaf_roll_off_ties_without_a_debt()
     {
-        var csharp = await Parity(SeedIouIntoLooseLeaf, Round, AdvanceRound.Entry.Finalize,
+        var csharp = await Run(SeedIouIntoLooseLeaf, Round, AdvanceRound.Entry.Finalize,
             payload => Assert.Equal("tie", (string?)payload["outcome"]));
         Assert.Null(await csharp.Scalar<string>($"select brewer_source from public.rounds where id = '{Round}'"));
     }
@@ -69,11 +70,11 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task Brew_IOU_target_who_loses_the_Loose_Leaf_roll_off_brews_with_no_debt()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedIouIntoLooseLeaf(db);
+            await RunCSharp(db, Round, AdvanceRound.Entry.Finalize, new NoDiceRoller());
             await db.Execute($"""
-                select public.finalize_layer('{Round}');
                 insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot) values
                   ('{Round}', 'p-b', 1, 3, 'manual', 0), ('{Round}', 'p-c', 1, 15, 'manual', 0);
                 """);
@@ -91,7 +92,7 @@ public partial class AdvanceRoundParityTests
     {
         var yesterday = Guid.Parse("10000000-0000-4000-8000-000000000002");
         var iouRound = Guid.Parse("20000000-0000-4000-8000-000000000002");
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             // p-b brewed for p-a's Brew IOU yesterday, so p-a owes. Today's room is the Test Room.
             await SeedThree(db, window: false);
@@ -120,7 +121,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task A_block_copy_ward_blocks_a_seize_and_the_source_resolves_on_its_target()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 10, b: 10, c: 10);
             await SeedRoomEffect(db, 3, "Bag for Life", "p-a", "ward",
@@ -137,7 +138,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task A_Brew_merang_seizing_a_Brew_merang_terminates_with_the_inner_one_seized()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 10, b: 10, c: 10);
             await SeedCast(db, 1, "Brewer's Blessing", "p-a", "p-b", "flat_modifier", """{"delta": 5}""", role: "TARGET");
@@ -174,7 +175,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task Last_Drip_reads_the_most_recent_resolved_round_ignoring_older_and_cancelled_ones()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 2, b: 11, c: 12);
             await SeedPastRound(db, 3, "2026-01-01 07:30+00", "resolved", ("p-a", 5, 0), ("p-b", 19, 0), ("p-c", 4, 0));
@@ -188,7 +189,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task Last_Drip_breaks_a_full_tie_on_roll_and_snapshot_on_the_lowest_player_id()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 2, b: 11, c: 12);
             await SeedPastRound(db, 3, "2026-01-01 08:00+00", "resolved", ("p-a", 3, 0), ("p-b", 14, 2), ("p-c", 14, 2));
@@ -200,7 +201,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task Last_Drip_falling_through_to_an_immune_player_leaves_the_default_pick()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             // p-d won last round but is not in this one, so Last Drip falls through to p-b, who is immune.
             await SeedThree(db, a: 15, b: 14, c: 4);
@@ -221,7 +222,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task Genie_invoking_Last_Drip_makes_the_previous_winner_brew_with_no_gain()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 10, b: 15, c: 3);
             await SeedPastRound(db, 3, "2026-01-01 08:00+00", "resolved", ("p-a", 9, 0), ("p-b", 18, 0), ("p-c", 2, 0));
@@ -242,7 +243,7 @@ public partial class AdvanceRoundParityTests
     {
         var loot = Id(4, 2);
         var drawn = Id(4, 3);
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 5, b: 6, c: 12);
             // The thief's crit draw refilled their hand after they cast Tea Heist.
@@ -269,7 +270,7 @@ public partial class AdvanceRoundParityTests
     {
         // The TS test calls this mode reserved; Last Drip has since shipped it. With no earlier
         // round it is inert, so the default pick stands and the round does not fail.
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedThree(db, a: 3, b: 15, c: 12);
             await SeedCast(db, 1, "Drip Tray", "p-a", null, "tea_maker_override", LastDripParams);
@@ -323,7 +324,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task A_ward_on_the_losing_side_blocks_both_sides_of_a_Chai_nge_swap()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedTwo(db, (10, 8), (11, 2));
             await SeedRoomEffect(db, 6, "Cast-Iron Kettle", "p-a", "ward", """{"polarity": ["negative"], "domain": ["modifier", "roll"]}""");
@@ -345,7 +346,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task A_warded_Tea_Leaf_target_keeps_their_modifier_and_the_caster_gets_no_bonus()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedTwo(db, (10, 0), (2, 6));
             await SeedRoomEffect(db, 6, "Eternal Steep", "p-b", "ward", """{"polarity": ["positive", "negative"], "domain": ["modifier"]}""");
@@ -366,7 +367,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task A_warded_Spillage_target_keeps_their_modifier()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedTwo(db, (12, 0), (3, 8));
             await SeedRoomEffect(db, 6, "Jinxed Biscuit", "p-b", "ward", """{"polarity": ["negative"], "domain": ["modifier"]}""");
@@ -383,7 +384,7 @@ public partial class AdvanceRoundParityTests
     [Fact]
     public async Task An_unwarded_Spillage_still_moves_half_the_targets_modifier()
     {
-        var csharp = await Parity(async db =>
+        var csharp = await Run(async db =>
         {
             await SeedTwo(db, (10, 0), (3, 8));
             await SeedEmitted(db, "Spillage",

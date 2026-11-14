@@ -177,11 +177,4 @@ public class RoomStoreCommandTests : IAsyncLifetime
         Assert.True(await _db.Scalar<bool>("select has_function_privilege('rfb_api', 'public.rfb_broadcast(text, text, jsonb)', 'execute')"));
         Assert.False(await _db.Scalar<bool>("select has_schema_privilege('rfb_api', 'realtime', 'usage')"));
     }
-
-    [Fact]
-    public async Task The_authority_flag_is_seeded_off_and_separate_from_the_shadow_flag()
-    {
-        Assert.False(await _db.Scalar<bool>("select enabled from public.port_flags where slice = 'advanceRoundAuthoritative' and room_id is null"));
-        Assert.False(await _db.Scalar<bool>("select enabled from public.port_flags where slice = 'advanceRound' and room_id is null"));
-    }
 }

@@ -85,7 +85,7 @@ export function RoundReveal({
   useEffect(() => {
     let cancelled = false;
     const supabase = createClient();
-    getRoundRecap(supabase, roundId, roomId)
+    getRoundRecap(supabase, roundId)
       .then((data) => {
         if (!cancelled) setRecap(data);
       })

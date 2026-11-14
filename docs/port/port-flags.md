@@ -4,8 +4,6 @@
 `isPortEnabled(supabase, slice, roomId?)` in `src/lib/api/portFlags.ts` reads it: a room row beats the global row
 (`room_id` null); no row or a read error means off (`.rpc`). A wrapper with no room id sees only the global row.
 
-The API reads `advanceRoundAuthoritative` itself, with the same room-beats-global rule and no row meaning off. A read error there is not treated as off: the call fails and rolls back, because the flag is read in the call's own transaction.
-
 ## Adding a flagged wrapper (#538, #565-568)
 
 1. Add the endpoint in `api/` with `.Produces<T>()` and `.WithName("<wrapperName>")`.
@@ -86,13 +84,9 @@ rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rule
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
 On the API path, `PUT /rounds/{roundId}/order` bumps `rooms.version` and sends `room-changed` in its transaction (ADR 0011). The client's follow-up `notifyOrderChangedAction` still sends an unversioned `room-changed` for the SQL path. Remove it with the `.rpc` branch when `submit_order` retires.
 
-## Round advancement flags (#546, #547; human steps, not run by the agent)
+## Retired: round advancement, Round Recap and Round Backfill (#549)
 
-Two rows, read in different places. `advanceRound` routes the TS wrappers to the API (on globally since the shadow went live). `advanceRoundAuthoritative` is read by the API on each call and makes C# decide instead of the shadow. It is seeded off. Flip and rollback steps are in `docs/port/advance-round-bridges.md`.
-
-## Round Recap and Round Backfill flags (#548; human steps, not run by the agent)
-
-`getRoundRecap` and `adminBackfillRound`, both seeded off by migration `0165`. Each routes one TS wrapper to the API and neither depends on `advanceRoundAuthoritative`. Flip and rollback steps are in `docs/port/recap-backfill-bridges.md`.
+The `advanceRound`, `advanceRoundAuthoritative`, `getRoundRecap` and `adminBackfillRound` flags are gone. Their wrappers call the API only and the SQL they used to fall back to is deleted. See `advance-round-bridges.md` and `recap-backfill-bridges.md`.
 
 ## `room_view` (slice 1, #539; retired #541)
 

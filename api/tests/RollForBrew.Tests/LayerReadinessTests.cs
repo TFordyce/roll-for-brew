@@ -5,7 +5,7 @@ using RollForBrew.Domain.Snapshot;
 namespace RollForBrew.Tests;
 
 /// <summary>Seam 1 for #465: one function answers "where is this Layer?". The noop reasons
-/// themselves are pinned against SQL by <see cref="AdvanceRoundParityTests"/>; these pin the
+/// themselves are pinned against SQL by <see cref="AdvanceRoundScenarioTests"/>; these pin the
 /// shape nothing in SQL returns: who each hold waits on.</summary>
 public class LayerReadinessTests
 {
