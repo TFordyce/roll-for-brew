@@ -35,46 +35,13 @@ update public.port_flags set enabled = false where slice = 'getActingAs' and roo
 
 Per-room scoping works by inserting `(slice, room_id)` rows (a room row overrides the global one); no wrapper passes a room id since `room_view` was retired (#541).
 
-## Room entry and Acting As flags (#568, human step, not run by the agent)
+## Retired: room entry and set Acting As (#568)
 
-Slices `enterTodaysRoom` and `setActingAs`. Merging changes nothing for players: with no row, or the row off, both wrappers keep the SQL `.rpc`.
-Endpoints: `POST /rooms/today/entry`, `PUT /acting-as`. Same precondition as `getActingAs`.
+The `enterTodaysRoom` and `setActingAs` flags are gone, with the `.rpc` branches in `src/lib/supabase/rooms.ts` and `actingAs.ts`. Room entry (`POST /rooms/today/entry`) and set Acting As (`PUT /acting-as`) go to the API only; `getActingAs` keeps its own flag. Both flags were on globally from 7 Nov 2026 and soaked 9 to 13 Nov with no rollback (recorded on #568). To roll back, revert the retirement PRs.
 
-Both flags must be global rows. No room id exists before entry, and `setActingAs` has no room, so a room-scoped row is ignored.
-`enterTodaysRoom` also serves the settings and proxy-roll pages, so flipping it moves those too.
+Room entry that creates a seat bumps `rooms.version` and sends `room-changed` in its transaction (spec #533, 7 Nov 2026). Re-entering creates nothing and sends nothing. Set Acting As stays silent.
 
-Flip `setActingAs` first, outside weekday play hours. Verify as an admin in the Test Room: picking a Test Player moves the Acting As badge, and picking yourself clears it.
-
-```sql
-insert into public.port_flags (slice, enabled) values ('setActingAs', true)
-on conflict (slice, room_id) do update set enabled = true;
-```
-
-Then flip `enterTodaysRoom`. Verify by loading the home page: same room and same seat, and the Network tab or API log shows `POST /rooms/today/entry`.
-
-```sql
-insert into public.port_flags (slice, enabled) values ('enterTodaysRoom', true)
-on conflict (slice, room_id) do update set enabled = true;
-```
-
-Rollback (instant, no deploy). An API failure on room entry surfaces as a page error, so this is the recovery:
-
-```sql
-update public.port_flags set enabled = false where slice in ('setActingAs', 'enterTodaysRoom') and room_id is null;
-```
-
-Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
-
-On the API path, room entry that creates a seat bumps `rooms.version` and sends `room-changed` in its transaction (spec #533, 7 Nov 2026). Re-entering creates nothing and sends nothing. The SQL path still sends nothing: there a new seat reaches other clients on their next refetch.
-
-After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
-
-* `public.enter_todays_room()` and `public.set_acting_as(text)`, with their `authenticated` grants;
-* the `.rpc` branches in `src/lib/supabase/rooms.ts` and `actingAs.ts`;
-* the two `port_flags` rows;
-* before dropping `enter_todays_room`: its direct callers in `tests/integration` (`setup.ts`, `room-auto-creation.test.ts`, `admin-proxy-roll.test.ts`) and the SQL parity tests in `api/tests/RollForBrew.Tests` (`RoomEntryHttpTests`, `SetActingAsHttpTests`, `RfbApiRoleTests`).
-
-`current_player_id` stays until its last SQL caller is gone.
+Bridge: `current_player_id` only, which stays until its last SQL caller is gone. `enter_todays_room` and `set_acting_as` are dropped by the follow-up migration.
 
 ## Orders slice flags (#565, human step, not run by the agent)
 
