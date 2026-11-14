@@ -26,6 +26,16 @@ export type RoomViewResponse =
 export type RoundRecapResponse =
   paths["/rounds/{roundId}/recap"]["get"]["responses"][200]["content"]["application/json"];
 
+type StartRoundResponse =
+  paths["/rounds"]["post"]["responses"][200]["content"]["application/json"];
+
+/** `version` is the bumped rooms.version, or null when the command changed nothing. */
+export type CommandResponse =
+  paths["/rounds/{roundId}/close"]["post"]["responses"][200]["content"]["application/json"];
+
+/** A roll submission's answer: the value that was recorded, and the bumped rooms.version. */
+export type RollResponse = { value: number; version: number | null };
+
 type BackfillResponse =
   paths["/rounds/backfill"]["post"]["responses"][200]["content"]["application/json"];
 
@@ -61,6 +71,20 @@ export interface ApiClient {
   enterTodaysRoom(): Promise<EnterRoomResponse>;
   setActingAs(targetPlayerId: string): Promise<void>;
   getRoundRecap(roundId: string): Promise<RoundRecapResponse>;
+  startRound(roomId?: string): Promise<StartRoundResponse>;
+  declareIn(roundId: string): Promise<CommandResponse>;
+  declareInLate(roundId: string): Promise<CommandResponse>;
+  withdrawDeclaration(roundId: string): Promise<CommandResponse>;
+  closeRound(roundId: string): Promise<CommandResponse>;
+  cancelRound(roundId: string): Promise<CommandResponse>;
+  excludeRoundParticipant(roundId: string, playerId: string, layer: number): Promise<CommandResponse>;
+  confirmRoundReplay(roundId: string): Promise<CommandResponse>;
+  declineRoundReplay(roundId: string): Promise<CommandResponse>;
+  submitRoll(roundId: string): Promise<RollResponse>;
+  submitManualRoll(roundId: string, value: number): Promise<RollResponse>;
+  submitRollAs(roundId: string, playerId: string): Promise<RollResponse>;
+  submitManualRollAs(roundId: string, playerId: string, value: number): Promise<RollResponse>;
+  adminProxyRoll(roundId: string, playerId: string, value: number): Promise<RollResponse>;
   adminBackfillRound(
     participantIds: string[],
     layers: { playerId: string; value: number }[][],
@@ -129,6 +153,26 @@ export function createApiClient(
       await call("PUT", "/acting-as", { targetPlayerId });
     },
     getRoundRecap: (roundId) => get<RoundRecapResponse>(`/rounds/${roundId}/recap`),
+    startRound: async (roomId) =>
+      (await (await call("POST", "/rounds", { roomId: roomId ?? null })).json()) as StartRoundResponse,
+    declareIn: async (roundId) => (await (await call("POST", `/rounds/${roundId}/declaration`)).json()) as CommandResponse,
+    declareInLate: async (roundId) => (await (await call("POST", `/rounds/${roundId}/declaration/late`)).json()) as CommandResponse,
+    withdrawDeclaration: async (roundId) => (await (await call("DELETE", `/rounds/${roundId}/declaration`)).json()) as CommandResponse,
+    closeRound: async (roundId) => (await (await call("POST", `/rounds/${roundId}/close`)).json()) as CommandResponse,
+    cancelRound: async (roundId) => (await (await call("POST", `/rounds/${roundId}/cancel`)).json()) as CommandResponse,
+    excludeRoundParticipant: async (roundId, playerId, layer) =>
+      (await (await call("POST", `/rounds/${roundId}/exclusions`, { playerId, layer })).json()) as CommandResponse,
+    confirmRoundReplay: async (roundId) => (await (await call("POST", `/rounds/${roundId}/replay/confirm`)).json()) as CommandResponse,
+    declineRoundReplay: async (roundId) => (await (await call("POST", `/rounds/${roundId}/replay/decline`)).json()) as CommandResponse,
+    submitRoll: async (roundId) => (await (await call("POST", `/rounds/${roundId}/rolls`)).json()) as RollResponse,
+    submitManualRoll: async (roundId, value) =>
+      (await (await call("POST", `/rounds/${roundId}/rolls/manual`, { value })).json()) as RollResponse,
+    submitRollAs: async (roundId, playerId) =>
+      (await (await call("POST", `/rounds/${roundId}/rolls/as`, { playerId })).json()) as RollResponse,
+    submitManualRollAs: async (roundId, playerId, value) =>
+      (await (await call("POST", `/rounds/${roundId}/rolls/manual/as`, { playerId, value })).json()) as RollResponse,
+    adminProxyRoll: async (roundId, playerId, value) =>
+      (await (await call("POST", `/rounds/${roundId}/rolls/proxy`, { playerId, value })).json()) as RollResponse,
     adminBackfillRound: async (participantIds, layers) =>
       (await (await call("POST", "/rounds/backfill", { participantIds, layers })).json()) as BackfillResponse,
   };

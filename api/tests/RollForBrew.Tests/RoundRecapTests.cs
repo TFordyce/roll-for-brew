@@ -6,42 +6,18 @@ using RollForBrew.Api.Data;
 using RollForBrew.Api.Problems;
 using RollForBrew.Api.RoundRecap;
 using RollForBrew.Tests.Harness;
-using static RollForBrew.Tests.AdvanceRoundParityTests;
+using static RollForBrew.Tests.AdvanceRoundScenarioTests;
 
 namespace RollForBrew.Tests;
 
 /// <summary>
-/// The oracle for the Round Recap (#548): get_round_recap and the C# preview read the same
-/// database, so the two must agree to the byte. The only mask is the id SQL gives a row its dry
-/// run synthesizes and rolls back, which no longer exists by the time anyone could compare it.
-/// Every comparison also proves the preview left the database untouched.
+/// The Round Recap (#548) read through C#: provisional and stored, the states the golden snapshots
+/// never hold, and the refusals. They began as comparisons with get_round_recap; that SQL is gone
+/// (#549), so each now asserts the Recap itself. Every read also proves the preview left the
+/// database untouched.
 /// </summary>
-public class RoundRecapParityTests
+public class RoundRecapTests
 {
-    public static TheoryData<string> Goldens => new(GoldenFixture.AllNames());
-
-    [Theory]
-    [MemberData(nameof(Goldens))]
-    public async Task A_golden_scenario_reads_the_same_before_and_after_it_resolves(string name)
-    {
-        var fx = GoldenFixture.Load(name);
-        var db = await TestPostgres.CreateDatabase();
-        await SeedGolden(db, name, closedWindow: true);
-        var viewer = await db.AddUser(fx.Roster.Keys.Order(StringComparer.Ordinal).First());
-
-        var provisional = await Same(db, fx.RoundId, viewer);
-        Assert.True((bool)provisional["provisional"]!);
-
-        // A reaction may still come while the window is open: the same read, with a counter not yet final.
-        await db.Execute($"update public.spell_reaction_windows set status = 'open', closed_at = null where round_id = '{fx.RoundId}'");
-        await Same(db, fx.RoundId, viewer);
-        await db.Execute($"update public.spell_reaction_windows set status = 'closed', closed_at = now() where round_id = '{fx.RoundId}'");
-
-        await db.Execute($"select public.finalize_layer('{fx.RoundId}')");
-        var stored = await Same(db, fx.RoundId, viewer);
-        Assert.False((bool)stored["provisional"]!);
-    }
-
     // ------------------------------------------------------------------
     // Handwritten: states the goldens' captured snapshots never hold.
     // ------------------------------------------------------------------
@@ -228,20 +204,16 @@ public class RoundRecapParityTests
         await Same(db, Round, spectator);
 
         var stranger = await db.AddUser("g-stranger");
-        var error = await Assert.ThrowsAsync<PostgresException>(() => SqlRecap(db, Round, stranger));
-        Assert.Equal("get_round_recap: caller is not in this round's room", error.MessageText);
         var problem = await Assert.ThrowsAsync<ProblemException>(() => CSharpRecap(db, Round, stranger));
         Assert.Equal("recap_not_in_room", problem.Code);
         Assert.Equal(403, problem.Status);
     }
 
     [Fact]
-    public async Task A_missing_round_is_refused_by_both()
+    public async Task A_missing_round_is_refused()
     {
         var (db, viewer) = await Three();
         var missing = Guid.NewGuid();
-        var error = await Assert.ThrowsAsync<PostgresException>(() => SqlRecap(db, missing, viewer));
-        Assert.Equal("get_round_recap: round not found", error.MessageText);
         var problem = await Assert.ThrowsAsync<ProblemException>(() => CSharpRecap(db, missing, viewer));
         Assert.Equal("round_not_found", problem.Code);
     }
@@ -320,17 +292,13 @@ public class RoundRecapParityTests
         Assert.Empty(recap["trace"]!.AsArray());
     }
 
+    /// <summary>Reads the Recap through C# and proves the read wrote nothing.</summary>
     internal static async Task<JsonObject> Same(TestDatabase db, Guid roundId, TestUser viewer)
     {
         var before = await State(db);
-        var known = Uuid.Matches(before).Select(m => m.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-        var sql = await SqlRecap(db, roundId, viewer);
-        var csharp = await CSharpRecap(db, roundId, viewer);
-
-        Assert.Equal(Masked(sql, known), Masked(csharp.ToJsonString(), known));
+        var recap = await CSharpRecap(db, roundId, viewer);
         Assert.Equal(before, await State(db));
-        return csharp;
+        return recap;
     }
 
     internal static async Task<JsonObject> CSharpRecap(TestDatabase db, Guid roundId, TestUser viewer)
@@ -339,33 +307,7 @@ public class RoundRecapParityTests
         return await RoundRecapReader.Read(new RoomStore(ds), CallerOf(viewer), roundId);
     }
 
-    internal static async Task<string> SqlRecap(TestDatabase db, Guid roundId, TestUser viewer)
-    {
-        await using var conn = new NpgsqlConnection(db.AdminConnectionString);
-        await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
-        await using (var claims = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx))
-        {
-            claims.Parameters.AddWithValue("c", CallerOf(viewer).ClaimsJson);
-            await claims.ExecuteNonQueryAsync();
-        }
-        await using var cmd = new NpgsqlCommand($"select public.get_round_recap('{roundId}')::text", conn, tx);
-        return (string)(await cmd.ExecuteScalarAsync())!;
-    }
-
     internal static Caller CallerOf(TestUser u) =>
         new(u.AuthId.ToString(), $$"""{"sub":"{{u.AuthId}}","role":"authenticated"}""");
 
-    private static readonly Regex Uuid = new("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOptions.IgnoreCase);
-
-    private static string Masked(string json, HashSet<string> known)
-    {
-        var generated = new Dictionary<string, string>();
-        return Uuid.Replace(Canon(json), m =>
-        {
-            if (known.Contains(m.Value)) return m.Value;
-            if (!generated.TryGetValue(m.Value, out var alias)) generated[m.Value] = alias = $"<generated-{generated.Count}>";
-            return alias;
-        });
-    }
 }

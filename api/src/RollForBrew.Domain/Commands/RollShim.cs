@@ -154,23 +154,8 @@ internal sealed class RollShim
 
     private static string Polarity(int before, int after) => after > before ? "positive" : after < before ? "negative" : "neutral";
 
-    /// <summary>The earliest matching ward on a player that predates the transform
-    /// (_rr_active_ward_gate). A neutral change is never warded.</summary>
-    private (Guid CastId, string CardName)? Ward(string player, string polarity, long? beforeSeq)
-    {
-        if (polarity == "neutral") return null;
-        var hit = _liveEffects
-            .Where(e => e.TargetPlayerId == player && e.EffectKind == "ward")
-            .Where(e =>
-            {
-                JsonElement? ep = e.EffectParams;
-                return ep.Get("domain").ContainsString("roll") && ep.Get("polarity").ContainsString(polarity);
-            })
-            .Where(e => !_casts.TryGetValue(e.SourceCastId, out var wc) || wc.RoundId != _roundId || beforeSeq is null || wc.Seq < beforeSeq)
-            .OrderBy(e => e.CreatedAt)
-            .FirstOrDefault();
-        return hit is null ? null : (hit.SourceCastId, _s.SpellCards.First(c => c.Id == hit.CardId).Name);
-    }
+    private (Guid CastId, string CardName)? Ward(string player, string polarity, long? beforeSeq) =>
+        WardGate.Find(_s, _liveEffects, _casts, _roundId, player, polarity, beforeSeq);
 
     private void SetRoll(string player, int value)
     {

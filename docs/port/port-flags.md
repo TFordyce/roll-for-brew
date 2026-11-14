@@ -4,8 +4,6 @@
 `isPortEnabled(supabase, slice, roomId?)` in `src/lib/api/portFlags.ts` reads it: a room row beats the global row
 (`room_id` null); no row or a read error means off (`.rpc`). A wrapper with no room id sees only the global row.
 
-The API reads `advanceRoundAuthoritative` itself, with the same room-beats-global rule and no row meaning off. A read error there is not treated as off: the call fails and rolls back, because the flag is read in the call's own transaction.
-
 ## Adding a flagged wrapper (#538, #565-568)
 
 1. Add the endpoint in `api/` with `.Produces<T>()` and `.WithName("<wrapperName>")`.
@@ -37,46 +35,13 @@ update public.port_flags set enabled = false where slice = 'getActingAs' and roo
 
 Per-room scoping works by inserting `(slice, room_id)` rows (a room row overrides the global one); no wrapper passes a room id since `room_view` was retired (#541).
 
-## Room entry and Acting As flags (#568, human step, not run by the agent)
+## Retired: room entry and set Acting As (#568)
 
-Slices `enterTodaysRoom` and `setActingAs`. Merging changes nothing for players: with no row, or the row off, both wrappers keep the SQL `.rpc`.
-Endpoints: `POST /rooms/today/entry`, `PUT /acting-as`. Same precondition as `getActingAs`.
+The `enterTodaysRoom` and `setActingAs` flags are gone, with the `.rpc` branches in `src/lib/supabase/rooms.ts` and `actingAs.ts`. Room entry (`POST /rooms/today/entry`) and set Acting As (`PUT /acting-as`) go to the API only; `getActingAs` keeps its own flag. Both flags were on globally from 7 Nov 2026 and soaked 9 to 13 Nov with no rollback (recorded on #568). To roll back, revert the retirement PRs.
 
-Both flags must be global rows. No room id exists before entry, and `setActingAs` has no room, so a room-scoped row is ignored.
-`enterTodaysRoom` also serves the settings and proxy-roll pages, so flipping it moves those too.
+Room entry that creates a seat bumps `rooms.version` and sends `room-changed` in its transaction (spec #533, 7 Nov 2026). Re-entering creates nothing and sends nothing. Set Acting As stays silent.
 
-Flip `setActingAs` first, outside weekday play hours. Verify as an admin in the Test Room: picking a Test Player moves the Acting As badge, and picking yourself clears it.
-
-```sql
-insert into public.port_flags (slice, enabled) values ('setActingAs', true)
-on conflict (slice, room_id) do update set enabled = true;
-```
-
-Then flip `enterTodaysRoom`. Verify by loading the home page: same room and same seat, and the Network tab or API log shows `POST /rooms/today/entry`.
-
-```sql
-insert into public.port_flags (slice, enabled) values ('enterTodaysRoom', true)
-on conflict (slice, room_id) do update set enabled = true;
-```
-
-Rollback (instant, no deploy). An API failure on room entry surfaces as a page error, so this is the recovery:
-
-```sql
-update public.port_flags set enabled = false where slice in ('setActingAs', 'enterTodaysRoom') and room_id is null;
-```
-
-Bridges: `current_player_id` only. `rfb_api` has no execute on `enter_todays_room` or `set_acting_as`.
-
-On the API path, room entry that creates a seat bumps `rooms.version` and sends `room-changed` in its transaction (spec #533, 7 Nov 2026). Re-entering creates nothing and sends nothing. The SQL path still sends nothing: there a new seat reaches other clients on their next refetch.
-
-After a 5-play-day soak with no rollback (separate human-gated step; #568 stays open for it), remove:
-
-* `public.enter_todays_room()` and `public.set_acting_as(text)`, with their `authenticated` grants;
-* the `.rpc` branches in `src/lib/supabase/rooms.ts` and `actingAs.ts`;
-* the two `port_flags` rows;
-* before dropping `enter_todays_room`: its direct callers in `tests/integration` (`setup.ts`, `room-auto-creation.test.ts`, `admin-proxy-roll.test.ts`) and the SQL parity tests in `api/tests/RollForBrew.Tests` (`RoomEntryHttpTests`, `SetActingAsHttpTests`, `RfbApiRoleTests`).
-
-`current_player_id` stays until its last SQL caller is gone.
+Bridge: `current_player_id` only, which stays until its last SQL caller is gone. `enter_todays_room` and `set_acting_as` are dropped by the follow-up migration.
 
 ## Orders slice flags (#565, human step, not run by the agent)
 
@@ -86,13 +51,17 @@ rollback shape as `getActingAs`. Flip `submitOrder` first (the Order Window rule
 The SQL `submit_order` and the `orders` grants stay until a 5-play-day soak; retirement is a separate human-gated step.
 On the API path, `PUT /rounds/{roundId}/order` bumps `rooms.version` and sends `room-changed` in its transaction (ADR 0011). The client's follow-up `notifyOrderChangedAction` still sends an unversioned `room-changed` for the SQL path. Remove it with the `.rpc` branch when `submit_order` retires.
 
-## Round advancement flags (#546, #547; human steps, not run by the agent)
+## Retired: round advancement, Round Recap and Round Backfill (#549)
 
-Two rows, read in different places. `advanceRound` routes the TS wrappers to the API (on globally since the shadow went live). `advanceRoundAuthoritative` is read by the API on each call and makes C# decide instead of the shadow. It is seeded off. Flip and rollback steps are in `docs/port/advance-round-bridges.md`.
+The `advanceRound`, `advanceRoundAuthoritative`, `getRoundRecap` and `adminBackfillRound` flags are gone. Their wrappers call the API only and the SQL they used to fall back to is deleted. See `advance-round-bridges.md` and `recap-backfill-bridges.md`.
 
-## Round Recap and Round Backfill flags (#548; human steps, not run by the agent)
+## Round lifecycle flags (#550; human steps, not run by the agent)
 
-`getRoundRecap` and `adminBackfillRound`, both seeded off by migration `0165`. Each routes one TS wrapper to the API and neither depends on `advanceRoundAuthoritative`. Flip and rollback steps are in `docs/port/recap-backfill-bridges.md`.
+Nine rows seeded off by migration `0166`: `startRound`, `declareIn`, `declareInLate`, `withdrawDeclaration`, `closeRound`, `cancelRound`, `excludeRoundParticipant`, `confirmRoundReplay`, `declineRoundReplay`. Each routes one TS wrapper to the API and honours a room row (Test Room first), except `startRound`, which only sees a room row when the caller passes a room id. Flip, rollback, bridges and the deletion list are in `docs/port/round-lifecycle-bridges.md`.
+
+## Roll submission flags (#551; human steps, not run by the agent)
+
+Five rows seeded off by migration `0167`: `submitRoll`, `submitManualRoll`, `submitRollAs`, `submitManualRollAs`, `adminProxyRoll`. Each routes one TS wrapper to the API and honours a room row (Test Room first). Flip, rollback, bridges and the deletion list are in `docs/port/roll-submission-bridges.md`.
 
 ## `room_view` (slice 1, #539; retired #541)
 

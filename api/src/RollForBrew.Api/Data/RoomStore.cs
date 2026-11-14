@@ -130,6 +130,10 @@ public sealed class RoomStore
         {
             throw ProblemCatalog.FromResolveException(e);
         }
+        catch (CommandRefusal e)
+        {
+            throw ProblemCatalog.FromRefusal(e);
+        }
     }
 
     private static async Task<RoundLock?> LockRound(StoreSession session, Guid roundId)
@@ -151,7 +155,9 @@ public sealed class RoomStore
     public static Exception Translate(PostgresException e) =>
         ProblemCatalog.FromSqlState(e.SqlState) is { } info
             ? ProblemException.FromInfo(info, e.Detail ?? e.MessageText)
-            : e;
+            : e is { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "rounds_one_active_per_room" }
+                ? ProblemCatalog.FromRefusal(new CommandRefusal("round_already_active", e.MessageText))
+                : e;
 }
 
 /// <summary>What a swallowed <c>realtime.send</c> failure does to the write (ADR 0011).</summary>
@@ -231,23 +237,6 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
     /// the bumped version reaches other clients on their next refetch.</summary>
     public Task<long> BumpAndAnnounce(Guid roomId, Announce announce, CancellationToken ct = default) =>
         BumpAndBroadcast(roomId, [new RoomEvent("room-changed", [])], ct, announce);
-
-    /// <summary>Whether C# decides this round's advancement (#547). A room row beats the
-    /// global row; no row means off. An unknown round reads the global row, and either path
-    /// answers it with the same noop.</summary>
-    public async Task<bool> AdvanceIsAuthoritative(Guid roundId, CancellationToken ct = default)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            select f.enabled
-              from public.port_flags f
-             where f.slice = 'advanceRoundAuthoritative'
-               and (f.room_id is null or f.room_id = (select room_id from public.rounds where id = @round))
-             order by f.room_id nulls last
-             limit 1
-            """, Connection, Transaction);
-        cmd.Parameters.AddWithValue("round", roundId);
-        return await cmd.ExecuteScalarAsync(ct) is true;
-    }
 
     public async Task<string> CurrentPlayerId(Guid? roundId = null, Guid? roomId = null, CancellationToken ct = default)
     {

@@ -6,16 +6,16 @@ using RollForBrew.Api.Data;
 using RollForBrew.Api.Problems;
 using RollForBrew.Api.RoundBackfill;
 using RollForBrew.Tests.Harness;
-using static RollForBrew.Tests.RoundRecapParityTests;
+using static RollForBrew.Tests.RoundRecapTests;
 
 namespace RollForBrew.Tests;
 
 /// <summary>
-/// The oracle for Round Backfill (#548): each case goes through admin_backfill_round in one
-/// database and C# in another, from identical rows. The error (code and message), or every row
-/// written, must match. Only now() and the ids each engine generates are masked.
+/// Round Backfill (#548) through C#: every refusal leaves the database untouched, and each
+/// accepted round resolves to the brewer, final layer and rows asserted below. They began as
+/// comparisons with admin_backfill_round; that SQL is gone (#549).
 /// </summary>
-public class RoundBackfillParityTests
+public class RoundBackfillTests
 {
     private const string A = "p-a", B = "p-b", C = "p-c";
 
@@ -69,17 +69,14 @@ public class RoundBackfillParityTests
 
     [Theory]
     [MemberData(nameof(Rejections))]
-    public async Task A_bad_backfill_fails_the_same_way_and_leaves_nothing(string why, string[] roster, string layers)
+    public async Task A_bad_backfill_is_refused_and_leaves_nothing(string why, string[] roster, string layers)
     {
         _ = why;
-        var (sqlDb, csDb) = (await Seed(), await Seed());
-        var before = await Rows(sqlDb);
-        var sql = await Sql(sqlDb, Boss, roster, layers);
-        var cs = await CSharp(csDb, Boss, roster, layers);
-        Assert.NotNull(sql.Error);
-        Assert.Equal(sql.Error, cs.Error);
-        Assert.Equal(before, await Rows(sqlDb));
-        Assert.Equal(before, await Rows(csDb));
+        var db = await Seed();
+        var before = await Rows(db);
+        var cs = await CSharp(db, Boss, roster, layers);
+        Assert.NotNull(cs.Error);
+        Assert.Equal(before, await Rows(db));
     }
 
     // array_length('{}', 1) is null, so an empty roster gets past RFB34 and past the roster
@@ -96,26 +93,22 @@ public class RoundBackfillParityTests
 
     [Theory]
     [MemberData(nameof(EmptyRosters))]
-    public async Task An_empty_roster_fails_the_same_way_and_leaves_nothing(string why, string layers)
+    public async Task An_empty_roster_is_refused_and_leaves_nothing(string why, string layers)
     {
         _ = why;
-        var (sqlDb, csDb) = (await Seed(), await Seed());
-        var before = await Rows(sqlDb);
-        var sql = await Sql(sqlDb, Boss, [], layers);
-        var cs = await CSharp(csDb, Boss, [], layers);
-        Assert.NotNull(sql.Error);
-        Assert.Equal(sql.Error, cs.Error);
-        Assert.Equal(before, await Rows(csDb));
+        var db = await Seed();
+        var before = await Rows(db);
+        var cs = await CSharp(db, Boss, [], layers);
+        Assert.NotNull(cs.Error);
+        Assert.Equal(before, await Rows(db));
     }
 
     [Fact]
     public async Task A_non_admin_is_refused()
     {
-        var (sqlDb, csDb) = (await Seed(), await Seed());
-        var sql = await Sql(sqlDb, await sqlDb.AddUser("g-pleb"), [A, B], Layers(L((A, 5), (B, 12))));
-        var cs = await CSharp(csDb, await csDb.AddUser("g-pleb"), [A, B], Layers(L((A, 5), (B, 12))));
-        Assert.Equal("admin_required_backfill|admin_backfill_round: caller is not an admin", sql.Error);
-        Assert.Equal(sql.Error, cs.Error);
+        var db = await Seed();
+        var cs = await CSharp(db, await db.AddUser("g-pleb"), [A, B], Layers(L((A, 5), (B, 12))));
+        Assert.Equal("admin_required_backfill|admin_backfill_round: caller is not an admin", cs.Error);
     }
 
     [Theory]
@@ -127,11 +120,9 @@ public class RoundBackfillParityTests
             insert into public.rooms (date) values ((now() at time zone 'Europe/London')::date);
             insert into public.rounds (room_id, started_by, status) select id, 'p-a', '{status}' from public.rooms where date = {Today};
             """);
-        var (sqlDb, csDb) = (await Seed(Live), await Seed(Live));
-        var sql = await Sql(sqlDb, Boss, [A, B], Layers(L((A, 5), (B, 12))));
-        var cs = await CSharp(csDb, Boss, [A, B], Layers(L((A, 5), (B, 12))));
-        Assert.StartsWith("backfill_round_in_progress|", sql.Error);
-        Assert.Equal(sql.Error, cs.Error);
+        var db = await Seed(Live);
+        var cs = await CSharp(db, Boss, [A, B], Layers(L((A, 5), (B, 12))));
+        Assert.StartsWith("backfill_round_in_progress|", cs.Error);
     }
 
     [Fact]
@@ -141,7 +132,7 @@ public class RoundBackfillParityTests
             insert into public.rooms (date) values ((now() at time zone 'Europe/London')::date);
             insert into public.rounds (room_id, started_by, status, started_at) select id, 'p-a', 'resolved', '2026-01-01 09:00+00' from public.rooms where date = {Today};
             """);
-        await Parity(Done, [A, B], Layers(L((A, 5), (B, 12))), a => a.Brewer(A));
+        await Run(Done, [A, B], Layers(L((A, 5), (B, 12))), a => a.Brewer(A));
     }
 
     public static TheoryData<string, int, int, int, string[], string, string, int> Resolutions => new()
@@ -161,10 +152,10 @@ public class RoundBackfillParityTests
 
     [Theory]
     [MemberData(nameof(Resolutions))]
-    public async Task A_round_resolves_the_same_in_both_engines(string why, int a, int b, int c, string[] roster, string layers, string brewer, int layer)
+    public async Task A_round_resolves_to_the_brewer_and_layer_expected(string why, int a, int b, int c, string[] roster, string layers, string brewer, int layer)
     {
         _ = why;
-        await Parity(db => Modifiers(db, a, b, c), roster, layers, r =>
+        await Run(db => Modifiers(db, a, b, c), roster, layers, r =>
         {
             r.Brewer(brewer);
             Assert.Equal(layer, r.Round.GetProperty("current_layer").GetInt32());
@@ -176,7 +167,7 @@ public class RoundBackfillParityTests
 
     [Fact]
     public async Task Nobody_needs_to_have_logged_in_today() =>
-        await Parity(null, [A, B], Layers(L((A, 3), (B, 18))), r => r.Brewer(A));
+        await Run(null, [A, B], Layers(L((A, 3), (B, 18))), r => r.Brewer(A));
 
     /// A Brew Debt holds a round with no Layer 0 rolls, so it must not hold this one, whose
     /// rolls are in before anything asks. Written out because advance_round_layer's roller
@@ -197,7 +188,7 @@ public class RoundBackfillParityTests
               values ('50000000-0000-4000-8000-000000000001', '{{iou}}', 'p-a', '40000000-0000-4000-8000-000000000001', 'p-b', 'tea_maker_override', '{"mode": "chosen"}');
             update public.rounds set brewer_source = 'brew_iou', brewer_source_cast_id = '50000000-0000-4000-8000-000000000001' where id = '{{iou}}';
             """);
-        await Parity(Debt, [A, B], Layers(L((A, 6), (B, 6)), L((A, 9), (B, 3))), r => r.Brewer(B));
+        await Run(Debt, [A, B], Layers(L((A, 6), (B, 6)), L((A, 9), (B, 3))), r => r.Brewer(B));
     }
 
     [Fact]
@@ -234,12 +225,10 @@ public class RoundBackfillParityTests
     }
 
     [Fact]
-    public async Task The_sql_path_reads_a_round_c_sharp_backfilled()
+    public async Task A_backfilled_round_leaves_nothing_open_for_the_next_one()
     {
         var db = await Seed();
         await CSharp(db, Boss, [A, B], Layers(L((A, 5), (B, 12))));
-        Assert.Equal(2m, await db.Scalar<decimal>($"select public._rr_base_modifier((select id from public.rooms where date = {Today}), 'p-a')::numeric"));
-        // The next live round can start: nothing about this one is left open.
         Assert.Equal(0L, await db.Scalar<long>("select count(*) from public.rounds where status in ('open', 'closed')"));
     }
 
@@ -252,49 +241,18 @@ public class RoundBackfillParityTests
         public void Brewer(string id) => Assert.Equal(id, Round.GetProperty("brewer_id").GetString());
     }
 
-    private static async Task Parity(Func<TestDatabase, Task>? seed, string[] roster, string layers, Action<Resolved> check)
+    private static async Task Run(Func<TestDatabase, Task>? seed, string[] roster, string layers, Action<Resolved> check)
     {
-        var (sqlDb, csDb) = (await Seed(seed), await Seed(seed));
-        var sql = await Sql(sqlDb, Boss, roster, layers);
-        var cs = await CSharp(csDb, Boss, roster, layers);
-        Assert.Null(sql.Error);
+        var db = await Seed(seed);
+        var cs = await CSharp(db, Boss, roster, layers);
         Assert.Null(cs.Error);
 
-        var known = Uuids.Matches(await Rows(await Seed(seed))).Select(m => m.Value).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Assert.Equal(Masked(await Rows(sqlDb), known), Masked(await Rows(csDb), known));
-
-        var round = (await sqlDb.Scalar<string>($"select to_jsonb(r)::text from public.rounds r where id = '{sql.RoundId}'"))!;
+        var round = (await db.Scalar<string>($"select to_jsonb(r)::text from public.rounds r where id = '{cs.RoundId}'"))!;
         using var doc = JsonDocument.Parse(round);
         check(new Resolved(doc.RootElement.Clone()));
     }
 
     private sealed record Result(Guid? RoundId, string? Error);
-
-    private static async Task<Result> Sql(TestDatabase db, TestUser who, string[] roster, string layers)
-    {
-        await using var conn = new NpgsqlConnection(db.AdminConnectionString);
-        await conn.OpenAsync();
-        await using var tx = await conn.BeginTransactionAsync();
-        await using (var claims = new NpgsqlCommand("select set_config('request.jwt.claims', @c, true)", conn, tx))
-        {
-            claims.Parameters.AddWithValue("c", CallerOf(who).ClaimsJson);
-            await claims.ExecuteNonQueryAsync();
-        }
-        await using var cmd = new NpgsqlCommand("select public.admin_backfill_round(@ids, @layers)", conn, tx);
-        cmd.Parameters.AddWithValue("ids", roster);
-        cmd.Parameters.Add(new NpgsqlParameter("layers", NpgsqlTypes.NpgsqlDbType.Jsonb) { Value = layers });
-        try
-        {
-            var id = (Guid)(await cmd.ExecuteScalarAsync())!;
-            await tx.CommitAsync();
-            return new Result(id, null);
-        }
-        catch (PostgresException e)
-        {
-            if (ProblemCatalog.FromSqlState(e.SqlState) is { } info) return new Result(null, $"{info.Code}|{e.MessageText}");
-            return new Result(null, e.SqlState == "P0001" ? $"backfill_not_resolvable|{e.MessageText}" : e.SqlState);
-        }
-    }
 
     private static async Task<Result> CSharp(TestDatabase db, TestUser who, string[] roster, string layers)
     {
@@ -317,7 +275,7 @@ public class RoundBackfillParityTests
     }
 
     /// <summary>Every row backfill can write. rooms.version is left out: only C# bumps it.</summary>
-    private static async Task<string> Rows(TestDatabase db) => AdvanceRoundParityTests.MaskNow((await db.Scalar<string>("""
+    private static async Task<string> Rows(TestDatabase db) => AdvanceRoundScenarioTests.MaskNow((await db.Scalar<string>("""
         select jsonb_pretty(jsonb_build_object(
           'rooms', (select coalesce(jsonb_agg(to_jsonb(t) - 'version' order by t.date), '[]') from public.rooms t),
           'rounds', (select coalesce(jsonb_agg(to_jsonb(t) order by t.started_at, t.id), '[]') from public.rounds t),
@@ -328,16 +286,4 @@ public class RoundBackfillParityTests
         ))
         """))!);
 
-    private static readonly Regex Uuids = new("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", RegexOptions.IgnoreCase);
-
-    private static string Masked(string text, HashSet<string> known)
-    {
-        var generated = new Dictionary<string, string>();
-        return Uuids.Replace(text, m =>
-        {
-            if (known.Contains(m.Value)) return m.Value;
-            if (!generated.TryGetValue(m.Value, out var alias)) generated[m.Value] = alias = $"<generated-{generated.Count}>";
-            return alias;
-        });
-    }
 }

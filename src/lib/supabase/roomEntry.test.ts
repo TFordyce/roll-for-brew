@@ -4,72 +4,36 @@ import { createApiClient } from "@/lib/api/client";
 import { setActingAs } from "./actingAs";
 import { enterTodaysRoom } from "./rooms";
 
-type Row = { room_id: string | null; enabled: boolean };
-
-function fake(flags: Row[]) {
-  const rpc = vi.fn(async () => ({ data: "room-rpc", error: null }));
-  const eq = vi.fn(async () => ({ data: flags, error: null }));
-  const from = vi.fn(() => ({ select: () => ({ eq }) }));
-  return { supabase: { from, rpc } as unknown as SupabaseClient, rpc, eq };
-}
-
-const entryApi = () => ({ enterTodaysRoom: vi.fn(async () => ({ roomId: "room-api" })) });
-const setApi = () => ({ setActingAs: vi.fn(async () => {}) });
+// Room entry and Acting As go to the API only: any Supabase call would be a regression to the
+// retired RPCs, so the client is a Proxy that fails the test on first touch.
+const supabase = new Proxy({}, {
+  get: (_target, prop) => {
+    throw new Error(`unexpected supabase.${String(prop)}`);
+  },
+}) as unknown as SupabaseClient;
 
 describe("enterTodaysRoom", () => {
-  it("keeps the RPC when no flag row exists", async () => {
-    const { supabase, rpc, eq } = fake([]);
-    const api = entryApi();
+  it("enters through the API and returns its room id", async () => {
+    const api = { enterTodaysRoom: vi.fn(async () => ({ roomId: "room-api" })) };
 
-    expect(await enterTodaysRoom(supabase, () => api)).toBe("room-rpc");
-
-    expect(eq).toHaveBeenCalledWith("slice", "enterTodaysRoom");
-    expect(rpc).toHaveBeenCalledWith("enter_todays_room");
-    expect(api.enterTodaysRoom).not.toHaveBeenCalled();
+    expect(await enterTodaysRoom(supabase, () => api)).toBe("room-api");
+    expect(api.enterTodaysRoom).toHaveBeenCalledOnce();
   });
 
-  it("keeps the RPC when the global row is off", async () => {
-    const { supabase, rpc } = fake([{ room_id: null, enabled: false }]);
+  it("lets an API failure through", async () => {
+    const api = { enterTodaysRoom: vi.fn(async () => { throw new Error("API /rooms/today/entry failed: 503"); }) };
 
-    expect(await enterTodaysRoom(supabase, () => entryApi())).toBe("room-rpc");
-    expect(rpc).toHaveBeenCalled();
-  });
-
-  it("goes to the API when the global row is on", async () => {
-    const { supabase, rpc } = fake([{ room_id: null, enabled: true }]);
-
-    expect(await enterTodaysRoom(supabase, () => entryApi())).toBe("room-api");
-    expect(rpc).not.toHaveBeenCalled();
-  });
-
-  it("ignores a room-scoped row: no room id exists before entry", async () => {
-    const { supabase, rpc } = fake([{ room_id: "some-room", enabled: true }]);
-
-    expect(await enterTodaysRoom(supabase, () => entryApi())).toBe("room-rpc");
-    expect(rpc).toHaveBeenCalled();
+    await expect(enterTodaysRoom(supabase, () => api)).rejects.toThrow("503");
   });
 });
 
 describe("setActingAs", () => {
-  it("keeps the RPC when no flag row exists", async () => {
-    const { supabase, rpc, eq } = fake([]);
-    const api = setApi();
-
-    await setActingAs(supabase, "p2", () => api);
-
-    expect(eq).toHaveBeenCalledWith("slice", "setActingAs");
-    expect(rpc).toHaveBeenCalledWith("set_acting_as", { p_target_player_id: "p2" });
-    expect(api.setActingAs).not.toHaveBeenCalled();
-  });
-
-  it("goes to the API when the global row is on", async () => {
-    const { supabase, rpc } = fake([{ room_id: null, enabled: true }]);
-    const api = setApi();
+  it("sets Acting As through the API", async () => {
+    const api = { setActingAs: vi.fn(async () => {}) };
 
     await setActingAs(supabase, "p2", () => api);
 
     expect(api.setActingAs).toHaveBeenCalledWith("p2");
-    expect(rpc).not.toHaveBeenCalled();
   });
 });
 

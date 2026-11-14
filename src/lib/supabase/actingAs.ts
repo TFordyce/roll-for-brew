@@ -19,12 +19,7 @@ export async function setActingAs(
   targetPlayerId: string,
   api: () => Pick<ApiClient, "setActingAs"> = () => apiClientFor(supabase),
 ): Promise<void> {
-  if (await isPortEnabled(supabase, "setActingAs")) {
-    await api().setActingAs(targetPlayerId);
-    return;
-  }
-  const { error } = await supabase.rpc("set_acting_as", { p_target_player_id: targetPlayerId });
-  if (error) throw error;
+  await api().setActingAs(targetPlayerId);
 }
 
 export async function endTestSession(supabase: SupabaseClient): Promise<void> {
