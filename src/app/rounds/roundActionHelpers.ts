@@ -37,7 +37,15 @@ export function isStaleRoundError(error: unknown): boolean {
     code === "RFB04" ||
     code === "RFB05" ||
     code === "RFB31" ||
-    code === "RFB32"
+    code === "RFB32" ||
+    // The API's problem codes for the same races, once a slice's flag is on (docs/port/error-codes.md).
+    code === "round_not_open_for_rolling" ||
+    code === "not_expected_roller" ||
+    code === "round_not_open_for_casting" ||
+    code === "no_open_reaction_window" ||
+    code === "round_not_open_for_declarations" ||
+    code === "round_closed_for_late_declare" ||
+    code === "round_closed_for_proxy_roll"
   );
 }
 

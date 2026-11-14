@@ -79,6 +79,28 @@ internal static class WritePersister
             "update public.spell_casts set cast_inputs = coalesce(cast_inputs, '{}'::jsonb) || jsonb_build_object('roll_transform', @transform) where id = @cast",
             ct, [("transform", w.RollTransformJson)], ("cast", w.CastId)),
         Bridge w => CallBridge(s, w, ct),
+        // Round lifecycle (#550): the statements the SQL functions ran.
+        InsertRoundParticipant w => Run(s,
+            "insert into public.round_participants (round_id, player_id) values (@round, @player) on conflict (round_id, player_id) do nothing",
+            ct, ("round", w.RoundId), ("player", w.PlayerId)),
+        DeleteRoundParticipant w => Run(s,
+            "delete from public.round_participants where round_id = @round and player_id = @player",
+            ct, ("round", w.RoundId), ("player", w.PlayerId)),
+        CloseRound w => Run(s, "update public.rounds set status = 'closed', closed_at = now() where id = @round", ct, ("round", w.RoundId)),
+        CancelRound w => Run(s, "update public.rounds set status = 'cancelled' where id = @round and status in ('open', 'closed')", ct, ("round", w.RoundId)),
+        ExcludeParticipant { Layer: 0 } w => Run(s,
+            "update public.round_participants set excluded_at = now() where round_id = @round and player_id = @player and excluded_at is null",
+            ct, ("round", w.RoundId), ("player", w.PlayerId)),
+        ExcludeParticipant w => Run(s, """
+            update public.round_layer_participants set excluded_at = now()
+             where round_id = @round and layer = @layer and player_id = @player and excluded_at is null
+            """, ct, ("round", w.RoundId), ("layer", w.Layer), ("player", w.PlayerId)),
+        MarkReplayKept w => Run(s, """
+            update public.spell_casts
+               set cast_inputs = coalesce(cast_inputs, '{}'::jsonb) || '{"scrapped": false}'::jsonb
+             where round_id = @round and effect_kind = 'round_replay'
+            """, ct, ("round", w.RoundId)),
+        ClearPendingReplay w => Run(s, "delete from public.pending_round_replay where round_id = @round", ct, ("round", w.RoundId)),
         _ => throw new NotSupportedException($"no statement for write {write.GetType().Name}"),
     };
 

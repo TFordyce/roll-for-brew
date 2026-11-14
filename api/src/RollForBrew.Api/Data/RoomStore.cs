@@ -130,6 +130,10 @@ public sealed class RoomStore
         {
             throw ProblemCatalog.FromResolveException(e);
         }
+        catch (CommandRefusal e)
+        {
+            throw ProblemCatalog.FromRefusal(e);
+        }
     }
 
     private static async Task<RoundLock?> LockRound(StoreSession session, Guid roundId)
@@ -151,7 +155,9 @@ public sealed class RoomStore
     public static Exception Translate(PostgresException e) =>
         ProblemCatalog.FromSqlState(e.SqlState) is { } info
             ? ProblemException.FromInfo(info, e.Detail ?? e.MessageText)
-            : e;
+            : e is { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: "rounds_one_active_per_room" }
+                ? ProblemCatalog.FromRefusal(new CommandRefusal("round_already_active", e.MessageText))
+                : e;
 }
 
 /// <summary>What a swallowed <c>realtime.send</c> failure does to the write (ADR 0011).</summary>

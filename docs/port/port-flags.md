@@ -55,6 +55,10 @@ On the API path, `PUT /rounds/{roundId}/order` bumps `rooms.version` and sends `
 
 The `advanceRound`, `advanceRoundAuthoritative`, `getRoundRecap` and `adminBackfillRound` flags are gone. Their wrappers call the API only and the SQL they used to fall back to is deleted. See `advance-round-bridges.md` and `recap-backfill-bridges.md`.
 
+## Round lifecycle flags (#550; human steps, not run by the agent)
+
+Nine rows seeded off by migration `0166`: `startRound`, `declareIn`, `declareInLate`, `withdrawDeclaration`, `closeRound`, `cancelRound`, `excludeRoundParticipant`, `confirmRoundReplay`, `declineRoundReplay`. Each routes one TS wrapper to the API and honours a room row (Test Room first), except `startRound`, which only sees a room row when the caller passes a room id. Flip, rollback, bridges and the deletion list are in `docs/port/round-lifecycle-bridges.md`.
+
 ## `room_view` (slice 1, #539; retired #541)
 
 Both room pages render from the C# API's `GET /rooms/{id}/view`. The `room_view` flag, the legacy per-panel page path and its render-time reads were deleted after the 12-16 Oct 2026 soak (migration `0161`), so there is no flag to flip and no SQL fallback: an API failure on load surfaces as a page error. To roll back, revert the retirement PR.

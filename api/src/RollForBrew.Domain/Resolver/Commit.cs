@@ -24,6 +24,16 @@ public sealed record SetCastRollTransform(Guid CastId, string RollTransformJson)
 /// <summary>A still-SQL write, run in order with the rest (ADR 0012: bridges are data).</summary>
 public sealed record Bridge(string Function, params object[] Args) : Write;
 
+// Round lifecycle (#550). One statement each in WritePersister.
+public sealed record InsertRoundParticipant(Guid RoundId, string PlayerId) : Write;
+public sealed record DeleteRoundParticipant(Guid RoundId, string PlayerId) : Write;
+public sealed record CloseRound(Guid RoundId) : Write;
+public sealed record CancelRound(Guid RoundId) : Write;
+public sealed record ExcludeParticipant(Guid RoundId, string PlayerId, int Layer) : Write;
+/// <summary>The caster kept the round: stamps <c>scrapped = false</c> on the replay cast so a re-resolve never re-asks.</summary>
+public sealed record MarkReplayKept(Guid RoundId) : Write;
+public sealed record ClearPendingReplay(Guid RoundId) : Write;
+
 public static class Committer
 {
     public static IReadOnlyList<Write> Commit(Resolution resolution)

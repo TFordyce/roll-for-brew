@@ -1,3 +1,4 @@
+using RollForBrew.Domain.Commands;
 using RollForBrew.Domain.Resolver;
 
 namespace RollForBrew.Api.Problems;
@@ -84,6 +85,23 @@ public static class ProblemCatalog
 
     public static ProblemInfo? FromSqlState(string? sqlState) =>
         sqlState is not null && BySqlState.TryGetValue(sqlState, out var p) ? p : null;
+
+    /// <summary>Refusals with no RFBnn: SQL raised them as a plain P0001 (or a constraint), so the
+    /// code is the API's own. A refusal whose code a catalog row already names keeps that row's class.</summary>
+    private static readonly Dictionary<string, (ProblemClass Class, string Title)> ApiOnly = new()
+    {
+        ["not_present_in_room"] = (ProblemClass.Auth, "You are not present in this round's room."),
+        ["starter_cannot_withdraw"] = (ProblemClass.Rule, "The round starter cannot withdraw their own declaration."),
+        ["close_not_starter"] = (ProblemClass.Auth, "Only the round starter can close declarations."),
+        ["close_too_few_declared"] = (ProblemClass.Rule, "At least 2 players must declare in before closing."),
+        ["no_room_today"] = (ProblemClass.Missing, "There is no room for today."),
+        ["round_already_active"] = (ProblemClass.State, "A round is already in progress in this room."),
+    };
+
+    public static ProblemException FromRefusal(CommandRefusal e) =>
+        Rows.FirstOrDefault(r => r.Code == e.Code) is { } info ? ProblemException.FromInfo(info, e.Message)
+        : ApiOnly.TryGetValue(e.Code, out var api) ? new(e.Code, api.Class, api.Title, e.Message)
+        : throw new InvalidOperationException($"no problem mapping for refusal {e.Code}", e);
 
     /// <summary>The resolver's refusals. SQL raises these as a plain P0001, so they have no
     /// RFBnn; the code is the resolver's and the detail its message.</summary>
