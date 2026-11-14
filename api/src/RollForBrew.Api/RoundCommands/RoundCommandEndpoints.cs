@@ -24,7 +24,7 @@ public static class RoundCommandEndpoints
             .Produces<StartRoundResponse>().WithName("startRound");
 
         app.MapPost("/rounds/{roundId:guid}/declaration", (Guid roundId, HttpContext http, RoomStore store, CancellationToken ct) =>
-            AsActor(http, store, roundId, null, (s, me) => RoundLifecycle.DeclareIn(s, roundId, me, late: false), ct))
+            AsActor(http, store, roundId, roundId, (s, me) => RoundLifecycle.DeclareIn(s, roundId, me, late: false), ct))
             .Produces<CommandResponse>().WithName("declareIn");
 
         app.MapPost("/rounds/{roundId:guid}/declaration/late", (Guid roundId, HttpContext http, RoomStore store, CancellationToken ct) =>
@@ -62,7 +62,8 @@ public static class RoundCommandEndpoints
 
     /// <summary>The actor is the validated JWT's player, resolved by SQL inside the round lock
     /// (Acting As included). <paramref name="actorRound"/> is the round SQL passed to
-    /// <c>current_player_id</c>: declare resolved it without one, the rest with it.</summary>
+    /// <c>current_player_id</c>: every command but Late Declare resolves with it (Acting As needs the round);
+    /// <c>declare_in_late</c> (0068) calls the bare form.</summary>
     private static async Task<IResult> AsActor(
         HttpContext http, RoomStore store, Guid roundId, Guid? actorRound,
         Func<RoundSnapshot?, string, Decision<bool>> decide, CancellationToken ct) =>

@@ -58,6 +58,29 @@ public class RoundLifecycleHttpTests(ApiHost api) : IClassFixture<ApiHost>
     private Task<long> Declared(Guid round, TestUser u) =>
         api.Db.Scalar<long>($"select count(*) from public.round_participants where round_id = '{round}' and player_id = '{u.PlayerId}'");
 
+
+    // ---- declare under Acting As (Test Room)
+
+    [Fact]
+    public async Task An_admin_declaring_under_acting_as_declares_the_player_they_act_for()
+    {
+        var admin = await api.Db.AddUser($"actas-admin-{Interlocked.Increment(ref _seq)}", admin: true);
+        var target = await User("actas-target");
+        var room = Guid.NewGuid();
+        var round = Guid.NewGuid();
+        await api.Db.Execute($"""
+            insert into public.rooms (id, date, is_test) values ('{room}', date '2031-01-01' + {Interlocked.Increment(ref _seq)}, true);
+            insert into public.room_players (room_id, player_id, modifier) values ('{room}', '{target.PlayerId}', 0);
+            insert into public.rounds (id, room_id, started_by, status) values ('{round}', '{room}', '{admin.PlayerId}', 'open');
+            insert into public.admin_acting_as (admin_player_id, acting_as_player_id) values ('{admin.PlayerId}', '{target.PlayerId}');
+            """);
+
+        var res = await Send(admin, HttpMethod.Post, $"/rounds/{round}/declaration");
+
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal(1, await Declared(round, target));
+        Assert.Equal(0, await Declared(round, admin));
+    }
     // ---- start
 
     [Fact]
