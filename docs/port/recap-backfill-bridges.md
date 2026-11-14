@@ -1,40 +1,11 @@
 # Round Recap and Round Backfill through the API (slice 2b-2, #548)
 
-Merging this changes nothing for players. Both paths sit behind flags seeded off, and with them off the wrappers call the same rpcs as before.
+| Wrapper | Endpoint |
+|---|---|
+| `getRoundRecap` | `GET /rounds/{id}/recap` |
+| `adminBackfillRound` | `POST /rounds/backfill` |
 
-| Flag | Wrapper | Off (seeded) | On |
-|---|---|---|---|
-| `getRoundRecap` | `getRoundRecap` | rpc `get_round_recap` | `GET /rounds/{id}/recap` |
-| `adminBackfillRound` | `adminBackfillRound` | rpc `admin_backfill_round` | `POST /rounds/backfill` |
-
-They are separate from `advanceRoundAuthoritative` and from each other. Each works whichever way the others are set, so a bad Recap can be rolled back without touching a round in play.
-
-## Flip and rollback (human steps, outside play hours)
-
-Precondition: the API is deployed with this branch and `0165` has run.
-
-```sql
--- 1. Recap, Test Room first. RoundReveal passes the room id, so the room row applies there.
---    History has no Test Room rows, so it only ever sees the global row.
-insert into public.port_flags (slice, room_id, enabled)
-  select 'getRoundRecap', id, true from public.rooms where is_test;
-
--- 2. Recap, global. Check a live Provisional Recap and a past round in history.
-update public.port_flags set enabled = true where slice = 'getRoundRecap' and room_id is null;
-
--- 3. Backfill. Global only: the wrapper has no room until the call makes one.
-update public.port_flags set enabled = true where slice = 'adminBackfillRound' and room_id is null;
-```
-
-Record each flip on the ticket. #549 can't delete the SQL below until both flags have soaked as well as the advance flag.
-
-**Rollback (instant, no deploy, safe at any time):**
-
-```sql
-update public.port_flags set enabled = false where slice in ('getRoundRecap', 'adminBackfillRound');
-```
-
-A Recap read writes nothing, so there is nothing to carry over. A round backfilled by C# has the same rows as one from SQL, and `rooms.version` just keeps its value.
+**Retired flags (#549).** The `getRoundRecap` and `adminBackfillRound` rows and the wrappers' `.rpc` branches are gone, and `get_round_recap`, `_rr_resolve` and `admin_backfill_round` are deleted. The soak (7 to 13 Nov 2026, five play-days, no rollback) is recorded on #548 and #549. There is no rollback flag: to roll back, revert the retirement PRs.
 
 ## The Recap
 
@@ -66,7 +37,7 @@ A round with everyone exempt and nobody immune previews no Tea Maker, as SQL doe
 
 `RoundBackfillRules` is `admin_backfill_round`, statement for statement, in one transaction. Any refusal rolls back everything, including a room it just created. No spells and no `Evaluate`: a backfilled round has no Trace, today and after.
 
-Each refusal's `detail` is SQL's message, because the form shows it. `backfillFailureMessage` reads the rpc's `RFBnn` and the API's problem code to the same sentence.
+Each refusal's `detail` is SQL's message, because the form shows it. `backfillFailureMessage` turns the API's problem code into the sentence.
 
 **Added on the API path:** one `rooms.version` bump and a `room-changed` carrying it, sent in the transaction (spec #533, 7 Nov 2026: visible writes announce themselves). SQL sent nothing. It is a `Filler` writing core tables with raw SQL, which ADR 0012 records, and its `room_players.modifier` read is SQL parity, which ADR 0010 records.
 
@@ -89,16 +60,10 @@ The form never sends an empty roster: it requires 2 players.
 
 ## Bridge list
 
-**No new bridges.** This ticket calls no new SQL function and adds no grant. `get_round_recap` was never bridged: the view left it out, so there was no slice 1b grant to revoke. See `advance-round-bridges.md` for the list, which is unchanged.
+**No bridges.** The Recap and the Backfill call no SQL function.
 
-## SQL-deletion list
+## Tests
 
-**Empty on this ticket.** The rpcs are the rollback. For #549, once all three flags have soaked: `get_round_recap`, `_rr_resolve`, `admin_backfill_round`, and with it the last caller of the `resolve_round` boolean overload.
-
-## Parity
-
-Run against the real migrations, in a container, not the shared stack.
-
-- `RoundRecapParityTests`: every golden scenario through both engines on one database, with the window closed, then open, then after SQL finalizes. Handwritten cases cover what the goldens never hold. Only the ids of rows SQL's dry run synthesizes and rolls back are masked, and every comparison also proves the state unchanged.
-- `RoundBackfillParityTests`: each case through both engines from identical rows, comparing the error's code and message, or every row. Only `now()` and generated ids are masked.
+- `RoundRecapTests`: the Recap read through C# (provisional and stored states, refusals), each proving the read wrote nothing. They began as comparisons with `get_round_recap`.
+- `RoundBackfillTests`: every refusal leaves the database untouched; each accepted round resolves to the asserted brewer and layer. They began as comparisons with `admin_backfill_round`.
 - `RoundRecapBackfillHttpTests`: the HTTP seam.

@@ -36,14 +36,6 @@ public class RoundRecapBackfillHttpTests(ApiHost api) : IClassFixture<ApiHost>
     }
 
     [Fact]
-    public async Task Both_flags_are_seeded_off_so_merging_changes_nothing_for_players()
-    {
-        foreach (var slice in new[] { "getRoundRecap", "adminBackfillRound" })
-            Assert.False(await api.Db.Scalar<bool>($"select enabled from public.port_flags where slice = '{slice}' and room_id is null"));
-        Assert.Equal(2L, await api.Db.Scalar<long>("select count(*) from public.port_flags where slice in ('getRoundRecap', 'adminBackfillRound')"));
-    }
-
-    [Fact]
     public async Task The_recap_needs_a_token() =>
         await Problem(await api.Client().GetAsync($"/rounds/{Guid.NewGuid()}/recap"), HttpStatusCode.Unauthorized, "unauthenticated");
 

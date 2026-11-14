@@ -6,7 +6,7 @@ using RollForBrew.Api.Problems;
 using RollForBrew.Api.RoundBackfill;
 using RollForBrew.Api.RoomEntry;
 using RollForBrew.Tests.Harness;
-using static RollForBrew.Tests.RoundRecapParityTests;
+using static RollForBrew.Tests.RoundRecapTests;
 
 namespace RollForBrew.Tests;
 

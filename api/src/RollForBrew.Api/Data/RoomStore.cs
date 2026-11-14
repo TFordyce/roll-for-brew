@@ -232,23 +232,6 @@ public sealed class StoreSession(NpgsqlConnection connection, NpgsqlTransaction 
     public Task<long> BumpAndAnnounce(Guid roomId, Announce announce, CancellationToken ct = default) =>
         BumpAndBroadcast(roomId, [new RoomEvent("room-changed", [])], ct, announce);
 
-    /// <summary>Whether C# decides this round's advancement (#547). A room row beats the
-    /// global row; no row means off. An unknown round reads the global row, and either path
-    /// answers it with the same noop.</summary>
-    public async Task<bool> AdvanceIsAuthoritative(Guid roundId, CancellationToken ct = default)
-    {
-        await using var cmd = new NpgsqlCommand("""
-            select f.enabled
-              from public.port_flags f
-             where f.slice = 'advanceRoundAuthoritative'
-               and (f.room_id is null or f.room_id = (select room_id from public.rounds where id = @round))
-             order by f.room_id nulls last
-             limit 1
-            """, Connection, Transaction);
-        cmd.Parameters.AddWithValue("round", roundId);
-        return await cmd.ExecuteScalarAsync(ct) is true;
-    }
-
     public async Task<string> CurrentPlayerId(Guid? roundId = null, Guid? roomId = null, CancellationToken ct = default)
     {
         await using var cmd = new NpgsqlCommand("select public.current_player_id(@round, @room)", Connection, Transaction);

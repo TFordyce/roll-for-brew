@@ -1,8 +1,6 @@
 using System.Text.Json.Nodes;
-using Microsoft.Extensions.Logging;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Data;
-using RollForBrew.Api.Problems;
 using RollForBrew.Domain.Commands;
 using RollForBrew.Domain.Dice;
 
@@ -12,12 +10,12 @@ public static class RoundAdvanceEndpoints
 {
     public static IEndpointRouteBuilder MapRoundAdvance(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/rounds/{roundId:guid}/advance", (Guid roundId, HttpContext http, RoomStore store, ILogger<ShadowAdvance> log, CancellationToken ct) =>
-            Run(store, log, ShadowAdvance.Bridge.AdvanceLayer, roundId, http, ct))
+        app.MapPost("/rounds/{roundId:guid}/advance", (Guid roundId, HttpContext http, RoomStore store, CancellationToken ct) =>
+            Run(store, AdvanceRound.Entry.Advance, roundId, http, ct))
             .Produces<JsonObject>().WithName("advanceLayer");
 
-        app.MapPost("/rounds/{roundId:guid}/finalize", (Guid roundId, HttpContext http, RoomStore store, ILogger<ShadowAdvance> log, CancellationToken ct) =>
-            Run(store, log, ShadowAdvance.Bridge.FinalizeLayer, roundId, http, ct))
+        app.MapPost("/rounds/{roundId:guid}/finalize", (Guid roundId, HttpContext http, RoomStore store, CancellationToken ct) =>
+            Run(store, AdvanceRound.Entry.Finalize, roundId, http, ct))
             .Produces<JsonObject>().WithName("finalizeLayer");
         return app;
     }
@@ -25,15 +23,11 @@ public static class RoundAdvanceEndpoints
     // The actor is the validated JWT's sub (set as the claims GUC inside the
     // transaction); nothing in the request can name a player (ADR 0001).
     private static async Task<IResult> Run(
-        RoomStore store, ILogger log, ShadowAdvance.Bridge bridge, Guid roundId, HttpContext http, CancellationToken ct)
+        RoomStore store, AdvanceRound.Entry entry, Guid roundId, HttpContext http, CancellationToken ct)
     {
         var payload = await store.Advance(http.GetCaller(), roundId, async (round, s) =>
         {
-            if (!await s.AdvanceIsAuthoritative(roundId, ct))
-                return await new ShadowAdvance().Run(s, round, bridge, log, ct);
-
             var advance = new AdvanceRound(new RandomDieRoller());
-            var entry = bridge == ShadowAdvance.Bridge.AdvanceLayer ? AdvanceRound.Entry.Advance : AdvanceRound.Entry.Finalize;
             var outcome = await RoomStore.CommandUnderLock(s, round, snapshot => advance.Decide(snapshot, roundId, entry), ct);
             // Present only when this call committed: it tells the TS action the broadcasts have gone.
             if (outcome.Version is { } version) outcome.Result["version"] = version;
