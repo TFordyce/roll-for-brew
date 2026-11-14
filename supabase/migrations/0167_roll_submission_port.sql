@@ -3,8 +3,10 @@
 -- 1. Five port flags, seeded OFF, one per TS wrapper. Each routes that wrapper to the API
 --    (`isPortEnabled`); with no row or the row off, the wrapper keeps its SQL `.rpc`, which is the
 --    rollback. Flips are human steps: docs/port/roll-submission-bridges.md.
--- 2. EXECUTE for rfb_api on the one internal the API still bridges to. Repo policy revokes PUBLIC
---    execute, so DML alone is not enough (0157). Revoke it when the crit redirect is ported.
+-- 2. EXECUTE for rfb_api on the one internal the API still bridges to (_apply_crit_redirect), plus the
+--    two it calls as invoker (_rr_active_effects_as_of, _rr_participated_rounds_elapsed; without them
+--    a Proxy Roll nat 1 / nat 20 fails with 42501). Repo policy revokes PUBLIC execute, so DML alone
+--    is not enough (0157). Revoke all three when the crit redirect is ported.
 --    submit_roll, submit_manual_roll, their _as twins and admin_proxy_roll get NO grant: C# replaced them.
 insert into public.port_flags (slice, enabled)
 select s, false
