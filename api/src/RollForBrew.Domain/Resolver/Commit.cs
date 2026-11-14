@@ -34,6 +34,14 @@ public sealed record ExcludeParticipant(Guid RoundId, string PlayerId, int Layer
 public sealed record MarkReplayKept(Guid RoundId) : Write;
 public sealed record ClearPendingReplay(Guid RoundId) : Write;
 
+// Roll submission (#551). One statement each in WritePersister.
+public sealed record InsertRoll(
+    Guid RoundId, string PlayerId, int Layer, int Value, string InputMode, int ModifierSnapshot,
+    int? DiscardedValue = null, bool EnteredByAdmin = false) : Write;
+public sealed record EnsureRoomPlayer(Guid RoomId, string PlayerId) : Write;
+/// <summary>A nat 1 / nat 20 draw for a Proxy Roll: goes to the crit-redirect recipient, and nothing is recorded when a redirect fizzles.</summary>
+public sealed record RecordCritDraw(Guid RoundId, string PlayerId, string Trigger) : Write;
+
 public static class Committer
 {
     public static IReadOnlyList<Write> Commit(Resolution resolution)

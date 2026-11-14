@@ -101,6 +101,22 @@ internal static class WritePersister
              where round_id = @round and effect_kind = 'round_replay'
             """, ct, ("round", w.RoundId)),
         ClearPendingReplay w => Run(s, "delete from public.pending_round_replay where round_id = @round", ct, ("round", w.RoundId)),
+        // Roll submission (#551).
+        InsertRoll w => Run(s, """
+            insert into public.rolls (round_id, player_id, layer, value, input_mode, modifier_snapshot, discarded_value, entered_by_admin)
+            values (@round, @player, @layer, @value, @mode, @modifier, @discarded, @admin)
+            """, ct, ("round", w.RoundId), ("player", w.PlayerId), ("layer", w.Layer), ("value", w.Value), ("mode", w.InputMode),
+            ("modifier", w.ModifierSnapshot), ("discarded", w.DiscardedValue), ("admin", w.EnteredByAdmin)),
+        EnsureRoomPlayer w => Run(s,
+            "insert into public.room_players (room_id, player_id) values (@room, @player) on conflict (room_id, player_id) do nothing",
+            ct, ("room", w.RoomId), ("player", w.PlayerId)),
+        // One statement so the recipient is chosen once: the hook spends a Marked for Brew mark when it fires.
+        RecordCritDraw w => Run(s, """
+            with recipient as (select public._apply_crit_redirect(@round, @player) as id)
+            insert into public.pending_spell_draws (round_id, player_id, trigger)
+            select @round, id, @trigger from recipient where id is not null
+            on conflict (round_id, player_id) do nothing
+            """, ct, ("round", w.RoundId), ("player", w.PlayerId), ("trigger", w.Trigger)),
         _ => throw new NotSupportedException($"no statement for write {write.GetType().Name}"),
     };
 

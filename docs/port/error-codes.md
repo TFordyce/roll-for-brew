@@ -12,6 +12,8 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 
 - **Round lifecycle API-only codes (#550, no `RFBnn`; SQL raised a plain exception or a constraint).** `not_present_in_room` (403): the caller has no seat in the round's room (declare in, Late Declare). `starter_cannot_withdraw` (422). `close_not_starter` (403). `close_too_few_declared` (422): fewer than 2 declared. `no_room_today` (404): `start_round` found no room for today. `round_already_active` (409): the `rounds_one_active_per_room` unique index refused a second active round, which the TS action treats as a lost race, as it does `23505`. Close on a round that is not open reuses `round_not_open_for_declarations`, and a missing round reuses `round_not_found`.
 
+- **Roll submission API-only codes (#551, no `RFBnn`; SQL raised a plain exception).** `admin_required` (403): a `…/as` or Proxy Roll caller is not an admin. `round_not_in_test_room` (422): a `…/as` roll on a round outside the Test Room. `roll_value_out_of_range` (400): a manual or Proxy value outside 1 to 20. `target_player_not_found` (404): a Proxy Roll for a player who does not exist. A missing round reuses `round_not_found`. Rolling reuses `round_not_open_for_rolling` (`RFB01`), `not_expected_roller` (`RFB02`), `round_closed_for_proxy_roll` (`RFB32`) and `rolling_held_for_compelled_casts` (`RFB54`).
+
 **HTTP status, by class:**
 
 | Class | Status | Meaning |

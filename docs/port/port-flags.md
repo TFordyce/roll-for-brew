@@ -59,6 +59,10 @@ The `advanceRound`, `advanceRoundAuthoritative`, `getRoundRecap` and `adminBackf
 
 Nine rows seeded off by migration `0166`: `startRound`, `declareIn`, `declareInLate`, `withdrawDeclaration`, `closeRound`, `cancelRound`, `excludeRoundParticipant`, `confirmRoundReplay`, `declineRoundReplay`. Each routes one TS wrapper to the API and honours a room row (Test Room first), except `startRound`, which only sees a room row when the caller passes a room id. Flip, rollback, bridges and the deletion list are in `docs/port/round-lifecycle-bridges.md`.
 
+## Roll submission flags (#551; human steps, not run by the agent)
+
+Five rows seeded off by migration `0167`: `submitRoll`, `submitManualRoll`, `submitRollAs`, `submitManualRollAs`, `adminProxyRoll`. Each routes one TS wrapper to the API and honours a room row (Test Room first). Flip, rollback, bridges and the deletion list are in `docs/port/roll-submission-bridges.md`.
+
 ## `room_view` (slice 1, #539; retired #541)
 
 Both room pages render from the C# API's `GET /rooms/{id}/view`. The `room_view` flag, the legacy per-panel page path and its render-time reads were deleted after the 12-16 Oct 2026 soak (migration `0161`), so there is no flag to flip and no SQL fallback: an API failure on load surfaces as a page error. To roll back, revert the retirement PR.

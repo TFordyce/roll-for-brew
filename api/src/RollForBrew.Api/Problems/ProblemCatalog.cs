@@ -95,6 +95,10 @@ public static class ProblemCatalog
         ["close_not_starter"] = (ProblemClass.Auth, "Only the round starter can close declarations."),
         ["close_too_few_declared"] = (ProblemClass.Rule, "At least 2 players must declare in before closing."),
         ["no_room_today"] = (ProblemClass.Missing, "There is no room for today."),
+        ["admin_required"] = (ProblemClass.Auth, "Only an admin can do that."),
+        ["round_not_in_test_room"] = (ProblemClass.Rule, "That round is not in the Test Room."),
+        ["roll_value_out_of_range"] = (ProblemClass.Input, "A roll must be between 1 and 20."),
+        ["target_player_not_found"] = (ProblemClass.Missing, "That player was not found."),
         ["round_already_active"] = (ProblemClass.State, "A round is already in progress in this room."),
     };
 
