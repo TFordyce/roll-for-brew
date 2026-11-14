@@ -10,6 +10,8 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 - **New codes.** Ported code may add new named codes. It never reuses or renumbers an `RFBnn`.
 - **API-only codes (no `RFBnn`).** `broadcast_failed` (503): `realtime.send` swallowed a failure, so the command rolled back. Safe to retry. Only advancement and Round Backfill raise it; Room entry, Orders and Modifier Adjustments log `rfb-broadcast-unsent` and commit (ADR 0011). `recap_not_in_room` (403): the caller is not in the round's room, which SQL raised as a plain `P0001`. `backfill_not_resolvable` (422): an empty backfill roster reached `resolve_round`'s or `advance_round_layer`'s plain `P0001`; `detail` carries SQL's message. `resolve_round_not_participant` (422), `resolve_round_not_all_rolled` (409), `resolve_round_not_found` (404): the resolver refused on the authoritative advance path, and the command rolled back. SQL raises these as a plain `P0001`, which the shadow path (flag off) still surfaces as `internal_error`.
 
+- **Round lifecycle API-only codes (#550, no `RFBnn`; SQL raised a plain exception or a constraint).** `not_present_in_room` (403): the caller has no seat in the round's room (declare in, Late Declare). `starter_cannot_withdraw` (422). `close_not_starter` (403). `close_too_few_declared` (422): fewer than 2 declared. `no_room_today` (404): `start_round` found no room for today. `round_already_active` (409): the `rounds_one_active_per_room` unique index refused a second active round, which the TS action treats as a lost race, as it does `23505`. Close on a round that is not open reuses `round_not_open_for_declarations`, and a missing round reuses `round_not_found`.
+
 **HTTP status, by class:**
 
 | Class | Status | Meaning |

@@ -53,6 +53,23 @@ public class RfbApiRoleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Role_has_execute_on_the_round_lifecycle_bridges_and_not_on_what_C_sharp_replaced()
+    {
+        foreach (var bridge in new[]
+        {
+            "_fan_out_table_placeholder_casts(uuid, uuid)", "_fix_compelled_set(uuid)",
+            "_forfeit_compelled_card(uuid, text, text)", "_rr_scrap_round(uuid)",
+        })
+            Assert.True(await Flag($"select has_function_privilege('rfb_api', 'public.{bridge}', 'execute')"), bridge);
+        foreach (var replaced in new[]
+        {
+            "start_round(uuid)", "declare_in(uuid)", "declare_in_late(uuid)", "withdraw_declaration(uuid)", "close_round(uuid)",
+            "cancel_round(uuid)", "exclude_round_participant(uuid, text, integer)", "confirm_round_replay(uuid)", "decline_round_replay(uuid)",
+        })
+            Assert.False(await Flag($"select has_function_privilege('rfb_api', 'public.{replaced}', 'execute')"), replaced);
+    }
+
+    [Fact]
     public async Task Login_works_and_cannot_create_objects_or_touch_auth()
     {
         await using var conn = new NpgsqlConnection(_db.ApiConnectionString);

@@ -11,6 +11,7 @@ using RollForBrew.Api.Ratings;
 using RollForBrew.Api.RoomEntry;
 using RollForBrew.Api.RoundAdvance;
 using RollForBrew.Api.RoundBackfill;
+using RollForBrew.Api.RoundCommands;
 using RollForBrew.Api.RoundRecap;
 using RollForBrew.Api.RoomView;
 
@@ -51,6 +52,7 @@ app.MapRoomView();
 app.MapRoundAdvance();
 app.MapRoundRecap();
 app.MapRoundBackfill();
+app.MapRoundCommands();
 app.Run();
 
 public partial class Program;

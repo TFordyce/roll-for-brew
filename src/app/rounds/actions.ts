@@ -43,7 +43,7 @@ import {
 
 function isRoundAlreadyStartedError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  return code === "23505";
+  return code === "23505" || code === "round_already_active";
 }
 
 export async function startRoundAction(formData: FormData) {

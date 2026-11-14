@@ -602,6 +602,298 @@
           }
         }
       }
+    },
+    "/rounds": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "startRound",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "type": "null"
+                  },
+                  {
+                    "$ref": "#/components/schemas/StartRoundRequest"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StartRoundResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/declaration": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "declareIn",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "withdrawDeclaration",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/declaration/late": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "declareInLate",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/close": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "closeRound",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/cancel": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "cancelRound",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/exclusions": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "excludeRoundParticipant",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExcludeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/replay/confirm": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "confirmRoundReplay",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rounds/{roundId}/replay/decline": {
+      "post": {
+        "tags": [
+          "RollForBrew.Api"
+        ],
+        "operationId": "declineRoundReplay",
+        "parameters": [
+          {
+            "name": "roundId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -779,6 +1071,23 @@
           }
         }
       },
+      "CommandResponse": {
+        "required": [
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
       "CompelledCastRow": {
         "required": [
           "castingTime",
@@ -931,6 +1240,26 @@
           "roomId": {
             "type": "string",
             "format": "uuid"
+          }
+        }
+      },
+      "ExcludeRequest": {
+        "required": [
+          "playerId",
+          "layer"
+        ],
+        "type": "object",
+        "properties": {
+          "playerId": {
+            "type": "string"
+          },
+          "layer": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
           }
         }
       },
@@ -1807,6 +2136,42 @@
           },
           "waitedOn": {
             "type": "boolean"
+          }
+        }
+      },
+      "StartRoundRequest": {
+        "required": [
+          "roomId"
+        ],
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "StartRoundResponse": {
+        "required": [
+          "roundId",
+          "version"
+        ],
+        "type": "object",
+        "properties": {
+          "roundId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
           }
         }
       },
