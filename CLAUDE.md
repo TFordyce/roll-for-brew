@@ -1,17 +1,2 @@
-## Agent skills
+@AGENTS.md
 
-### Issue tracker
-
-Issues live as GitHub issues in `TFordyce/roll-for-brew` (uses the `gh` CLI). See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: `GLOSSARY.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
-
-### Parallel worktrees
-
-Sessions implementing features in parallel each work in their own git worktree, never a shared checkout. See `docs/agents/worktrees.md`.
