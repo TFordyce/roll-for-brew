@@ -21,4 +21,8 @@ cd ../roll-for-brew-<name>
 - A branch checked out in one worktree cannot be checked out in another; that is what keeps sessions apart.
 - When the PR merges, remove the worktree: `git worktree remove ../roll-for-brew-<name>`.
 
+## Antigravity subagents and swarms
+
+When delegating parallel editing tasks in Antigravity, subagents (`Workspace: "share"` or `"branch"`) and `/swarm` workers (`workspace: "share"` or `"branch"`) provide isolated working trees automatically. Top-level sessions and manual parallel branches still follow the `git worktree add` convention above.
+
 Everything else (PRs, issues, review) is unchanged; see [issue-tracker.md](issue-tracker.md). Worktrees only change where the working tree lives.
