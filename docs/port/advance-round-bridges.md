@@ -26,7 +26,7 @@ An exception rolls the whole call back and the API returns an error: a resolver 
 | `open_reaction_window(uuid, integer)` | migration `0164` | `AdvanceRound` | slice 6 |
 | `rfb_broadcast(text, text, jsonb)` | migration `0164` | `RoomStore.Command` | never: it is plumbing (ADR 0011) |
 
-## SQL deleted at #549
+## SQL deleted at #549 (migration 0168)
 
 `advance_layer`, `finalize_layer`, every `resolve_round` overload, `_rr_resolve` and `_rr_resolve_eval`, and the helpers they alone called: the Phase 5 selection and its steps, the trace and heist helpers, `_layer_is_complete`, `_layer_rolls_json`, the roll shims (`apply_roll_flip`, `apply_roll_swap`, `apply_roll_pair_transform`, `apply_forced_reroll`) and `record_pending_round_replay`. The migration drops them by name, so it lists the whole set.
 

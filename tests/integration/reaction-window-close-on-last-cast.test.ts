@@ -1,13 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
 import {
   createTestAdminClient,
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
-  stallTimeoutFuture as future,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises issue
@@ -99,70 +97,6 @@ describe.skipIf(!hasAnonTestEnv)("reaction window closes when a cast empties eli
     expect(castError).toBeNull();
 
     expect(await windowStatus(roundId)).toBe("closed");
-  });
-
-  it("enforceStallTimeout recovers a window some earlier code already stranded", async () => {
-    const [caster, other] = await Promise.all([
-      signUp("stall-recover-caster"),
-      signUp("stall-recover-other"),
-    ]);
-    await forceHold(admin, caster.googleSub, "Zariel's Fall"); // Reaction, TABLE, roll_flip
-
-    const { data: roundId } = await caster.client.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
-
-    await caster.client.rpc("submit_roll", { p_round_id: roundId });
-    await other.client.rpc("submit_roll", { p_round_id: roundId });
-
-    const { data: preRolls } = await admin
-      .from("rolls")
-      .select("player_id, value")
-      .eq("round_id", roundId)
-      .eq("layer", 0);
-    const preByPlayer = new Map((preRolls as { player_id: string; value: number }[]).map((r) => [r.player_id, r.value]));
-
-    await caster.client.rpc("open_reaction_window", { p_round_id: roundId, p_layer: 0 });
-    await caster.client.rpc("cast_reaction_spell_card", {
-      p_round_id: roundId,
-      p_target_player_id: null,
-      p_target_cast_id: null,
-    });
-
-    // Recreate the pre-0104 stranded shape: the cast (correctly) closed the
-    // window under 0104, so re-open it by hand with nobody eligible to Pass.
-    const { data: windowRow } = await admin
-      .from("spell_reaction_windows")
-      .select("id")
-      .eq("round_id", roundId)
-      .order("opened_at", { ascending: false })
-      .limit(1)
-      .single();
-    await admin
-      .from("spell_reaction_windows")
-      .update({ status: "open", closed_at: null })
-      .eq("id", (windowRow as { id: string }).id);
-
-    const outcome = await enforceStallTimeout(caster.client, roundId as string, future);
-    expect(outcome).toEqual({ action: "reactionWindowRecovered" });
-
-    const { data: round } = await admin
-      .from("rounds")
-      .select("status, brewer_id")
-      .eq("id", roundId)
-      .single();
-    expect(round!.status).toBe("resolved");
-    expect(round!.brewer_id).toBeTruthy();
-
-    const { data: postRolls } = await admin
-      .from("rolls")
-      .select("player_id, value")
-      .eq("round_id", roundId)
-      .eq("layer", 0);
-    for (const r of postRolls as { player_id: string; value: number }[]) {
-      expect(r.value).toBe(21 - preByPlayer.get(r.player_id)!);
-    }
   });
 
   it("leaves the window open while another eligible Reaction-card holder remains", async () => {

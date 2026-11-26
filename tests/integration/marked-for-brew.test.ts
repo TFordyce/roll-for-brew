@@ -20,15 +20,6 @@ import {
 // observable outcomes: who holds the pending draw (or the drawn card), what
 // the mark's source cast records, and the Resolution Trace.
 
-type TraceStep = {
-  display_kind: string;
-  target_player: string | null;
-  source_cast: { cast_id: string | null; card_name: string | null; caster_player_id: string | null };
-  before: { type: string; value: number | string | null };
-  after: { type: string; value: number | string | null };
-  outcome: string;
-};
-
 const MARK_PARAMS = { trigger: "next_crit", persist: true, participated_rounds_after_cast: 5 };
 
 describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
@@ -140,12 +131,6 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
     const { data, error } = await admin.from("spell_casts").select("cast_inputs").eq("id", castId).single();
     expect(error).toBeNull();
     return (data!.cast_inputs ?? {}) as Record<string, unknown>;
-  }
-
-  async function traceSteps(roundId: string): Promise<TraceStep[]> {
-    const { data, error } = await admin.from("rounds").select("resolution_trace").eq("id", roundId).single();
-    expect(error).toBeNull();
-    return ((data!.resolution_trace ?? []) as TraceStep[]).filter((s) => s.display_kind === "draw_redirect");
   }
 
   // ==========================================================================
@@ -395,110 +380,4 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
   // ==========================================================================
   // Replay, trace
   // ==========================================================================
-
-  it("a Time for Brew replay keeps the redirected draw and does not restore the spent mark", async () => {
-    const { caster, target, castId } = await castMark("replay");
-    const roundId = await startRound(caster, [target]);
-    await recordCrit(target, roundId);
-
-    // Time for Brew in the crit round, then resolve and confirm the replay.
-    const replayInstance = await forceHold(admin, caster.googleSub, "Time for Brew");
-    await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", replayInstance);
-    const { error: castErr } = await admin.from("spell_casts").insert({
-      round_id: roundId,
-      caster_id: caster.googleSub,
-      card_instance_id: replayInstance,
-      target_pending: false,
-      effect_kind: "round_replay",
-      effect_params: {},
-    });
-    expect(castErr).toBeNull();
-    const { error: closeErr } = await caster.client.rpc("close_round", { p_round_id: roundId });
-    expect(closeErr).toBeNull();
-    for (const [p, v] of [
-      [caster.googleSub, 5],
-      [target.googleSub, 20],
-    ] as const) {
-      const { error: rollErr } = await admin
-        .from("rolls")
-        .insert({ round_id: roundId, player_id: p, layer: 0, value: v, input_mode: "manual", modifier_snapshot: 0 });
-      expect(rollErr).toBeNull();
-    }
-    const { error: resolveErr } = await caster.client.rpc("resolve_round", { p_round_id: roundId });
-    expect(resolveErr).toBeNull();
-    const { error: finalErr } = await caster.client.rpc("resolve_round", {
-      p_round_id: roundId,
-      p_brewer_id: caster.googleSub,
-      p_cups_made: 2,
-    });
-    expect(finalErr).toBeNull();
-    await caster.client.rpc("record_pending_round_replay", { p_round_id: roundId });
-    const { error: confirmErr } = await caster.client.rpc("confirm_round_replay", { p_round_id: roundId });
-    expect(confirmErr).toBeNull();
-
-    expect(await pendingDraws(roundId)).toEqual({ [caster.googleSub]: "nat20" });
-    expect(await castInputs(castId)).toMatchObject({ consumed_by_round: roundId, draw_redirect_outcome: "redirected" });
-
-    // The replay generation's crit is the target's own.
-    await recordCrit(target, roundId);
-    expect(await pendingDraws(roundId)).toEqual({ [caster.googleSub]: "nat20", [target.googleSub]: "nat20" });
-  });
-
-  it("traces the mark in its cast round and the redirect in the round it fires", async () => {
-    const [caster, target] = await Promise.all([signUp("mfb-trace-caster"), signUp("mfb-trace-target")]);
-    const castRound = await startRound(caster, [target]);
-    await forceHold(admin, caster.googleSub, "Marked for Brew");
-    const { data: castId, error } = await caster.client.rpc("cast_spell_card", {
-      p_round_id: castRound,
-      p_target_player_id: target.googleSub,
-    });
-    expect(error).toBeNull();
-    const { error: closeErr } = await caster.client.rpc("close_round", { p_round_id: castRound });
-    expect(closeErr).toBeNull();
-    for (const [p, v] of [
-      [caster.googleSub, 6],
-      [target.googleSub, 14],
-    ] as const) {
-      await admin
-        .from("rolls")
-        .insert({ round_id: castRound, player_id: p, layer: 0, value: v, input_mode: "manual", modifier_snapshot: 0 });
-    }
-    const { error: resolveErr } = await caster.client.rpc("resolve_round", { p_round_id: castRound });
-    expect(resolveErr).toBeNull();
-
-    const marked = await traceSteps(castRound);
-    expect(marked).toHaveLength(1);
-    expect(marked[0]).toMatchObject({
-      target_player: target.googleSub,
-      source_cast: { cast_id: castId, card_name: "Marked for Brew", caster_player_id: caster.googleSub },
-      after: { type: "status", value: "marked" },
-      outcome: "applied",
-    });
-
-    await resolveInPast(castRound, 120);
-    const roundId = await startRound(caster, [target]);
-    await recordCrit(target, roundId);
-    const { error: closeErr2 } = await caster.client.rpc("close_round", { p_round_id: roundId });
-    expect(closeErr2).toBeNull();
-    for (const [p, v] of [
-      [caster.googleSub, 7],
-      [target.googleSub, 20],
-    ] as const) {
-      await admin
-        .from("rolls")
-        .insert({ round_id: roundId, player_id: p, layer: 0, value: v, input_mode: "manual", modifier_snapshot: 0 });
-    }
-    const { error: resolveErr2 } = await caster.client.rpc("resolve_round", { p_round_id: roundId });
-    expect(resolveErr2).toBeNull();
-
-    const fired = await traceSteps(roundId);
-    expect(fired).toHaveLength(1);
-    expect(fired[0]).toMatchObject({
-      target_player: target.googleSub,
-      source_cast: { cast_id: castId, caster_player_id: caster.googleSub },
-      before: { type: "status", value: "marked" },
-      after: { type: "status", value: "redirected" },
-      outcome: "applied",
-    });
-  });
 });

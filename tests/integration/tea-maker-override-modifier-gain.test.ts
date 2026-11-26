@@ -31,27 +31,6 @@ describe.skipIf(!hasAnonTestEnv)("tea-maker override modifier gain (#425)", () =
 
   type Player = Awaited<ReturnType<typeof signUp>>;
 
-  type ResolveOut = {
-    outcome: string;
-    brewer_id: string | null;
-    brewer_source: string | null;
-    cups_made: number;
-    modifier_gain: number | null;
-    no_modifier_gain: boolean;
-  };
-
-  async function seedRoll(roundId: string, playerId: string, value: number, modifierSnapshot = 0) {
-    const { error } = await admin.from("rolls").insert({
-      round_id: roundId,
-      player_id: playerId,
-      layer: 0,
-      value,
-      input_mode: "manual",
-      modifier_snapshot: modifierSnapshot,
-    });
-    expect(error).toBeNull();
-  }
-
   async function openAndCloseRound(starter: Player, others: Player[]) {
     const { data: roundId, error } = await starter.client.rpc("start_round");
     expect(error).toBeNull();
@@ -90,151 +69,6 @@ describe.skipIf(!hasAnonTestEnv)("tea-maker override modifier gain (#425)", () =
     });
   }
 
-  async function resolve(client: SupabaseClient, roundId: string) {
-    const { data, error } = await client.rpc("resolve_round", { p_round_id: roundId });
-    expect(error).toBeNull();
-    return data as ResolveOut;
-  }
-
-  async function finalize(client: SupabaseClient, roundId: string) {
-    const { error: wErr } = await admin
-      .from("spell_reaction_windows")
-      .insert({ round_id: roundId, layer: 0, status: "closed" });
-    expect(wErr).toBeNull();
-    const { data, error } = await client.rpc("finalize_layer", { p_round_id: roundId });
-    expect(error).toBeNull();
-    return data as { outcome: string; brewer_id: string };
-  }
-
-  async function roundGain(roundId: string) {
-    const { data, error } = await admin
-      .from("rounds")
-      .select("status, brewer_id, cups_made, brewer_modifier_gain")
-      .eq("id", roundId)
-      .single();
-    expect(error).toBeNull();
-    return data!;
-  }
-
-  async function liveModifier(p: Player) {
-    const { data, error } = await admin
-      .from("room_players")
-      .select("modifier")
-      .eq("room_id", p.roomId)
-      .eq("player_id", p.googleSub)
-      .single();
-    expect(error).toBeNull();
-    return data!.modifier as number;
-  }
-
-  it("a default-lowest brewer resolves with a null modifier gain and finalize_layer commits cups_made", async () => {
-    const p1 = await signUp("mg-default-1");
-    const p2 = await signUp("mg-default-2");
-    const roundId = await openAndCloseRound(p1, [p2]);
-    await seedRoll(roundId, p1.googleSub, 3);
-    await seedRoll(roundId, p2.googleSub, 15);
-
-    const out = await resolve(p1.client, roundId);
-    expect(out).toMatchObject({ outcome: "brewer", brewer_id: p1.googleSub, cups_made: 2, modifier_gain: null });
-    expect(out.no_modifier_gain).toBe(false);
-
-    const fin = await finalize(p1.client, roundId);
-    expect(fin).toMatchObject({ outcome: "brewer", brewer_id: p1.googleSub });
-    expect(await roundGain(roundId)).toMatchObject({ status: "resolved", cups_made: 2, brewer_modifier_gain: 2 });
-    expect(await liveModifier(p1)).toBe(2);
-  });
-
-  it("a legacy no_modifier_gain override (Drip Tray) resolves with modifier gain 0", async () => {
-    const p1 = await signUp("mg-drip-1");
-    const p2 = await signUp("mg-drip-2");
-    const roundId = await openAndCloseRound(p1, [p2]);
-    await seedRoll(roundId, p1.googleSub, 5, 8);
-    await seedRoll(roundId, p2.googleSub, 5, 2);
-    const { error } = await seedOverrideCast(roundId, p1, { mode: "highest_modifier", no_modifier_gain: true });
-    expect(error).toBeNull();
-
-    const out = await resolve(p1.client, roundId);
-    expect(out).toMatchObject({ brewer_id: p1.googleSub, modifier_gain: 0, no_modifier_gain: true });
-
-    await finalize(p1.client, roundId);
-    expect(await roundGain(roundId)).toMatchObject({ cups_made: 2, brewer_modifier_gain: 0 });
-    expect(await liveModifier(p1)).toBe(0);
-  });
-
-  it("an override's modifier_gain is used as given and finalize_layer commits it to brewer_modifier_gain", async () => {
-    const p1 = await signUp("mg-given-1");
-    const p2 = await signUp("mg-given-2");
-    const roundId = await openAndCloseRound(p1, [p2]);
-    await seedRoll(roundId, p1.googleSub, 3);
-    await seedRoll(roundId, p2.googleSub, 15);
-    // Chosen override on the high roller with double the usual gain (the
-    // Loaf of Lipton shape: 2 * cups_made).
-    const { error } = await seedOverrideCast(roundId, p1, { mode: "chosen", modifier_gain: 4 }, p2.googleSub);
-    expect(error).toBeNull();
-
-    const out = await resolve(p1.client, roundId);
-    expect(out).toMatchObject({
-      brewer_id: p2.googleSub,
-      brewer_source: "tea_maker_override:chosen",
-      cups_made: 2,
-      modifier_gain: 4,
-      no_modifier_gain: false,
-    });
-
-    await finalize(p1.client, roundId);
-    expect(await roundGain(roundId)).toMatchObject({
-      status: "resolved",
-      brewer_id: p2.googleSub,
-      cups_made: 2,
-      brewer_modifier_gain: 4,
-    });
-    expect(await liveModifier(p2)).toBe(4);
-    expect(await liveModifier(p1)).toBe(0);
-  });
-
-  it("the 4-arg resolve_round write takes a modifier gain number: null is cups_made, 0 is none, else as given", async () => {
-    const cases: [label: string, gain: number | null, expected: number][] = [
-      ["null", null, 2],
-      ["zero", 0, 0],
-      ["given", 6, 6],
-    ];
-    for (const [label, gain, expected] of cases) {
-      const p1 = await signUp(`mg-write-${label}-1`);
-      const p2 = await signUp(`mg-write-${label}-2`);
-      const roundId = await openAndCloseRound(p1, [p2]);
-      await seedRoll(roundId, p1.googleSub, 3);
-      await seedRoll(roundId, p2.googleSub, 15);
-
-      const { error } = await p1.client.rpc("resolve_round", {
-        p_round_id: roundId,
-        p_brewer_id: p1.googleSub,
-        p_cups_made: 2,
-        p_modifier_gain: gain,
-      });
-      expect(error).toBeNull();
-      expect(await roundGain(roundId)).toMatchObject({ status: "resolved", brewer_modifier_gain: expected });
-      expect(await liveModifier(p1)).toBe(expected);
-    }
-  });
-
-  it("the boolean no-modifier-gain write stays as a compat alias", async () => {
-    const p1 = await signUp("mg-alias-1");
-    const p2 = await signUp("mg-alias-2");
-    const roundId = await openAndCloseRound(p1, [p2]);
-    await seedRoll(roundId, p1.googleSub, 3);
-    await seedRoll(roundId, p2.googleSub, 15);
-
-    const { error } = await p1.client.rpc("resolve_round", {
-      p_round_id: roundId,
-      p_brewer_id: p1.googleSub,
-      p_cups_made: 2,
-      p_no_modifier_gain: true,
-    });
-    expect(error).toBeNull();
-    expect(await roundGain(roundId)).toMatchObject({ status: "resolved", brewer_modifier_gain: 0 });
-    expect(await liveModifier(p1)).toBe(0);
-  });
-
   it("rejects a tea_maker_override cast with an unknown or missing mode", async () => {
     const p1 = await signUp("mg-unknown-1");
     const p2 = await signUp("mg-unknown-2");
@@ -255,19 +89,6 @@ describe.skipIf(!hasAnonTestEnv)("tea-maker override modifier gain (#425)", () =
       const { error } = await seedOverrideCast(roundId, p1, { mode });
       expect(error).toBeNull();
     }
-  });
-
-  it("a reserved mode (no card slice yet) stays out of the override contest instead of failing the round", async () => {
-    const p1 = await signUp("mg-reserved-1");
-    const p2 = await signUp("mg-reserved-2");
-    const roundId = await openAndCloseRound(p1, [p2]);
-    await seedRoll(roundId, p1.googleSub, 3);
-    await seedRoll(roundId, p2.googleSub, 15);
-    const { error } = await seedOverrideCast(roundId, p1, { mode: "prev_round_highest", modifier_gain: 0 });
-    expect(error).toBeNull();
-
-    const out = await resolve(p1.client, roundId);
-    expect(out).toMatchObject({ brewer_id: p1.googleSub, brewer_source: "default", modifier_gain: null });
   });
 
   it("rejects a catalog tea_maker_override effect with an unknown mode", async () => {

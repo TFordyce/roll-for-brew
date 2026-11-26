@@ -1,12 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
-  byTarget,
   createTestAdminClient,
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
-  roundModifierEffects,
   seedActiveEffect,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
@@ -311,73 +309,6 @@ describe.skipIf(!hasAnonTestEnv)("Carried Effects (issue #472)", () => {
     return (data as { id: string }).id;
   }
 
-  it("a Round replay of a round in the new room re-applies the carried effect and counts the round once", async () => {
-    const [caster, target, other] = await Promise.all([signUp("rp-caster"), signUp("rp-target"), signUp("rp-other")]);
-    const { day2, effectId } = await dayOneEffect({
-      caster: caster.googleSub,
-      target: target.googleSub,
-      roundsRemaining: 3,
-      card: "Caffeine Crash",
-      effectKind: "set_modifier",
-      effectParams: { value: -1 },
-      day2Extra: [other.googleSub],
-    });
-
-    const { data: roundId, error } = await target.client.rpc("start_round", { p_room_id: day2 });
-    expect(error).toBeNull();
-    cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await target.client.rpc("close_round", { p_round_id: roundId });
-    const seedRolls = async () => {
-      for (const [playerId, value] of [
-        [target.googleSub, 10],
-        [other.googleSub, 12],
-      ] as [string, number][]) {
-        const { error: rErr } = await admin.from("rolls").insert({
-          round_id: roundId,
-          player_id: playerId,
-          layer: 0,
-          value,
-          input_mode: "manual",
-          modifier_snapshot: 0,
-        });
-        expect(rErr).toBeNull();
-      }
-    };
-    await seedRolls();
-    await seedCast(roundId as string, target.googleSub, "Time for Brew", { effectKind: "round_replay" });
-    expect((await target.client.rpc("resolve_round", { p_round_id: roundId })).error).toBeNull();
-    expect(
-      (await target.client.rpc("resolve_round", { p_round_id: roundId, p_brewer_id: other.googleSub, p_cups_made: 2 }))
-        .error,
-    ).toBeNull();
-    await target.client.rpc("record_pending_round_replay", { p_round_id: roundId });
-    const { error: confErr } = await target.client.rpc("confirm_round_replay", { p_round_id: roundId });
-    expect(confErr).toBeNull();
-
-    // After the scrap the round is generation 1; the carried effect is still
-    // live as of it, once, and the clock for it is unchanged.
-    const live = await liveAsOf(day2, roundId as string);
-    expect(live.map((r) => r.id)).toEqual([effectId]);
-
-    // Replay the round through: the carried -1 applies again in generation 1.
-    await seedRolls();
-    expect((await target.client.rpc("resolve_round", { p_round_id: roundId })).error).toBeNull();
-    const effects = (await roundModifierEffects(admin, target.client, roundId as string)).data ?? [];
-    expect(byTarget(effects, target.googleSub)).toMatchObject([
-      { effect_kind: "set_modifier", effect_params: { value: -1 }, card_name: "Caffeine Crash" },
-    ]);
-
-    // The round counts once: cast round + this round = 2 of 3, so the next
-    // day-2 round is still inside the window (a double count would be 3 of 3).
-    await admin
-      .from("rounds")
-      .update({ status: "resolved", resolved_at: new Date().toISOString() })
-      .eq("id", roundId);
-    const next = await seedRound(day2, [target.googleSub], 0, target.googleSub);
-    expect((await liveAsOf(day2, next)).map((r) => r.id)).toEqual([effectId]);
-  });
-
   async function sourceCastOf(effectId: string) {
     const { data, error } = await admin
       .from("spell_active_effects")
@@ -391,123 +322,6 @@ describe.skipIf(!hasAnonTestEnv)("Carried Effects (issue #472)", () => {
   // --------------------------------------------------------------------------
   // Resolver-level: the card behaviour in the new room.
   // --------------------------------------------------------------------------
-
-  async function playDay2Round(
-    client: SupabaseClient,
-    roomId: string,
-    rolls: [string, number][],
-    joiners: SupabaseClient[],
-  ) {
-    const { data: roundId, error } = await client.rpc("start_round", { p_room_id: roomId });
-    expect(error).toBeNull();
-    cleanup.trackRound(roundId as string);
-    for (const j of joiners) {
-      const { error: dErr } = await j.rpc("declare_in", { p_round_id: roundId });
-      expect(dErr).toBeNull();
-    }
-    const { error: closeErr } = await client.rpc("close_round", { p_round_id: roundId });
-    expect(closeErr).toBeNull();
-    for (const [playerId, value] of rolls) {
-      const { error: rErr } = await admin.from("rolls").insert({
-        round_id: roundId,
-        player_id: playerId,
-        layer: 0,
-        value,
-        input_mode: "manual",
-        modifier_snapshot: 0,
-      });
-      expect(rErr).toBeNull();
-    }
-    const { error: resErr } = await client.rpc("resolve_round", { p_round_id: roundId });
-    expect(resErr).toBeNull();
-    const { error: stampErr } = await admin
-      .from("rounds")
-      .update({ status: "resolved", resolved_at: new Date().toISOString() })
-      .eq("id", roundId);
-    expect(stampErr).toBeNull();
-    return roundId as string;
-  }
-
-  async function roomModifier(roomId: string, playerId: string) {
-    const { data, error } = await admin
-      .from("room_players")
-      .select("modifier")
-      .eq("room_id", roomId)
-      .eq("player_id", playerId)
-      .single();
-    expect(error).toBeNull();
-    return (data as { modifier: number }).modifier;
-  }
-
-  it("Caffeine Crash forces -1 in the new room for the remaining participated rounds, then reverts to that room's base", async () => {
-    const [caster, target, other] = await Promise.all([signUp("cc-caster"), signUp("cc-target"), signUp("cc-other")]);
-    const { day2 } = await dayOneEffect({
-      caster: caster.googleSub,
-      target: target.googleSub,
-      roundsRemaining: 2,
-      card: "Caffeine Crash",
-      effectKind: "set_modifier",
-      effectParams: { value: -1 },
-      day2Extra: [other.googleSub],
-    });
-    // The cast round was participated round 1 of 2, so exactly one day-2 round
-    // still has the -1 forced; the next reverts to the room's own base (0).
-    const r1 = await playDay2Round(
-      target.client,
-      day2,
-      [
-        [target.googleSub, 10],
-        [other.googleSub, 12],
-      ],
-      [other.client],
-    );
-    const r1Effects = (await roundModifierEffects(admin, target.client, r1)).data ?? [];
-    expect(byTarget(r1Effects, target.googleSub)).toMatchObject([
-      { effect_kind: "set_modifier", effect_params: { value: -1 }, card_name: "Caffeine Crash" },
-    ]);
-    const r2 = await playDay2Round(
-      target.client,
-      day2,
-      [
-        [target.googleSub, 10],
-        [other.googleSub, 12],
-      ],
-      [other.client],
-    );
-    const r2Effects = (await roundModifierEffects(admin, target.client, r2)).data ?? [];
-    expect(byTarget(r2Effects, target.googleSub)).toEqual([]);
-    expect(await roomModifier(day2, target.googleSub)).toBe(0);
-  });
-
-  it("Bitter Leech ticks on the target's clock; the caster's gain is lost when the caster is absent", async () => {
-    const [caster, target, other] = await Promise.all([signUp("bl-caster"), signUp("bl-target"), signUp("bl-other")]);
-    const { day2 } = await dayOneEffect({
-      caster: caster.googleSub,
-      target: target.googleSub,
-      roundsRemaining: 3,
-      card: "Bitter Leech",
-      effectKind: "persistent_modifier_transfer",
-      effectParams: { per_round_delta: 1 },
-      day2Extra: [other.googleSub],
-    });
-    // The caster is not in the day-2 room and does not take part.
-    await playDay2Round(
-      target.client,
-      day2,
-      [
-        [target.googleSub, 10],
-        [other.googleSub, 12],
-      ],
-      [other.client],
-    );
-    expect(await roomModifier(day2, target.googleSub)).toBe(-1);
-    const { data: casterRows } = await admin
-      .from("room_players")
-      .select("modifier")
-      .eq("room_id", day2)
-      .eq("player_id", caster.googleSub);
-    expect(casterRows).toEqual([]);
-  });
 
   // ==========================================================================
   // Readers, dispel and gating (issue #475)

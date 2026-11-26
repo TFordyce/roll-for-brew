@@ -3,10 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   createTestAdminClient,
   createTestCleanup,
-  getLayerRolls,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
-  type LayerRollRow,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the admin
@@ -113,70 +111,4 @@ describe.skipIf(!hasAnonTestEnv)("admin_delete_round: hard-deletes an invalid ro
     // createTestCleanup, so remove it directly here.
     await admin.from("admin_round_deletions").delete().eq("round_id", roundId);
   });
-
-  it(
-    "reverts the brewer's cups-made modifier gain when deleting a resolved round (issue #191 follow-up: " +
-      "the leftover-modifier incident, 0057)",
-    async () => {
-      const { client: adminClient, googleSub: adminSub } = await signUpSignInAndEnter("delete-round-resolved-admin");
-      await makeAdmin(adminSub);
-      const [starter, other] = await Promise.all([
-        signUpSignInAndEnter("delete-round-resolved-starter"),
-        signUpSignInAndEnter("delete-round-resolved-other"),
-      ]);
-
-      const roundId = await startRound(starter.client);
-      await other.client.rpc("declare_in", { p_round_id: roundId });
-      await starter.client.rpc("close_round", { p_round_id: roundId });
-      await starter.client.rpc("submit_roll", { p_round_id: roundId });
-      await other.client.rpc("submit_roll", { p_round_id: roundId });
-
-      const [a, b] = (await getLayerRolls(admin, roundId, 0)) as [LayerRollRow, LayerRollRow];
-      const aTotal = a.value + a.modifier_snapshot;
-      const bTotal = b.value + b.modifier_snapshot;
-      // Same tie/nat-1 special-case skip as roll-and-resolve.test.ts — this
-      // test only cares about the ordinary resolve -> modifier-gain path.
-      if (a.value === 1 || b.value === 1 || aTotal === bTotal) return;
-      const brewerId = aTotal <= bTotal ? a.player_id : b.player_id;
-
-      const { error: resolveError } = await starter.client.rpc("resolve_round", {
-        p_round_id: roundId,
-        p_brewer_id: brewerId,
-        p_cups_made: 2,
-      });
-      expect(resolveError).toBeNull();
-
-      const { data: afterResolve } = await admin
-        .from("room_players")
-        .select("modifier")
-        .eq("room_id", starter.roomId)
-        .eq("player_id", brewerId)
-        .single();
-      expect(afterResolve!.modifier).toBe(2);
-
-      const { error: deleteError } = await adminClient.rpc("admin_delete_round", {
-        p_round_id: roundId,
-        p_reason: "Marcus was not whitelisted mid-round — reverting the cups-made gain too",
-      });
-      expect(deleteError).toBeNull();
-
-      const { data: afterDelete } = await admin
-        .from("room_players")
-        .select("modifier")
-        .eq("room_id", starter.roomId)
-        .eq("player_id", brewerId)
-        .single();
-      expect(afterDelete!.modifier).toBe(0);
-
-      const { data: auditRow, error: auditError } = await admin
-        .from("admin_round_deletions")
-        .select("brewer_id, brewer_modifier_gain_reverted")
-        .eq("round_id", roundId)
-        .single();
-      if (auditError) throw auditError;
-      expect(auditRow).toEqual({ brewer_id: brewerId, brewer_modifier_gain_reverted: 2 });
-
-      await admin.from("admin_round_deletions").delete().eq("round_id", roundId);
-    },
-  );
 });

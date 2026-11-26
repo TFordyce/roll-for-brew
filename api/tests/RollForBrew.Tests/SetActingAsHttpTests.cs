@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using Npgsql;
 using RollForBrew.Tests.Harness;
 
 namespace RollForBrew.Tests;
@@ -43,12 +42,6 @@ public class SetActingAsHttpTests(ApiHost api) : IClassFixture<ApiHost>
     private Task Seat(Guid room, string playerId) =>
         api.Db.Execute($"insert into public.room_players (room_id, player_id) values ('{room}', '{playerId}')");
 
-    private Task SetViaSql(TestUser u, string? target) => api.Db.AsCaller(u, async (conn, tx) =>
-    {
-        await using var fn = new NpgsqlCommand("select public.set_acting_as(@t)", conn, tx);
-        fn.Parameters.Add(new NpgsqlParameter("t", NpgsqlTypes.NpgsqlDbType.Text) { Value = (object?)target ?? DBNull.Value });
-        return await fn.ExecuteNonQueryAsync();
-    });
 
     [Fact]
     public async Task Set_requires_a_token()
@@ -126,32 +119,6 @@ public class SetActingAsHttpTests(ApiHost api) : IClassFixture<ApiHost>
         Assert.Equal(HttpStatusCode.NotFound, res.StatusCode);
         Assert.Equal("acting_as_target_not_found", await Code(res));
         Assert.Equal("sa-keep", await Pointer("sa-404"));
-    }
-
-    [Theory]
-    [InlineData("target")]
-    [InlineData("self")]
-    [InlineData("null")]
-    public async Task Same_pointer_as_the_SQL_function(string pick)
-    {
-        var viaApi = await api.Db.AddUser($"sa-p-api-{pick}", admin: true);
-        var viaSql = await api.Db.AddUser($"sa-p-sql-{pick}", admin: true);
-        await api.Db.AddUser($"sa-p-t-{pick}");
-        string? For(TestUser u) => pick switch { "target" => $"sa-p-t-{pick}", "self" => u.PlayerId, _ => null };
-
-        Assert.Equal(HttpStatusCode.NoContent, (await Set(viaApi, For(viaApi))).StatusCode);
-        await SetViaSql(viaSql, For(viaSql));
-
-        Assert.Equal(await Pointer(viaSql.PlayerId), await Pointer(viaApi.PlayerId));
-        Assert.Equal(await PointerRows(viaSql.PlayerId), await PointerRows(viaApi.PlayerId));
-    }
-
-    [Fact]
-    public async Task The_SQL_function_and_the_endpoint_refuse_the_same_non_admin()
-    {
-        var plain = await api.Db.AddUser("sa-parity-plain");
-        await Assert.ThrowsAsync<PostgresException>(() => SetViaSql(plain, null));
-        Assert.Equal(HttpStatusCode.Forbidden, (await Set(plain, null)).StatusCode);
     }
 
     [Fact]

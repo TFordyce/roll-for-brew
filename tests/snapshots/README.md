@@ -1,5 +1,12 @@
 # Trace-snapshot harness
 
+> **Status since #549 (26 Nov 2026): the goldens are fixed C# fixtures.** The SQL resolver they were recorded
+> from is deleted (migration 0168), and so is the runner below (`trace-snapshot.test.ts`). C#
+> `GoldenEvaluateTests` reads the `*.json` goldens and their input fixtures. `corpus/` stays as the record of how
+> each scenario was seeded, and `trace-snapshot-coverage.test.ts` still checks that the set covers every phase
+> header and WILD branch. A new scenario is now written for C# directly. The rest of this file describes the
+> harness as it was.
+
 A permanent, **sub-round** regression net for the `resolve_round(uuid)` RPC —
 introduced by issue #366, slice **S1** of wayfinder map #350 ("Effect
 resolver: monolithic `resolve_round` makes every migration a 2k-line

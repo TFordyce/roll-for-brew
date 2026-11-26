@@ -41,46 +41,6 @@ describe.skipIf(!hasAnonTestEnv)("admin_proxy_roll (Proxy Roll, issue #273)", ()
     return playerId;
   }
 
-  it("folds an absent player into an open round as a full participant", async () => {
-    const { client: adminClient, googleSub: adminSub } = await signUp("proxy-open-admin");
-    await makeAdmin(adminSub);
-    const absentId = await seedAbsentPlayer("open");
-
-    const { data: roundId } = await adminClient.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-
-    const { error } = await adminClient.rpc("admin_proxy_roll", {
-      p_round_id: roundId,
-      p_player_id: absentId,
-      p_value: 14,
-    });
-    expect(error).toBeNull();
-
-    const { data: roomPlayer } = await admin
-      .from("room_players")
-      .select("player_id")
-      .eq("room_id", (await adminClient.rpc("enter_todays_room")).data as string)
-      .eq("player_id", absentId)
-      .maybeSingle();
-    expect(roomPlayer).not.toBeNull();
-
-    const { data: participant } = await admin
-      .from("round_participants")
-      .select("player_id")
-      .eq("round_id", roundId)
-      .eq("player_id", absentId)
-      .maybeSingle();
-    expect(participant).not.toBeNull();
-
-    const { data: roll } = await admin
-      .from("rolls")
-      .select("value, input_mode, entered_by_admin")
-      .eq("round_id", roundId)
-      .eq("player_id", absentId)
-      .single();
-    expect(roll).toEqual({ value: 14, input_mode: "manual", entered_by_admin: true });
-  });
-
   it("folds an absent player into a closed round with no rolls yet", async () => {
     const [{ client: adminClient, googleSub: adminSub }, { client: otherClient }] =
       await Promise.all([signUp("proxy-closed-admin"), signUp("proxy-closed-other")]);

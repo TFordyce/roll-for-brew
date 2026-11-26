@@ -4,7 +4,7 @@
 
 accepted — 2026-09-29. Decided in an /improve-codebase-architecture review (candidate #2) and the grilling that followed it.
 
-**To be superseded by [ADR 0010](0010-round-resolution-is-pure-evaluate-then-commit.md)** when C# port slice 2b cuts over. The round-row lock and "exactly one resolution" carry over into C# `AdvanceRound`.
+**Superseded by [ADR 0010](0010-round-resolution-is-pure-evaluate-then-commit.md)** — 2026-11-26. C# port slice 2b cut over, and migration 0168 (#549) deleted `advance_layer`, `finalize_layer` and the `resolve_round` subtree. The round-row lock and "exactly one resolution" carry over into C# `AdvanceRound`. The rest of this record is history.
 
 ## Decision
 
