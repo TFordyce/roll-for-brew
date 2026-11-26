@@ -1,12 +1,10 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { advanceRound } from "../../src/app/rounds/advanceRound";
 import {
   createTestAdminClient,
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
-  seedActiveEffect,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
 } from "./setup";
@@ -20,16 +18,6 @@ import {
 // recipient is waited on in the Reaction Window and may spend it
 // (spend_courage_token), which records a Six Sugars-shaped Pending Spell Die
 // on their own roll. "Spent" is derived from that Cast Log row.
-
-type TraceStep = {
-  display_kind: string;
-  target_player: string | null;
-  source_cast: { cast_id: string | null; card_name: string | null; caster_player_id: string | null };
-  before: { type: string; value: number | string | null };
-  after: { type: string; value: number | string | null };
-  outcome: string;
-  courage_token?: boolean;
-};
 
 const TOKEN_PARAMS = { dice: "1d6", persist: true, participated_rounds_from_cast: 3 };
 
@@ -143,67 +131,10 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
     expect(error).toBeNull();
   }
 
-  /** Closes `roundId`, seeds the rolls, and advances: Layer 0's Reaction Window opens. */
-  async function openWindow(roundId: string, closer: Player, rolls: [Player, number][]) {
-    const { error } = await closer.client.rpc("close_round", { p_round_id: roundId });
-    expect(error).toBeNull();
-    for (const [p, v] of rolls) await seedRoll(roundId, p.googleSub, v);
-    const outcome = await advanceRound(closer.client, roundId, "layerRolled");
-    expect(outcome.outcome).toBe("windowOpened");
-  }
-
-  async function myTokens(player: Player, roundId: string) {
-    const { data, error } = await player.client.rpc("get_my_courage_tokens", { p_round_id: roundId });
-    expect(error).toBeNull();
-    return data as { effect_id: string; giver_player_id: string; giver_display_name: string; dice: string }[];
-  }
-
   async function unspent(roundId: string, playerId: string) {
     const { data, error } = await admin.rpc("_unspent_courage_tokens", { p_round_id: roundId, p_player_id: playerId });
     expect(error).toBeNull();
     return data as { effect_id: string; source_cast_id: string }[];
-  }
-
-  async function myWindow(player: Player, roundId: string) {
-    const { data, error } = await player.client.rpc("get_open_reaction_window", { p_round_id: roundId });
-    expect(error).toBeNull();
-    return (data as { layer: number; eligible: boolean; already_passed: boolean }[])[0];
-  }
-
-  async function spend(player: Player, roundId: string) {
-    const { data, error } = await player.client.rpc("spend_courage_token", { p_round_id: roundId });
-    expect(error).toBeNull();
-    return data as string;
-  }
-
-  async function rollDie(player: Player, castId: string, value: number) {
-    const { error } = await player.client.rpc("resolve_pending_spell_die_manual", { p_cast_id: castId, p_value: value });
-    expect(error).toBeNull();
-  }
-
-  async function windowStatus(roundId: string) {
-    const { data, error } = await admin
-      .from("spell_reaction_windows")
-      .select("status")
-      .eq("round_id", roundId)
-      .order("opened_at", { ascending: false })
-      .limit(1)
-      .single();
-    expect(error).toBeNull();
-    return data!.status as string;
-  }
-
-  async function summaryTotals(roundId: string): Promise<Record<string, number>> {
-    const { data, error } = await admin.from("rounds").select("resolution_summary").eq("id", roundId).single();
-    expect(error).toBeNull();
-    const rows = (data!.resolution_summary ?? []) as { player_id: string; total: number }[];
-    return Object.fromEntries(rows.map((r) => [r.player_id, r.total]));
-  }
-
-  async function trace(roundId: string): Promise<TraceStep[]> {
-    const { data, error } = await admin.from("rounds").select("resolution_trace").eq("id", roundId).single();
-    expect(error).toBeNull();
-    return (data!.resolution_trace ?? []) as TraceStep[];
   }
 
   // ==========================================================================
@@ -229,97 +160,9 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
     ]);
   });
 
-  it("the gift round resolves normally; the recipient may spend the new token in that round's window", async () => {
-    const [giver, recipient] = await Promise.all([signUp("lc-same-giver"), signUp("lc-same-recipient")]);
-    const roundId = await startRound(giver, [recipient]);
-    await castGift(giver, recipient, roundId);
-    await openWindow(roundId, giver, [
-      [recipient, 10],
-      [giver, 13],
-    ]);
-
-    await rollDie(recipient, await spend(recipient, roundId), 6);
-    const outcome = await advanceRound(recipient.client, roundId, "pendingDieResolved");
-    expect(outcome).toMatchObject({ outcome: "brewer", brewerId: giver.googleSub });
-    expect(await summaryTotals(roundId)).toEqual({ [recipient.googleSub]: 16, [giver.googleSub]: 13 });
-    // The gift traces nothing of its own; the spend is the one step.
-    expect((await trace(roundId)).map((s) => s.courage_token ?? false)).toEqual([true]);
-  });
-
   // ==========================================================================
   // Prompted with no Reaction card; spend once; the d6 lands
   // ==========================================================================
-
-  it("prompts a recipient with no Reaction card, who spends it once to add 1d6 to their roll", async () => {
-    const { giver, recipient } = await gift("spend");
-    const roundId = await startRound(giver, [recipient]);
-    await openWindow(roundId, giver, [
-      [recipient, 10],
-      [giver, 13],
-    ]);
-
-    // Held no card: the token alone makes them a Reaction Source.
-    expect(await myWindow(recipient, roundId)).toMatchObject({ layer: 0, eligible: true, already_passed: false });
-    expect(await myWindow(giver, roundId)).toMatchObject({ eligible: false });
-    expect(await myTokens(recipient, roundId)).toEqual([
-      expect.objectContaining({ giver_player_id: giver.googleSub, dice: "1d6" }),
-    ]);
-
-    const spendId = await spend(recipient, roundId);
-    const { data: row } = await admin
-      .from("spell_casts")
-      .select("caster_id, target_player_id, effect_kind, effect_params, target_role")
-      .eq("id", spendId)
-      .single();
-    expect(row).toEqual({
-      caster_id: recipient.googleSub,
-      target_player_id: recipient.googleSub,
-      effect_kind: "dice_modifier",
-      effect_params: { dice: "1d6" },
-      target_role: "CASTER",
-    });
-
-    // Spent: no second spend, nothing left to wait on, the window closes.
-    const { error: againErr } = await recipient.client.rpc("spend_courage_token", { p_round_id: roundId });
-    expect(againErr).not.toBeNull();
-    expect(await myTokens(recipient, roundId)).toEqual([]);
-    expect(await windowStatus(roundId)).toBe("closed");
-
-    // The die holds the layer until it's in.
-    expect(await advanceRound(giver.client, roundId, "reactionWindowChanged")).toEqual({
-      outcome: "noop",
-      reason: "layer_incomplete",
-    });
-    await rollDie(recipient, spendId, 5);
-    const outcome = await advanceRound(recipient.client, roundId, "pendingDieResolved");
-    expect(outcome).toMatchObject({ outcome: "brewer", brewerId: giver.googleSub });
-    expect(await summaryTotals(roundId)).toEqual({ [recipient.googleSub]: 15, [giver.googleSub]: 13 });
-
-    const steps = (await trace(roundId)).filter((s) => s.courage_token);
-    expect(steps).toEqual([
-      expect.objectContaining({
-        target_player: recipient.googleSub,
-        source_cast: expect.objectContaining({ cast_id: spendId, card_name: "Liquid Courage" }),
-        outcome: "applied",
-      }),
-    ]);
-  });
-
-  it("refuses a spend outside a Layer-0 window or without a token", async () => {
-    const { giver, recipient } = await gift("refuse", ["third"]);
-    const roundId = await startRound(giver, [recipient]);
-
-    // No window yet.
-    const { error: noWindow } = await recipient.client.rpc("spend_courage_token", { p_round_id: roundId });
-    expect(noWindow?.code).toBe("RFB04");
-
-    await openWindow(roundId, giver, [
-      [recipient, 10],
-      [giver, 13],
-    ]);
-    const { error: noToken } = await giver.client.rpc("spend_courage_token", { p_round_id: roundId });
-    expect(noToken?.code).toBe("RFB56");
-  });
 
   it("a token is not a Reaction Source in a tie-break window", async () => {
     const { giver, recipient } = await gift("tiebreak");
@@ -342,69 +185,9 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
   // Skip vote
   // ==========================================================================
 
-  it("a Skip vote counts an unspent token holder as someone being waited on", async () => {
-    const { giver, recipient } = await gift("skip");
-    const roundId = await startRound(giver, [recipient]);
-    await openWindow(roundId, giver, [
-      [recipient, 10],
-      [giver, 13],
-    ]);
-
-    const { data: pending, error } = await giver.client.rpc("get_reaction_window_pending_players", {
-      p_round_id: roundId,
-    });
-    expect(error).toBeNull();
-    expect((pending as { player_id: string }[]).map((r) => r.player_id)).toEqual([recipient.googleSub]);
-
-    // Grace over: the giver's Skip vote is the whole table except the one
-    // being waited on, so it closes the window.
-    await admin
-      .from("spell_reaction_windows")
-      .update({ poll_round_started_at: new Date(Date.now() - 31_000).toISOString() })
-      .eq("round_id", roundId)
-      .eq("status", "open");
-    const { data: closed, error: vErr } = await giver.client.rpc("vote_skip_reaction_window", { p_round_id: roundId });
-    expect(vErr).toBeNull();
-    expect(closed).toBe(true);
-
-    // Being skipped costs nothing: the token is still unspent.
-    expect(await unspent(roundId, recipient.googleSub)).toHaveLength(1);
-  });
-
   // ==========================================================================
   // After advantage
   // ==========================================================================
-
-  it("adds the d6 after advantage picked the kept d20", async () => {
-    const { giver, recipient } = await gift("adv");
-    await seedActiveEffect(admin, cleanup, {
-      roomId: recipient.roomId,
-      targetPlayerId: recipient.googleSub,
-      casterId: recipient.googleSub,
-      cardName: "Prophe-Tea",
-      effectKind: "advantage",
-      effectParams: { persist: true },
-      roundsRemaining: null,
-      roundId: await seedPastRound(recipient.roomId, [giver.googleSub], 110),
-    });
-    const roundId = await startRound(giver, [recipient]);
-    const { error } = await giver.client.rpc("close_round", { p_round_id: roundId });
-    expect(error).toBeNull();
-    // Kept 11 over 3; the d6 lands on the 11.
-    await seedRoll(roundId, recipient.googleSub, 11, 3);
-    await seedRoll(roundId, giver.googleSub, 14);
-    expect((await advanceRound(giver.client, roundId, "layerRolled")).outcome).toBe("windowOpened");
-
-    await rollDie(recipient, await spend(recipient, roundId), 6);
-    const outcome = await advanceRound(recipient.client, roundId, "pendingDieResolved");
-    expect(outcome).toMatchObject({ outcome: "brewer", brewerId: giver.googleSub });
-    expect((await summaryTotals(roundId))[recipient.googleSub]).toBe(17);
-
-    const kinds = (await trace(roundId))
-      .filter((s) => s.target_player === recipient.googleSub)
-      .map((s) => (s.courage_token ? "courage" : s.display_kind));
-    expect(kinds).toEqual(["advantage", "courage"]);
-  });
 
   // ==========================================================================
   // Lifetime
@@ -458,30 +241,6 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
   // Not a card
   // ==========================================================================
 
-  it("a spend is invisible to card-targeting Reactions", async () => {
-    const { giver, recipient, others } = await gift("not-a-card", ["counter"]);
-    const counter = others[0]!;
-    await forceHold(admin, counter.googleSub, "Tannin Tantrum"); // Reaction, CARD
-    const roundId = await startRound(giver, [recipient, counter]);
-    await openWindow(roundId, giver, [
-      [recipient, 10],
-      [giver, 13],
-      [counter, 16],
-    ]);
-    const spendId = await spend(recipient, roundId);
-
-    const { data: stack, error } = await counter.client.rpc("get_reaction_stack", { p_round_id: roundId });
-    expect(error).toBeNull();
-    expect((stack as { cast_id: string }[]).map((s) => s.cast_id)).not.toContain(spendId);
-
-    const { error: castErr } = await counter.client.rpc("cast_reaction_spell_card", {
-      p_round_id: roundId,
-      p_target_player_id: null,
-      p_target_cast_id: spendId,
-    });
-    expect(castErr?.message).toMatch(/target cast not found/);
-  });
-
   // ==========================================================================
   // Detox
   // ==========================================================================
@@ -516,75 +275,4 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
   // ==========================================================================
   // Replay, stacking
   // ==========================================================================
-
-  it("a Time for Brew replay restores a token spent in the scrapped attempt", async () => {
-    const { giver, recipient } = await gift("replay");
-    const roundId = await startRound(giver, [recipient]);
-
-    const replayInstance = await forceHold(admin, giver.googleSub, "Time for Brew");
-    await admin.from("spell_deck_instances").update({ location: "in_deck", held_by_player: null }).eq("id", replayInstance);
-    const { error: castErr } = await admin.from("spell_casts").insert({
-      round_id: roundId,
-      caster_id: giver.googleSub,
-      card_instance_id: replayInstance,
-      target_pending: false,
-      effect_kind: "round_replay",
-      effect_params: {},
-    });
-    expect(castErr).toBeNull();
-
-    await openWindow(roundId, giver, [
-      [recipient, 10],
-      [giver, 13],
-    ]);
-    await rollDie(recipient, await spend(recipient, roundId), 4);
-    expect(await unspent(roundId, recipient.googleSub)).toEqual([]);
-
-    const { error: resolveErr } = await giver.client.rpc("resolve_round", { p_round_id: roundId });
-    expect(resolveErr).toBeNull();
-    const { error: finalErr } = await giver.client.rpc("resolve_round", {
-      p_round_id: roundId,
-      p_brewer_id: giver.googleSub,
-      p_cups_made: 2,
-    });
-    expect(finalErr).toBeNull();
-    await giver.client.rpc("record_pending_round_replay", { p_round_id: roundId });
-    const { error: confirmErr } = await giver.client.rpc("confirm_round_replay", { p_round_id: roundId });
-    expect(confirmErr).toBeNull();
-
-    expect(await unspent(roundId, recipient.googleSub)).toHaveLength(1);
-  });
-
-  it("two tokens are independent: each is spent on its own", async () => {
-    const { giver, recipient, others } = await gift("two", ["second-giver"]);
-    const secondGiver = others[0]!;
-    const secondRound = await startRound(secondGiver, [recipient, giver]);
-    await castGift(secondGiver, recipient, secondRound);
-    await resolveInPast(secondRound, 100);
-
-    const roundId = await startRound(giver, [recipient, secondGiver]);
-    await openWindow(roundId, giver, [
-      [recipient, 5],
-      [giver, 13],
-      [secondGiver, 15],
-    ]);
-    expect((await myTokens(recipient, roundId)).map((t) => t.giver_player_id)).toEqual([
-      giver.googleSub,
-      secondGiver.googleSub,
-    ]);
-
-    const first = await spend(recipient, roundId);
-    // Still holding the second: still a Reaction Source, the window stays open.
-    expect(await myWindow(recipient, roundId)).toMatchObject({ eligible: true });
-    expect((await myTokens(recipient, roundId)).map((t) => t.giver_player_id)).toEqual([secondGiver.googleSub]);
-    const second = await spend(recipient, roundId);
-    expect(await myTokens(recipient, roundId)).toEqual([]);
-    expect(await windowStatus(roundId)).toBe("closed");
-
-    await rollDie(recipient, first, 3);
-    await rollDie(recipient, second, 6);
-    const outcome = await advanceRound(recipient.client, roundId, "pendingDieResolved");
-    expect(outcome).toMatchObject({ outcome: "brewer", brewerId: giver.googleSub });
-    expect((await summaryTotals(roundId))[recipient.googleSub]).toBe(14);
-  });
 });

@@ -17,7 +17,7 @@ The mapping is a reading of each test's title and seed, not a mechanical proof. 
 
 **What the audit added.** 31 corpus scenarios for branches only the TS suite reached, taking the corpus from 72 to 103. 19 came from reading the tests and 12 from C# line coverage after a full run, which showed that some title-based mappings were wrong: `roll_frozen`, carried advantage and carried modifiers, the block_copy and countered-seize branches, and the polarity arms had run in no C# test. Each scenario passed through C# `Evaluate`, both advance entry points and the Recap, and the audit found no rule difference between the engines. It found one stored-byte difference: with a fractional multiplier, SQL stores `2.0` in `resolution_trace` where C# stores `2`. JSON parsing reads both as 2, and the only catalog multiplier is Double Shot's 2, so play can't reach it today. The scenario uses a multiplier of 0 to stay exact. It also added `A_recap_read_does_not_wait_on_a_round_being_finalized` and `A_resolved_round_with_no_stored_summary_reads_the_same`.
 
-**Regenerating a scenario.** `tests/integration/trace-snapshot.test.ts` writes a new golden, and `EMIT_INPUT_FIXTURES=1` writes its input. That flag rewrites every input, so restore the existing ones afterwards: they predate `rooms.version`.
+**Regenerating a scenario.** Until #549, `tests/integration/trace-snapshot.test.ts` wrote a new golden through SQL and `EMIT_INPUT_FIXTURES=1` wrote its input. Both went with the SQL resolver (see *Retired at #549* below), so the goldens are fixed fixtures now.
 
 ## Closed gaps (13)
 
@@ -40,6 +40,89 @@ Each gap is now a handwritten case in `AdvanceRoundParityTests.Gaps.cs`. Each on
 | `ward-transfer-interaction.test.ts` | a warded Spillage target keeps their modifier; an unwarded Spillage still moves floor(m/2) | `A_warded_Spillage_target_keeps_their_modifier` and `An_unwarded_Spillage_still_moves_half_the_targets_modifier` |
 
 The audit also dropped `6-heist-already-moved-reads-moved` after it failed in the TS corpus run, undiagnosed, and its seed was not kept. It was rebuilt from its name: a Tea Heist cast with `cast_inputs.heist_moved` and the loot already in the thief's hand. The first rebuild failed in the seed, not the resolver. It force-held the loot for the thief before `seedCast` force-held Tea Heist for the same thief as donor, which breaks `spell_deck_instances_one_held_per_player`. That is the likely cause of the original failure, though it is not proven. Seeding the loot with the victim and moving it to the thief after the cast fixes it. The scenario passes in both engines and takes the corpus to 104.
+
+## Retired at #549 (migration 0168)
+
+The SQL these tests called is gone, so they were deleted from the TS integration suite with it (spec #533: retired by behaviour, once an equivalent C# test exists). A test went if it called a dropped function, directly or through a helper, or called `advanceRound`, `enforceStallTimeout` or `getRoundRecap`, which reach the C# API since #622 and so can't pass in a local run without it.
+
+- **`golden` and `test` rows below:** deleted. The named C# test or corpus scenario is the equivalent.
+- **The goldens themselves stay.** `tests/snapshots/*.json` and the input fixtures are fixed C# fixtures now. The SQL runner that wrote them (`trace-snapshot.test.ts`) is deleted, so a new scenario is written for C# directly.
+- **`elsewhere` rows, plus 11 tests the audit didn't list:** also deleted, because each one ended its round through the dropped SQL. What they actually check belongs to a later slice. **Each later slice's Exit 1 parity check must show C# coverage for its rows here**, as well as for the TS tests still on master.
+
+### Later-slice tests deleted here (59)
+
+| Slice | TS file | Test |
+|---|---|---|
+| 3 (#552) | `admin-proxy-roll.test.ts` | folds an absent player into an open round as a full participant |
+| 3 (#552) | `brew-iou.test.ts` | scrapping the paying round (Round replay) makes the debt owed again |
+| 3 (#552) | `brew-iou.test.ts` | scrapping the Brew IOU round erases the debt |
+| 3 (#552) | `brewer-immunity.test.ts` | lasts the rest of the day and survives a Round replay of a later round |
+| 3 (#552) | `carried-effects.test.ts` | a Round replay of a round in the new room re-applies the carried effect and counts the round once |
+| 3 (#552) | `earl-of-earl-grey.test.ts` | a Round replay of the round that moved the title hands it back |
+| 3 (#552) | `liquid-courage.test.ts` | a Time for Brew replay restores a token spent in the scrapped attempt |
+| 3 (#552) | `loaf-of-lipton.test.ts` | replay: the clean slate wipes the exemption, and the caster rolls normally |
+| 3 (#552) | `manual-roll-and-settings.test.ts` | allows a mix of in-app and manual rolls to complete the same layer |
+| 3 (#552) | `marked-for-brew.test.ts` | a Time for Brew replay keeps the redirected draw and does not restore the spent mark |
+| 3 (#552) | `round-replay.test.ts` | decline keeps the resolved round standing and clears the pending decision |
+| 3 (#552) | `round-replay.test.ts` | auto_decline_stalled_round_replays clears a decision left past the 5-minute window |
+| 3 (#552) | `tea-cosy.test.ts` | replay: the cast is gone -- the caster rolls normally and has no immunity |
+| 3 (#552) | `tea-heist.test.ts` | a Time for Brew replay returns the stolen card to the victim; Tea Heist stays spent |
+| 3 (#552) | `tea-heist.test.ts` | a replay sends the card back to the deck when the victim's hand has refilled both slots |
+| 3 (#552) | `tea-heist.test.ts` | a replay leaves the card alone once the thief no longer holds it |
+| 5 (#555/#557) | `brewer-immunity.test.ts` | Greater Detox can't dispel it: never offered, refused directly, and a dispel naming it is ignored |
+| 5 (#555/#557) | `chosen-pair-roll-transform.test.ts` | Brew-tal Swap (Reaction) emits a swap roll_pair_transform cast over caster + target |
+| 5 (#555/#557) | `chosen-pair-roll-transform.test.ts` | Steaming Mug Bond (Action, min) links caster + target and needs an explicit target |
+| 5 (#555/#557) | `yorkshire-terror.test.ts` | cast pre-roll at a declared-in target rerolls that target's roll in place |
+| 5 (#555/#557) | `yorkshire-terror.test.ts` | deferred target set after the window opens is still attached |
+| 5 (#556) | `spell-cards-compound.test.ts` | layer 0 stays incomplete until the pending die is rolled |
+| 5–6 (cast or reaction) | `brewer-immunity.test.ts` | a Last Cuppa countered in the layer-0 Reaction Window grants no immunity |
+| 5–6 (cast or reaction) | `brewmageddon.test.ts` | a compelled Reaction holder cannot pass the Layer-0 window, and their cast counts |
+| 5–6 (cast or reaction) | `brewmageddon.test.ts` | does not re-fire on a Time for Brew replay |
+| 5–6 (cast or reaction) | `earl-of-earl-grey.test.ts` | a countered Earl cast takes nothing from the sitting Earl |
+| 5–6 (cast or reaction) | `liquid-courage.test.ts` | the gift round resolves normally; the recipient may spend the new token in that round's window |
+| 5–6 (cast or reaction) | `liquid-courage.test.ts` | refuses a spend outside a Layer-0 window or without a token |
+| 5–6 (cast or reaction) | `liquid-courage.test.ts` | a Skip vote counts an unspent token holder as someone being waited on |
+| 5–6 (cast or reaction) | `liquid-courage.test.ts` | a spend is invisible to card-targeting Reactions |
+| 5–6 (cast or reaction) | `liquid-courage.test.ts` | two tokens are independent: each is spent on its own |
+| 6 (#558/#560) | `reaction-window-skip-vote.test.ts` | rejects a vote inside the 30-second grace period |
+| 6 (#558/#560) | `reaction-window-skip-vote.test.ts` | the player being waited on, a spectator and a stall-excluded participant can't vote |
+| 6 (#558/#560) | `reaction-window-skip-vote.test.ts` | 4 participants, 1 being waited on: the 1st vote doesn't skip, the 2nd does; a repeat vote is a no-op |
+| 6 (#558/#560) | `reaction-window-skip-vote.test.ts` | a chained Reaction cast discards the votes so far and restarts the grace period |
+| 7 (#561/#562) | `brewmageddon.test.ts` | stall: forfeits outstanding compelled Action casts, excludes nobody, then restarts the roll clock |
+| 7 (#561/#562) | `brewmageddon.test.ts` | a compelled Reaction holder skipped by vote forfeits their card |
+| 7 (#561/#562) | `brewmageddon.test.ts` | a compelled Reaction holder timed out by the stall backstop forfeits their card |
+| 7 (#561/#562) | `brewmageddon.test.ts` | a compelled Reaction holder excluded for never rolling forfeits their card |
+| 7 (#561/#562) | `loaf-of-lipton.test.ts` | countered: the late roller's stall clock starts when the window closes, then a no-show is excluded |
+| 7 (#561/#562) | `loaf-of-lipton.test.ts` | stall: excluding one no-show leaves the round alive while the exempt caster is still a Participant |
+| 7 (#561/#562) | `reaction-window-close-on-last-cast.test.ts` | enforceStallTimeout recovers a window some earlier code already stranded |
+| 7 (#561/#562) | `round-advancement.test.ts` | a stall-resolved Pending Spell Die at Layer 0 opens the reaction window instead of resolving directly |
+| 7 (#561/#562) | `round-advancement.test.ts` | a stall-abandoned Deferred Forced-Reroll Target at Layer 0 opens the reaction window instead of resolving directly |
+| 7 (#561/#562) | `round-advancement.test.ts` | stall exclusion at Layer 0 leads into the reaction window |
+| 7 (#561/#562) | `round-advancement.test.ts` | stall exclusion at a Tie-Break Reroll Layer finalizes it with no window |
+| 7 (#561/#562) | `stall-timeout.test.ts` | excludes a declared player who never rolls and resolves the round off the rest |
+| 7 (#561/#562) | `stall-timeout.test.ts` | a stall-excluded Reaction-card holder doesn't hold a reaction window open (issue #463) |
+| 7 (#561/#562) | `stall-timeout.test.ts` | cancels an open round whose starter never closes declarations |
+| 7 (#561/#562) | `stall-timeout.test.ts` | does not cancel an open round before the timeout has elapsed |
+| 7 (#561/#562) | `stall-timeout.test.ts` | cancels the round instead of resolving when a stall exclusion drops active participants below 2 |
+| 7 (#561/#562) | `tea-party-revolt.test.ts` | stall enforcement abandons an outstanding pick and the round resolves |
+| 7 (#561/#562) | `yorkshire-terror.test.ts` | never-resolvable deferred target is force-negated by the stall timer as a recorded no-op (issue #325) |
+| 8 (#563/#564) | `admin-delete-drain-origin-round.test.ts` | Bitter Leech: deleting the origin round succeeds, later ticks stay applied, the drain stops |
+| 8 (#563/#564) | `admin-delete-drain-origin-round.test.ts` | Calami-Tea: deleting the origin round succeeds, later dice ticks stay, the drain stops |
+| 8 (#563/#564) | `admin-delete-round.test.ts` | reverts the brewer's cups-made modifier gain when deleting a resolved round |
+| 8 (#563/#564) | `brew-iou.test.ts` | admin-deleting the paying round makes the debt owed again |
+| 8 (#563/#564) | `brew-iou.test.ts` | admin-deleting the Brew IOU round erases the debt |
+| 8 (#563/#564) | `resolve-round.test.ts` | admin_delete_round recomputes the cache with no bespoke revert |
+
+### Not in the audit, already covered in C#
+
+| TS file | Test | C# equivalent |
+|---|---|---|
+| `room-auto-creation.test.ts` | 4 tests of `enter_todays_room` (creates the room, no duplicate, keeps the modifier, two players share it) | `RoomEntryHttpTests` (`Entry_creates_todays_room_and_seats_the_caller_idempotently`, `Entry_keeps_an_existing_seats_modifier`) |
+| `spell-cards-table-wild.test.ts` | `apply_roll_swap` / `apply_roll_flip` | `AdvanceRoundScenarioTests.An_unapplied_swap_exchanges_high_and_low` / `An_unapplied_flip_is_recorded_and_flips_every_roll` |
+| `tie-break-and-reroll.test.ts` | an advantage or disadvantage cast is ignored on a tie-break reroll | `RollSubmissionTests.A_tie_break_layer_roll_ignores_advantage_and_goes_in_the_current_layer` |
+| `tie-break-and-reroll.test.ts` | `advance_round_layer` rejects a player who didn't roll the current layer | Round Backfill's stranger check (`RoundBackfillRules`) |
+| `ward-phase.test.ts` | a roll-domain ward blocks a forced_reroll | golden `2-ward-blocks-roll-transform` |
+| `tie-break-and-reroll.test.ts` | `get_round_layer_history` returns completed layers to a spectator | none: nothing in TS or C# calls `get_round_layer_history` any more. It is dead SQL, left for the #570 sweep |
 
 ## Every test
 

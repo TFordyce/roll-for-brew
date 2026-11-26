@@ -235,54 +235,6 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     }
   });
 
-  it("apply_roll_swap swaps the layer's highest and lowest rolls in place", async () => {
-    const [caster, target] = await Promise.all([
-      signUp("roll-swap-caster"),
-      signUp("roll-swap-target"),
-    ]);
-
-    const { data: roundId } = await caster.client.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
-
-    await admin.from("rolls").insert([
-      { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 4, input_mode: "manual", modifier_snapshot: 0 },
-      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 18, input_mode: "manual", modifier_snapshot: 0 },
-    ]);
-
-    const { data: changes, error } = await caster.client.rpc("apply_roll_swap", { p_round_id: roundId, p_layer: 0 });
-    expect(error).toBeNull();
-
-    const byPlayer = new Map((changes as { player_id: string; value: number }[]).map((c) => [c.player_id, c.value]));
-    expect(byPlayer.get(caster.googleSub)).toBe(18);
-    expect(byPlayer.get(target.googleSub)).toBe(4);
-  });
-
-  it("apply_roll_flip flips every roll in the layer to 21 minus its value", async () => {
-    const [caster, target] = await Promise.all([
-      signUp("roll-flip-caster"),
-      signUp("roll-flip-target"),
-    ]);
-
-    const { data: roundId } = await caster.client.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
-
-    await admin.from("rolls").insert([
-      { round_id: roundId, player_id: caster.googleSub, layer: 0, value: 1, input_mode: "manual", modifier_snapshot: 0 },
-      { round_id: roundId, player_id: target.googleSub, layer: 0, value: 5, input_mode: "manual", modifier_snapshot: 0 },
-    ]);
-
-    const { data: changes, error } = await caster.client.rpc("apply_roll_flip", { p_round_id: roundId, p_layer: 0 });
-    expect(error).toBeNull();
-
-    const byPlayer = new Map((changes as { player_id: string; value: number }[]).map((c) => [c.player_id, c.value]));
-    expect(byPlayer.get(caster.googleSub)).toBe(20);
-    expect(byPlayer.get(target.googleSub)).toBe(16);
-  });
-
   it("Drip Tray (tea_maker_override/highest_modifier) surfaces its mode via get_tea_maker_override", async () => {
     const [caster, target] = await Promise.all([
       signUp("drip-tray-caster"),

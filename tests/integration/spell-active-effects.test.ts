@@ -42,23 +42,6 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  async function seedRoll(
-    roundId: string,
-    playerId: string,
-    value: number,
-    modifierSnapshot: number,
-  ) {
-    const { error } = await admin.from("rolls").insert({
-      round_id: roundId,
-      player_id: playerId,
-      layer: 0,
-      value,
-      input_mode: "manual",
-      modifier_snapshot: modifierSnapshot,
-    });
-    expect(error).toBeNull();
-  }
-
   /**
    * Seeds a Common-tier, positive-polarity persistent active effect. #312
    * retired `hidden_modifier` and deleted Cloud of Cream's effect row (its
@@ -82,108 +65,6 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     });
     return effectId;
   }
-
-  it("Caffeine Crash composes into the modifier bucket for exactly its 2 remaining rounds, then expires", async () => {
-    const [caster, target] = await Promise.all([signUp("crash-caster"), signUp("crash-target")]);
-    await forceHold(admin, caster.googleSub, "Caffeine Crash");
-
-    // Round 1: cast with an immediate target (target already declared in).
-    const { data: round1Id } = await caster.client.rpc("start_round");
-    cleanup.trackRound(round1Id as string);
-    await target.client.rpc("declare_in", { p_round_id: round1Id });
-
-    const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
-      p_round_id: round1Id,
-      p_target_player_id: target.googleSub,
-    });
-    expect(castError).toBeNull();
-    expect(castId).toBeTruthy();
-
-    const { data: round1Effects, error: round1EffectsError } = await roundModifierEffects(admin, caster.client, round1Id);
-    expect(round1EffectsError).toBeNull();
-    // Room-wide read (roundModifierEffects): filter to this test's own
-    // target before asserting exact contents (issue #147).
-    expect(byTarget(round1Effects as { target_player_id: string }[], target.googleSub)).toEqual([
-      {
-        target_player_id: target.googleSub,
-        effect_kind: "set_modifier",
-        effect_params: { value: -1 },
-        resolved_value: null,
-        card_name: "Caffeine Crash",
-        caster_player_id: caster.googleSub,
-      },
-    ]);
-
-    const { data: activeAfterCast } = await admin
-      .from("spell_active_effects")
-      .select("rounds_remaining")
-      .eq("source_cast_id", castId);
-    expect(activeAfterCast).toEqual([{ rounds_remaining: 2 }]);
-
-    await caster.client.rpc("close_round", { p_round_id: round1Id });
-    await seedRoll(round1Id as string, caster.googleSub, 10, 0);
-    await seedRoll(round1Id as string, target.googleSub, 15, 0);
-    const { error: resolve1Error } = await caster.client.rpc("resolve_round", {
-      p_round_id: round1Id,
-      p_brewer_id: caster.googleSub,
-      p_cups_made: 2,
-    });
-    expect(resolve1Error).toBeNull();
-
-    // #310: rounds_remaining is an immutable duration snapshot — resolving a
-    // round no longer decrements it. The row is still present and still
-    // composes (asserted for round 2 below); expiry is derived, proven by
-    // its absence from roundModifierEffects in round 3.
-    const { data: activeAfterRound1 } = await admin
-      .from("spell_active_effects")
-      .select("rounds_remaining")
-      .eq("source_cast_id", castId);
-    expect(activeAfterRound1).toEqual([{ rounds_remaining: 2 }]);
-
-    // Round 2: the effect is still active — 1 round left — and still
-    // composes into the modifier bucket without any new cast.
-    const { data: round2Id } = await caster.client.rpc("start_round");
-    cleanup.trackRound(round2Id as string);
-    await target.client.rpc("declare_in", { p_round_id: round2Id });
-
-    const { data: round2Effects } = await roundModifierEffects(admin, caster.client, round2Id);
-    expect(byTarget(round2Effects as { target_player_id: string }[], target.googleSub)).toEqual([
-      {
-        target_player_id: target.googleSub,
-        effect_kind: "set_modifier",
-        effect_params: { value: -1 },
-        resolved_value: null,
-        card_name: "Caffeine Crash",
-        caster_player_id: caster.googleSub,
-      },
-    ]);
-
-    await caster.client.rpc("close_round", { p_round_id: round2Id });
-    await seedRoll(round2Id as string, caster.googleSub, 8, 0);
-    await seedRoll(round2Id as string, target.googleSub, 12, 0);
-    await caster.client.rpc("resolve_round", {
-      p_round_id: round2Id,
-      p_brewer_id: caster.googleSub,
-      p_cups_made: 2,
-    });
-
-    // #310: the row physically persists (projection, not a mutable counter) —
-    // its snapshot is untouched. What changes is that it is now derived-
-    // expired: the round 3 check below shows it no longer composes.
-    const { data: activeAfterRound2 } = await admin
-      .from("spell_active_effects")
-      .select("rounds_remaining")
-      .eq("source_cast_id", castId);
-    expect(activeAfterRound2).toEqual([{ rounds_remaining: 2 }]);
-
-    // Round 3: expired — the modifier bucket no longer sees it.
-    const { data: round3Id } = await caster.client.rpc("start_round");
-    cleanup.trackRound(round3Id as string);
-    await target.client.rpc("declare_in", { p_round_id: round3Id });
-
-    const { data: round3Effects } = await roundModifierEffects(admin, caster.client, round3Id);
-    expect(byTarget(round3Effects as { target_player_id: string }[], target.googleSub)).toEqual([]);
-  });
 
   it("roster badges (get_room_active_effects) show a positive-polarity badge for the caster's own Cloud of Cream", async () => {
     const caster = await signUp("cloud-caster");

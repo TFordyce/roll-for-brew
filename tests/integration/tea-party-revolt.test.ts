@@ -1,13 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { enforceStallTimeout } from "../../src/app/rounds/stallEnforcement";
 import {
   createTestAdminClient,
   createTestCleanup,
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
-  stallTimeoutFuture,
 } from "./setup";
 
 // Runs against a real local Supabase stack. Exercises Tea Party Revolt (issue
@@ -23,15 +21,6 @@ import {
 //
 // Assertions are on observable outcomes only: the RPC errors, the advancement
 // outcomes, rounds.brewer_id and the Resolution Trace.
-
-type TraceStep = {
-  display_kind: string;
-  target_player: string | null;
-  source_cast: { cast_id: string | null; card_name: string | null; caster_player_id: string | null };
-  outcome: string;
-  override_reason?: string;
-  picked_by?: string;
-};
 
 describe.skipIf(!hasAnonTestEnv)("Tea Party Revolt (issue #430)", () => {
   let admin: SupabaseClient;
@@ -118,30 +107,6 @@ describe.skipIf(!hasAnonTestEnv)("Tea Party Revolt (issue #430)", () => {
     });
   }
 
-  async function advance(caller: Player, roundId: string) {
-    const { data, error } = await caller.client.rpc("advance_layer", { p_round_id: roundId });
-    expect(error).toBeNull();
-    return data as {
-      outcome: string;
-      reason?: string;
-      finalization?: { outcome: string; brewer_id?: string } | null;
-    };
-  }
-
-  async function round(roundId: string) {
-    const { data, error } = await admin
-      .from("rounds")
-      .select("status, brewer_id, resolution_trace")
-      .eq("id", roundId)
-      .single();
-    expect(error).toBeNull();
-    return data as { status: string; brewer_id: string | null; resolution_trace: TraceStep[] | null };
-  }
-
-  function overrideStep(trace: TraceStep[] | null) {
-    return (trace ?? []).find((s) => s.display_kind === "tea_maker_override");
-  }
-
   it("is live: no longer benched, and casting it needs no target", async () => {
     const { data, error } = await admin
       .from("spell_deck_instances")
@@ -214,88 +179,6 @@ describe.skipIf(!hasAnonTestEnv)("Tea Party Revolt (issue #430)", () => {
 
     const res = await pick(p1, roundId, p2);
     expect(res.error?.message).toMatch(/not a participant/i);
-  });
-
-  it("holds layer 0 while the pick is outstanding; after the pick the chosen player brews", async () => {
-    const [p0, p1, p2] = await threePlayers();
-    const roundId = await revoltRound([p0, p1, p2], [12, 4, 17]);
-
-    // Nothing advances: no reaction window, no finalization.
-    const held = await advance(p0, roundId);
-    expect(held).toMatchObject({ outcome: "noop", reason: "revolt_pick_pending" });
-    const { data: fin, error: finErr } = await p0.client.rpc("finalize_layer", { p_round_id: roundId });
-    expect(finErr).toBeNull();
-    expect(fin).toMatchObject({ outcome: "noop" });
-    expect((await round(roundId)).status).toBe("closed");
-
-    // The lowest roller (p1) names the top roller (p2).
-    expect((await pick(p1, roundId, p2)).error).toBeNull();
-
-    // Nobody holds a Reaction card, so the window opens, closes and finalizes.
-    const done = await advance(p0, roundId);
-    expect(done.outcome).toBe("windowOpened");
-    expect(done.finalization).toMatchObject({ outcome: "brewer", brewer_id: p2.googleSub });
-
-    const r = await round(roundId);
-    expect(r.status).toBe("resolved");
-    expect(r.brewer_id).toBe(p2.googleSub);
-    const step = overrideStep(r.resolution_trace);
-    expect(step).toMatchObject({
-      target_player: p2.googleSub,
-      picked_by: p1.googleSub,
-      source_cast: { card_name: "Tea Party Revolt", caster_player_id: p0.googleSub },
-    });
-  });
-
-  it("finalize_layer reports the hold when the window is already closed", async () => {
-    const [p0, p1, p2] = await threePlayers();
-    const roundId = await revoltRound([p0, p1, p2], [12, 4, 17]);
-    const { error: wErr } = await admin
-      .from("spell_reaction_windows")
-      .insert({ round_id: roundId, layer: 0, status: "closed" });
-    expect(wErr).toBeNull();
-
-    const { data, error } = await p0.client.rpc("finalize_layer", { p_round_id: roundId });
-    expect(error).toBeNull();
-    expect(data).toMatchObject({ outcome: "noop", reason: "revolt_pick_pending" });
-  });
-
-  it("a stalled pick is dropped, and the default lowest roller brews", async () => {
-    const [p0, p1, p2] = await threePlayers();
-    const roundId = await revoltRound([p0, p1, p2], [12, 4, 17]);
-    await stallRound(roundId);
-
-    const { data: abandoned, error } = await p2.client.rpc("resolve_stalled_revolt_picks", {
-      p_round_id: roundId,
-    });
-    expect(error).toBeNull();
-    expect(abandoned).toBe(1);
-
-    // The hold is released; nothing left to pick.
-    expect((await pick(p1, roundId, p2)).error?.message).toMatch(/no tea party revolt pick/i);
-
-    const done = await advance(p0, roundId);
-    expect(done.finalization).toMatchObject({ outcome: "brewer", brewer_id: p1.googleSub });
-
-    const r = await round(roundId);
-    expect(r.brewer_id).toBe(p1.googleSub);
-    expect(overrideStep(r.resolution_trace)).toMatchObject({
-      outcome: "no-op",
-      override_reason: "pick_abandoned",
-      source_cast: { card_name: "Tea Party Revolt" },
-    });
-  });
-
-  it("stall enforcement abandons an outstanding pick and the round resolves", async () => {
-    const [p0, p1, p2] = await threePlayers();
-    const roundId = await revoltRound([p0, p1, p2], [12, 4, 17]);
-
-    await stallRound(roundId);
-    const outcome = await enforceStallTimeout(p2.client, roundId, stallTimeoutFuture);
-    expect(outcome).toEqual({ action: "revoltPickAbandoned" });
-
-    const r = await round(roundId);
-    expect(r).toMatchObject({ status: "resolved", brewer_id: p1.googleSub });
   });
 
   it("stall recovery is a no-op when no pick is outstanding", async () => {

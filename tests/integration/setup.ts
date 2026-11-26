@@ -115,10 +115,36 @@ export async function signUpSignInAndEnterRoom(
   });
   if (signInError) throw signInError;
 
-  const { data: roomId, error: roomError } = await client.rpc("enter_todays_room");
-  if (roomError) throw roomError;
+  const roomId = await seatInTodaysRoom(admin, googleSub);
 
-  return { client, googleSub, roomId: roomId as string };
+  return { client, googleSub, roomId };
+}
+
+/**
+ * Seats a player in today's (Europe/London) real room, creating the room if
+ * needed: what room entry does, written as the service role. The SQL
+ * `enter_todays_room` this replaced was dropped with #568; room entry is the
+ * API's `POST /rooms/today/entry` now.
+ */
+async function seatInTodaysRoom(admin: SupabaseClient, playerId: string): Promise<string> {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+  const find = () => admin.from("rooms").select("id").eq("date", today).eq("is_test", false).maybeSingle();
+
+  let { data: room, error } = await find();
+  if (error) throw error;
+  if (!room) {
+    // A concurrent caller may win the insert (rooms_date_key); re-read either way.
+    await admin.from("rooms").insert({ date: today });
+    ({ data: room, error } = await find());
+    if (error) throw error;
+    if (!room) throw new Error(`seatInTodaysRoom: no room for ${today}`);
+  }
+
+  const { error: seatError } = await admin
+    .from("room_players")
+    .upsert({ room_id: room.id, player_id: playerId }, { onConflict: "room_id,player_id", ignoreDuplicates: true });
+  if (seatError) throw seatError;
+  return room.id as string;
 }
 
 /**
@@ -185,7 +211,7 @@ export async function signUpSignInIntoNonTestRoom(
  *
  * `isTest: true` gives an admin-puppet Test Room (submit_roll_as,
  * draw_spell_card_as) without flipping today's shared room: once that one is
- * `is_test`, enter_todays_room makes a second today-dated room and it and
+ * `is_test`, room entry makes a second today-dated room and it and
  * start_round() then pick between them arbitrarily.
  */
 export async function seedDedicatedRoom(
@@ -594,19 +620,6 @@ export function byTarget<T extends { target_player_id: string }>(
   return rows.filter((row) => wanted.has(row.target_player_id));
 }
 
-/**
- * Test-only observation seam: whether a round's Layer is complete, from the
- * same `_layer_is_complete` rules round advancement uses (every expected
- * roller has rolled and, at Layer 0, no Pending Spell Die or Deferred
- * Forced-Reroll Target hold). Internal to advancement, so read as the
- * service role.
- */
-export async function isLayerComplete(admin: SupabaseClient, roundId: string, layer: number): Promise<boolean> {
-  const { data, error } = await admin.rpc("_layer_is_complete", { p_round_id: roundId, p_layer: layer });
-  if (error) throw error;
-  return data as boolean;
-}
-
 export type LayerRollRow = {
   player_id: string;
   value: number;
@@ -707,7 +720,7 @@ export function createTestCleanup(admin: SupabaseClient) {
    * either caster or target. Unlike spell_casts (cascades away with its
    * round, which cleanup always deletes), spell_active_effects cascades
    * only off room_id (0020) — and this suite's rooms are the shared
-   * "today's room" from enter_todays_room, never deleted per test. A
+   * "today's room" from room entry, never deleted per test. A
    * persistent effect left active past its owning test (e.g. Calami-Tea's
    * immediate-resolve CHOSEN_PLAYERS effect) would otherwise block the
    * caster's or target's player delete below the same way held cards did

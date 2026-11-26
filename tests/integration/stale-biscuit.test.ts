@@ -21,16 +21,6 @@ import {
 // the spell_draws row names, what the mark's source cast records, and the
 // Resolution Trace.
 
-type TraceStep = {
-  display_kind: string;
-  target_player: string | null;
-  source_cast: { cast_id: string | null; card_name: string | null; caster_player_id: string | null };
-  before: { type: string; value: number | string | null };
-  after: { type: string; value: number | string | null };
-  outcome: string;
-  redirect_trigger?: string;
-};
-
 type DrawResult = { instance_id: string; needs_swap_decision: boolean };
 
 const MARK_PARAMS = { trigger: "next_draw", persist: true };
@@ -146,12 +136,6 @@ describe.skipIf(!hasAnonTestEnv)("Stale Biscuit (issue #437)", () => {
       .eq("card_instance_id", instanceId);
     expect(error).toBeNull();
     return (data ?? []) as { id: string; player_id: string; trigger: string }[];
-  }
-
-  async function traceSteps(roundId: string): Promise<TraceStep[]> {
-    const { data, error } = await admin.from("rounds").select("resolution_trace").eq("id", roundId).single();
-    expect(error).toBeNull();
-    return ((data!.resolution_trace ?? []) as TraceStep[]).filter((s) => s.display_kind === "draw_redirect");
   }
 
   /** Any card currently in the deck, for a manual draw. */
@@ -406,33 +390,4 @@ describe.skipIf(!hasAnonTestEnv)("Stale Biscuit (issue #437)", () => {
   // ==========================================================================
   // Trace
   // ==========================================================================
-
-  it("traces the mark in its cast round as a next_draw mark", async () => {
-    const [caster, target] = await Promise.all([signUp("sb-trace-caster"), signUp("sb-trace-target")]);
-    const castRound = await startRound(caster, [target]);
-    const castId = await castBiscuit(caster, target, castRound);
-    const { error: closeErr } = await caster.client.rpc("close_round", { p_round_id: castRound });
-    expect(closeErr).toBeNull();
-    for (const [p, v] of [
-      [caster.googleSub, 6],
-      [target.googleSub, 14],
-    ] as const) {
-      const { error: rollErr } = await admin
-        .from("rolls")
-        .insert({ round_id: castRound, player_id: p, layer: 0, value: v, input_mode: "manual", modifier_snapshot: 0 });
-      expect(rollErr).toBeNull();
-    }
-    const { error: resolveErr } = await caster.client.rpc("resolve_round", { p_round_id: castRound });
-    expect(resolveErr).toBeNull();
-
-    const marked = await traceSteps(castRound);
-    expect(marked).toHaveLength(1);
-    expect(marked[0]).toMatchObject({
-      target_player: target.googleSub,
-      source_cast: { cast_id: castId, card_name: "Stale Biscuit", caster_player_id: caster.googleSub },
-      after: { type: "status", value: "marked" },
-      outcome: "applied",
-      redirect_trigger: "next_draw",
-    });
-  });
 });

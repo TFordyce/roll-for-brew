@@ -4,7 +4,6 @@ import {
   createTestAdminClient,
   createTestCleanup,
   hasAnonTestEnv,
-  isLayerComplete,
   signUpSignInAndEnterRoom,
 } from "./setup";
 
@@ -226,32 +225,4 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
       expect(row!.input_mode).toBe(submittedVia);
     },
   );
-
-  it("allows a mix of in-app and manual rolls to complete the same layer regardless of each player's preference", async () => {
-    const { starter, other, roundId } = await startCloseAndDeclare(
-      "mixed-input-starter",
-      "mixed-input-other",
-    );
-
-    const { error: manualError } = await starter.client.rpc("submit_manual_roll", {
-      p_round_id: roundId,
-      p_value: 9,
-    });
-    expect(manualError).toBeNull();
-
-    const { error: inAppError } = await other.client.rpc("submit_roll", { p_round_id: roundId });
-    expect(inAppError).toBeNull();
-
-    expect(await isLayerComplete(admin, roundId, 0)).toBe(true);
-
-    const { data: rows, error: rowsError } = await admin
-      .from("rolls")
-      .select("player_id, input_mode")
-      .eq("round_id", roundId);
-    expect(rowsError).toBeNull();
-
-    const inputModeByPlayer = new Map((rows ?? []).map((r) => [r.player_id, r.input_mode]));
-    expect(inputModeByPlayer.get(starter.googleSub)).toBe("manual");
-    expect(inputModeByPlayer.get(other.googleSub)).toBe("in_app");
-  });
 });

@@ -4,7 +4,7 @@
 
 accepted — 2026-10-08. Decided on the C# port map ([#476](https://github.com/TFordyce/roll-for-brew/issues/476)): [Decide how to split pure evaluation from writes in _rr_resolve_eval](https://github.com/TFordyce/roll-for-brew/issues/483), [Decide how the API loads state without per-rule queries](https://github.com/TFordyce/roll-for-brew/issues/482), [Decide who runs stall enforcement and timers](https://github.com/TFordyce/roll-for-brew/issues/490).
 
-**Supersedes ADR 0008** when port slice 2b cuts over (the SQL `advance_layer` / `finalize_layer` / `resolve_round` subtree is deleted). Until then ADR 0008 describes production. ADR 0005 (resolver semantics) is unchanged. ADR 0007 still holds (the roll row renders from resolver output), but its savepoint-rollback dry run is gone.
+**Supersedes ADR 0008** since 2026-11-26: slice 2b cut over, and migration 0168 (#549) deleted the SQL `advance_layer` / `finalize_layer` / `resolve_round` subtree. ADR 0005 (resolver semantics) is unchanged. ADR 0007 still holds (the roll row renders from resolver output), but its savepoint-rollback dry run is gone.
 
 ## Decision
 

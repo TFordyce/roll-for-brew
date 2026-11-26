@@ -5,7 +5,7 @@
 | `getRoundRecap` | `GET /rounds/{id}/recap` |
 | `adminBackfillRound` | `POST /rounds/backfill` |
 
-**Retired flags (#549).** The `getRoundRecap` and `adminBackfillRound` rows and the wrappers' `.rpc` branches are gone, and `get_round_recap`, `_rr_resolve` and `admin_backfill_round` are deleted. The soak (7 to 13 Nov 2026, five play-days, no rollback) is recorded on #548 and #549. There is no rollback flag: to roll back, revert the retirement PRs.
+**Retired flags (#549).** The `getRoundRecap` and `adminBackfillRound` rows and the wrappers' `.rpc` branches are gone, and `get_round_recap`, `_rr_resolve` and `admin_backfill_round` are deleted (migration 0168). The soak (7 to 13 Nov 2026, five play-days, no rollback) is recorded on #548 and #549. There is no rollback flag: to roll back, revert the retirement PRs.
 
 ## The Recap
 
