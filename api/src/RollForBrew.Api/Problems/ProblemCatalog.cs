@@ -100,6 +100,9 @@ public static class ProblemCatalog
         ["roll_value_out_of_range"] = (ProblemClass.Input, "A roll must be between 1 and 20."),
         ["target_player_not_found"] = (ProblemClass.Missing, "That player was not found."),
         ["round_already_active"] = (ProblemClass.State, "A round is already in progress in this room."),
+        ["invalid_draw_trigger"] = (ProblemClass.Input, "A spell draw's trigger must be nat1 or nat20."),
+        ["no_pending_spell_draw"] = (ProblemClass.State, "You have no pending spell draw for this round."),
+        ["pending_swap_decision_open"] = (ProblemClass.State, "A keep-or-swap decision is still waiting on that player."),
     };
 
     public static ProblemException FromRefusal(CommandRefusal e) =>

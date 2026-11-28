@@ -14,6 +14,8 @@ Input to the C# port (map [#476](https://github.com/TFordyce/roll-for-brew/issue
 
 - **Roll submission API-only codes (#551, no `RFBnn`; SQL raised a plain exception).** `admin_required` (403): a `…/as` or Proxy Roll caller is not an admin. `round_not_in_test_room` (422): a `…/as` roll on a round outside the Test Room. `roll_value_out_of_range` (400): a manual or Proxy value outside 1 to 20. `target_player_not_found` (404): a Proxy Roll for a player who does not exist. A missing round reuses `round_not_found`. Rolling reuses `round_not_open_for_rolling` (`RFB01`), `not_expected_roller` (`RFB02`), `round_closed_for_proxy_roll` (`RFB32`) and `rolling_held_for_compelled_casts` (`RFB54`).
 
+- **Spell draw API-only codes (#553, no `RFBnn`; SQL raised a plain exception).** `invalid_draw_trigger` (400): a trigger other than `nat1` or `nat20`. `no_pending_spell_draw` (409): a draw against a round where the caller has no Pending Spell Draw, which is also what a double-submitted draw gets. `pending_swap_decision_open` (409): the drawer (or the puppet draw's recipient) still has a keep-or-swap decision open. The puppet draw reuses `admin_required`, `round_not_in_test_room` and `target_player_not_found`. A named card that is not in the deck stays `card_not_in_deck` (`RFB06`), and a missing round is `round_not_found`.
+
 **HTTP status, by class:**
 
 | Class | Status | Meaning |

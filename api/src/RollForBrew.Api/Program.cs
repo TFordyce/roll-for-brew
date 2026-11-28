@@ -3,6 +3,7 @@ using Npgsql;
 using RollForBrew.Api.ActingAs;
 using RollForBrew.Api.Auth;
 using RollForBrew.Api.Data;
+using RollForBrew.Api.Draws;
 using RollForBrew.Api.Health;
 using RollForBrew.Api.Orders;
 using RollForBrew.Api.Problems;
@@ -55,6 +56,7 @@ app.MapRoundRecap();
 app.MapRoundBackfill();
 app.MapRoundCommands();
 app.MapRolls();
+app.MapDraws();
 app.Run();
 
 public partial class Program;

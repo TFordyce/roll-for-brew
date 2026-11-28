@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiClientFor, type ApiClient } from "@/lib/api/client";
+import { portFlagDecides, portFlagRows } from "@/lib/api/portFlags";
 import { unwrapJoinedPlayer } from "./playerRow";
 
 export type RoundStatus = "open" | "closed" | "resolved" | "cancelled";
@@ -22,6 +23,21 @@ export type RoundParticipant = {
   declaredAt: string;
   excludedAt: string | null;
 };
+
+/**
+ * Whether this round's command goes to the API. Costs one small port_flags select while no
+ * room-scoped row exists (the global row, or none, decides every room); the round's room id
+ * is read only when a room row could decide it. An unknown round stays on the RPC.
+ */
+export async function useApiForRound(supabase: SupabaseClient, slice: string, roundId: string): Promise<boolean> {
+  const rows = await portFlagRows(supabase, slice);
+  if (!rows.some((r) => r.room_id !== null)) return portFlagDecides(rows);
+  try {
+    return portFlagDecides(rows, await getRoundRoomId(supabase, roundId));
+  } catch {
+    return false;
+  }
+}
 
 type ApiFactory = () => ApiClient;
 const defaultApi = (supabase: SupabaseClient): ApiFactory => () => apiClientFor(supabase);

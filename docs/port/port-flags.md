@@ -72,3 +72,7 @@ What the pages do (shells around `RoomViewProvider` + `RoomScreen`):
 * Interim `enforceStall(roomId)` (`src/app/rounds/enforceStall.ts`) runs the stall timeout and the replay auto-decline on mount, resync and the deadline timer. Delete it with slice 7 (StallCheck).
 * The view drops a round the moment it resolves, so `RoomScreen` keeps `RoundReveal` mounted until its results timer fires (`onRevealed` / `onResultsDone`).
 * The Test Room now shows the same panels as the home page (rating aside), driven by `viewer.panels`; its "Roll For" list is read from SQL in the browser (`LiveRollForOthers`) because the view has no per-other-player roll duties.
+
+## Spell draws (#553, human step, not run by the agent)
+
+Slices `recordPendingSpellDraw`, `drawPendingSpellCard`, `drawPendingSpellCardManual` and `drawSpellCardAs`, seeded off by migration `0170`. The wrappers in `src/lib/supabase/spellCards.ts` decide with `useApiForRound` (`src/lib/supabase/rounds.ts`), so a Test Room row switches only that room. Flip SQL, rollback and the bridges: `spell-draws-bridges.md`.

@@ -82,6 +82,19 @@ public class RfbApiRoleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Role_has_execute_on_the_card_landing_bridge_but_not_the_draw_entry_points()
+    {
+        foreach (var bridge in new[] { "_land_drawn_instance(text, uuid, text)", "_lock_next_draw_mark(text)", "_rr_free_hand_slot(text)" })
+            Assert.True(await Flag($"select has_function_privilege('rfb_api', 'public.{bridge}', 'execute')"), bridge);
+        foreach (var replaced in new[]
+        {
+            "record_pending_spell_draw(uuid, text)", "draw_pending_spell_card(uuid)",
+            "draw_pending_spell_card_manual(uuid, uuid)", "draw_spell_card_as(text, uuid, text, uuid, uuid)",
+        })
+            Assert.False(await Flag($"select has_function_privilege('rfb_api', 'public.{replaced}', 'execute')"), replaced);
+    }
+
+    [Fact]
     public async Task Login_works_and_cannot_create_objects_or_touch_auth()
     {
         await using var conn = new NpgsqlConnection(_db.ApiConnectionString);

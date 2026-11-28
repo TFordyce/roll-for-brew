@@ -171,10 +171,10 @@ Slice 3's SQL (round lifecycle and roll submission) is gone, so tests that calle
 
 Both drove the Marked for Brew / Stale Biscuit redirect through a Proxy Roll crit. The redirect itself is the `_apply_crit_redirect` bridge, which the other crit entry points still exercise in TS.
 
-| Slice | TS file | Test |
-|---|---|---|
-| 4 (#553/#554) | `marked-for-brew.test.ts` | admin_proxy_roll: a proxied nat 20 for the target is the caster's draw |
-| 4 (#553/#554) | `stale-biscuit.test.ts` | admin_proxy_roll: a proxied nat 20 for the target, drawn by the target, goes to the caster |
+| Slice | TS file | Test | C# coverage (slice 4 Exit 1, #553) |
+|---|---|---|---|
+| 4 (#553/#554) | `marked-for-brew.test.ts` | admin_proxy_roll: a proxied nat 20 for the target is the caster's draw | `SpellDrawHttpTests.A_proxied_nat_20_for_a_marked_player_is_the_casters_draw` |
+| 4 (#553/#554) | `stale-biscuit.test.ts` | admin_proxy_roll: a proxied nat 20 for the target, drawn by the target, goes to the caster | `SpellDrawHttpTests.A_proxied_nat_20_drawn_by_a_player_under_stale_biscuit_goes_to_the_caster` |
 
 ## Every test
 

@@ -285,7 +285,8 @@ export async function drawPendingSpellCardManualAction(
   try {
     await drawPendingSpellCardManual(supabase, roundId, match.cardId);
   } catch (error) {
-    if ((error as { code?: string } | null)?.code === "RFB06") {
+    const code = (error as { code?: string } | null)?.code;
+    if (code === "RFB06" || code === "card_not_in_deck") {
       return {
         status: "error",
         message: `${match.name} isn't currently in the deck (already held, or already drawn) — check with your table.`,
