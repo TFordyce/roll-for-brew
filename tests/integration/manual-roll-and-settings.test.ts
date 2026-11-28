@@ -5,16 +5,16 @@ import {
   createTestCleanup,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
-// player_settings table and the submit_manual_roll RPC (supabase/migrations/
-// 0008_player_settings_and_manual_rolls.sql) through real signed-in sessions,
-// covering the acceptance criteria of issue #22: manual roll submission and
-// rolls.input_mode recording, for each of the three roll_input_mode
-// preferences (in_app_only / manual_only / both — the preference itself
-// never gates which RPC a caller may invoke server-side; it's purely a
-// client-side UI choice, so all three settings can call either RPC).
+// player_settings table (supabase/migrations/
+// 0008_player_settings_and_manual_rolls.sql) and the rolls read policy
+// through real signed-in sessions (issue #22). Submitting a manual roll is
+// the API's RollSubmission now (#552).
 describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22)", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
@@ -33,10 +33,10 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
   async function startCloseAndDeclare(starterLabel: string, otherLabel: string) {
     const [starter, other] = await Promise.all([signUp(starterLabel), signUp(otherLabel)]);
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await starter.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
+    await closeRoundAs(roundId);
 
     return { starter, other, roundId: roundId as string };
   }
@@ -105,49 +105,18 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
     expect(error).not.toBeNull();
   });
 
-  it("records a manual roll with input_mode = 'manual' and enforces the 1-20 range", async () => {
-    const { starter, roundId } = await startCloseAndDeclare(
-      "manual-roll-starter",
-      "manual-roll-other",
-    );
-
-    const { error: tooLowError } = await starter.client.rpc("submit_manual_roll", {
-      p_round_id: roundId,
-      p_value: 0,
-    });
-    expect(tooLowError).not.toBeNull();
-
-    const { error: tooHighError } = await starter.client.rpc("submit_manual_roll", {
-      p_round_id: roundId,
-      p_value: 21,
-    });
-    expect(tooHighError).not.toBeNull();
-
-    const { error } = await starter.client.rpc("submit_manual_roll", {
-      p_round_id: roundId,
-      p_value: 17,
-    });
-    expect(error).toBeNull();
-
-    const { data: row, error: rowError } = await starter.client
-      .from("rolls")
-      .select("value, input_mode")
-      .eq("round_id", roundId)
-      .eq("player_id", starter.googleSub)
-      .single();
-    expect(rowError).toBeNull();
-    expect(row).toMatchObject({ value: 17, input_mode: "manual" });
-  });
-
   it("hides a manual roll from other players until they've personally rolled, same as an in-app roll", async () => {
     const { starter, other, roundId } = await startCloseAndDeclare(
       "manual-hidden-starter",
       "manual-hidden-other",
     );
 
-    const { error } = await starter.client.rpc("submit_manual_roll", {
-      p_round_id: roundId,
-      p_value: 12,
+    const { error } = await admin.from("rolls").insert({
+      round_id: roundId,
+      player_id: starter.googleSub,
+      value: 12,
+      input_mode: "manual",
+      modifier_snapshot: 0,
     });
     expect(error).toBeNull();
 
@@ -159,70 +128,4 @@ describe.skipIf(!hasAnonTestEnv)("manual roll entry + player_settings (issue #22
     expect(peekError).toBeNull();
     expect(peek).toEqual([]);
   });
-
-  it("submit_manual_roll rejects a caller who is not a declared participant", async () => {
-    const [starter, other, bystander] = await Promise.all([
-      signUp("manual-guard-starter"),
-      signUp("manual-guard-other"),
-      signUp("manual-guard-bystander"),
-    ]);
-
-    const { data: roundId } = await starter.client.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await starter.client.rpc("close_round", { p_round_id: roundId });
-
-    const { error } = await bystander.client.rpc("submit_manual_roll", {
-      p_round_id: roundId,
-      p_value: 10,
-    });
-    expect(error).not.toBeNull();
-  });
-
-  // Covers the acceptance criterion "Integration test covering manual roll
-  // submission and input_mode recording for all three preference settings"
-  // directly: for each of in_app_only / manual_only / both, a player who has
-  // set that preference submits a roll and rolls.input_mode records the
-  // actual input method used — not the preference itself, since (per the
-  // spec) 'both' has no locked-in mode and the preference never gates which
-  // RPC a caller may invoke server-side.
-  it.each([
-    { preference: "in_app_only", submittedVia: "in_app" as const },
-    { preference: "manual_only", submittedVia: "manual" as const },
-    { preference: "both", submittedVia: "in_app" as const },
-    { preference: "both", submittedVia: "manual" as const },
-  ] as const)(
-    "records input_mode='$submittedVia' for a player whose preference is '$preference'",
-    async ({ preference, submittedVia }) => {
-      const { starter, other, roundId } = await startCloseAndDeclare(
-        `pref-${preference}-${submittedVia}-starter`,
-        `pref-${preference}-${submittedVia}-other`,
-      );
-
-      const { error: settingsError } = await starter.client
-        .from("player_settings")
-        .upsert({ player_id: starter.googleSub, roll_input_mode: preference });
-      expect(settingsError).toBeNull();
-
-      const { error: submitError } =
-        submittedVia === "manual"
-          ? await starter.client.rpc("submit_manual_roll", { p_round_id: roundId, p_value: 13 })
-          : await starter.client.rpc("submit_roll", { p_round_id: roundId });
-      expect(submitError).toBeNull();
-
-      const { error: otherSubmitError } = await other.client.rpc("submit_roll", {
-        p_round_id: roundId,
-      });
-      expect(otherSubmitError).toBeNull();
-
-      const { data: row, error: rowError } = await admin
-        .from("rolls")
-        .select("input_mode")
-        .eq("round_id", roundId)
-        .eq("player_id", starter.googleSub)
-        .single();
-      expect(rowError).toBeNull();
-      expect(row!.input_mode).toBe(submittedVia);
-    },
-  );
 });

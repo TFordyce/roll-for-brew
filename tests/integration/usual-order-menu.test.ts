@@ -6,6 +6,8 @@ import {
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
   signUpSignInIntoNonTestRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises
@@ -194,7 +196,7 @@ describe.skipIf(!hasAnonTestEnv)("submit_order", () => {
   it("submits an Order for the caller in an open round they started", async () => {
     const player = await signUp("order-submit-open");
 
-    const { data: roundId, error: startError } = await player.client.rpc("start_round");
+    const { data: roundId, error: startError } = await startRoundAs(player.client);
     expect(startError).toBeNull();
     cleanup.trackRound(roundId as string);
 
@@ -216,7 +218,7 @@ describe.skipIf(!hasAnonTestEnv)("submit_order", () => {
   it("upserts on re-pick instead of creating a second row", async () => {
     const player = await signUp("order-repick");
 
-    const { data: roundId } = await player.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(player.client);
     cleanup.trackRound(roundId as string);
 
     await player.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "tea" });
@@ -235,7 +237,7 @@ describe.skipIf(!hasAnonTestEnv)("submit_order", () => {
   it("succeeds even when the caller has no matching Usual set", async () => {
     const player = await signUp("order-no-usual");
 
-    const { data: roundId } = await player.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(player.client);
     cleanup.trackRound(roundId as string);
 
     const { error } = await player.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "tea" });
@@ -245,7 +247,7 @@ describe.skipIf(!hasAnonTestEnv)("submit_order", () => {
   it("rejects a drink_type other than tea/coffee (RFB28)", async () => {
     const player = await signUp("order-bad-drink");
 
-    const { data: roundId } = await player.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(player.client);
     cleanup.trackRound(roundId as string);
 
     const { error } = await player.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "juice" });
@@ -358,9 +360,9 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
       signUp("menu-happy-other"),
     ]);
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
 
     await setUsual(starter, "tea", "Dairy", "1 Tsp", true);
     await setUsual(other, "coffee", "Oat", "None", false);
@@ -400,7 +402,7 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
       signUp("menu-nonparticipant-outsider"),
     ]);
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
 
     // Order is decoupled from declare-in (ADR 0004) -- this succeeds even
@@ -421,9 +423,9 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
       signUp("menu-no-order-silent"),
     ]);
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
-    await silent.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(silent.client, roundId);
 
     await starter.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "tea" });
 
@@ -439,7 +441,7 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
   it("surfaces no_preference_set when the ordering player has no matching Usual", async () => {
     const starter = await signUp("menu-no-usual-starter");
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
     await starter.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "coffee" });
 
@@ -458,7 +460,7 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
   it("only matches a Usual for the same drink_type the player ordered", async () => {
     const starter = await signUp("menu-drink-mismatch-starter");
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
     // Sets a tea Usual but orders coffee -- the coffee Usual doesn't exist.
     await setUsual(starter, "tea", "Dairy", "1 Tsp");
@@ -476,7 +478,7 @@ describe.skipIf(!hasAnonTestEnv)("round_menu", () => {
   it("live-joins Usual: editing it after the round resolves changes the Menu (ADR 0003)", async () => {
     const starter = await signUp("menu-live-join-starter");
 
-    const { data: roundId } = await starter.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starter.client);
     cleanup.trackRound(roundId as string);
     await setUsual(starter, "tea", "Dairy", "1 Tsp");
     await starter.client.rpc("submit_order", { p_round_id: roundId, p_drink_type: "tea" });

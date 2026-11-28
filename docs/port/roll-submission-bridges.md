@@ -1,6 +1,6 @@
 # Roll submission: flags and bridges (slice 3b, #551)
 
-Five commands run through the C# API: the player's auto roll, the player's manual roll, the Test Room's two `_as` twins, and the admin's Proxy Roll. Since #552 the TS wrappers in `rolls.ts` call the API only and read no flag. The flag rows and SQL functions below stay until the #552 drop PR, but nothing in the app reads or calls them.
+Five commands run through the C# API: the player's auto roll, the player's manual roll, the Test Room's two `_as` twins, and the admin's Proxy Roll. Since #552 the TS wrappers in `rolls.ts` call the API only, and the SQL functions and flag rows below are deleted (migration `0169`).
 
 | Flag (`port_flags.slice`) | Endpoint | SQL it replaces |
 |---|---|---|
@@ -18,7 +18,7 @@ The "same flow" is the TS action flow, unchanged: each action submits the roll, 
 
 ## Flip history
 
-Flipped Test Room first, then global, and soaked 5 play-days with no rollback (recorded on #551 and #552). There is no rollback now: the wrappers no longer read the flags, so turning a row off changes nothing. Recovering the SQL path means reverting the #552 code-half PR and deploying.
+Flipped Test Room first, then global, and soaked 5 play-days with no rollback (recorded on #551 and #552). There is no rollback: the SQL path is deleted.
 
 ## What C# decides, and the bridges
 
@@ -32,9 +32,9 @@ One piece of rules logic stays in SQL as a bridge, because it spends a Marked fo
 
 It is an invoker function, so `rfb_api` also needs `_rr_active_effects_as_of(uuid, uuid)` and `_rr_participated_rounds_elapsed(uuid, text, timestamptz, timestamptz)`, granted in `0167`. Revoke all three with the bridge.
 
-## SQL-deletion list
+## SQL deleted at #552 (migration 0169)
 
-The soak passed (16–20 Nov, confirmed on #552). The #552 code half removed the `.rpc` branches in `src/lib/supabase/rolls.ts`. The #552 drop PR removes the five functions in the table above (with their `authenticated` grants), the five `port_flags` rows, and the SQL-side tests that call them directly (`tests/integration`). `_rr_apply_fixed_roll` is then unused: drop it with them (its ward gate `_rr_active_ward_gate` is still read by the reaction-window shims until the casting slice).
+The soak passed (16–20 Nov, confirmed on #552). #631 removed the `.rpc` branches in `src/lib/supabase/rolls.ts`. Migration `0169` drops the five functions in the table above, their `port_flags` rows, and the helpers only they reached: `_rr_apply_fixed_roll`, `is_expected_layer_roller` and `_compelled_cast_step_open`. The ward gate `_rr_active_ward_gate` stays, because the reaction-window shims still read it until the casting slice.
 
 ## Known differences from the SQL path
 

@@ -6,6 +6,9 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Covers issue #316 -- Effect Invocation
@@ -44,14 +47,14 @@ describe.skipIf(!hasAnonTestEnv)("Effect Invocation -- Group A (issue #316)", ()
   }
 
   async function openAndCloseRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
-    const { error: cErr } = await starter.client.rpc("close_round", { p_round_id: roundId });
+    const { error: cErr } = await closeRoundAs(roundId);
     expect(cErr).toBeNull();
     return roundId as string;
   }
@@ -109,11 +112,11 @@ describe.skipIf(!hasAnonTestEnv)("Effect Invocation -- Group A (issue #316)", ()
     const p1 = await signUp("ei-genie-1");
     const p2 = await signUp("ei-genie-2");
 
-    const { data: roundId, error } = await p1.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(p1.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     // p2 must be a participant before Genie can target them pre-roll.
-    const { error: dErr } = await p2.client.rpc("declare_in", { p_round_id: roundId });
+    const { error: dErr } = await declareInAs(p2.client, roundId);
     expect(dErr).toBeNull();
 
     await forceHold(admin, p1.googleSub, "Genie in the Teapot");
@@ -155,10 +158,10 @@ describe.skipIf(!hasAnonTestEnv)("Effect Invocation -- Group A (issue #316)", ()
     const p2 = await signUp("ei-genie2-2");
     const p3 = await signUp("ei-genie2-3");
 
-    const { data: roundId } = await p1.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(p1.client);
     cleanup.trackRound(roundId as string);
     for (const o of [p2, p3]) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
 
@@ -201,7 +204,7 @@ describe.skipIf(!hasAnonTestEnv)("Effect Invocation -- Group A (issue #316)", ()
     const p1 = await signUp("ei-genie-held-1");
     const p2 = await signUp("ei-genie-held-2");
 
-    const { data: roundId } = await p1.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(p1.client);
     cleanup.trackRound(roundId as string);
 
     // Cold Tea is now held by p2 -> not nameable.
@@ -220,7 +223,7 @@ describe.skipIf(!hasAnonTestEnv)("Effect Invocation -- Group A (issue #316)", ()
   it("rejects naming an Epic card / Genie itself (RFB50)", async () => {
     const p1 = await signUp("ei-genie-epic-1");
     await signUp("ei-genie-epic-2");
-    const { data: roundId } = await p1.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(p1.client);
     cleanup.trackRound(roundId as string);
     await forceHold(admin, p1.googleSub, "Genie in the Teapot");
 

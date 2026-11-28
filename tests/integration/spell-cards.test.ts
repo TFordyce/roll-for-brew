@@ -8,6 +8,9 @@ import {
   hasAnonTestEnv,
   roundModifierEffects,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
@@ -157,7 +160,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     const { client, googleSub } = await signUpSignInAndEnter("cast-self-flat");
     const instanceId = await forceHold(admin, googleSub, "Lucky Sip");
 
-    const { data: roundId } = await client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(client);
     cleanup.trackRound(roundId as string);
 
     const { data: castId, error } = await client.rpc("cast_spell_card", {
@@ -197,9 +200,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     ]);
     await forceHold(admin, casterSub, "Milky Brew");
 
-    const { data: roundId } = await casterClient.rpc("start_round");
+    const { data: roundId } = await startRoundAs(casterClient);
     cleanup.trackRound(roundId as string);
-    await targetClient.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(targetClient, roundId);
 
     const { data: castId, error: castError } = await casterClient.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -212,8 +215,8 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     });
     expect(pending).toEqual([{ cast_id: castId, card_name: "Milky Brew", target: "OPPONENT" }]);
 
-    await casterClient.rpc("declare_in", { p_round_id: roundId });
-    const { error: closeError } = await casterClient.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(casterClient, roundId);
+    const { error: closeError } = await closeRoundAs(roundId);
     expect(closeError).toBeNull();
 
     const { error: targetError } = await casterClient.rpc("set_spell_cast_target", {
@@ -241,7 +244,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     const { client, googleSub } = await signUpSignInAndEnter("cast-reaction-reject");
     await forceHold(admin, googleSub, "Six Sugars"); // Reaction, Self
 
-    const { data: roundId } = await client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(client);
     cleanup.trackRound(roundId as string);
 
     const { error } = await client.rpc("cast_spell_card", {
@@ -258,7 +261,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     ]);
     await forceHold(admin, casterSub, "Lucky Sip");
 
-    const { data: roundId } = await starterClient.rpc("start_round");
+    const { data: roundId } = await startRoundAs(starterClient);
     cleanup.trackRound(roundId as string);
     // casterClient deliberately never declares into this round.
 
@@ -277,10 +280,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: catalog, draw/hold/swap, pre-roll
     ]);
     await forceHold(admin, casterSub, "Lucky Sip");
 
-    const { data: roundId } = await casterClient.rpc("start_round");
+    const { data: roundId } = await startRoundAs(casterClient);
     cleanup.trackRound(roundId as string);
-    await otherClient.rpc("declare_in", { p_round_id: roundId });
-    await casterClient.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(otherClient, roundId);
+    await closeRoundAs(roundId);
 
     const { error } = await casterClient.rpc("cast_spell_card", {
       p_round_id: roundId,

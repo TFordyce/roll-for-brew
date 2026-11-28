@@ -34,7 +34,7 @@ An exception rolls the whole call back and the API returns an error: a resolver 
 
 `LayerReadiness.Of` returns the expected rollers, who has rolled, and typed holds with who each waits on: pending die, deferred target, compelled cast, Revolt pick. `IsComplete`, `HoldReason` and `MayRoll` derive from it, so a new hold kind is one entry.
 
-The SQL copies `is_expected_layer_roller` and `admin_proxy_roll` stay as they are under the rules freeze, and go when their own slices port (roll submission and Proxy Roll in slice 3). `_layer_is_complete` went at #549.
+The SQL copies went with their slices: `_layer_is_complete` at #549, `is_expected_layer_roller` and `admin_proxy_roll` at #552.
 
 ## Die coordination
 

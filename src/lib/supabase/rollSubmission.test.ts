@@ -38,7 +38,7 @@ it("an auto roll returns the API's rolled value", async () => {
 });
 
 describe("a stale roll", () => {
-  it.each(["RFB01", "RFB02", "RFB32", "round_not_open_for_rolling", "not_expected_roller", "round_closed_for_proxy_roll"])(
+  it.each(["round_not_open_for_rolling", "not_expected_roller", "round_closed_for_proxy_roll"])(
     "treats %s as a lost race",
     (code) => expect(isStaleRoundError({ code })).toBe(true),
   );

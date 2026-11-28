@@ -51,7 +51,7 @@ describe("startRound", () => {
 });
 
 describe("isStaleRoundError", () => {
-  it.each(["RFB05", "RFB31", "round_not_open_for_declarations", "round_closed_for_late_declare"])("treats %s as a lost race", (code) =>
+  it.each(["round_not_open_for_declarations", "round_closed_for_late_declare"])("treats %s as a lost race", (code) =>
     expect(isStaleRoundError({ code })).toBe(true),
   );
   it("does not swallow a refusal that is the caller's problem", () => expect(isStaleRoundError({ code: "close_not_starter" })).toBe(false));

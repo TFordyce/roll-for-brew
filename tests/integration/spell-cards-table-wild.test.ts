@@ -8,6 +8,9 @@ import {
   hasAnonTestEnv,
   roundModifierEffects,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises issue
@@ -37,9 +40,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     ]);
     await forceHold(admin, caster.googleSub, "Boil Over");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -57,7 +60,7 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     );
     expect(beforeClose).toHaveLength(0);
 
-    const { error: closeError } = await caster.client.rpc("close_round", { p_round_id: roundId });
+    const { error: closeError } = await closeRoundAs(roundId);
     expect(closeError).toBeNull();
 
     const { data: effectsAll, error: effectsError } = await roundModifierEffects(admin, caster.client, roundId);
@@ -83,12 +86,12 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     ]);
     await forceHold(admin, caster.googleSub, "Scalding Pour");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await closeRoundAs(roundId);
 
     const { data: effects } = await roundModifierEffects(admin, caster.client, roundId);
     const rows = byTarget(
@@ -122,9 +125,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     ]);
     await forceHold(admin, caster.googleSub, "Calami-Tea");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -168,10 +171,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     ]);
     await forceHold(admin, caster.googleSub, "Calami-Tea");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
     for (const t of [t1, t2, t3, t4]) {
-      await t.client.rpc("declare_in", { p_round_id: roundId });
+      await declareInAs(t.client, roundId);
     }
 
     const { error } = await caster.client.rpc("cast_spell_card", {
@@ -188,9 +191,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     ]);
     await forceHold(admin, caster.googleSub, "Wild Brew Surge");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -241,10 +244,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
       signUp("drip-tray-target"),
     ]);
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
+    await closeRoundAs(roundId);
 
     // Drip Tray is Reaction-timed; needs an open reaction window to cast
     // into. forceHold must happen before opening the window — otherwise
@@ -278,9 +281,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     const [caster, target] = await Promise.all([signUp("saucer-caster"), signUp("saucer-target")]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -308,9 +311,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
     ]);
     await forceHold(admin, caster.googleSub, "Inscribed Saucer");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { error } = await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
     expect(error).not.toBeNull();
@@ -338,9 +341,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: TABLE/WILD casting (#115)", () =>
         .eq("player_id", player.googleSub);
     }
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,

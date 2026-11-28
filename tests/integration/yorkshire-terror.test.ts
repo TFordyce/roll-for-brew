@@ -6,6 +6,8 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Covers issue #286:
@@ -73,9 +75,9 @@ describe.skipIf(!hasAnonTestEnv)("Yorkshire Terror: forced_reroll effect row (is
     ]);
     await forceHold(admin, caster.googleSub, "Yorkshire Terror");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
 
     const { error } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,

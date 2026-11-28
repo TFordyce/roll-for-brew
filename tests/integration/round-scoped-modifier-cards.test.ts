@@ -6,6 +6,8 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Covers issue #343 — the three
@@ -43,11 +45,11 @@ describe.skipIf(!hasAnonTestEnv)("Round-scoped modifier snapshot cards (issue #3
     starter: Awaited<ReturnType<typeof signUp>>,
     others: Awaited<ReturnType<typeof signUp>>[],
   ) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;

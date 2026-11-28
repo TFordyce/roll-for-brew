@@ -5,6 +5,7 @@ import {
   createTestCleanup,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
@@ -33,7 +34,7 @@ describe.skipIf(!hasAnonTestEnv)("spell_draws: site-wide read RLS policy", () =>
 
   it("a second signed-in player can read a player's spell_draws rows", async () => {
     const { client: drawer, googleSub: drawerId } = await signUpSignInAndEnter("draws-drawer");
-    const { data: roundId, error: roundError } = await drawer.rpc("start_round");
+    const { data: roundId, error: roundError } = await startRoundAs(drawer);
     if (roundError) throw roundError;
     cleanup.trackRound(roundId as string);
     await drawACard(drawer, roundId as string);
@@ -57,7 +58,7 @@ describe.skipIf(!hasAnonTestEnv)("spell_draws: site-wide read RLS policy", () =>
       .eq("id", testPlayerId);
     if (markTestError) throw markTestError;
 
-    const { data: roundId, error: roundError } = await testClient.rpc("start_round");
+    const { data: roundId, error: roundError } = await startRoundAs(testClient);
     if (roundError) throw roundError;
     cleanup.trackRound(roundId as string);
     await drawACard(testClient, roundId as string);

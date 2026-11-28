@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, forceHold, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import { createTestAdminClient, createTestCleanup, forceHold, hasAnonTestEnv, signUpSignInAndEnterRoom, closeRoundAs, declareInAs, startRoundAs } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises issue
 // #250's get_reaction_window_pending_players (0065): the full per-window
@@ -35,10 +35,10 @@ describe.skipIf(!hasAnonTestEnv)("get_reaction_window_pending_players (issue #25
     ]);
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
+    await closeRoundAs(roundId);
 
     expect(await pendingPlayerIds(caster.client, roundId as string)).toEqual([]);
   });
@@ -51,10 +51,10 @@ describe.skipIf(!hasAnonTestEnv)("get_reaction_window_pending_players (issue #25
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forceHold(admin, other.googleSub, "Mug Shot"); // Reaction, Opponent
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
+    await closeRoundAs(roundId);
 
     await caster.client.rpc("open_reaction_window", { p_round_id: roundId, p_layer: 0 });
 
@@ -76,10 +76,10 @@ describe.skipIf(!hasAnonTestEnv)("get_reaction_window_pending_players (issue #25
     await forceHold(admin, caster.googleSub, "Six Sugars"); // Reaction, Self
     await forceHold(admin, other.googleSub, "Mug Shot"); // Reaction, Opponent
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
+    await closeRoundAs(roundId);
 
     await caster.client.rpc("open_reaction_window", { p_round_id: roundId, p_layer: 0 });
 

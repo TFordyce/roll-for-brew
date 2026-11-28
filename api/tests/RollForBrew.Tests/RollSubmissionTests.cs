@@ -174,6 +174,39 @@ public class RollSubmissionTests
         Assert.Equal(wardCast.ToString(), entry.GetProperty("ward_cast_id").GetString());
     }
 
+    [Theory]
+    [InlineData("advantage", "positive", true)]
+    [InlineData("advantage", "negative", false)]
+    [InlineData("disadvantage", "negative", true)]
+    public void A_roll_ward_of_the_matching_polarity_stops_the_second_die_and_marks_the_cast_warded(string kind, string polarity, bool blocked)
+    {
+        var cast = Cast(kind, seq: 5);
+        var wardCast = Guid.NewGuid();
+        var ward = new ActiveEffectRow(Guid.NewGuid(), Room, "p-b", "p-b", wardCast, Card, "ward",
+            JsonDocument.Parse($$"""{"domain": ["roll"], "polarity": ["{{polarity}}"]}""").RootElement,
+            null, Now.AddHours(-1), false, null);
+        var wardSource = Cast("ward", seq: 1) with { Id = wardCast };
+        var dice = new ScriptedDieRoller(9, 14);
+
+        var d = RollSubmission.Auto(Snapshot(casts: [wardSource, cast], effects: [ward]), Round, "p-b", dice);
+
+        var entry = Transform(d, cast).GetProperty("players")[0];
+        if (blocked)
+        {
+            Assert.Equal(9, d.Result);
+            Assert.Null(TheRoll(d).DiscardedValue);
+            Assert.Equal(1, dice.Remaining);
+            Assert.True(entry.GetProperty("warded").GetBoolean());
+            Assert.Equal(entry.GetProperty("before").GetInt32(), entry.GetProperty("after").GetInt32());
+        }
+        else
+        {
+            Assert.Equal(14, d.Result);
+            Assert.Equal(9, TheRoll(d).DiscardedValue);
+            Assert.False(entry.TryGetProperty("warded", out _));
+        }
+    }
+
     [Fact]
     public void A_tie_break_layer_roll_ignores_advantage_and_goes_in_the_current_layer()
     {

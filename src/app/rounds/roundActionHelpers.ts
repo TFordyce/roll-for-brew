@@ -31,14 +31,9 @@ export async function maybeDrawSpellCardAs(
 export function isStaleRoundError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
   return (
-    code === "RFB01" ||
-    code === "RFB02" ||
     code === "RFB03" ||
     code === "RFB04" ||
-    code === "RFB05" ||
-    code === "RFB31" ||
-    code === "RFB32" ||
-    // The API's problem codes for the same races, once a slice's flag is on (docs/port/error-codes.md).
+    // The API's problem codes for the same races (docs/port/error-codes.md).
     code === "round_not_open_for_rolling" ||
     code === "not_expected_roller" ||
     code === "round_not_open_for_casting" ||

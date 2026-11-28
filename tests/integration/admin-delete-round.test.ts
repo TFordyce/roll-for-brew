@@ -5,6 +5,7 @@ import {
   createTestCleanup,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the admin
@@ -31,7 +32,7 @@ describe.skipIf(!hasAnonTestEnv)("admin_delete_round: hard-deletes an invalid ro
   }
 
   async function startRound(client: SupabaseClient) {
-    const { data, error } = await client.rpc("start_round", { p_room_id: null });
+    const { data, error } = await startRoundAs(client, null);
     if (error) throw error;
     const roundId = data as string;
     cleanup.trackRound(roundId);

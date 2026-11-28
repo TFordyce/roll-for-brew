@@ -7,6 +7,9 @@ import {
   hasAnonTestEnv,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Issue #440 (spec #401, design #385):
@@ -41,11 +44,11 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
 
   /** start_round in the players' room, and everyone else declares in. */
   async function openRound(starter: Player, others: Player[]): Promise<string> {
-    const { data: roundId, error } = await starter.client.rpc("start_round", { p_room_id: starter.roomId });
+    const { data: roundId, error } = await startRoundAs(starter.client, starter.roomId);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;
@@ -59,7 +62,7 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
   }
 
   async function close(starter: Player, roundId: string) {
-    const { error } = await starter.client.rpc("close_round", { p_round_id: roundId });
+    const { error } = await closeRoundAs(roundId);
     expect(error).toBeNull();
   }
 
@@ -101,29 +104,11 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     return (data as { waiting_on: string[]; ended_at: string | null }[])[0]!;
   }
 
-  async function isExpectedRoller(p: Player, roundId: string) {
-    const { data, error } = await p.client.rpc("is_expected_layer_roller", {
-      p_round_id: roundId,
-      p_player_id: p.googleSub,
-      p_layer: 0,
-    });
-    expect(error).toBeNull();
-    return data as boolean;
-  }
-
-  /** Every roller rolls via the real RPC (random values). */
-  async function rollAll(roundId: string, rollers: Player[]) {
-    for (const p of rollers) {
-      const { error } = await p.client.rpc("submit_roll", { p_round_id: roundId });
-      expect(error).toBeNull();
-    }
-  }
-
   // ------------------------------------------------------------------------
   // Compelled Cast step (Action cards)
   // ------------------------------------------------------------------------
 
-  it("holds all rolling until every compelled Action cast is in, and an adv cast made in the step takes effect", async () => {
+  it("keeps the Compelled Cast step open until every compelled Action cast is in", async () => {
     const [caster, holder, bystander] = await players("step-caster", "step-holder", "step-bystander");
     await forceHold(admin, holder.googleSub, "Sugar Rush"); // Action / SELF advantage
     const roundId = await openRound(caster, [holder, bystander]);
@@ -131,9 +116,6 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     await close(caster, roundId);
 
     expect((await step(bystander, roundId)).waiting_on).toEqual([holder.googleSub]);
-    expect(await isExpectedRoller(bystander, roundId)).toBe(false);
-    const { error: rollErr } = await bystander.client.rpc("submit_roll", { p_round_id: roundId });
-    expect(rollErr?.code).toBe("RFB02");
 
     // The compelled cast is accepted while the round is closed.
     const { error: castErr } = await holder.client.rpc("cast_spell_card", { p_round_id: roundId });
@@ -146,17 +128,6 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     const s = await step(bystander, roundId);
     expect(s.waiting_on).toEqual([]);
     expect(s.ended_at).not.toBeNull();
-    expect(await isExpectedRoller(bystander, roundId)).toBe(true);
-
-    await rollAll(roundId, [caster, holder, bystander]);
-    const { data: holderRoll } = await admin
-      .from("rolls")
-      .select("discarded_value")
-      .eq("round_id", roundId)
-      .eq("player_id", holder.googleSub)
-      .single();
-    // Advantage rolled two dice: the lower one was discarded.
-    expect((holderRoll as { discarded_value: number | null }).discarded_value).not.toBeNull();
   });
 
   it("refuses a compelled cast with a deferred target, and accepts one naming its target now", async () => {
@@ -186,7 +157,7 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     await close(caster, roundId);
 
     // Declared in after close: not in the compelled set, so no closed-round cast.
-    const { error: lateErr } = await late.client.rpc("declare_in_late", { p_round_id: roundId });
+    const { error: lateErr } = await declareInAs(late.client, roundId);
     expect(lateErr).toBeNull();
     await forceHold(admin, late.googleSub, "Lucky Sip");
     const { error } = await late.client.rpc("cast_spell_card", { p_round_id: roundId });
@@ -215,7 +186,7 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     expect((await step(caster, roundId)).waiting_on).toEqual([stirrer.googleSub]);
   });
 
-  it("forfeits Stir the Pot in a two-player round, and rolling opens at once", async () => {
+  it("forfeits Stir the Pot in a two-player round, and the Compelled Cast step ends at once", async () => {
     const [caster, stirrer] = await players("nlt2-caster", "nlt2-stirrer");
     await forceHold(admin, stirrer.googleSub, "Stir the Pot");
     const roundId = await openRound(caster, [stirrer]);
@@ -223,7 +194,9 @@ describe.skipIf(!hasAnonTestEnv)("Brewmageddon: Compelled Cast and Forfeit (issu
     await close(caster, roundId);
 
     expect((await forfeits(roundId)).map((f) => f.reason)).toEqual(["no_legal_target"]);
-    expect(await isExpectedRoller(stirrer, roundId)).toBe(true);
+    const s = await step(stirrer, roundId);
+    expect(s.waiting_on).toEqual([]);
+    expect(s.ended_at).not.toBeNull();
   });
 
   it("forfeits Tea Heist only when no other participant holds a card to steal (#438)", async () => {

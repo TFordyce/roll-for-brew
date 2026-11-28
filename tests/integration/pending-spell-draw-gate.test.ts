@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import { createTestAdminClient, createTestCleanup, hasAnonTestEnv, signUpSignInAndEnterRoom, closeRoundAs, declareInAs, startRoundAs } from "./setup";
 
 type MyPendingSpellDraw = { roundId: string; trigger: "nat1" | "nat20"; otherCount: number };
 
@@ -32,7 +32,7 @@ describe.skipIf(!hasAnonTestEnv)("getMyPendingSpellDraw: the Spell Draw Window g
   }
 
   async function startRoundFor(client: SupabaseClient) {
-    const { data: roundId, error } = await client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(client);
     if (error) throw error;
     cleanup.trackRound(roundId as string);
     return roundId as string;
@@ -72,10 +72,10 @@ describe.skipIf(!hasAnonTestEnv)("getMyPendingSpellDraw: the Spell Draw Window g
       signUp("draw-gate-closed-other"),
     ]);
     const roundId = await startRoundFor(player.client);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
     await recordTrigger(player.client, roundId, "nat1");
 
-    const { error } = await player.client.rpc("close_round", { p_round_id: roundId });
+    const { error } = await closeRoundAs(roundId);
     expect(error).toBeNull();
 
     const result = await getMyPendingSpellDraw(player.client);
