@@ -534,6 +534,70 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/rounds/{roundId}/pending-draw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["recordPendingSpellDraw"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rounds/{roundId}/draws": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["drawPendingSpellCard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rounds/{roundId}/draws/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["drawPendingSpellCardManual"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/rounds/{roundId}/draws/as": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["drawSpellCardAs"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -609,6 +673,19 @@ export interface components {
             cardName: string;
             tier: string;
         };
+        DrawAsRequest: {
+            trigger: string;
+            playerId: string;
+            /** Format: uuid */
+            cardId: null | string;
+        };
+        DrawResponse: {
+            /** Format: uuid */
+            instanceId: null | string;
+            needsSwapDecision: boolean;
+            /** Format: int64 */
+            version: number | string;
+        };
         EffectBadge: {
             /** Format: uuid */
             effectId: string;
@@ -660,6 +737,10 @@ export interface components {
             /** Format: int32 */
             delta: number | string;
             reason: null | string;
+        };
+        ManualDrawRequest: {
+            /** Format: uuid */
+            cardId: string;
         };
         ManualRollAsRequest: {
             playerId: string;
@@ -799,6 +880,9 @@ export interface components {
             courageTokens: components["schemas"]["CourageTokenRow"][];
             compelled: boolean;
             stackInResolutionOrder: components["schemas"]["ReactionStackRow"][];
+        };
+        RecordDrawRequest: {
+            trigger: string;
         };
         RollAsRequest: {
             playerId: string;
@@ -1707,6 +1791,106 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RollResponse"];
+                };
+            };
+        };
+    };
+    recordPendingSpellDraw: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordDrawRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CommandResponse"];
+                };
+            };
+        };
+    };
+    drawPendingSpellCard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawResponse"];
+                };
+            };
+        };
+    };
+    drawPendingSpellCardManual: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualDrawRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawResponse"];
+                };
+            };
+        };
+    };
+    drawSpellCardAs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                roundId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DrawAsRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DrawResponse"];
                 };
             };
         };

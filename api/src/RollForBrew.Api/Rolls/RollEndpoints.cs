@@ -90,7 +90,7 @@ public static class RollEndpoints
     }
 
     /// <summary>The caller (not the puppet) must be an admin, as <c>current_player_id()</c> with no round says.</summary>
-    private static async Task RequireAdmin(StoreSession s, CancellationToken ct)
+    internal static async Task RequireAdmin(StoreSession s, CancellationToken ct)
     {
         var caller = await s.CurrentPlayerId(ct: ct);
         await using var cmd = new NpgsqlCommand("select is_admin from public.players where id = @id", s.Connection, s.Transaction);

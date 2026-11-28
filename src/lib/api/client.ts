@@ -36,6 +36,9 @@ export type CommandResponse =
 /** A roll submission's answer: the value that was recorded, and the bumped rooms.version. */
 export type RollResponse = { value: number; version: number | null };
 
+/** A spell draw's answer: the drawn instance (null when nothing was drawn) and the bumped rooms.version. */
+export type DrawResponse = { instanceId: string | null; needsSwapDecision: boolean; version: number };
+
 type BackfillResponse =
   paths["/rounds/backfill"]["post"]["responses"][200]["content"]["application/json"];
 
@@ -85,6 +88,10 @@ export interface ApiClient {
   submitRollAs(roundId: string, playerId: string): Promise<RollResponse>;
   submitManualRollAs(roundId: string, playerId: string, value: number): Promise<RollResponse>;
   adminProxyRoll(roundId: string, playerId: string, value: number): Promise<RollResponse>;
+  recordPendingSpellDraw(roundId: string, trigger: "nat1" | "nat20"): Promise<CommandResponse>;
+  drawPendingSpellCard(roundId: string): Promise<DrawResponse>;
+  drawPendingSpellCardManual(roundId: string, cardId: string): Promise<DrawResponse>;
+  drawSpellCardAs(roundId: string, trigger: "nat1" | "nat20", playerId: string, cardId?: string): Promise<DrawResponse>;
   adminBackfillRound(
     participantIds: string[],
     layers: { playerId: string; value: number }[][],
@@ -173,6 +180,13 @@ export function createApiClient(
       (await (await call("POST", `/rounds/${roundId}/rolls/manual/as`, { playerId, value })).json()) as RollResponse,
     adminProxyRoll: async (roundId, playerId, value) =>
       (await (await call("POST", `/rounds/${roundId}/rolls/proxy`, { playerId, value })).json()) as RollResponse,
+    recordPendingSpellDraw: async (roundId, trigger) =>
+      (await (await call("POST", `/rounds/${roundId}/pending-draw`, { trigger })).json()) as CommandResponse,
+    drawPendingSpellCard: async (roundId) => (await (await call("POST", `/rounds/${roundId}/draws`)).json()) as DrawResponse,
+    drawPendingSpellCardManual: async (roundId, cardId) =>
+      (await (await call("POST", `/rounds/${roundId}/draws/manual`, { cardId })).json()) as DrawResponse,
+    drawSpellCardAs: async (roundId, trigger, playerId, cardId) =>
+      (await (await call("POST", `/rounds/${roundId}/draws/as`, { trigger, playerId, cardId: cardId ?? null })).json()) as DrawResponse,
     adminBackfillRound: async (participantIds, layers) =>
       (await (await call("POST", "/rounds/backfill", { participantIds, layers })).json()) as BackfillResponse,
   };

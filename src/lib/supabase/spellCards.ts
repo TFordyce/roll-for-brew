@@ -1,4 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { apiClientFor, type ApiClient, type DrawResponse } from "@/lib/api/client";
+import { useApiForRound } from "./rounds";
 
 export type HeldSpellCard = {
   instanceId: string;
@@ -11,6 +13,16 @@ export type HeldSpellCard = {
   effectKind: string | null;
   edition: "4th";
 };
+
+// The four round-scoped draws go to the API when their port flag is on for the round's room (Test
+// Room first), and keep their SQL `.rpc` otherwise: the rollback. Flags: docs/port/spell-draws-bridges.md.
+// drawSpellCard has no caller and stays SQL until #554 drops it.
+type ApiFactory = () => ApiClient;
+const defaultApi = (supabase: SupabaseClient): ApiFactory => () => apiClientFor(supabase);
+
+function drawn(res: DrawResponse): { instanceId: string; needsSwapDecision: boolean } | null {
+  return res.instanceId === null ? null : { instanceId: res.instanceId, needsSwapDecision: res.needsSwapDecision };
+}
 
 export async function drawSpellCard(
   supabase: SupabaseClient,
@@ -37,7 +49,11 @@ export async function drawSpellCardAs(
   roundId: string,
   playerId: string,
   cardId?: string,
+  api: ApiFactory = defaultApi(supabase),
 ): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
+  if (await useApiForRound(supabase, "drawSpellCardAs", roundId)) {
+    return drawn(await api().drawSpellCardAs(roundId, trigger, playerId, cardId));
+  }
   const { data, error } = await supabase.rpc("draw_spell_card_as", {
     p_trigger: trigger,
     p_room_id: roomId,
@@ -58,7 +74,12 @@ export async function recordPendingSpellDraw(
   supabase: SupabaseClient,
   roundId: string,
   trigger: "nat1" | "nat20",
+  api: ApiFactory = defaultApi(supabase),
 ): Promise<void> {
+  if (await useApiForRound(supabase, "recordPendingSpellDraw", roundId)) {
+    await api().recordPendingSpellDraw(roundId, trigger);
+    return;
+  }
   const { error } = await supabase.rpc("record_pending_spell_draw", {
     p_round_id: roundId,
     p_trigger: trigger,
@@ -69,7 +90,9 @@ export async function recordPendingSpellDraw(
 export async function drawPendingSpellCard(
   supabase: SupabaseClient,
   roundId: string,
+  api: ApiFactory = defaultApi(supabase),
 ): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
+  if (await useApiForRound(supabase, "drawPendingSpellCard", roundId)) return drawn(await api().drawPendingSpellCard(roundId));
   const { data, error } = await supabase.rpc("draw_pending_spell_card", { p_round_id: roundId });
   if (error) throw error;
 
@@ -84,7 +107,11 @@ export async function drawPendingSpellCardManual(
   supabase: SupabaseClient,
   roundId: string,
   cardId: string,
+  api: ApiFactory = defaultApi(supabase),
 ): Promise<{ instanceId: string; needsSwapDecision: boolean } | null> {
+  if (await useApiForRound(supabase, "drawPendingSpellCardManual", roundId)) {
+    return drawn(await api().drawPendingSpellCardManual(roundId, cardId));
+  }
   const { data, error } = await supabase.rpc("draw_pending_spell_card_manual", {
     p_round_id: roundId,
     p_card_id: cardId,

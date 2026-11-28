@@ -28,7 +28,7 @@ One piece of rules logic stays in SQL as a bridge, because it spends a Marked fo
 
 | Function | Grant | Called from | Goes when |
 |---|---|---|---|
-| `_apply_crit_redirect(uuid, text)` | migration `0167` | `RecordCritDraw` (Proxy Roll nat 1 / nat 20) | crit-redirect slice |
+| `_apply_crit_redirect(uuid, text)` | migration `0167` | `RecordCritDraw` (Proxy Roll nat 1 / nat 20, and the slice 4 record endpoint), slice 4's puppet draw | when it is ported to C#; see `spell-draws-bridges.md` |
 
 It is an invoker function, so `rfb_api` also needs `_rr_active_effects_as_of(uuid, uuid)` and `_rr_participated_rounds_elapsed(uuid, text, timestamptz, timestamptz)`, granted in `0167`. Revoke all three with the bridge.
 
