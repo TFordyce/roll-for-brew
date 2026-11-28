@@ -55,13 +55,9 @@ On the API path, `PUT /rounds/{roundId}/order` bumps `rooms.version` and sends `
 
 The `advanceRound`, `advanceRoundAuthoritative`, `getRoundRecap` and `adminBackfillRound` flags are gone. Their wrappers call the API only and the SQL they used to fall back to is deleted. See `advance-round-bridges.md` and `recap-backfill-bridges.md`.
 
-## Round lifecycle flags (#550; human steps, not run by the agent)
+## Retiring: round lifecycle and roll submission (#550, #551, #552)
 
-Nine rows seeded off by migration `0166`: `startRound`, `declareIn`, `declareInLate`, `withdrawDeclaration`, `closeRound`, `cancelRound`, `excludeRoundParticipant`, `confirmRoundReplay`, `declineRoundReplay`. Each routes one TS wrapper to the API and honours a room row (Test Room first), except `startRound`, which only sees a room row when the caller passes a room id. Flip, rollback, bridges and the deletion list are in `docs/port/round-lifecycle-bridges.md`.
-
-## Roll submission flags (#551; human steps, not run by the agent)
-
-Five rows seeded off by migration `0167`: `submitRoll`, `submitManualRoll`, `submitRollAs`, `submitManualRollAs`, `adminProxyRoll`. Each routes one TS wrapper to the API and honours a room row (Test Room first). Flip, rollback, bridges and the deletion list are in `docs/port/roll-submission-bridges.md`.
+The 14 wrappers behind `startRound`, `declareIn`, `declareInLate`, `withdrawDeclaration`, `closeRound`, `cancelRound`, `excludeRoundParticipant`, `confirmRoundReplay`, `declineRoundReplay`, `submitRoll`, `submitManualRoll`, `submitRollAs`, `submitManualRollAs` and `adminProxyRoll` call the API only and read no flag. All 14 were on globally and soaked 16 to 20 Nov 2026 with no rollback (recorded on #552). The rows and the SQL they used to fall back to stay until the #552 drop PR deletes them, and turning a row off changes nothing. To roll back, revert the #552 code-half PR. See `round-lifecycle-bridges.md` and `roll-submission-bridges.md`.
 
 ## `room_view` (slice 1, #539; retired #541)
 

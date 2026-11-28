@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiClientFor, type ApiClient } from "@/lib/api/client";
-import { useApiForRound } from "./rounds";
 
 export async function getLayerEnteredAt(
   supabase: SupabaseClient,
@@ -76,12 +75,7 @@ export async function cancelRound(
   roundId: string,
   api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "cancelRound", roundId)) {
-    await api().cancelRound(roundId);
-    return;
-  }
-  const { error } = await supabase.rpc("cancel_round", { p_round_id: roundId });
-  if (error) throw error;
+  await api().cancelRound(roundId);
 }
 
 export async function excludeRoundParticipant(
@@ -91,16 +85,7 @@ export async function excludeRoundParticipant(
   layer: number,
   api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "excludeRoundParticipant", roundId)) {
-    await api().excludeRoundParticipant(roundId, playerId, layer);
-    return;
-  }
-  const { error } = await supabase.rpc("exclude_round_participant", {
-    p_round_id: roundId,
-    p_player_id: playerId,
-    p_layer: layer,
-  });
-  if (error) throw error;
+  await api().excludeRoundParticipant(roundId, playerId, layer);
 }
 
 export type CompelledCastStep = {

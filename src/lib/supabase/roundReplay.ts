@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiClientFor, type ApiClient } from "@/lib/api/client";
-import { useApiForRound } from "./rounds";
 
 
 export async function confirmRoundReplay(
@@ -8,12 +7,7 @@ export async function confirmRoundReplay(
   roundId: string,
   api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "confirmRoundReplay", roundId)) {
-    await api().confirmRoundReplay(roundId);
-    return;
-  }
-  const { error } = await supabase.rpc("confirm_round_replay", { p_round_id: roundId });
-  if (error) throw error;
+  await api().confirmRoundReplay(roundId);
 }
 
 export async function declineRoundReplay(
@@ -21,12 +15,7 @@ export async function declineRoundReplay(
   roundId: string,
   api: () => ApiClient = () => apiClientFor(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "declineRoundReplay", roundId)) {
-    await api().declineRoundReplay(roundId);
-    return;
-  }
-  const { error } = await supabase.rpc("decline_round_replay", { p_round_id: roundId });
-  if (error) throw error;
+  await api().declineRoundReplay(roundId);
 }
 
 export async function autoDeclineStalledRoundReplays(supabase: SupabaseClient): Promise<number> {
