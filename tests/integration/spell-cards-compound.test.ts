@@ -8,6 +8,8 @@ import {
   hasAnonTestEnv,
   roundModifierEffects,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
@@ -46,9 +48,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     ]);
     await forceHold(admin, caster.googleSub, "Cold Tea");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -112,9 +114,9 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: compound cards (Cold Tea, Slipped
     ]);
     await forceHold(admin, caster.googleSub, "Slipped Spoon");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
 
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,

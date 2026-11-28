@@ -8,12 +8,15 @@ import {
   hasAnonTestEnv,
   roundModifierEffects,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
-// Runs against a real, dedicated test Supabase project. Exercises Late
-// Declare (issue #246, GLOSSARY.md glossary entry from #256): declare_in_late
-// and round_has_any_rolls (supabase/migrations/0068_declare_in_late.sql).
-describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", () => {
+// Late Declare (issue #246) against the casting SQL: how a deferred cast's
+// target sees a player who joins after close. Late Declare itself is the
+// API's (#552); declareInAs writes the same participant row.
+describe.skipIf(!hasAnonTestEnv)("Late Declare and deferred targets (issue #246)", () => {
   let admin: SupabaseClient;
   let cleanup: ReturnType<typeof createTestCleanup>;
 
@@ -28,97 +31,6 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
     return signUpSignInAndEnterRoom(admin, cleanup, label);
   }
 
-  it("lets a player join a closed round with no rolls yet", async () => {
-    const [{ client: starterClient, googleSub: starterSub }, { client: otherClient, googleSub: otherSub }, { googleSub: lateSub, client: lateClient }] = await Promise.all([
-      signUp("late-declare-starter"),
-      signUp("late-declare-other"),
-      signUp("late-declare-late"),
-    ]);
-
-    const { data: roundId } = await starterClient.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await otherClient.rpc("declare_in", { p_round_id: roundId });
-    await starterClient.rpc("close_round", { p_round_id: roundId });
-
-    expect(await lateClient.rpc("round_has_any_rolls", { p_round_id: roundId })).toMatchObject({
-      data: false,
-      error: null,
-    });
-
-    const { error } = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
-    expect(error).toBeNull();
-
-    const { data: participants } = await admin
-      .from("round_participants")
-      .select("player_id")
-      .eq("round_id", roundId);
-    expect(new Set(participants!.map((p) => p.player_id))).toEqual(
-      new Set([starterSub, otherSub, lateSub]),
-    );
-  });
-
-  it("is idempotent on repeat calls", async () => {
-    const [{ client: starterClient }, { client: otherClient }, { client: lateClient, googleSub: lateSub }] = await Promise.all([
-      signUp("late-declare-idempotent-starter"),
-      signUp("late-declare-idempotent-other"),
-      signUp("late-declare-idempotent-late"),
-    ]);
-
-    const { data: roundId } = await starterClient.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await otherClient.rpc("declare_in", { p_round_id: roundId });
-    await starterClient.rpc("close_round", { p_round_id: roundId });
-
-    const first = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
-    expect(first.error).toBeNull();
-    const second = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
-    expect(second.error).toBeNull();
-
-    const { data: participants } = await admin
-      .from("round_participants")
-      .select("player_id")
-      .eq("round_id", roundId)
-      .eq("player_id", lateSub);
-    expect(participants).toHaveLength(1);
-  });
-
-  it("fails once a roll has already landed for the round (RFB31)", async () => {
-    const [{ client: starterClient }, { client: otherClient }, { client: lateClient }] = await Promise.all([
-      signUp("late-declare-rolled-starter"),
-      signUp("late-declare-rolled-other"),
-      signUp("late-declare-rolled-late"),
-    ]);
-
-    const { data: roundId } = await starterClient.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-    await otherClient.rpc("declare_in", { p_round_id: roundId });
-    await starterClient.rpc("close_round", { p_round_id: roundId });
-    await starterClient.rpc("submit_roll", { p_round_id: roundId });
-
-    expect(await lateClient.rpc("round_has_any_rolls", { p_round_id: roundId })).toMatchObject({
-      data: true,
-      error: null,
-    });
-
-    const { error } = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
-    expect(error).not.toBeNull();
-    expect(error?.code).toBe("RFB31");
-  });
-
-  it("fails while the round is still open (declare_in is the right call there)", async () => {
-    const [{ client: starterClient }, { client: lateClient }] = await Promise.all([
-      signUp("late-declare-open-starter"),
-      signUp("late-declare-open-late"),
-    ]);
-
-    const { data: roundId } = await starterClient.rpc("start_round");
-    cleanup.trackRound(roundId as string);
-
-    const { error } = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
-    expect(error).not.toBeNull();
-    expect(error?.code).toBe("RFB31");
-  });
-
   it("lets a still-deferred opponent-targeted cast target a newly Late-Declared player", async () => {
     const [{ client: casterClient, googleSub: casterSub }, { client: otherClient }, { client: lateClient, googleSub: lateSub }] = await Promise.all([
       signUp("late-declare-retarget-caster"),
@@ -127,9 +39,9 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
     ]);
     await forceHold(admin, casterSub, "Milky Brew");
 
-    const { data: roundId } = await casterClient.rpc("start_round");
+    const { data: roundId } = await startRoundAs(casterClient);
     cleanup.trackRound(roundId as string);
-    await otherClient.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(otherClient, roundId);
 
     const { data: castId, error: castError } = await casterClient.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -137,9 +49,9 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
     });
     expect(castError).toBeNull();
 
-    await casterClient.rpc("close_round", { p_round_id: roundId });
+    await closeRoundAs(roundId);
 
-    const { error: lateError } = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
+    const { error: lateError } = await declareInAs(lateClient, roundId);
     expect(lateError).toBeNull();
 
     const { error: targetError } = await casterClient.rpc("set_spell_cast_target", {
@@ -169,22 +81,22 @@ describe.skipIf(!hasAnonTestEnv)("declare_in_late (Late Declare, issue #246)", (
     ]);
     await forceHold(admin, casterSub, "Milky Brew");
 
-    const { data: roundId } = await casterClient.rpc("start_round");
+    const { data: roundId } = await startRoundAs(casterClient);
     cleanup.trackRound(roundId as string);
-    await targetClient.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(targetClient, roundId);
 
     const { data: castId } = await casterClient.rpc("cast_spell_card", {
       p_round_id: roundId,
       p_target_player_id: null,
     });
 
-    await casterClient.rpc("close_round", { p_round_id: roundId });
+    await closeRoundAs(roundId);
     await casterClient.rpc("set_spell_cast_target", {
       p_cast_id: castId,
       p_target_player_id: targetSub,
     });
 
-    const { error: lateError } = await lateClient.rpc("declare_in_late", { p_round_id: roundId });
+    const { error: lateError } = await declareInAs(lateClient, roundId);
     expect(lateError).toBeNull();
 
     const { data: cast } = await admin

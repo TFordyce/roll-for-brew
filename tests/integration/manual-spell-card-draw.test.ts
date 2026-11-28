@@ -6,6 +6,7 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises the
@@ -28,7 +29,7 @@ describe.skipIf(!hasAnonTestEnv)("manual spell card draw: pending draw + physica
   }
 
   async function startRoundFor(client: SupabaseClient) {
-    const { data: roundId, error } = await client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(client);
     if (error) throw error;
     cleanup.trackRound(roundId as string);
     return roundId as string;

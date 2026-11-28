@@ -147,6 +147,91 @@ async function seatInTodaysRoom(admin: SupabaseClient, playerId: string): Promis
   return room.id as string;
 }
 
+// `data` is typed as present, like an untyped `.rpc`'s: callers check `error` first.
+type SeedResult<T> = { data: T; error: { message: string; code?: string } | null };
+
+let seedAdmin: SupabaseClient | undefined;
+const seeder = () => (seedAdmin ??= createTestAdminClient());
+
+async function seeded<T>(write: () => Promise<T>): Promise<SeedResult<T>> {
+  try {
+    return { data: await write(), error: null };
+  } catch (error) {
+    return { data: null as T, error: error as { message: string; code?: string } };
+  }
+}
+
+/** Who `client` acts as: `current_player_id`, so an admin's Acting As applies as it did in the SQL. */
+async function actingPlayer(client: SupabaseClient, args: { p_round_id?: string; p_room_id?: string }) {
+  const { data, error } = await client.rpc("current_player_id", args);
+  if (error) throw error;
+  return data as string;
+}
+
+/**
+ * Round setup the API owns now (#552 dropped `start_round`, `declare_in` and `close_round`). These write the same
+ * rows as the service role, with no rule checks: a test that wants a refusal belongs in the C# suite. Each returns
+ * `{ data, error }` like the `.rpc` it replaced. This starts a round in `roomId`, or today's real room.
+ */
+export function startRoundAs(client: SupabaseClient, roomId?: string | null): Promise<SeedResult<string>> {
+  return seeded(async () => {
+    const admin = seeder();
+    let room = roomId ?? undefined;
+    if (!room) {
+      const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London" }).format(new Date());
+      const { data, error } = await admin.from("rooms").select("id").eq("date", today).eq("is_test", false).single();
+      if (error) throw error;
+      room = data.id as string;
+    }
+    const playerId = await actingPlayer(client, { p_room_id: room });
+    const { data: round, error } = await admin
+      .from("rounds")
+      .insert({ room_id: room, started_by: playerId, status: "open" })
+      .select("id")
+      .single();
+    if (error) throw error;
+    const { error: pErr } = await admin.from("round_participants").insert({ round_id: round.id, player_id: playerId });
+    if (pErr) throw pErr;
+    return round.id as string;
+  });
+}
+
+/** Declares `client`'s player into an open round. See `startRoundAs`. */
+export function declareInAs(client: SupabaseClient, roundId: string): Promise<SeedResult<null>> {
+  return seeded(async () => {
+    const playerId = await actingPlayer(client, { p_round_id: roundId });
+    const { error } = await seeder()
+      .from("round_participants")
+      .upsert({ round_id: roundId, player_id: playerId }, { onConflict: "round_id,player_id", ignoreDuplicates: true });
+    if (error) throw error;
+    return null;
+  });
+}
+
+/**
+ * Closes declarations: locks the roster, fans out TABLE / ALL_OTHER_PLAYERS placeholders and fixes Brewmageddon's
+ * compelled set outside a debt round, through the same bridges the API's close calls. See `startRoundAs`.
+ */
+export function closeRoundAs(roundId: string): Promise<SeedResult<null>> {
+  return seeded(async () => {
+    const admin = seeder();
+    const { error } = await admin
+      .from("rounds")
+      .update({ status: "closed", closed_at: new Date().toISOString() })
+      .eq("id", roundId);
+    if (error) throw error;
+    const { error: fanErr } = await admin.rpc("_fan_out_table_placeholder_casts", { p_round_id: roundId });
+    if (fanErr) throw fanErr;
+    const { data: debt, error: debtErr } = await admin.rpc("_brew_debt_due", { p_round_id: roundId });
+    if (debtErr) throw debtErr;
+    if (debt === null) {
+      const { error: fixErr } = await admin.rpc("_fix_compelled_set", { p_round_id: roundId });
+      if (fixErr) throw fixErr;
+    }
+    return null;
+  });
+}
+
 /**
  * Creates a fresh room with `is_test = false` and returns its id.
  *

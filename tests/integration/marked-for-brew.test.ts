@@ -8,6 +8,8 @@ import {
   seedActiveEffect,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real local Supabase stack. Exercises Marked for Brew (issue
@@ -42,11 +44,11 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 
   async function startRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;
@@ -324,24 +326,6 @@ describe.skipIf(!hasAnonTestEnv)("Marked for Brew (issue #436)", () => {
   // ==========================================================================
   // The other two crit entry points
   // ==========================================================================
-
-  it("admin_proxy_roll: a proxied nat 20 for the target is the caster's draw", async () => {
-    const { caster, target, castId, others } = await castMark("proxy", ["admin"]);
-    const adminPlayer = others[0]!;
-    const { error: adminErr } = await admin.from("players").update({ is_admin: true }).eq("id", adminPlayer.googleSub);
-    expect(adminErr).toBeNull();
-    const roundId = await startRound(caster, [target, adminPlayer]);
-
-    const { error } = await adminPlayer.client.rpc("admin_proxy_roll", {
-      p_round_id: roundId,
-      p_player_id: target.googleSub,
-      p_value: 20,
-    });
-    expect(error).toBeNull();
-
-    expect(await pendingDraws(roundId)).toEqual({ [caster.googleSub]: "nat20" });
-    expect(await castInputs(castId)).toMatchObject({ consumed_by_round: roundId });
-  });
 
   it("draw_spell_card_as (Test-room puppet): the crit's card lands in the caster's hand", async () => {
     const [puppeteer, target] = await Promise.all([signUp("mfb-puppet-admin"), signUp("mfb-puppet-target")]);

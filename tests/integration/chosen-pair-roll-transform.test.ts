@@ -6,6 +6,9 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Covers issue #318 -- Tier A primitive 2,
@@ -34,18 +37,18 @@ describe.skipIf(!hasAnonTestEnv)("chosen-pair roll transform (#318)", () => {
   type Player = Awaited<ReturnType<typeof signUp>>;
 
   async function startRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;
   }
 
   async function closeRound(starter: Player, roundId: string) {
-    const { error } = await starter.client.rpc("close_round", { p_round_id: roundId });
+    const { error } = await closeRoundAs(roundId);
     expect(error).toBeNull();
   }
 

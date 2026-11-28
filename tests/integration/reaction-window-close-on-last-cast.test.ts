@@ -6,6 +6,9 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises issue
@@ -47,10 +50,10 @@ describe.skipIf(!hasAnonTestEnv)("reaction window closes when a cast empties eli
     caster: Awaited<ReturnType<typeof signUp>>,
     other: Awaited<ReturnType<typeof signUp>>,
   ): Promise<string> {
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
+    await closeRoundAs(roundId);
 
     const { data: openData, error: openError } = await caster.client.rpc("open_reaction_window", {
       p_round_id: roundId,

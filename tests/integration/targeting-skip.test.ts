@@ -6,6 +6,8 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Covers issue #321 -- Tier A primitive 5,
@@ -41,10 +43,10 @@ describe.skipIf(!hasAnonTestEnv)("targeting skip -- Cloud of Cream (#321)", () =
     const p1 = await signUp("ts-cast-1");
     const p2 = await signUp("ts-cast-2");
 
-    const { data: roundId, error: startErr } = await p1.client.rpc("start_round");
+    const { data: roundId, error: startErr } = await startRoundAs(p1.client);
     expect(startErr).toBeNull();
     cleanup.trackRound(roundId as string);
-    await p2.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(p2.client, roundId);
 
     await forceHold(admin, p1.googleSub, "Cloud of Cream");
     const { error: castErr } = await p1.client.rpc("cast_spell_card", { p_round_id: roundId });

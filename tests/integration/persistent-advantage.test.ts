@@ -6,6 +6,8 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Exercises migration
@@ -49,9 +51,9 @@ describe.skipIf(!hasAnonTestEnv)("persistent advantage — Prophe-Tea (issue #32
 
     const instanceId = await forceHold(admin, caster.googleSub, "Prophe-Tea");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
 
     const { data: castId, error: castErr } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,

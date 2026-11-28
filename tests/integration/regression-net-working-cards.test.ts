@@ -8,6 +8,8 @@ import {
   seedActiveEffect,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Issue #313 — the regression net ADR 0005 demands before any new-primitive
@@ -134,10 +136,10 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       const rareEffectId = await seedDispellableEffect(caster.roomId, target.googleSub, caster.googleSub, "Milky Brew");
 
       await forceHold(admin, caster.googleSub, "Lesser Detox");
-      const { data: roundId, error: startErr } = await caster.client.rpc("start_round");
+      const { data: roundId, error: startErr } = await startRoundAs(caster.client);
       expect(startErr).toBeNull();
       cleanup.trackRound(roundId as string);
-      await target.client.rpc("declare_in", { p_round_id: roundId });
+      await declareInAs(target.client, roundId);
 
       const { error: rejectErr } = await caster.client.rpc("end_active_effect", {
         p_round_id: roundId,
@@ -174,10 +176,10 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       const rareEffectId = await seedDispellableEffect(caster.roomId, target.googleSub, caster.googleSub, "Milky Brew");
 
       await forceHold(admin, caster.googleSub, "Greater Detox");
-      const { data: roundId, error: startErr } = await caster.client.rpc("start_round");
+      const { data: roundId, error: startErr } = await startRoundAs(caster.client);
       expect(startErr).toBeNull();
       cleanup.trackRound(roundId as string);
-      await target.client.rpc("declare_in", { p_round_id: roundId });
+      await declareInAs(target.client, roundId);
 
       const { error: rejectErr } = await caster.client.rpc("end_active_effect", {
         p_round_id: roundId,
@@ -249,12 +251,12 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
         .update({ location: "held", held_by_player: caster.googleSub })
         .eq("id", wbsInstanceId);
 
-      const { data: roundId, error: startErr } = await caster.client.rpc("start_round", { p_room_id: caster.roomId });
+      const { data: roundId, error: startErr } = await startRoundAs(caster.client, caster.roomId);
       expect(startErr).toBeNull();
       // Track for teardown too: a mid-loop expect failure skips the
       // admin.from("rounds").delete() at the end of the iteration.
       cleanup.trackRound(roundId as string);
-      await other.client.rpc("declare_in", { p_round_id: roundId });
+      await declareInAs(other.client, roundId);
 
       const { error: castErr } = await caster.client.rpc("cast_spell_card", { p_round_id: roundId });
       expect(castErr).toBeNull();
@@ -374,5 +376,5 @@ describe.skipIf(!hasAnonTestEnv)("issue #313 regression net: 29 working cards", 
       .eq("id", wbsInstanceId);
 
     expect([...seen].sort((a, b) => a - b)).toEqual([1, 2, 3, 4, 5, 6]);
-  });
+  }, 30_000);
 });

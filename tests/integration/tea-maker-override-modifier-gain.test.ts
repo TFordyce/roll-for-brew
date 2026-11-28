@@ -6,6 +6,9 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Issue #425 (spec #401 F1): the resolver's
@@ -32,14 +35,14 @@ describe.skipIf(!hasAnonTestEnv)("tea-maker override modifier gain (#425)", () =
   type Player = Awaited<ReturnType<typeof signUp>>;
 
   async function openAndCloseRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
-    const { error: cErr } = await starter.client.rpc("close_round", { p_round_id: roundId });
+    const { error: cErr } = await closeRoundAs(roundId);
     expect(cErr).toBeNull();
     return roundId as string;
   }

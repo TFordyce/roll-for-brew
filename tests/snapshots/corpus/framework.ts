@@ -27,6 +27,9 @@ import {
   seedDedicatedRoom,
   seedPastRound,
   signUpSignInAndEnterRoom,
+  startRoundAs,
+  declareInAs,
+  closeRoundAs,
 } from "../../integration/setup";
 
 // ---------------------------------------------------------------------------
@@ -504,17 +507,14 @@ export function makeContext(
     },
 
     async openAndCloseRound(starter, others, roomId) {
-      const { data: roundId, error } = await starter.client.rpc(
-        "start_round",
-        roomId ? { p_room_id: roomId } : undefined,
-      );
+      const { data: roundId, error } = await startRoundAs(starter.client, roomId);
       if (error) throw error;
       cleanup.trackRound(roundId as string);
       for (const o of others) {
-        const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+        const { error: dErr } = await declareInAs(o.client, roundId as string);
         if (dErr) throw dErr;
       }
-      const { error: cErr } = await starter.client.rpc("close_round", { p_round_id: roundId });
+      const { error: cErr } = await closeRoundAs(roundId as string);
       if (cErr) throw cErr;
       return roundId as string;
     },

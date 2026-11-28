@@ -7,6 +7,8 @@ import {
   hasAnonTestEnv,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Issue #429 (spec #401, design #381):
@@ -54,11 +56,11 @@ describe.skipIf(!hasAnonTestEnv)("Earl of Earl Grey (#429)", () => {
   }
 
   async function openRound(starter: Player, others: Player[]): Promise<string> {
-    const { data: roundId, error } = await starter.client.rpc("start_round", { p_room_id: starter.roomId });
+    const { data: roundId, error } = await startRoundAs(starter.client, starter.roomId);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;

@@ -9,6 +9,8 @@ import {
   roundModifierEffects,
   seedActiveEffect,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises
@@ -103,11 +105,11 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
       seedCommonActiveEffect(cloudCaster.roomId, cloudCaster.googleSub),
     ]);
 
-    const { data: roundId } = await cloudCaster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(cloudCaster.client);
     cleanup.trackRound(roundId as string);
-    await crashCaster.client.rpc("declare_in", { p_round_id: roundId });
-    await crashTarget.client.rpc("declare_in", { p_round_id: roundId });
-    await detoxer.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(crashCaster.client, roundId);
+    await declareInAs(crashTarget.client, roundId);
+    await declareInAs(detoxer.client, roundId);
 
     const { error: crashCastError } = await crashCaster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
@@ -206,11 +208,11 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
 
     await forceHold(admin, crashCaster.googleSub, "Caffeine Crash");
 
-    const { data: roundId } = await cloudCaster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(cloudCaster.client);
     cleanup.trackRound(roundId as string);
-    await crashCaster.client.rpc("declare_in", { p_round_id: roundId });
-    await crashTarget.client.rpc("declare_in", { p_round_id: roundId });
-    await detoxer.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(crashCaster.client, roundId);
+    await declareInAs(crashTarget.client, roundId);
+    await declareInAs(detoxer.client, roundId);
 
     // Common-tier active effect on cloudCaster (see seedCommonActiveEffect).
     await seedCommonActiveEffect(cloudCaster.roomId, cloudCaster.googleSub);
@@ -297,9 +299,9 @@ describe.skipIf(!hasAnonTestEnv)("spell active effects: persistence, expiry, and
     const [caster, target] = await Promise.all([signUp("negate-caster"), signUp("negate-target")]);
     await forceHold(admin, caster.googleSub, "Caffeine Crash");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
     const { data: castId, error: castError } = await caster.client.rpc("cast_spell_card", {
       p_round_id: roundId,
       p_target_player_id: target.googleSub,

@@ -7,6 +7,8 @@ import {
   hasAnonTestEnv,
   seedActiveEffect,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real Supabase stack. Covers issue #344 — ward interaction
@@ -46,11 +48,11 @@ describe.skipIf(!hasAnonTestEnv)("ward × modifier-transfer interaction (issue #
   }
 
   async function startRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;

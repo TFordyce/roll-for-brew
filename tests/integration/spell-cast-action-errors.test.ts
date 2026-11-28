@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createTestAdminClient, createTestCleanup, forceHold, hasAnonTestEnv, signUpSignInAndEnterRoom } from "./setup";
+import { createTestAdminClient, createTestCleanup, forceHold, hasAnonTestEnv, signUpSignInAndEnterRoom, startRoundAs } from "./setup";
 
 // Issue #244: the server actions wrapping the spell-cast RPCs only caught
 // the "stale round" RFB0x error family — every other precondition failure
@@ -39,7 +39,7 @@ describe.skipIf(!hasAnonTestEnv)("spell-cast server actions: typed error handlin
     await forceHold(admin, googleSub, "Calami-Tea"); // Action, CHOSEN_PLAYERS — requires at least one chosen player
     mockClient = client;
 
-    const { data: roundId } = await client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(client);
     cleanup.trackRound(roundId as string);
 
     const formData = new FormData();

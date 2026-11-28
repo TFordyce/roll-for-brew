@@ -6,6 +6,8 @@ import {
   forceHold,
   hasAnonTestEnv,
   signUpSignInAndEnterRoom,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real local Supabase stack. Exercises Tea Heist (issue #438,
@@ -40,11 +42,11 @@ describe.skipIf(!hasAnonTestEnv)("Tea Heist (issue #438)", () => {
   type Player = Awaited<ReturnType<typeof signUp>>;
 
   async function startRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;

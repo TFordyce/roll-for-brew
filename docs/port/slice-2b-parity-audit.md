@@ -124,6 +124,58 @@ The SQL these tests called is gone, so they were deleted from the TS integration
 | `ward-phase.test.ts` | a roll-domain ward blocks a forced_reroll | golden `2-ward-blocks-roll-transform` |
 | `tie-break-and-reroll.test.ts` | `get_round_layer_history` returns completed layers to a spectator | none: nothing in TS or C# calls `get_round_layer_history` any more. It is dead SQL, left for the #570 sweep |
 
+## Retired at #552 (migration 0169)
+
+Slice 3's SQL (round lifecycle and roll submission) is gone, so tests that called it changed one of two ways:
+
+- **Setup only:** a test that only started, declared into or closed a round to reach later-slice SQL now does it with `startRoundAs`, `declareInAs` and `closeRoundAs` (`tests/integration/setup.ts`). These write the same rows as the service role, and `closeRoundAs` runs the same close-time bridges the API does. Nothing is lost.
+- **Slice 3 was the subject:** the test is deleted. Each has the C# equivalent below. Where a test had later-slice assertions too, those stay in TS and only the slice-3 part went.
+
+### Slice-3 tests deleted here
+
+| TS file | Test | C# equivalent |
+|---|---|---|
+| `round-lifecycle.test.ts` | starting a round auto-enrolls the starter as its first participant | `RoundLifecycleHttpTests.Start_opens_a_round_with_the_caller_declared_and_announces_it` |
+| `round-lifecycle.test.ts` | rejects a second start attempt while a round is already open | `RoundLifecycleHttpTests.Start_while_a_round_is_active_is_409_and_leaves_one_round` (the `rounds_one_active_per_room` constraint test stays in TS) |
+| `round-lifecycle.test.ts` | lets another present player declare in while the round is open | `RoundLifecycleHttpTests.Declare_in_adds_the_caller_and_announces_a_version` |
+| `round-lifecycle.test.ts` | rejects a close attempt from anyone other than the starter | `RoundLifecycleHttpTests.Close_refuses_a_non_starter_a_lone_player_and_a_round_already_closed` |
+| `round-lifecycle.test.ts` | blocks close until at least 2 players have declared in | same |
+| `round-lifecycle.test.ts` | lets the starter close once at least 2 players have declared in | `RoundLifecycleHttpTests.Close_locks_the_round_and_announces_it` |
+| `round-lifecycle.test.ts` | does not retroactively add a player who logs in mid-day to an open round | `RoundLifecycleHttpTests.Start_opens_a_round_with_the_caller_declared_and_announces_it` (only the starter is declared) |
+| `declare-in-late.test.ts` | lets a player join a closed round with no rolls yet | `RoundLifecycleHttpTests.Late_declare_works_on_a_closed_round_nobody_has_rolled_in` |
+| `declare-in-late.test.ts` | is idempotent on repeat calls | same |
+| `declare-in-late.test.ts` | fails once a roll has already landed (RFB31) | `RoundLifecycleHttpTests.Late_declare_after_a_roll_or_on_an_open_round_is_409` |
+| `declare-in-late.test.ts` | fails while the round is still open | same |
+| `roll-and-resolve.test.ts` | submit_roll rejects a caller who is not a declared participant | `RollSubmissionHttpTests.A_player_who_is_not_a_participant_is_not_an_expected_roller` |
+| `roll-and-resolve.test.ts` | submit_roll rejects rolling before the round is closed | `RollSubmissionHttpTests.A_round_still_open_for_declarations_is_not_open_for_rolling` |
+| `manual-roll-and-settings.test.ts` | records a manual roll with input_mode = 'manual' and enforces the 1-20 range | `RollSubmissionHttpTests.Manual_roll_records_the_number_read_off_the_die`, `Manual_roll_outside_1_to_20_is_400_and_writes_nothing` |
+| `manual-roll-and-settings.test.ts` | submit_manual_roll rejects a caller who is not a declared participant | `RollSubmissionTests.Rolling_before_the_round_closes_or_out_of_turn_is_refused` |
+| `manual-roll-and-settings.test.ts` | records input_mode for each roll_input_mode preference (4 cases) | `RollSubmissionTests.A_plain_roll_is_one_die_with_the_modifier_snapshot` (`in_app`), `A_manual_roll_records_the_number_as_entered` (`manual`). The preference never reached the server. |
+| `admin-proxy-roll.test.ts` | folds an absent player into a closed round with no rolls yet | `RollSubmissionHttpTests.Proxy_roll_seats_and_declares_the_target_and_records_an_admin_entered_roll` |
+| `admin-proxy-roll.test.ts` | rejects a non-admin caller | `RollSubmissionHttpTests.Proxy_roll_needs_an_admin_and_a_known_player` |
+| `admin-proxy-roll.test.ts` | fails once a roll has already landed (RFB32) | `RollSubmissionHttpTests.Proxy_roll_after_someone_has_rolled_is_the_stale_round_refusal` |
+| `admin-proxy-roll.test.ts` | records a pending spell draw for the proxied player on a nat 20 | `RollSubmissionHttpTests.Proxy_crit_records_a_pending_spell_draw_for_the_target` |
+| `discarded-advantage-roll.test.ts` | persists the discarded roll when disadvantage applies | `RollSubmissionTests.Disadvantage_keeps_the_lower_die` |
+| `discarded-advantage-roll.test.ts` | persists the discarded roll when advantage applies | `RollSubmissionTests.Advantage_keeps_the_higher_die_and_records_both` |
+| `discarded-advantage-roll.test.ts` | records the advantage roll transform into cast_inputs | same |
+| `discarded-advantage-roll.test.ts` | records the disadvantage roll transform into cast_inputs | `RollSubmissionTests.Disadvantage_keeps_the_lower_die` |
+| `discarded-advantage-roll.test.ts` | advantage + disadvantage on one player cancel to a single d20 | `RollSubmissionTests.Advantage_and_disadvantage_cancel_to_the_single_first_die` |
+| `discarded-advantage-roll.test.ts` | submit_roll records the conditional-advantage branch (the cast half stays, in `gamblers-infusion-cast.test.ts`) | `RollSubmissionTests.A_conditional_advantage_takes_a_second_die_only_when_the_first_clears_the_threshold` |
+| `discarded-advantage-roll.test.ts` | records the branch the first die selected, consistently, across many rounds | same (scripted dice cover each branch) |
+| `discarded-advantage-roll.test.ts` | a conditional-advantage cast leaves an existing advantage+disadvantage pair to cancel | `RollSubmissionTests.Advantage_and_disadvantage_cancel_to_the_single_first_die` |
+| `ward-phase.test.ts` | a positive roll-domain ward blocks a static advantage at submit_roll | `RollSubmissionTests.A_roll_ward_of_the_matching_polarity_stops_the_second_die_and_marks_the_cast_warded` (added here) |
+| `ward-phase.test.ts` | submit_roll_as blocks a static advantage the same way | same; `RollSubmission.As` shares the roll path |
+| `brewmageddon.test.ts` | the roll-hold and advantage-roll half of "holds all rolling until every compelled Action cast is in" (the Compelled Cast step half stays) | `RollSubmissionTests.An_owed_compelled_cast_holds_rolling_for_everyone`, `Advantage_keeps_the_higher_die_and_records_both` |
+
+### Later-slice tests deleted here (2)
+
+Both drove the Marked for Brew / Stale Biscuit redirect through a Proxy Roll crit. The redirect itself is the `_apply_crit_redirect` bridge, which the other crit entry points still exercise in TS.
+
+| Slice | TS file | Test |
+|---|---|---|
+| 4 (#553/#554) | `marked-for-brew.test.ts` | admin_proxy_roll: a proxied nat 20 for the target is the caster's draw |
+| 4 (#553/#554) | `stale-biscuit.test.ts` | admin_proxy_roll: a proxied nat 20 for the target, drawn by the target, goes to the caster |
+
 ## Every test
 
 The RPC column names what the test really called. `golden` names a corpus scenario, which runs through `GoldenEvaluateTests`, `AdvanceRoundParityTests` (both entry points) and `RoundRecapParityTests`.

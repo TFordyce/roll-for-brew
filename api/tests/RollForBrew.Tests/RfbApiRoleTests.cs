@@ -52,12 +52,15 @@ public class RfbApiRoleTests : IAsyncLifetime
         {
             "enter_todays_room", "set_acting_as", "advance_layer", "finalize_layer", "resolve_round",
             "_rr_resolve", "_rr_resolve_eval", "get_round_recap", "admin_backfill_round",
+            "start_round", "declare_in", "declare_in_late", "withdraw_declaration", "close_round",
+            "cancel_round", "exclude_round_participant", "confirm_round_replay", "decline_round_replay",
+            "submit_roll", "submit_manual_roll", "submit_roll_as", "submit_manual_roll_as", "admin_proxy_roll",
         })
             Assert.False(await Flag($"select exists (select 1 from pg_proc where proname = '{name}' and pronamespace = 'public'::regnamespace)"), name);
     }
 
     [Fact]
-    public async Task Role_has_execute_on_the_round_lifecycle_bridges_and_not_on_what_C_sharp_replaced()
+    public async Task Role_has_execute_on_the_round_lifecycle_bridges()
     {
         foreach (var bridge in new[]
         {
@@ -65,16 +68,10 @@ public class RfbApiRoleTests : IAsyncLifetime
             "_forfeit_compelled_card(uuid, text, text)", "_rr_scrap_round(uuid)",
         })
             Assert.True(await Flag($"select has_function_privilege('rfb_api', 'public.{bridge}', 'execute')"), bridge);
-        foreach (var replaced in new[]
-        {
-            "start_round(uuid)", "declare_in(uuid)", "declare_in_late(uuid)", "withdraw_declaration(uuid)", "close_round(uuid)",
-            "cancel_round(uuid)", "exclude_round_participant(uuid, text, integer)", "confirm_round_replay(uuid)", "decline_round_replay(uuid)",
-        })
-            Assert.False(await Flag($"select has_function_privilege('rfb_api', 'public.{replaced}', 'execute')"), replaced);
     }
 
     [Fact]
-    public async Task Role_has_execute_on_the_crit_redirect_bridge_and_not_on_the_roll_functions_C_sharp_replaced()
+    public async Task Role_has_execute_on_the_crit_redirect_bridge()
     {
         foreach (var bridge in new[]
         {
@@ -82,12 +79,6 @@ public class RfbApiRoleTests : IAsyncLifetime
             "_rr_participated_rounds_elapsed(uuid, text, timestamptz, timestamptz)",
         })
             Assert.True(await Flag($"select has_function_privilege('rfb_api', 'public.{bridge}', 'execute')"), bridge);
-        foreach (var replaced in new[]
-        {
-            "submit_roll(uuid)", "submit_manual_roll(uuid, integer)", "submit_roll_as(uuid, text)",
-            "submit_manual_roll_as(uuid, text, integer)", "admin_proxy_roll(uuid, text, integer)",
-        })
-            Assert.False(await Flag($"select has_function_privilege('rfb_api', 'public.{replaced}', 'execute')"), replaced);
     }
 
     [Fact]

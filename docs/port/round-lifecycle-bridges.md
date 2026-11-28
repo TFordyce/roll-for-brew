@@ -1,6 +1,6 @@
 # Round lifecycle commands: flags and bridges (slice 3a, #550)
 
-Nine commands run through the C# API: starting a round, declaring in (and Late Declare), withdrawing, closing, cancelling, excluding a Participant, and confirming or declining a Round replay. Since #552 the TS wrappers in `rounds.ts`, `roundReplay.ts` and `stall.ts` call the API only and read no flag. The flag rows and SQL functions below stay until the #552 drop PR, but nothing in the app reads or calls them.
+Nine commands run through the C# API: starting a round, declaring in (and Late Declare), withdrawing, closing, cancelling, excluding a Participant, and confirming or declining a Round replay. Since #552 the TS wrappers in `rounds.ts`, `roundReplay.ts` and `stall.ts` call the API only, and the SQL functions and flag rows below are deleted (migration `0169`).
 
 | Flag (`port_flags.slice`) | Endpoint | SQL it replaces |
 |---|---|---|
@@ -18,7 +18,7 @@ Migration `0166` seeded all nine rows off. Every endpoint returns `{ version }` 
 
 ## Flip history
 
-Flipped Test Room first, then global, and soaked 5 play-days with no rollback (recorded on #550 and #552). There is no rollback now: the wrappers no longer read the flags, so turning a row off changes nothing. Recovering the SQL path means reverting the #552 code-half PR and deploying.
+Flipped Test Room first, then global, and soaked 5 play-days with no rollback (recorded on #550 and #552). There is no rollback: the SQL path is deleted.
 
 ## What C# decides, and the bridges
 
@@ -32,9 +32,11 @@ C# owns every check and write the SQL did: state and race checks, the starter an
 | `_rr_scrap_round(uuid)` | migration `0166` | `RoundLifecycle.ConfirmReplay` | replay slice |
 | `rfb_broadcast(text, text, jsonb)` | migration `0164` | `RoomStore` | never: plumbing (ADR 0011) |
 
-## SQL-deletion list
+## SQL deleted at #552 (migration 0169)
 
-The soak passed (16–20 Nov, confirmed on #552). The #552 code half removed the `.rpc` branches and the TS actions' extra `broadcastRoomChanged` after each command. The #552 drop PR removes the nine functions in the table above (with their `authenticated` grants), the nine `port_flags` rows, and the SQL-side tests that call them directly (`tests/integration`). `auto_decline_stalled_round_replays` stays until the stall slice. `round_has_any_rolls` is a read and stays.
+The soak passed (16–20 Nov, confirmed on #552). #631 removed the `.rpc` branches and the TS actions' extra `broadcastRoomChanged` after each command. Migration `0169` drops the nine functions in the table above and their `port_flags` rows. `auto_decline_stalled_round_replays` stays until the stall slice. `round_has_any_rolls` is a read and stays.
+
+The integration suite sets up rounds with `startRoundAs`, `declareInAs` and `closeRoundAs` (`tests/integration/setup.ts`), which write the same rows as the service role. `closeRoundAs` calls the two close-time bridges, so `0169` grants them to `service_role` too. Tests whose subject was this slice are deleted; the parity audit lists them with their C# equivalents.
 
 ## Known differences from the SQL path
 

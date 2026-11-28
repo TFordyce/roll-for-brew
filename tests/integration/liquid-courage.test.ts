@@ -7,6 +7,9 @@ import {
   hasAnonTestEnv,
   seedDedicatedRoom,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real local Supabase stack. Exercises Liquid Courage (issue
@@ -41,11 +44,11 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
   const minutesAgo = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 
   async function startRound(starter: Player, others: Player[]) {
-    const { data: roundId, error } = await starter.client.rpc("start_round");
+    const { data: roundId, error } = await startRoundAs(starter.client);
     expect(error).toBeNull();
     cleanup.trackRound(roundId as string);
     for (const o of others) {
-      const { error: dErr } = await o.client.rpc("declare_in", { p_round_id: roundId });
+      const { error: dErr } = await declareInAs(o.client, roundId);
       expect(dErr).toBeNull();
     }
     return roundId as string;
@@ -167,7 +170,7 @@ describe.skipIf(!hasAnonTestEnv)("Liquid Courage (issue #439)", () => {
   it("a token is not a Reaction Source in a tie-break window", async () => {
     const { giver, recipient } = await gift("tiebreak");
     const roundId = await startRound(giver, [recipient]);
-    const { error } = await giver.client.rpc("close_round", { p_round_id: roundId });
+    const { error } = await closeRoundAs(roundId);
     expect(error).toBeNull();
     await seedRoll(roundId, recipient.googleSub, 10);
     await seedRoll(roundId, giver.googleSub, 13);

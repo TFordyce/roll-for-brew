@@ -8,6 +8,9 @@ import {
   hasAnonTestEnv,
   roundModifierEffects,
   signUpSignInAndEnterRoom,
+  closeRoundAs,
+  declareInAs,
+  startRoundAs,
 } from "./setup";
 
 // Runs against a real, dedicated test Supabase project. Exercises two of
@@ -44,10 +47,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     ]);
     await forceHold(admin, caster.googleSub, "Six Sugars");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await other.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(other.client, roundId);
+    await closeRoundAs(roundId);
 
     const { data: openData, error: openError } = await caster.client.rpc("open_reaction_window", {
       p_round_id: roundId,
@@ -122,10 +125,10 @@ describe.skipIf(!hasAnonTestEnv)("spell cards: reaction-timed numeric modifiers 
     ]);
     await forceHold(admin, caster.googleSub, "Mug Shot");
 
-    const { data: roundId } = await caster.client.rpc("start_round");
+    const { data: roundId } = await startRoundAs(caster.client);
     cleanup.trackRound(roundId as string);
-    await target.client.rpc("declare_in", { p_round_id: roundId });
-    await caster.client.rpc("close_round", { p_round_id: roundId });
+    await declareInAs(target.client, roundId);
+    await closeRoundAs(roundId);
 
     const { error: openError } = await caster.client.rpc("open_reaction_window", {
       p_round_id: roundId,
