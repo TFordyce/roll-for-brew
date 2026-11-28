@@ -1,6 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { apiClientFor, type ApiClient } from "@/lib/api/client";
-import { useApiForRound } from "./rounds";
 
 export type LayerRoll = {
   playerId: string;
@@ -15,16 +14,11 @@ export type CompletedLayer = {
   rolls: LayerRoll[];
 };
 
-// Each wrapper goes to the API when its port flag is on for the round's room (Test Room first),
-// and keeps its SQL `.rpc` otherwise: the rollback. Flags: docs/port/roll-submission-bridges.md.
 type ApiFactory = () => ApiClient;
 const defaultApi = (supabase: SupabaseClient): ApiFactory => () => apiClientFor(supabase);
 
 export async function submitRoll(supabase: SupabaseClient, roundId: string, api: ApiFactory = defaultApi(supabase)): Promise<number> {
-  if (await useApiForRound(supabase, "submitRoll", roundId)) return (await api().submitRoll(roundId)).value;
-  const { data, error } = await supabase.rpc("submit_roll", { p_round_id: roundId });
-  if (error) throw error;
-  return data as number;
+  return (await api().submitRoll(roundId)).value;
 }
 
 export async function submitManualRoll(
@@ -33,15 +27,7 @@ export async function submitManualRoll(
   value: number,
   api: ApiFactory = defaultApi(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "submitManualRoll", roundId)) {
-    await api().submitManualRoll(roundId, value);
-    return;
-  }
-  const { error } = await supabase.rpc("submit_manual_roll", {
-    p_round_id: roundId,
-    p_value: value,
-  });
-  if (error) throw error;
+  await api().submitManualRoll(roundId, value);
 }
 
 export async function submitRollAs(
@@ -50,13 +36,7 @@ export async function submitRollAs(
   playerId: string,
   api: ApiFactory = defaultApi(supabase),
 ): Promise<number> {
-  if (await useApiForRound(supabase, "submitRollAs", roundId)) return (await api().submitRollAs(roundId, playerId)).value;
-  const { data, error } = await supabase.rpc("submit_roll_as", {
-    p_round_id: roundId,
-    p_player_id: playerId,
-  });
-  if (error) throw error;
-  return data as number;
+  return (await api().submitRollAs(roundId, playerId)).value;
 }
 
 export async function submitManualRollAs(
@@ -66,16 +46,7 @@ export async function submitManualRollAs(
   value: number,
   api: ApiFactory = defaultApi(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "submitManualRollAs", roundId)) {
-    await api().submitManualRollAs(roundId, playerId, value);
-    return;
-  }
-  const { error } = await supabase.rpc("submit_manual_roll_as", {
-    p_round_id: roundId,
-    p_player_id: playerId,
-    p_value: value,
-  });
-  if (error) throw error;
+  await api().submitManualRollAs(roundId, playerId, value);
 }
 
 export async function adminProxyRoll(
@@ -85,16 +56,7 @@ export async function adminProxyRoll(
   value: number,
   api: ApiFactory = defaultApi(supabase),
 ): Promise<void> {
-  if (await useApiForRound(supabase, "adminProxyRoll", roundId)) {
-    await api().adminProxyRoll(roundId, playerId, value);
-    return;
-  }
-  const { error } = await supabase.rpc("admin_proxy_roll", {
-    p_round_id: roundId,
-    p_player_id: playerId,
-    p_value: value,
-  });
-  if (error) throw error;
+  await api().adminProxyRoll(roundId, playerId, value);
 }
 
 

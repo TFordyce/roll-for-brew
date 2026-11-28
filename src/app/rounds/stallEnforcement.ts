@@ -50,7 +50,6 @@ export async function enforceStallTimeout(
   if (round.status === "open") {
     if (!hasStalled(round.startedAt, nowDate)) return { action: "none" };
     await cancelRound(supabase, roundId);
-    await broadcastRoomChanged(supabase, round.roomId);
     return { action: "cancelled" };
   }
 
@@ -117,7 +116,6 @@ export async function enforceStallTimeout(
     const participants = await getRoundParticipants(supabase, roundId);
     if (participants.filter((p) => p.excludedAt === null).length < 2) {
       await cancelRound(supabase, roundId);
-      await broadcastRoomChanged(supabase, round.roomId);
       return { action: "cancelled" };
     }
   }

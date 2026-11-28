@@ -43,7 +43,7 @@ import {
 
 function isRoundAlreadyStartedError(error: unknown): boolean {
   const code = (error as { code?: string } | null)?.code;
-  return code === "23505" || code === "round_already_active";
+  return code === "round_already_active";
 }
 
 export async function startRoundAction(formData: FormData) {
@@ -51,17 +51,11 @@ export async function startRoundAction(formData: FormData) {
   const targetRoomId = typeof rawRoomId === "string" && rawRoomId ? rawRoomId : undefined;
 
   const supabase = await createClient();
-  let roundId: string;
   try {
-    roundId = await startRound(supabase, targetRoomId);
+    await startRound(supabase, targetRoomId);
   } catch (error) {
     if (!isRoundAlreadyStartedError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
   }
-
-  const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -77,12 +71,7 @@ export async function declareInAction(formData: FormData) {
     await declareIn(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
   }
-
-  const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -101,9 +90,6 @@ export async function declareInLateAction(formData: FormData) {
     revalidateRoundSurfaces();
     return;
   }
-
-  const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
   await advanceRound(supabase, roundId, "lateDeclared");
 
   revalidateRoundSurfaces();
@@ -120,12 +106,7 @@ export async function withdrawDeclarationAction(formData: FormData) {
     await withdrawDeclaration(supabase, roundId);
   } catch (error) {
     if (!isStaleRoundError(error)) throw error;
-    revalidateRoundSurfaces();
-    return;
   }
-
-  const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -138,9 +119,6 @@ export async function closeRoundAction(formData: FormData) {
 
   const supabase = await createClient();
   await closeRound(supabase, roundId);
-
-  const roomId = await getRoundRoomId(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
   await advanceRound(supabase, roundId, "roundClosed");
 
   revalidateRoundSurfaces();
@@ -569,9 +547,7 @@ export async function confirmRoundReplayAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const roomId = await getRoundRoomId(supabase, roundId);
   await confirmRoundReplay(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }
@@ -583,9 +559,7 @@ export async function declineRoundReplayAction(formData: FormData) {
   }
 
   const supabase = await createClient();
-  const roomId = await getRoundRoomId(supabase, roundId);
   await declineRoundReplay(supabase, roundId);
-  await broadcastRoomChanged(supabase, roomId);
 
   revalidateRoundSurfaces();
 }

@@ -4,18 +4,8 @@ import type { ApiClient } from "../api/client";
 import { adminProxyRoll, submitManualRoll, submitManualRollAs, submitRoll, submitRollAs } from "./rolls";
 import { isStaleRoundError } from "@/app/rounds/roundActionHelpers";
 
-type Row = { room_id: string | null; enabled: boolean };
-
-/** Flag rows for any slice, and a round that sits in `roundRoom`. */
-function fake(flags: Row[], roundRoom = "room-a") {
-  const rpc = vi.fn(async () => ({ data: 11, error: null }));
-  const from = vi.fn((table: string) =>
-    table === "port_flags"
-      ? { select: () => ({ eq: async () => ({ data: flags, error: null }) }) }
-      : { select: () => ({ eq: () => ({ single: async () => ({ data: { room_id: roundRoom }, error: null }) }) }) },
-  );
-  return { supabase: { from, rpc } as unknown as SupabaseClient, rpc, from };
-}
+/** A Supabase client that fails the test if a wrapper touches it: every roll goes to the API. */
+const supabase = new Proxy({}, { get: (_, k) => { throw new Error(`wrapper touched supabase.${String(k)}`); } }) as SupabaseClient;
 
 const api = () =>
   ({
@@ -26,88 +16,25 @@ const api = () =>
     adminProxyRoll: vi.fn(async () => ({ value: 9, version: 7 })),
   }) as unknown as ApiClient & Record<string, ReturnType<typeof vi.fn>>;
 
-const on: Row[] = [{ room_id: null, enabled: true }];
-
-const cases: [string, string, Record<string, unknown>, unknown[], (s: SupabaseClient, a: () => ApiClient) => Promise<unknown>][] = [
-  ["submitRoll", "submit_roll", { p_round_id: "r1" }, ["r1"], (s, a) => submitRoll(s, "r1", a)],
-  [
-    "submitManualRoll",
-    "submit_manual_roll",
-    { p_round_id: "r1", p_value: 9 },
-    ["r1", 9],
-    (s, a) => submitManualRoll(s, "r1", 9, a),
-  ],
-  [
-    "submitRollAs",
-    "submit_roll_as",
-    { p_round_id: "r1", p_player_id: "p1" },
-    ["r1", "p1"],
-    (s, a) => submitRollAs(s, "r1", "p1", a),
-  ],
-  [
-    "submitManualRollAs",
-    "submit_manual_roll_as",
-    { p_round_id: "r1", p_player_id: "p1", p_value: 9 },
-    ["r1", "p1", 9],
-    (s, a) => submitManualRollAs(s, "r1", "p1", 9, a),
-  ],
-  [
-    "adminProxyRoll",
-    "admin_proxy_roll",
-    { p_round_id: "r1", p_player_id: "p1", p_value: 9 },
-    ["r1", "p1", 9],
-    (s, a) => adminProxyRoll(s, "r1", "p1", 9, a),
-  ],
+const cases: [string, unknown[], (a: () => ApiClient) => Promise<unknown>][] = [
+  ["submitRoll", ["r1"], (a) => submitRoll(supabase, "r1", a)],
+  ["submitManualRoll", ["r1", 9], (a) => submitManualRoll(supabase, "r1", 9, a)],
+  ["submitRollAs", ["r1", "p1"], (a) => submitRollAs(supabase, "r1", "p1", a)],
+  ["submitManualRollAs", ["r1", "p1", 9], (a) => submitManualRollAs(supabase, "r1", "p1", 9, a)],
+  ["adminProxyRoll", ["r1", "p1", 9], (a) => adminProxyRoll(supabase, "r1", "p1", 9, a)],
 ];
 
-describe.each(cases)("%s", (method, rpcName, rpcArgs, apiArgs, call) => {
-  it("keeps the RPC when the flag is off", async () => {
-    const { supabase, rpc } = fake([]);
+describe.each(cases)("%s", (method, apiArgs, call) => {
+  it("goes to the API", async () => {
     const a = api();
-    await call(supabase, () => a);
-    expect(rpc).toHaveBeenCalledWith(rpcName, rpcArgs);
-    expect(a[method]).not.toHaveBeenCalled();
-  });
-
-  it("goes to the API when the global flag is on", async () => {
-    const { supabase, rpc } = fake(on);
-    const a = api();
-    await call(supabase, () => a);
+    await call(() => a);
     expect(a[method]).toHaveBeenCalledWith(...apiArgs);
-    expect(rpc).not.toHaveBeenCalled();
-  });
-
-  it("rolls back to the RPC when the flag is disabled", async () => {
-    const { supabase, rpc } = fake([{ room_id: null, enabled: false }]);
-    const a = api();
-    await call(supabase, () => a);
-    expect(rpc).toHaveBeenCalledWith(rpcName, rpcArgs);
-  });
-
-  it("lets a Test Room row switch only its own room", async () => {
-    const test = [{ room_id: "room-test", enabled: true }];
-    const inTest = fake(test, "room-test");
-    const a1 = api();
-    await call(inTest.supabase, () => a1);
-    expect(a1[method]).toHaveBeenCalledTimes(1);
-
-    const elsewhere = fake(test, "room-a");
-    const a2 = api();
-    await call(elsewhere.supabase, () => a2);
-    expect(a2[method]).not.toHaveBeenCalled();
-    expect(elsewhere.rpc).toHaveBeenCalledWith(rpcName, rpcArgs);
   });
 });
 
-describe("the rolled value", () => {
-  it("comes back from the API for an auto roll", async () => {
-    expect(await submitRoll(fake(on).supabase, "r1", () => api())).toBe(17);
-    expect(await submitRollAs(fake(on).supabase, "r1", "p1", () => api())).toBe(17);
-  });
-
-  it("comes back from the RPC for an auto roll", async () => {
-    expect(await submitRoll(fake([]).supabase, "r1", () => api())).toBe(11);
-  });
+it("an auto roll returns the API's rolled value", async () => {
+  expect(await submitRoll(supabase, "r1", () => api())).toBe(17);
+  expect(await submitRollAs(supabase, "r1", "p1", () => api())).toBe(17);
 });
 
 describe("a stale roll", () => {

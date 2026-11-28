@@ -1,6 +1,6 @@
 # Round lifecycle commands: flags and bridges (slice 3a, #550)
 
-Nine commands run through the C# API, each behind its own flag: starting a round, declaring in (and Late Declare), withdrawing, closing, cancelling, excluding a Participant, and confirming or declining a Round replay. Merging changes nothing for players: with no row, or the row off, every wrapper keeps its SQL `.rpc`.
+Nine commands run through the C# API: starting a round, declaring in (and Late Declare), withdrawing, closing, cancelling, excluding a Participant, and confirming or declining a Round replay. Since #552 the TS wrappers in `rounds.ts`, `roundReplay.ts` and `stall.ts` call the API only and read no flag. The flag rows and SQL functions below stay until the #552 drop PR, but nothing in the app reads or calls them.
 
 | Flag (`port_flags.slice`) | Endpoint | SQL it replaces |
 |---|---|---|
@@ -14,36 +14,11 @@ Nine commands run through the C# API, each behind its own flag: starting a round
 | `confirmRoundReplay` | `POST /rounds/{id}/replay/confirm` | `confirm_round_replay(uuid)` |
 | `declineRoundReplay` | `POST /rounds/{id}/replay/decline` | `decline_round_replay(uuid)` |
 
-All nine rows are seeded off by migration `0166`. Every endpoint returns `{ version }` (`startRound` also `roundId`): the bumped `rooms.version`, or null when the call changed nothing (declaring twice, cancelling a resolved round, excluding someone already excluded, declining with nothing pending). The writes and the `room-changed` broadcast share one transaction with the round-row lock (ADR 0011, ADR 0012), and a dropped send rolls the command back (`Announce.Required`): a start, close or exclusion nobody hears about leaves the table waiting on a state it cannot see.
+Migration `0166` seeded all nine rows off. Every endpoint returns `{ version }` (`startRound` also `roundId`): the bumped `rooms.version`, or null when the call changed nothing (declaring twice, cancelling a resolved round, excluding someone already excluded, declining with nothing pending). The writes and the `room-changed` broadcast share one transaction with the round-row lock (ADR 0011, ADR 0012), and a dropped send rolls the command back (`Announce.Required`): a start, close or exclusion nobody hears about leaves the table waiting on a state it cannot see.
 
-## Flip and rollback (human steps, outside play hours)
+## Flip history
 
-Preconditions: API deployed with this slice, `NEXT_PUBLIC_API_URL` set, API `CORS_ORIGINS` includes the app origin. Round-scoped flags honour a room row, so the Test Room goes first. `startRound` takes its room from the call, so it only sees a room row when the caller passes a room id (the Test Room page does; the home page does not, so the Test Room row never moves home-page starts).
-
-```sql
--- 1. Test Room first, one slice at a time. Play a round there: start, declare, withdraw, close, a stalled cancel, a Time for Brew scrap.
-insert into public.port_flags (slice, room_id, enabled)
-  select s, r.id, true
-    from unnest(array['startRound', 'declareIn', 'withdrawDeclaration', 'closeRound']) as s
-   cross join public.rooms r where r.is_test
-on conflict (slice, room_id) do update set enabled = true;
-
--- 2. Then global. A room row beats the global row.
-update public.port_flags set enabled = true
- where room_id is null and slice in (
-   'startRound', 'declareIn', 'declareInLate', 'withdrawDeclaration', 'closeRound',
-   'cancelRound', 'excludeRoundParticipant', 'confirmRoundReplay', 'declineRoundReplay');
-```
-
-Rollback (instant, no deploy, safe mid-round: both paths write the same rows):
-
-```sql
-update public.port_flags set enabled = false
- where slice in ('startRound', 'declareIn', 'declareInLate', 'withdrawDeclaration', 'closeRound',
-                 'cancelRound', 'excludeRoundParticipant', 'confirmRoundReplay', 'declineRoundReplay');
-```
-
-Record each flip on #550. The soak (5 play-days on globally, no rollback) is a separate human-gated step.
+Flipped Test Room first, then global, and soaked 5 play-days with no rollback (recorded on #550 and #552). There is no rollback now: the wrappers no longer read the flags, so turning a row off changes nothing. Recovering the SQL path means reverting the #552 code-half PR and deploying.
 
 ## What C# decides, and the bridges
 
@@ -59,10 +34,9 @@ C# owns every check and write the SQL did: state and race checks, the starter an
 
 ## SQL-deletion list
 
-**Empty on this ticket.** The SQL functions are the rollback, so nothing is dropped or revoked. After the soak, remove: the nine functions in the table above (with their `authenticated` grants), the `.rpc` branches in `src/lib/supabase/rounds.ts`, `roundReplay.ts` and `stall.ts`, the nine `port_flags` rows, and the SQL-side tests that call them directly (`tests/integration`). `auto_decline_stalled_round_replays` stays until the stall slice. `round_has_any_rolls` is a read and stays.
+The soak passed (16–20 Nov, confirmed on #552). The #552 code half removed the `.rpc` branches and the TS actions' extra `broadcastRoomChanged` after each command. The #552 drop PR removes the nine functions in the table above (with their `authenticated` grants), the nine `port_flags` rows, and the SQL-side tests that call them directly (`tests/integration`). `auto_decline_stalled_round_replays` stays until the stall slice. `round_has_any_rolls` is a read and stays.
 
 ## Known differences from the SQL path
 
-* Unchanged TS actions still call `broadcastRoomChanged` after each command. On the API path that is a second, unversioned `room-changed`; the client store accepts it. Remove those calls with the `.rpc` branches.
 * `declare_in*` and `withdraw_declaration` used to say "round not found" or "not in this room" as a plain exception; they are now `round_not_found` (404), `not_present_in_room` (403), `starter_cannot_withdraw` (422), `close_not_starter` (403), `close_too_few_declared` (422), `no_room_today` (404) and `round_already_active` (409). See `error-codes.md`.
 * `cancel_round` and `exclude_round_participant` check no actor, as before: any signed-in player can call them. They only apply a decision the caller already made.
